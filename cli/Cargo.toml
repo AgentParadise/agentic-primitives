@@ -43,6 +43,9 @@ handlebars = "5.1"
 # Hashing (for versioning)
 blake3 = "1.5"
 
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
 [dev-dependencies]
 # Testing
 tempfile = "3.10"
