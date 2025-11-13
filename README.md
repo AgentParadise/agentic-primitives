@@ -117,9 +117,9 @@ primitives/v1/prompts/
 **Example**: `primitives/v1/prompts/agents/python/python-pro/`
 
 Each primitive contains:
-- `prompt.v1.md` - Versioned prompt content (for agents/commands/meta-prompts)
-- `prompt.md` - Unversioned (for skills, or opt-in versioning)
-- `meta.yaml` - Metadata with version registry, model preferences, tool dependencies
+- `python-pro.v1.md` - Versioned prompt content (filename matches ID)
+- `python-pro.v2.md` - Next version
+- `python-pro.yaml` - Metadata with version registry, model preferences, tool dependencies (filename matches directory name)
 
 ### Tool Primitives
 
@@ -127,7 +127,7 @@ Logical capability definitions with optional provider bindings:
 
 ```
 primitives/v1/tools/<category>/<id>/
-├── meta.yaml                  # Generic specification
+├── tool.meta.yaml             # Generic tool specification
 ├── impl.claude.yaml           # Claude SDK binding
 ├── impl.openai.json           # OpenAI function calling
 └── impl.local.{rs|py|ts}      # Local implementation
@@ -139,7 +139,7 @@ Lifecycle event handlers with **middleware pipelines**:
 
 ```
 primitives/v1/hooks/<category>/<id>/
-├── meta.yaml               # Event config & middleware list
+├── hook.meta.yaml          # Event config & middleware list
 ├── impl.python.py          # Orchestrator (uv)
 ├── impl.bun.ts             # Alternative (bun)
 └── middleware/
@@ -157,7 +157,7 @@ primitives/v1/hooks/<category>/<id>/
 Agents, commands, and meta-prompts **require versioning**:
 
 ```yaml
-# In meta.yaml
+# In <id>.yaml (e.g., python-pro.yaml)
 spec_version: "v1"
 versions:
   - version: 1
