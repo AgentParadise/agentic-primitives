@@ -11,7 +11,7 @@ keywords = ["ai", "agents", "llm", "primitives", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
-name = "agentic"
+name = "agentic-p"
 path = "src/main.rs"
 
 [dependencies]

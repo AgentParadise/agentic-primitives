@@ -8,7 +8,7 @@ use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "agentic")]
+#[command(name = "agentic-p")]
 #[command(about = "Manage agentic primitives", long_about = None)]
 #[command(version)]
 struct Cli {

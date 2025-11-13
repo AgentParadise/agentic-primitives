@@ -71,39 +71,39 @@ This repository contains reusable AI primitives for coding agents.
 
 ```bash
 # Create an agent
-agentic new prompt agents <category> <id> --kind agent
+agentic-p new prompt agents <category> <id> --kind agent
 
 # Create a command
-agentic new prompt commands <category> <id> --kind command
+agentic-p new prompt commands <category> <id> --kind command
 
 # Create a tool
-agentic new tool <category> <id>
+agentic-p new tool <category> <id>
 
 # Create a hook
-agentic new hook <category> <id>
+agentic-p new hook <category> <id>
 ```
 
 ### Validate primitives
 
 ```bash
 # Validate all primitives
-agentic validate primitives/v1/
+agentic-p validate primitives/v1/
 
 # Validate specific primitive
-agentic validate primitives/v1/prompts/agents/<category>/<id>
+agentic-p validate primitives/v1/prompts/agents/<category>/<id>
 
 # Validate with specific layer
-agentic validate --layer structural primitives/v1/
+agentic-p validate --layer structural primitives/v1/
 ```
 
 ### Build for providers
 
 ```bash
 # Build for Claude
-agentic build --provider claude
+agentic-p build --provider claude
 
 # Build for OpenAI
-agentic build --provider openai
+agentic-p build --provider openai
 ```
 
 ## Documentation
@@ -180,12 +180,12 @@ Use this space to:
 
 1. **Create** experimental primitive:
    ```bash
-   agentic new <type> <category> <id> --experimental
+   agentic-p new <type> <category> <id> --experimental
    ```
 
 2. **Test** with lenient validation:
    ```bash
-   agentic validate primitives/experimental/ --spec-version experimental
+   agentic-p validate primitives/experimental/ --spec-version experimental
    ```
 
 3. **Iterate** freely - make changes without worrying about compatibility
@@ -337,11 +337,11 @@ fn print_success_message(path: &Path) -> Result<()> {
     println!("  1. {}", format!("cd {}", path.display()).cyan());
     println!(
         "  2. {}",
-        "agentic new prompt agents <category> <id>".cyan()
+        "agentic-p new prompt agents <category> <id>".cyan()
     );
-    println!("  3. {}", "agentic validate primitives/v1/".cyan());
+    println!("  3. {}", "agentic-p validate primitives/v1/".cyan());
     println!();
-    println!("Run {} for more commands.", "'agentic --help'".yellow());
+    println!("Run {} for more commands.", "'agentic-p --help'".yellow());
 
     Ok(())
 }
