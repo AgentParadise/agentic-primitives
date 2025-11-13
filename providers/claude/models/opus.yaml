@@ -1,0 +1,39 @@
+id: opus
+full_name: "Claude 3 Opus"
+api_name: "claude-3-opus-20240229"
+version: "20240229"
+provider: claude
+
+capabilities:
+  max_tokens: 200000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+
+performance:
+  speed: "medium"
+  quality: "highest"
+
+pricing:
+  input_per_1m_tokens: 15.00
+  output_per_1m_tokens: 75.00
+  currency: "USD"
+
+strengths:
+  - "Advanced reasoning and analysis"
+  - "Creative problem-solving"
+  - "Complex multi-step planning"
+  - "Nuanced understanding"
+  - "High-quality code generation"
+  - "Research and technical writing"
+
+recommended_for:
+  - "meta-prompts"
+  - "complex planning tasks"
+  - "research and analysis"
+  - "high-stakes code generation"
+  - "architectural decisions"
+
+notes: "Highest quality model in the Claude family. Best for tasks requiring maximum reasoning ability, creative problem-solving, or complex multi-step planning. More expensive but worth it for meta-prompts and critical decision-making."
+

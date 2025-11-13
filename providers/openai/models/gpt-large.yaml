@@ -1,0 +1,39 @@
+id: gpt-large
+full_name: "GPT-4.5 Preview"
+api_name: "gpt-4.5-preview"
+version: "preview"
+provider: openai
+
+capabilities:
+  max_tokens: 16384
+  context_window: 256000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+
+performance:
+  speed: "medium"
+  quality: "highest"
+
+pricing:
+  input_per_1m_tokens: 20.00
+  output_per_1m_tokens: 60.00
+  currency: "USD"
+
+strengths:
+  - "Latest OpenAI capabilities"
+  - "Extended context window"
+  - "Enhanced reasoning"
+  - "Improved code generation"
+  - "Better instruction following"
+  - "Multi-modal excellence"
+
+recommended_for:
+  - "cutting-edge tasks"
+  - "complex agents"
+  - "long-context reasoning"
+  - "high-quality code generation"
+  - "research and experimentation"
+
+notes: "Latest preview model from OpenAI with extended capabilities. Pricing and features subject to change. Use for cutting-edge tasks and experiments requiring the latest model capabilities. Extended 256k context window for large codebases."
+

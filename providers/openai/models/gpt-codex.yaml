@@ -1,0 +1,39 @@
+id: gpt-codex
+full_name: "GPT-4 Turbo with Vision"
+api_name: "gpt-4-turbo-2024-11-20"
+version: "2024-11-20"
+provider: openai
+
+capabilities:
+  max_tokens: 4096
+  context_window: 128000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+
+performance:
+  speed: "fast"
+  quality: "high"
+
+pricing:
+  input_per_1m_tokens: 10.00
+  output_per_1m_tokens: 30.00
+  currency: "USD"
+
+strengths:
+  - "Code generation and debugging"
+  - "Multi-modal understanding"
+  - "Structured output generation"
+  - "Function calling"
+  - "Technical problem-solving"
+  - "Large context window"
+
+recommended_for:
+  - "agents"
+  - "commands"
+  - "code-heavy tasks"
+  - "multi-modal workflows"
+  - "structured data extraction"
+
+notes: "OpenAI's flagship coding model with vision capabilities. Excellent for agents and commands requiring code generation with multi-modal understanding. Supports JSON mode and structured outputs for reliable tool integration."
+

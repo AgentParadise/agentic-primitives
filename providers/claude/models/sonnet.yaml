@@ -1,0 +1,39 @@
+id: sonnet
+full_name: "Claude 3.5 Sonnet"
+api_name: "claude-3-5-sonnet-20241022"
+version: "20241022"
+provider: claude
+
+capabilities:
+  max_tokens: 200000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+
+performance:
+  speed: "fast"
+  quality: "high"
+
+pricing:
+  input_per_1m_tokens: 3.00
+  output_per_1m_tokens: 15.00
+  currency: "USD"
+
+strengths:
+  - "Code generation and refactoring"
+  - "Long context reasoning"
+  - "Instruction following"
+  - "Function calling and tool use"
+  - "Multi-turn conversations"
+  - "Technical documentation"
+
+recommended_for:
+  - "agents"
+  - "commands"
+  - "complex reasoning"
+  - "code-heavy tasks"
+  - "general-purpose agentic work"
+
+notes: "Balanced model for most agentic tasks. Best combination of speed, quality, and cost. Ideal for production agents and commands that require reliable code generation with long context support."
+

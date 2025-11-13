@@ -1,0 +1,39 @@
+id: haiku
+full_name: "Claude 3 Haiku"
+api_name: "claude-3-haiku-20240307"
+version: "20240307"
+provider: claude
+
+capabilities:
+  max_tokens: 200000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+
+performance:
+  speed: "fastest"
+  quality: "medium"
+
+pricing:
+  input_per_1m_tokens: 0.25
+  output_per_1m_tokens: 1.25
+  currency: "USD"
+
+strengths:
+  - "Speed and efficiency"
+  - "Simple tasks and commands"
+  - "Rapid iteration"
+  - "Cost-effective processing"
+  - "High-throughput workloads"
+  - "Basic code generation"
+
+recommended_for:
+  - "skills"
+  - "simple commands"
+  - "rapid prototyping"
+  - "high-volume operations"
+  - "cost-sensitive tasks"
+
+notes: "Fastest and most cost-effective Claude model. Ideal for skills, simple commands, and high-throughput scenarios where speed and cost matter more than maximum quality. Still capable but optimized for efficiency."
+
