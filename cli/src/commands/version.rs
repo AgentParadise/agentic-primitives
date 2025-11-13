@@ -93,7 +93,7 @@ fn list_versions(primitive: &str, config: &PrimitivesConfig) -> Result<()> {
     }
 
     // Display header
-    println!("\n{}", format!("Versions for {}", primitive).bold());
+    println!("\n{}", format!("Versions for {primitive}").bold());
 
     // Create table
     let mut table = Table::new();
@@ -131,7 +131,7 @@ fn list_versions(primitive: &str, config: &PrimitivesConfig) -> Result<()> {
             Cell::new(&version_str),
             status_cell,
             Cell::new(&version.created),
-            Cell::new(&format!("blake3:{}", hash_short)),
+            Cell::new(format!("blake3:{hash_short}")),
             Cell::new(&notes),
         ]);
     }
@@ -184,7 +184,7 @@ fn bump_version(
 
     println!(
         "{}",
-        format!("✓ Copied {} → {}", source_file, new_file).green()
+        format!("✓ Copied {source_file} → {new_file}").green()
     );
 
     // Calculate hash for new version
@@ -222,15 +222,14 @@ fn bump_version(
 
     println!(
         "{}",
-        format!("\n✓ Created version {} (draft)", new_version)
+        format!("\n✓ Created version {new_version} (draft)")
             .green()
             .bold()
     );
     println!("\nNext steps:");
-    println!("  1. Edit {} with your changes", new_file);
+    println!("  1. Edit {new_file} with your changes");
     println!(
-        "  2. Run: agentic-p version promote {} {}",
-        primitive, new_version
+        "  2. Run: agentic-p version promote {primitive} {new_version}"
     );
     if !set_default {
         println!("     Add --set-default to make it the default version");
@@ -255,7 +254,7 @@ fn promote_version(
         .versions
         .iter_mut()
         .find(|v| v.version == version)
-        .context(format!("Version {} not found", version))?;
+        .context(format!("Version {version} not found"))?;
 
     // Validate current status
     if version_entry.status == "deprecated" {
@@ -275,13 +274,13 @@ fn promote_version(
 
     println!(
         "{}",
-        format!("✓ Promoted version {} to active", version)
+        format!("✓ Promoted version {version} to active")
             .green()
             .bold()
     );
 
     if set_default {
-        println!("{}", format!("✓ Set as default version").green());
+        println!("{}", "✓ Set as default version".to_string().green());
     }
 
     Ok(())
@@ -303,7 +302,7 @@ fn deprecate_version(
         .versions
         .iter_mut()
         .find(|v| v.version == version)
-        .context(format!("Version {} not found", version))?;
+        .context(format!("Version {version} not found"))?;
 
     // Update status
     version_entry.status = "deprecated".to_string();
@@ -328,7 +327,7 @@ fn deprecate_version(
         if let Some(new_default) = latest_active {
             println!(
                 "{}",
-                format!("→ Default version changed to v{}", new_default).yellow()
+                format!("→ Default version changed to v{new_default}").yellow()
             );
         } else {
             println!("{}", "⚠ No active versions remaining!".yellow());
@@ -340,11 +339,11 @@ fn deprecate_version(
 
     println!(
         "{}",
-        format!("✓ Deprecated version {}", version).yellow().bold()
+        format!("✓ Deprecated version {version}").yellow().bold()
     );
 
     if let Some(reason) = reason {
-        println!("  Reason: {}", reason);
+        println!("  Reason: {reason}");
     }
 
     Ok(())
@@ -420,7 +419,7 @@ fn check_hashes(primitive: Option<&str>, config: &PrimitivesConfig) -> Result<()
                     .bold()
                 );
                 println!("  Expected: {}", version_entry.hash);
-                println!("  Got:      {}", actual_hash);
+                println!("  Got:      {actual_hash}");
                 println!(
                     "  {}",
                     "Content has been modified after versioning.".yellow()
@@ -435,14 +434,14 @@ fn check_hashes(primitive: Option<&str>, config: &PrimitivesConfig) -> Result<()
     if mismatch_count == 0 {
         println!(
             "{}",
-            format!("✓ All {} versions valid", valid_count)
+            format!("✓ All {valid_count} versions valid")
                 .green()
                 .bold()
         );
     } else {
         println!(
             "{}",
-            format!("{} valid, {} mismatch", valid_count, mismatch_count)
+            format!("{valid_count} valid, {mismatch_count} mismatch")
                 .yellow()
                 .bold()
         );
@@ -469,7 +468,7 @@ fn resolve_primitive_path(primitive: &str, config: &PrimitivesConfig) -> Result<
     // Try different locations for prompts
     let primitives_dir = &config.paths.primitives;
     let experimental_dir = &config.paths.experimental;
-    
+
     let candidates = vec![
         primitives_dir.join("prompts/agents").join(primitive),
         primitives_dir.join("prompts/commands").join(primitive),
@@ -478,7 +477,9 @@ fn resolve_primitive_path(primitive: &str, config: &PrimitivesConfig) -> Result<
         experimental_dir.join("prompts/agents").join(primitive),
         experimental_dir.join("prompts/commands").join(primitive),
         experimental_dir.join("prompts/skills").join(primitive),
-        experimental_dir.join("prompts/meta-prompts").join(primitive),
+        experimental_dir
+            .join("prompts/meta-prompts")
+            .join(primitive),
     ];
 
     for candidate in candidates {
@@ -487,7 +488,7 @@ fn resolve_primitive_path(primitive: &str, config: &PrimitivesConfig) -> Result<
         }
     }
 
-    anyhow::bail!("Primitive not found: {}", primitive)
+    anyhow::bail!("Primitive not found: {primitive}")
 }
 
 /// Load meta.yaml from primitive directory
@@ -523,7 +524,7 @@ fn find_versioned_primitives(config: &PrimitivesConfig) -> Result<Vec<PathBuf>> 
         if !search_dir.exists() {
             continue;
         }
-        
+
         for entry in WalkDir::new(search_dir)
             .max_depth(6)
             .into_iter()

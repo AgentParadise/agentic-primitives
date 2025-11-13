@@ -278,7 +278,7 @@ metrics:
 "#;
         let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
         let metrics = meta.metrics.unwrap();
-        assert_eq!(metrics.enabled, true);
+        assert!(metrics.enabled);
         assert_eq!(metrics.backend, Some("statsd".to_string()));
     }
 
@@ -300,7 +300,7 @@ logging:
 "#;
         let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
         let logging = meta.logging.unwrap();
-        assert_eq!(logging.enabled, true);
+        assert!(logging.enabled);
         assert_eq!(logging.level, Some("info".to_string()));
         assert_eq!(logging.format, Some("json".to_string()));
     }
@@ -336,7 +336,7 @@ path: "middleware/test.py"
 type: "safety"
 "#;
         let middleware: MiddlewareConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(middleware.enabled, true); // Default should be true
+        assert!(middleware.enabled); // Default should be true
     }
 
     #[test]
@@ -348,6 +348,6 @@ type: "safety"
 enabled: false
 "#;
         let middleware: MiddlewareConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(middleware.enabled, false);
+        assert!(!middleware.enabled);
     }
 }

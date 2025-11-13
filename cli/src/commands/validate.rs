@@ -346,10 +346,10 @@ mod tests {
         fs::create_dir_all(&path).unwrap();
 
         // Filename must match ID
-        let version_file = format!("{}.v1.md", id);
+        let version_file = format!("{id}.v1.md");
         let meta = format!(
             r#"
-id: {}
+id: {id}
 kind: agent
 category: testing
 domain: test
@@ -360,12 +360,11 @@ context_usage:
   as_overlay: false
 versions:
   - version: 1
-    file: {}
+    file: {version_file}
     status: active
     created: "2025-01-01"
 default_version: 1
-"#,
-            id, version_file
+"#
         );
         fs::write(path.join("meta.yaml"), meta).unwrap();
         fs::write(path.join(&version_file), "# Test").unwrap();

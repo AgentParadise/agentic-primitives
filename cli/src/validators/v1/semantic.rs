@@ -582,10 +582,9 @@ versions:
   - version: 1
     file: prompt.v1.md
     status: active
-    hash: blake3:{}
+    hash: blake3:{actual_hash}
     created: "2025-01-01"
-"#,
-            actual_hash
+"#
         );
         fs::write(primitive_path.join("meta.yaml"), meta).unwrap();
 
@@ -615,10 +614,9 @@ versions:
   - version: 1
     file: prompt.v1.md
     status: active
-    hash: blake3:{}
+    hash: blake3:{wrong_hash}
     created: "2025-01-01"
-"#,
-            wrong_hash
+"#
         );
         fs::write(primitive_path.join("meta.yaml"), meta).unwrap();
 
@@ -650,10 +648,9 @@ versions:
   - version: 1
     file: prompt.v1.md
     status: active
-    hash: {}
+    hash: {actual_hash}
     created: "2025-01-01"
-"#,
-            actual_hash
+"#
         );
         fs::write(primitive_path.join("meta.yaml"), meta).unwrap();
 

@@ -168,9 +168,9 @@ args:
         let meta: ToolMeta = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(meta.args.len(), 2);
         assert_eq!(meta.args[0].name, "input_file");
-        assert_eq!(meta.args[0].required, true);
+        assert!(meta.args[0].required);
         assert_eq!(meta.args[1].name, "verbose");
-        assert_eq!(meta.args[1].required, false);
+        assert!(!meta.args[1].required);
     }
 
     #[test]

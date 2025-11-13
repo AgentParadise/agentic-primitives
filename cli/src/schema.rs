@@ -163,7 +163,7 @@ mod tests {
                 assert_eq!(v.spec_version(), SpecVersion::V1);
             }
             Err(e) => {
-                eprintln!("Warning: Could not load schemas: {}", e);
+                eprintln!("Warning: Could not load schemas: {e}");
             }
         }
     }

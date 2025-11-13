@@ -421,9 +421,9 @@ mod tests {
 
         let meta = format!(
             r#"
-id: {}
+id: {id}
 kind: agent
-category: {}
+category: {category}
 domain: test
 summary: Test agent summary
 tags:
@@ -435,23 +435,22 @@ context_usage:
   as_overlay: false
 versions:
   - version: 1
-    file: {}.v1.md
+    file: {id}.v1.md
     status: active
     hash: blake3:0000000000000000000000000000000000000000000000000000000000000000
     created: "2025-01-01"
     notes: Initial version
   - version: 2
-    file: {}.v2.md
+    file: {id}.v2.md
     status: draft
     hash: blake3:1111111111111111111111111111111111111111111111111111111111111111
     created: "2025-01-15"
     notes: Updated version
 default_version: 1
-"#,
-            id, category, id, id
+"#
         );
         fs::write(path.join("meta.yaml"), meta).unwrap();
-        fs::write(path.join(format!("{}.v1.md", id)), "# Test").unwrap();
+        fs::write(path.join(format!("{id}.v1.md")), "# Test").unwrap();
 
         path
     }
