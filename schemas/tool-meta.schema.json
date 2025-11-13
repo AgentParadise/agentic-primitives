@@ -1,0 +1,301 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentic-primitives.dev/schemas/tool-meta.schema.json",
+  "title": "Tool Primitive Metadata Schema",
+  "description": "Schema for tool primitive metadata files",
+  "type": "object",
+  "required": ["id", "kind", "category", "description"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 64,
+      "description": "Unique identifier in kebab-case (must match folder name)",
+      "examples": ["run-tests", "search-code", "format-json"]
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["tool"],
+      "description": "Type of primitive (always 'tool')"
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 64,
+      "description": "Category for organizing tools (e.g., 'shell', 'filesystem', 'analysis')",
+      "examples": ["shell", "filesystem", "analysis", "http", "database"]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500,
+      "description": "Clear description of what this tool does and when to use it"
+    },
+    "args": {
+      "type": "array",
+      "description": "Arguments this tool accepts",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$",
+            "description": "Argument name in snake_case"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "boolean", "object", "array"],
+            "description": "Expected data type"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 5,
+            "description": "What this argument is used for"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this argument is required",
+            "default": false
+          },
+          "default": {
+            "description": "Default value if not provided"
+          },
+          "enum": {
+            "type": "array",
+            "description": "Allowed values (if type is constrained)",
+            "minItems": 1
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern for string validation"
+          }
+        }
+      }
+    },
+    "returns": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Return value specification",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "object", "array", "void"],
+          "description": "Return value type"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 5,
+          "description": "What this tool returns"
+        }
+      },
+      "required": ["type", "description"]
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Safety constraints for this tool",
+      "properties": {
+        "max_runtime_sec": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "description": "Maximum execution time in seconds",
+          "default": 600
+        },
+        "working_dir": {
+          "type": "string",
+          "description": "Restricted working directory (relative or '.' for current)",
+          "default": "."
+        },
+        "allow_write": {
+          "type": "boolean",
+          "description": "Whether this tool can write to filesystem",
+          "default": false
+        },
+        "allow_network": {
+          "type": "boolean",
+          "description": "Whether this tool can make network requests",
+          "default": false
+        },
+        "danger_level": {
+          "type": "string",
+          "enum": ["safe", "moderate", "high", "critical"],
+          "description": "Risk level of this tool's operations",
+          "default": "safe"
+        },
+        "requires_confirmation": {
+          "type": "boolean",
+          "description": "Whether to prompt user before executing",
+          "default": false
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Provider-specific implementations or bindings",
+      "properties": {
+        "claude": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "impl_file": {
+              "type": "string",
+              "pattern": "^impl\\.claude\\.(yaml|json)$",
+              "description": "Claude-specific implementation file"
+            },
+            "native_tool": {
+              "type": "string",
+              "description": "Claude native tool name if mapping to built-in"
+            }
+          }
+        },
+        "openai": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "impl_file": {
+              "type": "string",
+              "pattern": "^impl\\.openai\\.(yaml|json)$",
+              "description": "OpenAI-specific implementation file"
+            },
+            "function_name": {
+              "type": "string",
+              "description": "OpenAI function name for function calling"
+            }
+          }
+        },
+        "local": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "impl_file": {
+              "type": "string",
+              "pattern": "^impl\\.local\\.(rs|py|ts|js)$",
+              "description": "Local implementation file"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": ["rust", "python", "bun", "node"],
+              "description": "Runtime required to execute"
+            }
+          }
+        }
+      }
+    },
+    "examples": {
+      "type": "array",
+      "description": "Usage examples",
+      "items": {
+        "type": "object",
+        "required": ["description", "args"],
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 5,
+            "description": "What this example demonstrates"
+          },
+          "args": {
+            "type": "object",
+            "description": "Example argument values"
+          },
+          "expected_result": {
+            "type": "string",
+            "description": "What the tool should return"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "id": "run-tests",
+      "kind": "tool",
+      "category": "shell",
+      "description": "Execute test suite with pytest and return results",
+      "args": [
+        {
+          "name": "test_path",
+          "type": "string",
+          "description": "Path to test file or directory",
+          "required": true
+        },
+        {
+          "name": "verbose",
+          "type": "boolean",
+          "description": "Enable verbose output",
+          "required": false,
+          "default": false
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "Test results with pass/fail counts and error details"
+      },
+      "safety": {
+        "max_runtime_sec": 300,
+        "working_dir": ".",
+        "allow_write": false,
+        "allow_network": false,
+        "danger_level": "safe",
+        "requires_confirmation": false
+      },
+      "providers": {
+        "claude": {
+          "impl_file": "impl.claude.yaml",
+          "native_tool": "bash"
+        },
+        "local": {
+          "impl_file": "impl.local.py",
+          "runtime": "python"
+        }
+      },
+      "examples": [
+        {
+          "description": "Run all tests in tests/ directory",
+          "args": {
+            "test_path": "tests/",
+            "verbose": true
+          },
+          "expected_result": "Test results with pass/fail summary"
+        }
+      ]
+    },
+    {
+      "id": "format-json",
+      "kind": "tool",
+      "category": "analysis",
+      "description": "Format and validate JSON data",
+      "args": [
+        {
+          "name": "json_string",
+          "type": "string",
+          "description": "JSON string to format",
+          "required": true
+        },
+        {
+          "name": "indent",
+          "type": "number",
+          "description": "Indentation spaces",
+          "required": false,
+          "default": 2
+        }
+      ],
+      "returns": {
+        "type": "string",
+        "description": "Formatted JSON string"
+      },
+      "safety": {
+        "max_runtime_sec": 10,
+        "danger_level": "safe"
+      }
+    }
+  ]
+}
+
