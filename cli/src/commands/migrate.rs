@@ -161,7 +161,8 @@ fn migrate_primitive(
                 ValidationLayers::All
             };
 
-            if let Err(e) = validate_primitive_with_layers(SpecVersion::V1, primitive_path, layers) {
+            if let Err(e) = validate_primitive_with_layers(SpecVersion::V1, primitive_path, layers)
+            {
                 return Ok(MigrationReport {
                     primitive: primitive_path.to_path_buf(),
                     from_spec,
@@ -196,8 +197,14 @@ fn plan_migration(from_spec: &str, to_spec: &str, meta: &Value) -> Result<Vec<St
 
             // Field renames (check under defaults)
             if let Some(Value::Mapping(defaults)) = meta.get("defaults") {
-                if defaults.get(&Value::String("preferred_models".to_string())).is_some() {
-                    changes.push("Rename field: 'defaults.preferred_models' → 'defaults.model_preferences'".to_string());
+                if defaults
+                    .get(Value::String("preferred_models".to_string()))
+                    .is_some()
+                {
+                    changes.push(
+                        "Rename field: 'defaults.preferred_models' → 'defaults.model_preferences'"
+                            .to_string(),
+                    );
                 }
             }
 
@@ -245,7 +252,9 @@ fn apply_migrations(
                 );
 
                 // Rename preferred_models to model_preferences (check under defaults)
-                if let Some(Value::Mapping(defaults)) = obj.get_mut(Value::String("defaults".to_string())) {
+                if let Some(Value::Mapping(defaults)) =
+                    obj.get_mut(Value::String("defaults".to_string()))
+                {
                     if let Some(preferred_models) =
                         defaults.remove(Value::String("preferred_models".to_string()))
                     {
@@ -302,25 +311,27 @@ fn move_to_experimental(primitive_path: &Path, _config: &PrimitivesConfig) -> Re
     // Find the primitive type and name from the path
     // Pattern: .../primitives/v1/{type}/{category}/{name}
     // Target: .../primitives/experimental/{type}/{category}/{name}
-    
+
     // Find the position of /primitives/ in the path
     let path_str = primitive_path.to_string_lossy();
-    let primitives_idx = path_str.rfind("/primitives/")
+    let primitives_idx = path_str
+        .rfind("/primitives/")
         .context("Path does not contain /primitives/")?;
-    
+
     let before_primitives = &path_str[..primitives_idx];
     let after_primitives = &path_str[primitives_idx + "/primitives/".len()..];
-    
+
     // Skip the version part (v1, v2, etc.) and get the rest
-    let after_version = after_primitives.split_once('/')
+    let after_version = after_primitives
+        .split_once('/')
         .map(|(_, rest)| rest)
         .context("Unexpected path structure")?;
-    
+
     // Construct target path
     let target_path = PathBuf::from(before_primitives)
         .join("primitives/experimental")
         .join(after_version);
-    
+
     // Create parent directory
     if let Some(parent) = target_path.parent() {
         fs::create_dir_all(parent).context("Failed to create experimental directory")?;
@@ -376,9 +387,7 @@ fn parse_spec_version(spec: &str) -> Result<String> {
         "v1" => Ok("v1".to_string()),
         "v2" => Ok("v2".to_string()),
         "experimental" => Ok("experimental".to_string()),
-        _ => anyhow::bail!(
-            "Unknown spec version: {spec}. Valid: v1, v2, experimental"
-        ),
+        _ => anyhow::bail!("Unknown spec version: {spec}. Valid: v1, v2, experimental"),
     }
 }
 
@@ -431,7 +440,7 @@ fn display_summary(reports: &[MigrationReport], dry_run: bool) {
         ]);
     }
 
-    println!("{}", table);
+    println!("{table}");
 
     // Show detailed changes for failed migrations
     for report in reports.iter().filter(|r| !r.success) {
@@ -440,7 +449,7 @@ fn display_summary(reports: &[MigrationReport], dry_run: bool) {
                 "\n{}",
                 format!("✗ {}", report.primitive.display()).red().bold()
             );
-            println!("  Error: {}", error);
+            println!("  Error: {error}");
         }
     }
 
@@ -453,7 +462,7 @@ fn display_summary(reports: &[MigrationReport], dry_run: bool) {
         {
             println!("\n{}", report.primitive.display().to_string().blue().bold());
             for change in &report.changes {
-                println!("  ✓ {}", change);
+                println!("  ✓ {change}");
             }
         }
     }
@@ -467,14 +476,14 @@ fn display_summary(reports: &[MigrationReport], dry_run: bool) {
         if dry_run {
             println!(
                 "{}",
-                format!("{} primitive(s) ready to migrate", success_count)
+                format!("{success_count} primitive(s) ready to migrate")
                     .green()
                     .bold()
             );
         } else {
             println!(
                 "{}",
-                format!("{} primitive(s) migrated successfully", success_count)
+                format!("{success_count} primitive(s) migrated successfully")
                     .green()
                     .bold()
             );
@@ -482,7 +491,7 @@ fn display_summary(reports: &[MigrationReport], dry_run: bool) {
     } else {
         println!(
             "{}",
-            format!("{} succeeded, {} failed", success_count, fail_count)
+            format!("{success_count} succeeded, {fail_count} failed")
                 .yellow()
                 .bold()
         );
@@ -556,8 +565,12 @@ defaults:
         );
         // Check that the field was renamed under defaults
         if let Some(Value::Mapping(defaults)) = meta.get("defaults") {
-            assert!(defaults.get(&Value::String("model_preferences".to_string())).is_some());
-            assert!(defaults.get(&Value::String("preferred_models".to_string())).is_none());
+            assert!(defaults
+                .get(Value::String("model_preferences".to_string()))
+                .is_some());
+            assert!(defaults
+                .get(Value::String("preferred_models".to_string()))
+                .is_none());
         } else {
             panic!("defaults section not found");
         }

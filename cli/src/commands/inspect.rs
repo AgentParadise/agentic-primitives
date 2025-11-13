@@ -538,9 +538,9 @@ mod tests {
 
         let meta = format!(
             r#"
-id: {}
+id: {id}
 kind: agent
-category: {}
+category: {category}
 domain: test
 summary: Test agent for inspection
 tags:
@@ -557,29 +557,28 @@ tools:
   - search-code
 versions:
   - version: 1
-    file: {}.v1.md
+    file: {id}.v1.md
     status: active
     hash: blake3:abc123
     created: "2025-01-01"
     notes: Initial version
   - version: 2
-    file: {}.v2.md
+    file: {id}.v2.md
     status: draft
     hash: blake3:def456
     created: "2025-01-15"
     notes: Updated version
 default_version: 1
-"#,
-            id, category, id, id
+"#
         );
         fs::write(path.join("meta.yaml"), meta).unwrap();
         fs::write(
-            path.join(format!("{}.v1.md", id)),
+            path.join(format!("{id}.v1.md")),
             "# Test Agent\n\nThis is test content.",
         )
         .unwrap();
         fs::write(
-            path.join(format!("{}.v2.md", id)),
+            path.join(format!("{id}.v2.md")),
             "# Test Agent V2\n\nUpdated content.",
         )
         .unwrap();
@@ -614,7 +613,7 @@ default_version: 1
         assert_eq!(preview_content(short, true), short);
 
         let long = (0..100)
-            .map(|i| format!("Line {}", i))
+            .map(|i| format!("Line {i}"))
             .collect::<Vec<_>>()
             .join("\n");
         let preview = preview_content(&long, false);

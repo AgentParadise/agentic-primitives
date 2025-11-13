@@ -605,7 +605,7 @@ mod tests {
 
         // Change to temp dir for relative path resolution
         let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&base).unwrap();
+        std::env::set_current_dir(base).unwrap();
 
         let args = NewPrimitiveArgs {
             prim_type: PrimitiveType::Prompt,

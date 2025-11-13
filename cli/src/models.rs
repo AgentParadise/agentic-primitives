@@ -216,7 +216,7 @@ mod tests {
                 assert!(!config.recommended_for.is_empty());
             }
             Err(e) => {
-                eprintln!("Warning: Could not resolve claude/sonnet: {}", e);
+                eprintln!("Warning: Could not resolve claude/sonnet: {e}");
                 // Don't fail the test if file doesn't exist yet
             }
         }
@@ -293,7 +293,7 @@ recommended_for:
         assert_eq!(config.id, "minimal");
         assert!(config.notes.is_none());
         assert!(config.limitations.is_none());
-        assert_eq!(config.capabilities.supports_vision, false);
+        assert!(!config.capabilities.supports_vision);
         assert_eq!(config.pricing.currency, "USD"); // Default
     }
 }
