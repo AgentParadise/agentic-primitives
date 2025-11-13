@@ -1,3 +1,5 @@
-// TODO: Implement template system
-// pub mod embedded;     // Embedded template strings
-// Templates for: agent, command, skill, meta-prompt, tool, hook
+pub mod embedded;
+pub mod render;
+
+pub use embedded::Templates;
+pub use render::TemplateRenderer;

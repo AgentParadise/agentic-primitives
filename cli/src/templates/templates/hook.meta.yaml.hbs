@@ -1,0 +1,23 @@
+id: {{id}}
+kind: {{kind}}
+category: {{category}}
+event: {{event}}
+summary: "{{summary}}"
+
+execution: pipeline
+
+middleware:
+  - id: main
+    path: "./middleware/main.py"
+    type: {{middleware_type}}
+    enabled: true
+
+providers:
+  - claude
+
+{{#if default_decision}}
+default_decision: {{default_decision}}
+{{/if}}
+
+versions: []
+

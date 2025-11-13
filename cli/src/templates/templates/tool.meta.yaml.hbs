@@ -1,0 +1,21 @@
+id: {{id}}
+kind: {{kind}}
+category: {{category}}
+description: "{{description}}"
+
+args:
+  - name: input
+    type: string
+    required: true
+    description: "TODO: Describe this argument"
+
+safety:
+  max_runtime_sec: 60
+  working_dir: "."
+  allow_write: false
+
+providers:
+  - local
+
+versions: []
+

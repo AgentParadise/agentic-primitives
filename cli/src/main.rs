@@ -78,7 +78,7 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    
+
     // TODO: Implement command routing
     match cli.command {
         Commands::Init { path } => {
@@ -103,10 +103,14 @@ fn main() {
             println!("Migrate command not yet implemented (add_versions: {add_versions})");
         }
         Commands::Build { provider, output } => {
-            println!("Build command not yet implemented (provider: {provider}, output: {output:?})");
+            println!(
+                "Build command not yet implemented (provider: {provider}, output: {output:?})"
+            );
         }
         Commands::Install { provider, global } => {
-            println!("Install command not yet implemented (provider: {provider}, global: {global})");
+            println!(
+                "Install command not yet implemented (provider: {provider}, global: {global})"
+            );
         }
         Commands::TestHook { path, input } => {
             println!("TestHook command not yet implemented (path: {path}, input: {input})");

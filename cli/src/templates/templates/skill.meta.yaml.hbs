@@ -1,0 +1,29 @@
+id: {{id}}
+kind: skill
+category: {{category}}
+{{#if domain}}
+domain: {{domain}}
+{{/if}}
+summary: "{{summary}}"
+{{#if tags}}
+tags:
+{{#each tags}}
+  - {{this}}
+{{/each}}
+{{/if}}
+
+defaults:
+  preferred_models:
+    - claude/sonnet
+
+context_usage:
+  as_system: false
+  as_user: false
+  as_overlay: true
+
+tools: []
+
+inputs: []
+
+versions: []
+
