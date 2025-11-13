@@ -182,10 +182,7 @@ fn bump_version(
 
     fs::copy(&source_path, &new_path).context("Failed to copy version file")?;
 
-    println!(
-        "{}",
-        format!("✓ Copied {source_file} → {new_file}").green()
-    );
+    println!("{}", format!("✓ Copied {source_file} → {new_file}").green());
 
     // Calculate hash for new version
     let content = fs::read_to_string(&new_path)?;
@@ -228,9 +225,7 @@ fn bump_version(
     );
     println!("\nNext steps:");
     println!("  1. Edit {new_file} with your changes");
-    println!(
-        "  2. Run: agentic-p version promote {primitive} {new_version}"
-    );
+    println!("  2. Run: agentic-p version promote {primitive} {new_version}");
     if !set_default {
         println!("     Add --set-default to make it the default version");
     }
@@ -434,9 +429,7 @@ fn check_hashes(primitive: Option<&str>, config: &PrimitivesConfig) -> Result<()
     if mismatch_count == 0 {
         println!(
             "{}",
-            format!("✓ All {valid_count} versions valid")
-                .green()
-                .bold()
+            format!("✓ All {valid_count} versions valid").green().bold()
         );
     } else {
         println!(

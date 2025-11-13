@@ -4,6 +4,8 @@ Provider-scoped model configurations for Anthropic's Claude models.
 
 ## Available Models
 
+- [Claude Models Documentation](https://docs.claude.com/en/docs/about-claude/models/overview)
+
 ### Current Generation (4.5 / 4.1)
 
 - **Claude Sonnet 4.5** (`sonnet`)
