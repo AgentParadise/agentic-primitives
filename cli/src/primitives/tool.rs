@@ -99,7 +99,7 @@ impl ToolPrimitive {
     /// Load a tool primitive from a directory
     /// Expected structure:
     ///   <primitive_dir>/
-    ///     tool.meta.yaml
+    ///     {id}.tool.yaml (preferred) or tool.meta.yaml (legacy)
     pub fn load<P: AsRef<std::path::Path>>(primitive_dir: P) -> Result<Self> {
         let primitive_dir = primitive_dir.as_ref();
 
@@ -110,10 +110,22 @@ impl ToolPrimitive {
             )));
         }
 
-        let meta_path = primitive_dir.join("tool.meta.yaml");
+        // Try {id}.tool.yaml first (new pattern)
+        let meta_path = if let Some(dir_name) = primitive_dir.file_name().and_then(|n| n.to_str()) {
+            let id_tool_path = primitive_dir.join(format!("{dir_name}.tool.yaml"));
+            if id_tool_path.exists() {
+                id_tool_path
+            } else {
+                // Fall back to tool.meta.yaml (legacy)
+                primitive_dir.join("tool.meta.yaml")
+            }
+        } else {
+            primitive_dir.join("tool.meta.yaml")
+        };
+
         if !meta_path.exists() {
             return Err(Error::NotFound(format!(
-                "tool.meta.yaml not found in {}",
+                "tool meta file not found in {} (tried {{id}}.tool.yaml and tool.meta.yaml)",
                 primitive_dir.display()
             )));
         }
