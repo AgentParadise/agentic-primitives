@@ -202,7 +202,9 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     });
 
     let prompt_content = renderer.render_prompt_content(&prompt_data)?;
-    let prompt_path = path.join("prompt.v1.md");
+    // Filename must match directory name (id.v1.md, not prompt.v1.md)
+    let prompt_filename = format!("{}.v1.md", args.id);
+    let prompt_path = path.join(&prompt_filename);
     fs::write(&prompt_path, &prompt_content)
         .with_context(|| format!("Failed to write prompt: {prompt_path:?}"))?;
 
@@ -226,8 +228,9 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
 
     // Add versions array to meta.yaml
     let meta_with_versions = format!(
-        "{}\nversions:\n  - version: 1\n    file: prompt.v1.md\n    hash: \"{}\"\n    status: draft\n    created: \"{}\"\ndefault_version: 1\n",
+        "{}\nversions:\n  - version: 1\n    file: {}\n    hash: \"{}\"\n    status: draft\n    created: \"{}\"\ndefault_version: 1\n",
         meta_content.trim_end(),
+        prompt_filename,
         hash,
         Utc::now().to_rfc3339()
     );
@@ -532,15 +535,15 @@ mod tests {
         let result = create_prompt_primitive(&path, &args);
         assert!(result.is_ok());
 
-        // Check files exist
-        assert!(path.join("prompt.v1.md").exists());
+        // Check files exist (filename must match ID)
+        assert!(path.join("test-agent.v1.md").exists());
         assert!(path.join("meta.yaml").exists());
 
         // Check meta.yaml has versions
         let meta_content = fs::read_to_string(path.join("meta.yaml")).unwrap();
         assert!(meta_content.contains("versions:"));
         assert!(meta_content.contains("version: 1"));
-        assert!(meta_content.contains("file: prompt.v1.md"));
+        assert!(meta_content.contains("file: test-agent.v1.md"));
         assert!(meta_content.contains("hash:"));
         assert!(meta_content.contains("status: draft"));
     }

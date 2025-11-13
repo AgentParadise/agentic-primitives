@@ -4,7 +4,7 @@ category: testing
 summary: Agent with mismatched BLAKE3 hash
 versions:
   - version: 1
-    file: prompt.v1.md
+    file: hash-mismatch.v1.md
     status: active
     hash: blake3:0000000000000000000000000000000000000000000000000000000000000000
     created: "2025-01-01"

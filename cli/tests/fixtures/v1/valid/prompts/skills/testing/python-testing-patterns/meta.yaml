@@ -17,7 +17,7 @@ tags:
 
 versions:
   - version: 1
-    file: prompt.v1.md
+    file: python-testing-patterns.v1.md
     status: active
     hash: blake3:0000000000000000000000000000000000000000000000000000000000000000
     created: "2025-01-20"

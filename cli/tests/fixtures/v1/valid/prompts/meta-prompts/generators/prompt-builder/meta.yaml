@@ -16,7 +16,7 @@ tags:
 
 versions:
   - version: 1
-    file: prompt.v1.md
+    file: prompt-builder.v1.md
     status: active
     hash: blake3:1111111111111111111111111111111111111111111111111111111111111111
     created: "2025-01-10"

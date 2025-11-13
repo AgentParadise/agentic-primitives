@@ -26,7 +26,7 @@ pub enum StructuralError {
     #[error("Non-kebab-case identifier: '{value}' in {context}")]
     NonKebabCase { value: String, context: String },
 
-    #[error("No active versions found (at least one prompt.vN.md required)")]
+    #[error("No version files found (at least one <id>.vN.md file required, where <id> matches directory name)")]
     NoVersionFiles,
 
     #[error("Invalid primitive type: {0}")]
@@ -196,12 +196,19 @@ impl StructuralValidator {
     fn check_required_files(&self, primitive_path: &Path, kind: &str) -> Result<()> {
         match kind {
             "agent" | "command" | "skill" | "meta-prompt" => {
-                // Prompts require at least one version file (prompt.v1.md)
+                // Get the directory name (which should match the ID)
+                let dir_name = primitive_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .context("Invalid primitive directory name")?;
+
+                // Prompts require at least one version file matching pattern: {id}.v{N}.md
                 let has_version_file = std::fs::read_dir(primitive_path)?
                     .filter_map(|e| e.ok())
                     .any(|e| {
-                        e.file_name().to_string_lossy().starts_with("prompt.v")
-                            && e.file_name().to_string_lossy().ends_with(".md")
+                        let filename = e.file_name().to_string_lossy().to_string();
+                        filename.starts_with(&format!("{dir_name}.v"))
+                            && filename.ends_with(".md")
                     });
 
                 if !has_version_file {
@@ -261,9 +268,10 @@ mod tests {
         );
         fs::write(primitive_path.join("meta.yaml"), meta_content).unwrap();
 
-        // Create version file for prompts
+        // Create version file for prompts (filename must match directory name)
         if matches!(kind, "agent" | "command" | "skill" | "meta-prompt") {
-            fs::write(primitive_path.join("prompt.v1.md"), "# Test Prompt").unwrap();
+            let version_file = format!("{}.v1.md", id);
+            fs::write(primitive_path.join(version_file), "# Test Prompt").unwrap();
         }
 
         primitive_path
@@ -369,7 +377,8 @@ mod tests {
             "id: different-id\nkind: agent\nsummary: Test\ncategory: test\ndomain: testing",
         )
         .unwrap();
-        fs::write(primitive_path.join("prompt.v1.md"), "# Test").unwrap();
+        // Filename must match folder name (folder-name.v1.md)
+        fs::write(primitive_path.join("folder-name.v1.md"), "# Test").unwrap();
 
         let validator = StructuralValidator::new();
         let result = validator.validate(&primitive_path);
@@ -388,15 +397,12 @@ mod tests {
             "id: test-agent\nkind: agent\nsummary: Test\ncategory: test\ndomain: testing",
         )
         .unwrap();
-        // Don't create prompt.v1.md
+        // Don't create test-agent.v1.md (testing missing version file)
 
         let validator = StructuralValidator::new();
         let result = validator.validate(&primitive_path);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("No active versions"));
+        assert!(result.unwrap_err().to_string().contains("No version files"));
     }
 
     #[test]
@@ -404,9 +410,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let primitive_path = create_test_primitive(temp_dir.path(), "test-agent", "agent");
 
-        // Add more version files
-        fs::write(primitive_path.join("prompt.v2.md"), "# Test v2").unwrap();
-        fs::write(primitive_path.join("prompt.v3.md"), "# Test v3").unwrap();
+        // Add more version files (must match directory name: test-agent)
+        fs::write(primitive_path.join("test-agent.v2.md"), "# Test v2").unwrap();
+        fs::write(primitive_path.join("test-agent.v3.md"), "# Test v3").unwrap();
 
         let validator = StructuralValidator::new();
         let result = validator.validate(&primitive_path);

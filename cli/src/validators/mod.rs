@@ -177,6 +177,7 @@ mod tests {
         let primitive_path = temp_dir.join("test-agent");
         fs::create_dir_all(&primitive_path).unwrap();
 
+        // Filename must match ID (test-agent.v1.md, not prompt.v1.md)
         let meta = r#"
 id: test-agent
 kind: agent
@@ -189,13 +190,13 @@ context_usage:
   as_overlay: false
 versions:
   - version: 1
-    file: prompt.v1.md
+    file: test-agent.v1.md
     status: active
     created: "2025-01-01"
 default_version: 1
 "#;
         fs::write(primitive_path.join("meta.yaml"), meta).unwrap();
-        fs::write(primitive_path.join("prompt.v1.md"), "# Test").unwrap();
+        fs::write(primitive_path.join("test-agent.v1.md"), "# Test").unwrap();
 
         primitive_path
     }
@@ -316,8 +317,8 @@ default_version: 1
             "id: test-exp\nkind: agent\nsummary: test\ncategory: test",
         )
         .unwrap();
-        // Create version file since kind is agent
-        fs::write(primitive_path.join("prompt.v1.md"), "# Test").unwrap();
+        // Create version file since kind is agent (must match ID)
+        fs::write(primitive_path.join("test-exp.v1.md"), "# Test").unwrap();
 
         let result = validate_primitive(SpecVersion::Experimental, &primitive_path);
         // Experimental only validates structural
