@@ -1,0 +1,42 @@
+id: gpt-4.1
+full_name: "GPT-4.1"
+api_name: "gpt-4.1"
+version: "4.1"
+release_date: "2025"
+provider: openai
+
+capabilities:
+  max_tokens: 16384
+  context_window: 128000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_reasoning: false
+
+performance:
+  speed: "fast"
+  quality: "high"
+
+pricing:
+  input_per_1m_tokens: 2.50
+  output_per_1m_tokens: 10.00
+  currency: "USD"
+
+strengths:
+  - "Smartest non-reasoning model"
+  - "Fast and reliable"
+  - "Good general capabilities"
+  - "Cost-effective"
+  - "Production-tested"
+  - "Balanced performance"
+
+recommended_for:
+  - "commands"
+  - "skills"
+  - "general tasks"
+  - "production systems"
+  - "cost-sensitive applications"
+  - "non-reasoning workloads"
+
+notes: "GPT-4.1 is OpenAI's smartest non-reasoning model. Offers fast, reliable performance for general tasks without the overhead of reasoning capabilities. Good choice for straightforward commands and skills."
+

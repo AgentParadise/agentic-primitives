@@ -1,39 +1,42 @@
 id: gpt-codex
-full_name: "GPT-4 Turbo with Vision"
-api_name: "gpt-4-turbo-2024-11-20"
-version: "2024-11-20"
+full_name: "GPT-5.1 Codex"
+api_name: "gpt-5.1-codex"
+version: "5.1"
+release_date: "2025"
 provider: openai
 
 capabilities:
-  max_tokens: 4096
+  max_tokens: 16384
   context_window: 128000
   supports_vision: true
   supports_function_calling: true
   supports_streaming: true
+  supports_reasoning: true
+  optimized_for_code: true
 
 performance:
   speed: "fast"
-  quality: "high"
+  quality: "exceptional"
 
 pricing:
-  input_per_1m_tokens: 10.00
-  output_per_1m_tokens: 30.00
+  input_per_1m_tokens: 15.00
+  output_per_1m_tokens: 60.00
   currency: "USD"
 
 strengths:
-  - "Code generation and debugging"
-  - "Multi-modal understanding"
-  - "Structured output generation"
-  - "Function calling"
-  - "Technical problem-solving"
-  - "Large context window"
+  - "Optimized for agentic coding"
+  - "Superior code generation and completion"
+  - "Advanced debugging and refactoring"
+  - "Multi-file reasoning"
+  - "Codebase understanding"
+  - "Best-in-class for development tasks"
 
 recommended_for:
   - "agents"
   - "commands"
-  - "code-heavy tasks"
-  - "multi-modal workflows"
-  - "structured data extraction"
+  - "coding and development"
+  - "agentic coding workflows"
+  - "code generation and analysis"
+  - "development automation"
 
-notes: "OpenAI's flagship coding model with vision capabilities. Excellent for agents and commands requiring code generation with multi-modal understanding. Supports JSON mode and structured outputs for reliable tool integration."
-
+notes: "GPT-5.1 Codex is OpenAI's premier coding model, optimized specifically for agentic coding tasks. Excels at code generation, debugging, refactoring, and understanding complex codebases. The go-to choice for development-focused agents and commands."

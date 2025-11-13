@@ -1,0 +1,43 @@
+id: gemini-flash-lite
+full_name: "Gemini 2.5 Flash-Lite"
+api_name: "gemini-2.5-flash-lite"
+version: "2.5"
+release_date: "2025-07"
+provider: google
+
+capabilities:
+  max_tokens: 65536
+  context_window: 1048576
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_thinking: true
+  supports_code_execution: true
+
+performance:
+  speed: "fastest"
+  quality: "good"
+
+pricing:
+  input_per_1m_tokens: 0.075
+  output_per_1m_tokens: 0.30
+  currency: "USD"
+
+strengths:
+  - "Fastest flash model"
+  - "Ultra cost-efficient"
+  - "High throughput"
+  - "Long context at minimal cost (1M tokens)"
+  - "Rapid responses"
+  - "Excellent for simple tasks at scale"
+
+recommended_for:
+  - "skills"
+  - "simple commands"
+  - "high-volume operations"
+  - "cost-sensitive applications"
+  - "rapid prototyping"
+  - "real-time applications"
+
+notes: "Gemini 2.5 Flash-Lite is the fastest and most cost-efficient model in the Gemini family. Optimized for high throughput and cost efficiency while maintaining 1M token context. Perfect for simple tasks at scale and real-time applications. Knowledge cutoff: January 2025."
+

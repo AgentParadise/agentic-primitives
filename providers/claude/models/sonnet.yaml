@@ -1,19 +1,22 @@
 id: sonnet
-full_name: "Claude 3.5 Sonnet"
-api_name: "claude-3-5-sonnet-20241022"
-version: "20241022"
+full_name: "Claude Sonnet 4.5"
+api_name: "claude-sonnet-4-5-20250929"
+version: "4.5"
+release_date: "2025-09-29"
 provider: claude
 
 capabilities:
-  max_tokens: 200000
+  max_tokens: 64000
   context_window: 200000
+  context_window_extended: 1000000
   supports_vision: true
   supports_function_calling: true
   supports_streaming: true
+  supports_extended_thinking: true
 
 performance:
   speed: "fast"
-  quality: "high"
+  quality: "exceptional"
 
 pricing:
   input_per_1m_tokens: 3.00
@@ -21,18 +24,19 @@ pricing:
   currency: "USD"
 
 strengths:
-  - "Code generation and refactoring"
-  - "Long context reasoning"
-  - "Instruction following"
-  - "Function calling and tool use"
-  - "Multi-turn conversations"
-  - "Technical documentation"
+  - "Best balance of intelligence, speed, and cost"
+  - "Exceptional performance in coding and agentic tasks"
+  - "Advanced reasoning capabilities"
+  - "Superior code generation and debugging"
+  - "Long-context processing (1M tokens with beta)"
+  - "Production-ready reliability"
 
 recommended_for:
   - "agents"
   - "commands"
-  - "complex reasoning"
-  - "code-heavy tasks"
-  - "general-purpose agentic work"
+  - "meta-prompts"
+  - "coding and development"
+  - "agentic applications"
+  - "production systems"
 
-notes: "Balanced model for most agentic tasks. Best combination of speed, quality, and cost. Ideal for production agents and commands that require reliable code generation with long context support."
+notes: "Claude Sonnet 4.5 is the smartest model for complex agents and coding. Released September 2025, it offers the best balance of intelligence, speed, and cost. Recommended as the default choice for most use cases. Supports optional 1M token context window with beta header."
