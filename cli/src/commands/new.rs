@@ -371,12 +371,12 @@ fn print_success_message(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     );
     println!(
         "  2. {}",
-        format!("agentic validate {}", path.display()).cyan()
+        format!("agentic-p validate {}", path.display()).cyan()
     );
     if args.prim_type == PrimitiveType::Prompt {
         println!(
             "  3. {}",
-            format!("agentic version promote {}/{} 1", args.category, args.id).cyan()
+            format!("agentic-p version promote {}/{} 1", args.category, args.id).cyan()
         );
     }
 

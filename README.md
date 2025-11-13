@@ -53,49 +53,49 @@ cargo install --path cli
 
 ```bash
 # Create a new agentic-primitives repository
-agentic init
+agentic-p init
 
 # Or initialize in a specific directory
-agentic init --path ./my-primitives
+agentic-p init --path ./my-primitives
 ```
 
 ### Create Your First Primitive
 
 ```bash
 # Create a Python expert agent
-agentic new prompt agent python/python-pro
+agentic-p new prompt agent python/python-pro
 
 # Create a code review command
-agentic new command review/code-review
+agentic-p new command review/code-review
 
 # Create a testing knowledge skill
-agentic new skill testing/pytest-patterns
+agentic-p new skill testing/pytest-patterns
 
 # Create a safety hook
-agentic new hook lifecycle/pre-tool-use
+agentic-p new hook lifecycle/pre-tool-use
 ```
 
 ### Validate Everything
 
 ```bash
 # Run all validation layers
-agentic validate
+agentic-p validate
 
 # Check specific primitive
-agentic inspect python/python-pro
+agentic-p inspect python/python-pro
 ```
 
 ### Build for Your Provider
 
 ```bash
 # Build for Claude Agent SDK
-agentic build --provider claude
+agentic-p build --provider claude
 
 # Install to project .claude/ directory
-agentic install --provider claude --project
+agentic-p install --provider claude --project
 
 # Install globally to ~/.claude/
-agentic install --provider claude --global
+agentic-p install --provider claude --global
 ```
 
 ---
@@ -178,16 +178,16 @@ default_version: 1  # Use v1 by default
 
 ```bash
 # Create a new version
-agentic version bump python/python-pro --notes "Added async expertise"
+agentic-p version bump python/python-pro --notes "Added async expertise"
 
 # List all versions
-agentic version list python/python-pro
+agentic-p version list python/python-pro
 
 # Promote draft to active
-agentic version promote python/python-pro --version 2
+agentic-p version promote python/python-pro --version 2
 
 # Deprecate old version
-agentic version deprecate python/python-pro --version 1
+agentic-p version deprecate python/python-pro --version 1
 ```
 
 ### Provider Adapters
@@ -350,14 +350,14 @@ This repository uses system-level versioning (v1, v2, ...) for architectural evo
 
 ```bash
 # Create core components
-agentic new prompt agent python/python-pro
-agentic new command review/code-review
-agentic new skill testing/pytest-patterns
-agentic new tool shell/run-tests
+agentic-p new prompt agent python/python-pro
+agentic-p new command review/code-review
+agentic-p new skill testing/pytest-patterns
+agentic-p new tool shell/run-tests
 
 # Build for Claude
-agentic build --provider claude
-agentic install --provider claude --global
+agentic-p build --provider claude
+agentic-p install --provider claude --global
 
 # Now use with Claude Agent SDK
 claude --agent python-pro "Review my FastAPI code"
@@ -367,22 +367,22 @@ claude --agent python-pro "Review my FastAPI code"
 
 ```bash
 # Create safety hooks
-agentic new hook safety/block-dangerous-commands
-agentic new hook safety/protect-sensitive-files
+agentic-p new hook safety/block-dangerous-commands
+agentic-p new hook safety/protect-sensitive-files
 
 # Test locally
-agentic test-hook safety/block-dangerous-commands --input test-events/rm-rf.json
+agentic-p test-hook safety/block-dangerous-commands --input test-events/rm-rf.json
 
 # Deploy
-agentic install --provider claude --project
+agentic-p install --provider claude --project
 ```
 
 ### 3. Track Agent Metrics
 
 ```bash
 # Create observability hooks
-agentic new hook observability/log-operations
-agentic new hook observability/emit-metrics
+agentic-p new hook observability/log-operations
+agentic-p new hook observability/emit-metrics
 
 # Configure metrics endpoint in hook.meta.yaml
 # Deploy and watch metrics flow
@@ -392,11 +392,11 @@ agentic new hook observability/emit-metrics
 
 ```bash
 # Use the meta-prompt to generate new primitives
-agentic inspect meta-prompts/generation/generate-primitive
+agentic-p inspect meta-prompts/generation/generate-primitive
 
 # Feed to Claude with specifications
 # Validate the generated output
-agentic validate
+agentic-p validate
 ```
 
 ---
@@ -446,7 +446,7 @@ Inspired by:
 
 ---
 
-**Ready to build better AI systems?** Start with `make help` and `agentic init`.
+**Ready to build better AI systems?** Start with `make help` and `agentic-p init`.
 
 For questions, issues, or discussions, visit our [GitHub repository](https://github.com/yourusername/agentic-primitives).
 
