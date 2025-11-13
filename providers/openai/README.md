@@ -4,6 +4,8 @@ Provider-scoped model configurations for OpenAI's GPT models.
 
 ## Available Models
 
+- [OpenAI Models Documentation](https://platform.openai.com/docs/models)
+
 ### Flagship Models
 
 - **GPT-5.1** (`gpt-5.1`)
