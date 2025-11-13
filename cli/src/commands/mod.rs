@@ -1,14 +1,12 @@
 //! CLI command implementations
 
 pub mod init;
+pub mod inspect;
+pub mod list;
+pub mod migrate;
 pub mod new;
 pub mod validate;
-
-// TODO: Wave 7 commands
-// pub mod list;         // List primitives
-// pub mod inspect;      // Inspect primitive
-// pub mod version;      // Version management
-// pub mod migrate;      // Migrate to latest format
+pub mod version;
 
 // TODO: Wave 9 commands
 // pub mod build;        // Build provider outputs

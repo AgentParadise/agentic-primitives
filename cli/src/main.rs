@@ -1,6 +1,11 @@
 use agentic_primitives::commands;
+use agentic_primitives::commands::inspect::{InspectArgs, OutputFormat as InspectFormat};
+use agentic_primitives::commands::list::{ListArgs, OutputFormat as ListFormat};
+use agentic_primitives::commands::migrate::MigrateArgs;
 use agentic_primitives::commands::new::{NewPrimitiveArgs, PrimitiveType, PromptKind};
 use agentic_primitives::commands::validate::ValidateArgs;
+use agentic_primitives::commands::version::VersionCommand;
+use agentic_primitives::config::PrimitivesConfig;
 use agentic_primitives::spec_version::SpecVersion;
 use agentic_primitives::validators::ValidationLayers;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -64,28 +69,62 @@ enum Commands {
         json: bool,
     },
 
-    /// List primitives
+    /// List primitives with filtering
     List {
-        // TODO: Wave 7
+        /// Path to primitives directory (optional)
+        path: Option<PathBuf>,
+
+        /// Filter by type (prompt, tool, hook)
+        #[arg(long)]
+        type_filter: Option<String>,
+
+        /// Filter by kind (agent, command, skill, meta-prompt, etc.)
+        #[arg(long)]
+        kind: Option<String>,
+
+        /// Filter by category
+        #[arg(long)]
+        category: Option<String>,
+
+        /// Filter by tag
+        #[arg(long)]
+        tag: Option<String>,
+
+        /// Show all versions
+        #[arg(long)]
+        all_versions: bool,
+
+        /// Output format
+        #[arg(long, value_enum, default_value = "table")]
+        format: ListOutputFormat,
     },
 
-    /// Inspect a primitive
+    /// Inspect a primitive in detail
     Inspect {
         /// Primitive ID or path
-        id: String,
+        primitive: String,
+
+        /// Specific version to inspect
+        #[arg(long)]
+        version: Option<u32>,
+
+        /// Show full content (not just preview)
+        #[arg(long)]
+        full_content: bool,
+
+        /// Output format
+        #[arg(long, value_enum, default_value = "pretty")]
+        format: InspectOutputFormat,
     },
 
     /// Manage primitive versions
     Version {
-        // TODO: Wave 7
+        #[command(subcommand)]
+        command: VersionCommand,
     },
 
-    /// Migrate primitives to latest format
-    Migrate {
-        /// Add versioning to primitives
-        #[arg(long)]
-        add_versions: bool,
-    },
+    /// Migrate primitives between spec versions
+    Migrate(MigrateArgs),
 
     /// Build provider-specific outputs
     Build {
@@ -175,6 +214,40 @@ impl From<ValidationLayer> for ValidationLayers {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum ListOutputFormat {
+    Table,
+    Json,
+    Yaml,
+}
+
+impl From<ListOutputFormat> for ListFormat {
+    fn from(val: ListOutputFormat) -> Self {
+        match val {
+            ListOutputFormat::Table => ListFormat::Table,
+            ListOutputFormat::Json => ListFormat::Json,
+            ListOutputFormat::Yaml => ListFormat::Yaml,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum InspectOutputFormat {
+    Pretty,
+    Json,
+    Yaml,
+}
+
+impl From<InspectOutputFormat> for InspectFormat {
+    fn from(val: InspectOutputFormat) -> Self {
+        match val {
+            InspectOutputFormat::Pretty => InspectFormat::Pretty,
+            InspectOutputFormat::Json => InspectFormat::Json,
+            InspectOutputFormat::Yaml => InspectFormat::Yaml,
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -186,6 +259,12 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    // Load config (needed for list and inspect commands)
+    let config = PrimitivesConfig::load_from_current_dir().unwrap_or_else(|_| {
+        // Fallback to default config
+        PrimitivesConfig::default()
+    });
 
     // Execute command
     let result = match cli.command {
@@ -219,25 +298,45 @@ fn main() {
             commands::validate::validate(args)
         }
 
-        Commands::List {} => {
-            eprintln!("List command not yet implemented (Wave 7)");
-            std::process::exit(1);
+        Commands::List {
+            path,
+            type_filter,
+            kind,
+            category,
+            tag,
+            all_versions,
+            format,
+        } => {
+            let args = ListArgs {
+                path,
+                type_filter,
+                kind,
+                category,
+                tag,
+                all_versions,
+                format: format.into(),
+            };
+            commands::list::execute(&args, &config)
         }
 
-        Commands::Inspect { id } => {
-            eprintln!("Inspect command not yet implemented (Wave 7): {id}");
-            std::process::exit(1);
+        Commands::Inspect {
+            primitive,
+            version,
+            full_content,
+            format,
+        } => {
+            let args = InspectArgs {
+                primitive,
+                version,
+                full_content,
+                format: format.into(),
+            };
+            commands::inspect::execute(&args, &config)
         }
 
-        Commands::Version {} => {
-            eprintln!("Version command not yet implemented (Wave 7)");
-            std::process::exit(1);
-        }
+        Commands::Version { command } => commands::version::execute(&command, &config),
 
-        Commands::Migrate { add_versions } => {
-            eprintln!("Migrate command not yet implemented (Wave 7): add_versions={add_versions}");
-            std::process::exit(1);
-        }
+        Commands::Migrate(args) => commands::migrate::execute(&args, &config),
 
         Commands::Build { provider, output } => {
             eprintln!("Build command not yet implemented (Wave 9): provider={provider}, output={output:?}");
