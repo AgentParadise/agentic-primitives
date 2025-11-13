@@ -211,7 +211,7 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     // 2. Calculate BLAKE3 hash
     let hash = blake3::hash(prompt_content.as_bytes()).to_hex().to_string();
 
-    // 3. Render meta.yaml with versions array
+    // 3. Render {id}.yaml with versions array
     let meta_data = serde_json::json!({
         "id": &args.id,
         "category": &args.category,
@@ -226,7 +226,7 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
         PromptKind::MetaPrompt => renderer.render_meta_prompt_meta(&meta_data)?,
     };
 
-    // Add versions array to meta.yaml
+    // Add versions array to {id}.yaml
     let meta_with_versions = format!(
         "{}\nversions:\n  - version: 1\n    file: {}\n    hash: \"{}\"\n    status: draft\n    created: \"{}\"\ndefault_version: 1\n",
         meta_content.trim_end(),
@@ -235,8 +235,9 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
         Utc::now().to_rfc3339()
     );
 
-    fs::write(path.join("meta.yaml"), meta_with_versions)
-        .with_context(|| "Failed to write meta.yaml")?;
+    let meta_filename = format!("{}.yaml", &args.id);
+    fs::write(path.join(&meta_filename), meta_with_versions)
+        .with_context(|| format!("Failed to write {meta_filename}"))?;
 
     Ok(())
 }
@@ -537,10 +538,10 @@ mod tests {
 
         // Check files exist (filename must match ID)
         assert!(path.join("test-agent.v1.md").exists());
-        assert!(path.join("meta.yaml").exists());
+        assert!(path.join("test-agent.yaml").exists());
 
-        // Check meta.yaml has versions
-        let meta_content = fs::read_to_string(path.join("meta.yaml")).unwrap();
+        // Check {id}.yaml has versions
+        let meta_content = fs::read_to_string(path.join("test-agent.yaml")).unwrap();
         assert!(meta_content.contains("versions:"));
         assert!(meta_content.contains("version: 1"));
         assert!(meta_content.contains("file: test-agent.v1.md"));
