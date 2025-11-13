@@ -125,7 +125,7 @@ impl HookPrimitive {
     /// Load a hook primitive from a directory
     /// Expected structure:
     ///   <primitive_dir>/
-    ///     hook.meta.yaml
+    ///     {id}.hook.yaml (preferred) or hook.meta.yaml (legacy)
     pub fn load<P: AsRef<std::path::Path>>(primitive_dir: P) -> Result<Self> {
         let primitive_dir = primitive_dir.as_ref();
 
@@ -136,10 +136,22 @@ impl HookPrimitive {
             )));
         }
 
-        let meta_path = primitive_dir.join("hook.meta.yaml");
+        // Try {id}.hook.yaml first (new pattern)
+        let meta_path = if let Some(dir_name) = primitive_dir.file_name().and_then(|n| n.to_str()) {
+            let id_hook_path = primitive_dir.join(format!("{dir_name}.hook.yaml"));
+            if id_hook_path.exists() {
+                id_hook_path
+            } else {
+                // Fall back to hook.meta.yaml (legacy)
+                primitive_dir.join("hook.meta.yaml")
+            }
+        } else {
+            primitive_dir.join("hook.meta.yaml")
+        };
+
         if !meta_path.exists() {
             return Err(Error::NotFound(format!(
-                "hook.meta.yaml not found in {}",
+                "hook meta file not found in {} (tried {{id}}.hook.yaml and hook.meta.yaml)",
                 primitive_dir.display()
             )));
         }

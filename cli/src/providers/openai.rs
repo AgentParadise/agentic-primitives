@@ -306,12 +306,18 @@ impl OpenAITransformer {
             bail!("Path does not exist: {}", path.display());
         }
 
-        // Check for meta files
-        if path.join("tool.meta.yaml").exists() {
-            return Ok("tool".to_string());
-        }
-        if path.join("hook.meta.yaml").exists() {
-            return Ok("hook".to_string());
+        // Check for meta files - try new pattern first, then legacy
+        if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+            if path.join(format!("{dir_name}.tool.yaml")).exists()
+                || path.join("tool.meta.yaml").exists()
+            {
+                return Ok("tool".to_string());
+            }
+            if path.join(format!("{dir_name}.hook.yaml")).exists()
+                || path.join("hook.meta.yaml").exists()
+            {
+                return Ok("hook".to_string());
+            }
         }
 
         // Check for prompt meta files (meta.yaml or {id}.yaml pattern)

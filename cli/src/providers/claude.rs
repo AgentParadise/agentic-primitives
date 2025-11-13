@@ -18,11 +18,18 @@ impl ClaudeTransformer {
     /// Determine the kind of primitive at the given path
     fn detect_primitive_kind(&self, path: &Path) -> Result<PrimitiveKind> {
         // Check for meta files to determine kind
-        if path.join("hook.meta.yaml").exists() {
-            return Ok(PrimitiveKind::Hook);
-        }
-        if path.join("tool.meta.yaml").exists() {
-            return Ok(PrimitiveKind::Tool);
+        // Try new pattern first ({id}.hook.yaml), then fall back to legacy (hook.meta.yaml)
+        if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+            if path.join(format!("{dir_name}.hook.yaml")).exists()
+                || path.join("hook.meta.yaml").exists()
+            {
+                return Ok(PrimitiveKind::Hook);
+            }
+            if path.join(format!("{dir_name}.tool.yaml")).exists()
+                || path.join("tool.meta.yaml").exists()
+            {
+                return Ok(PrimitiveKind::Tool);
+            }
         }
 
         // Check for prompt meta files - try multiple patterns
@@ -190,10 +197,20 @@ impl ClaudeTransformer {
 
         let hooks_file = hooks_dir.join("hooks.json");
 
-        // Load hook metadata
-        let meta_path = path.join("hook.meta.yaml");
+        // Load hook metadata - try new pattern first
+        let meta_path = if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+            let id_hook_path = path.join(format!("{dir_name}.hook.yaml"));
+            if id_hook_path.exists() {
+                id_hook_path
+            } else {
+                path.join("hook.meta.yaml")
+            }
+        } else {
+            path.join("hook.meta.yaml")
+        };
+
         let meta_content = fs::read_to_string(&meta_path).context(format!(
-            "Failed to read hook.meta.yaml from {}",
+            "Failed to read hook meta file from {}",
             path.display()
         ))?;
         let meta: HookMeta = serde_yaml::from_str(&meta_content)?;
@@ -256,10 +273,20 @@ impl ClaudeTransformer {
     fn transform_tool(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let mcp_file = output_dir.join("mcp.json");
 
-        // Load tool metadata
-        let meta_path = path.join("tool.meta.yaml");
+        // Load tool metadata - try new pattern first
+        let meta_path = if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+            let id_tool_path = path.join(format!("{dir_name}.tool.yaml"));
+            if id_tool_path.exists() {
+                id_tool_path
+            } else {
+                path.join("tool.meta.yaml")
+            }
+        } else {
+            path.join("tool.meta.yaml")
+        };
+
         let meta_content = fs::read_to_string(&meta_path).context(format!(
-            "Failed to read tool.meta.yaml from {}",
+            "Failed to read tool meta file from {}",
             path.display()
         ))?;
         let meta: ToolMeta = serde_yaml::from_str(&meta_content)?;
@@ -370,7 +397,18 @@ impl ProviderTransformer for ClaudeTransformer {
                 (id, "meta-prompt", files)
             }
             PrimitiveKind::Hook => {
-                let meta_path = primitive_path.join("hook.meta.yaml");
+                // Try new pattern first ({id}.hook.yaml), then legacy (hook.meta.yaml)
+                let meta_path =
+                    if let Some(dir_name) = primitive_path.file_name().and_then(|n| n.to_str()) {
+                        let id_hook_path = primitive_path.join(format!("{dir_name}.hook.yaml"));
+                        if id_hook_path.exists() {
+                            id_hook_path
+                        } else {
+                            primitive_path.join("hook.meta.yaml")
+                        }
+                    } else {
+                        primitive_path.join("hook.meta.yaml")
+                    };
                 let meta_content = fs::read_to_string(&meta_path)?;
                 let meta: HookMeta = serde_yaml::from_str(&meta_content)?;
                 let id = meta.id.clone();
@@ -378,7 +416,18 @@ impl ProviderTransformer for ClaudeTransformer {
                 (id, "hook", files)
             }
             PrimitiveKind::Tool => {
-                let meta_path = primitive_path.join("tool.meta.yaml");
+                // Try new pattern first ({id}.tool.yaml), then legacy (tool.meta.yaml)
+                let meta_path =
+                    if let Some(dir_name) = primitive_path.file_name().and_then(|n| n.to_str()) {
+                        let id_tool_path = primitive_path.join(format!("{dir_name}.tool.yaml"));
+                        if id_tool_path.exists() {
+                            id_tool_path
+                        } else {
+                            primitive_path.join("tool.meta.yaml")
+                        }
+                    } else {
+                        primitive_path.join("tool.meta.yaml")
+                    };
                 let meta_content = fs::read_to_string(&meta_path)?;
                 let meta: ToolMeta = serde_yaml::from_str(&meta_content)?;
                 let id = meta.id.clone();
