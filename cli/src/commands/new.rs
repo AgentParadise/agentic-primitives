@@ -245,7 +245,7 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
 fn create_tool_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     let renderer = TemplateRenderer::new()?;
 
-    // Render tool.meta.yaml
+    // Render {id}.tool.yaml
     let tool_data = serde_json::json!({
         "id": &args.id,
         "kind": "shell",  // Default kind
@@ -254,8 +254,9 @@ fn create_tool_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     });
 
     let tool_meta = renderer.render_tool_meta(&tool_data)?;
-    fs::write(path.join("tool.meta.yaml"), tool_meta)
-        .with_context(|| "Failed to write tool.meta.yaml")?;
+    let meta_filename = format!("{}.tool.yaml", &args.id);
+    fs::write(path.join(&meta_filename), tool_meta)
+        .with_context(|| format!("Failed to write {meta_filename}"))?;
 
     // Create stub implementation files
     fs::write(
@@ -276,7 +277,7 @@ fn create_tool_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
 fn create_hook_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     let renderer = TemplateRenderer::new()?;
 
-    // Render hook.meta.yaml
+    // Render {id}.hook.yaml
     let hook_data = serde_json::json!({
         "id": &args.id,
         "kind": "safety",  // Default kind
@@ -287,8 +288,9 @@ fn create_hook_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     });
 
     let hook_meta = renderer.render_hook_meta(&hook_data)?;
-    fs::write(path.join("hook.meta.yaml"), hook_meta)
-        .with_context(|| "Failed to write hook.meta.yaml")?;
+    let meta_filename = format!("{}.hook.yaml", &args.id);
+    fs::write(path.join(&meta_filename), hook_meta)
+        .with_context(|| format!("Failed to write {meta_filename}"))?;
 
     // Create Python middleware stub
     let middleware_data = serde_json::json!({
@@ -568,7 +570,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Check files exist
-        assert!(path.join("tool.meta.yaml").exists());
+        assert!(path.join("test-tool.tool.yaml").exists());
         assert!(path.join("impl.claude.yaml").exists());
         assert!(path.join("impl.openai.json").exists());
     }
@@ -592,7 +594,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Check files exist
-        assert!(path.join("hook.meta.yaml").exists());
+        assert!(path.join("test-hook.hook.yaml").exists());
         assert!(path.join("hook.py").exists());
     }
 

@@ -46,7 +46,7 @@ All specifications and primitives are organized by version:
 - **Status**: Active
 - **Structure**: Generic provider-agnostic primitives
 - **Organized by**: Type → Category → ID
-- **Metadata**: `spec_version: "v1"` in `<id>.yaml` (prompts) or `tool.meta.yaml`/`hook.meta.yaml` (tools/hooks)
+- **Metadata**: `spec_version: "v1"` in `<id>.yaml` (prompts), `<id>.tool.yaml` (tools), or `<id>.hook.yaml` (hooks)
 
 ### Evolution Strategy
 
@@ -218,13 +218,13 @@ agentic-primitives/
 │   │   ├── tools/              # Tool primitives
 │   │   │   └── <category>/     # /tools/<category>/<id>
 │   │   │       └── <id>/
-│   │   │           ├── tool.meta.yaml
+│   │   │           ├── <id>.tool.yaml
 │   │   │           └── impl.*
 │   │   │
 │   │   └── hooks/              # Hook primitives
 │   │       └── <category>/     # /hooks/<category>/<id>
 │   │           └── <id>/
-│   │               ├── hook.meta.yaml
+│   │               ├── <id>.hook.yaml
 │   │               ├── impl.python.py
 │   │               └── middleware/
 │   │

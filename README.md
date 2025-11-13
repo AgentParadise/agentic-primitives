@@ -127,7 +127,7 @@ Logical capability definitions with optional provider bindings:
 
 ```
 primitives/v1/tools/<category>/<id>/
-├── tool.meta.yaml             # Generic tool specification
+├── <id>.tool.yaml             # Generic tool specification
 ├── impl.claude.yaml           # Claude SDK binding
 ├── impl.openai.json           # OpenAI function calling
 └── impl.local.{rs|py|ts}      # Local implementation
@@ -139,7 +139,7 @@ Lifecycle event handlers with **middleware pipelines**:
 
 ```
 primitives/v1/hooks/<category>/<id>/
-├── hook.meta.yaml          # Event config & middleware list
+├── <id>.hook.yaml          # Event config & middleware list
 ├── impl.python.py          # Orchestrator (uv)
 ├── impl.bun.ts             # Alternative (bun)
 └── middleware/
@@ -384,7 +384,7 @@ agentic-p install --provider claude --project
 agentic-p new hook observability/log-operations
 agentic-p new hook observability/emit-metrics
 
-# Configure metrics endpoint in hook.meta.yaml
+# Configure metrics endpoint in emit-metrics.hook.yaml
 # Deploy and watch metrics flow
 ```
 
