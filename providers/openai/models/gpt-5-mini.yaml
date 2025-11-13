@@ -1,0 +1,42 @@
+id: gpt-5-mini
+full_name: "GPT-5 mini"
+api_name: "gpt-5-mini"
+version: "5.0"
+release_date: "2025"
+provider: openai
+
+capabilities:
+  max_tokens: 16384
+  context_window: 128000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_reasoning: true
+
+performance:
+  speed: "fast"
+  quality: "high"
+
+pricing:
+  input_per_1m_tokens: 3.00
+  output_per_1m_tokens: 12.00
+  currency: "USD"
+
+strengths:
+  - "Faster, cost-efficient version of GPT-5"
+  - "Well-defined tasks"
+  - "Good reasoning at lower cost"
+  - "Balanced performance"
+  - "Production-ready"
+  - "High throughput"
+
+recommended_for:
+  - "commands"
+  - "skills"
+  - "well-defined tasks"
+  - "cost-sensitive production"
+  - "high-volume processing"
+  - "moderate complexity tasks"
+
+notes: "GPT-5 mini offers a faster, cost-efficient alternative to GPT-5.1 for well-defined tasks. Good balance of reasoning capability and efficiency for production systems requiring scale."
+

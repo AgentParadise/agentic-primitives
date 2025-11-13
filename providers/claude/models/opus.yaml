@@ -1,19 +1,21 @@
 id: opus
-full_name: "Claude 3 Opus"
-api_name: "claude-3-opus-20240229"
-version: "20240229"
+full_name: "Claude Opus 4.1"
+api_name: "claude-opus-4-1-20250805"
+version: "4.1"
+release_date: "2025-08-05"
 provider: claude
 
 capabilities:
-  max_tokens: 200000
+  max_tokens: 32000
   context_window: 200000
   supports_vision: true
   supports_function_calling: true
   supports_streaming: true
+  supports_extended_thinking: true
 
 performance:
-  speed: "medium"
-  quality: "highest"
+  speed: "moderate"
+  quality: "exceptional"
 
 pricing:
   input_per_1m_tokens: 15.00
@@ -21,19 +23,19 @@ pricing:
   currency: "USD"
 
 strengths:
-  - "Advanced reasoning and analysis"
-  - "Creative problem-solving"
-  - "Complex multi-step planning"
-  - "Nuanced understanding"
-  - "High-quality code generation"
-  - "Research and technical writing"
+  - "Exceptional model for specialized reasoning"
+  - "Deep analytical capabilities"
+  - "Complex problem decomposition"
+  - "Advanced research and analysis"
+  - "Sophisticated multi-step reasoning"
+  - "Expert-level code generation"
 
 recommended_for:
+  - "agents"
   - "meta-prompts"
-  - "complex planning tasks"
-  - "research and analysis"
-  - "high-stakes code generation"
-  - "architectural decisions"
+  - "complex commands"
+  - "specialized reasoning tasks"
+  - "deep research and analysis"
+  - "mission-critical applications"
 
-notes: "Highest quality model in the Claude family. Best for tasks requiring maximum reasoning ability, creative problem-solving, or complex multi-step planning. More expensive but worth it for meta-prompts and critical decision-making."
-
+notes: "Claude Opus 4.1 is the exceptional model for specialized reasoning tasks. Released August 2025, it offers the highest quality reasoning and analysis for mission-critical applications where maximum intelligence justifies premium pricing."

@@ -1,0 +1,43 @@
+id: gemini-flash
+full_name: "Gemini 2.5 Flash"
+api_name: "gemini-2.5-flash"
+version: "2.5"
+release_date: "2025-06"
+provider: google
+
+capabilities:
+  max_tokens: 65536
+  context_window: 1048576
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_thinking: true
+  supports_code_execution: true
+
+performance:
+  speed: "fast"
+  quality: "high"
+
+pricing:
+  input_per_1m_tokens: 0.15
+  output_per_1m_tokens: 0.60
+  currency: "USD"
+
+strengths:
+  - "Best price-performance balance"
+  - "Fast and intelligent"
+  - "Large-scale processing"
+  - "Low latency, high volume"
+  - "Agentic use cases"
+  - "Long context at speed (1M tokens)"
+
+recommended_for:
+  - "agents"
+  - "commands"
+  - "skills"
+  - "high-volume processing"
+  - "production systems"
+  - "cost-effective applications"
+
+notes: "Gemini 2.5 Flash offers the best price-performance ratio in the Gemini family. With 1M token context and thinking capabilities, it's ideal for large-scale processing, low-latency tasks, and agentic applications. Recommended default for most use cases. Knowledge cutoff: January 2025."
+

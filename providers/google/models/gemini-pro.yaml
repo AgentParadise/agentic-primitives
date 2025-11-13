@@ -1,0 +1,43 @@
+id: gemini-pro
+full_name: "Gemini 2.5 Pro"
+api_name: "gemini-2.5-pro"
+version: "2.5"
+release_date: "2025-06"
+provider: google
+
+capabilities:
+  max_tokens: 65536
+  context_window: 1048576
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_thinking: true
+  supports_code_execution: true
+
+performance:
+  speed: "moderate"
+  quality: "exceptional"
+
+pricing:
+  input_per_1m_tokens: 1.25
+  output_per_1m_tokens: 5.00
+  currency: "USD"
+
+strengths:
+  - "State-of-the-art thinking model"
+  - "Complex reasoning in code, math, and STEM"
+  - "Analyzing large datasets and codebases"
+  - "Long context processing (1M tokens)"
+  - "Document and research analysis"
+  - "Advanced problem-solving"
+
+recommended_for:
+  - "agents"
+  - "meta-prompts"
+  - "complex commands"
+  - "research and analysis"
+  - "large document processing"
+  - "STEM applications"
+
+notes: "Gemini 2.5 Pro is Google's most advanced model, capable of reasoning over complex problems in code, math, and STEM. With a 1M token context window, it excels at analyzing large datasets, codebases, and documents. Knowledge cutoff: January 2025."
+
