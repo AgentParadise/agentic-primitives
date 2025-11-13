@@ -207,8 +207,7 @@ impl StructuralValidator {
                     .filter_map(|e| e.ok())
                     .any(|e| {
                         let filename = e.file_name().to_string_lossy().to_string();
-                        filename.starts_with(&format!("{dir_name}.v"))
-                            && filename.ends_with(".md")
+                        filename.starts_with(&format!("{dir_name}.v")) && filename.ends_with(".md")
                     });
 
                 if !has_version_file {
@@ -263,14 +262,13 @@ mod tests {
         fs::create_dir_all(&primitive_path).unwrap();
 
         let meta_content = format!(
-            "id: {}\nkind: {}\nsummary: Test primitive\ncategory: test\ndomain: testing",
-            id, kind
+            "id: {id}\nkind: {kind}\nsummary: Test primitive\ncategory: test\ndomain: testing"
         );
         fs::write(primitive_path.join("meta.yaml"), meta_content).unwrap();
 
         // Create version file for prompts (filename must match directory name)
         if matches!(kind, "agent" | "command" | "skill" | "meta-prompt") {
-            let version_file = format!("{}.v1.md", id);
+            let version_file = format!("{id}.v1.md");
             fs::write(primitive_path.join(version_file), "# Test Prompt").unwrap();
         }
 
