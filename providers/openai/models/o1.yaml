@@ -1,0 +1,39 @@
+id: o1
+full_name: "OpenAI o1 Preview"
+api_name: "o1-preview"
+version: "preview"
+provider: openai
+
+capabilities:
+  max_tokens: 32768
+  context_window: 128000
+  supports_vision: false
+  supports_function_calling: false
+  supports_streaming: true
+
+performance:
+  speed: "slow"
+  quality: "highest"
+
+pricing:
+  input_per_1m_tokens: 15.00
+  output_per_1m_tokens: 60.00
+  currency: "USD"
+
+strengths:
+  - "Advanced reasoning and planning"
+  - "Chain-of-thought processing"
+  - "Complex problem-solving"
+  - "Mathematical reasoning"
+  - "Multi-step analysis"
+  - "Strategic planning"
+
+recommended_for:
+  - "meta-prompts"
+  - "complex planning"
+  - "architectural analysis"
+  - "algorithm design"
+  - "research tasks"
+
+notes: "OpenAI's reasoning-focused model with built-in chain-of-thought. Slower but provides exceptional reasoning quality. Best for meta-prompts, planning, and tasks requiring deep analytical thinking. Does not support vision or function calling (reasoning-optimized)."
+
