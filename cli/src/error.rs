@@ -19,6 +19,21 @@ pub enum Error {
 
     #[error("Invalid format: {0}")]
     InvalidFormat(String),
+
+    #[error("Template error: {0}")]
+    Template(String),
+}
+
+impl From<handlebars::TemplateError> for Error {
+    fn from(err: handlebars::TemplateError) -> Self {
+        Error::Template(err.to_string())
+    }
+}
+
+impl From<handlebars::RenderError> for Error {
+    fn from(err: handlebars::RenderError) -> Self {
+        Error::Template(err.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
