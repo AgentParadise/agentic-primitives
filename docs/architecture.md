@@ -46,7 +46,7 @@ All specifications and primitives are organized by version:
 - **Status**: Active
 - **Structure**: Generic provider-agnostic primitives
 - **Organized by**: Type → Category → ID
-- **Metadata**: `spec_version: "v1"` in meta.yaml
+- **Metadata**: `spec_version: "v1"` in `<id>.yaml` (prompts) or `tool.meta.yaml`/`hook.meta.yaml` (tools/hooks)
 
 ### Evolution Strategy
 
@@ -206,8 +206,8 @@ agentic-primitives/
 │   │   │   ├── agents/         # Router structure:
 │   │   │   │   └── <category>/ # /agents/<category>/<id>
 │   │   │   │       └── <id>/
-│   │   │   │           ├── prompt.v1.md
-│   │   │   │           └── meta.yaml
+│   │   │   │           ├── <id>.v1.md
+│   │   │   │           └── <id>.yaml
 │   │   │   ├── commands/
 │   │   │   │   └── <category>/ # /commands/<category>/<id>
 │   │   │   ├── skills/
@@ -218,13 +218,13 @@ agentic-primitives/
 │   │   ├── tools/              # Tool primitives
 │   │   │   └── <category>/     # /tools/<category>/<id>
 │   │   │       └── <id>/
-│   │   │           ├── meta.yaml
+│   │   │           ├── tool.meta.yaml
 │   │   │           └── impl.*
 │   │   │
 │   │   └── hooks/              # Hook primitives
 │   │       └── <category>/     # /hooks/<category>/<id>
 │   │           └── <id>/
-│   │               ├── meta.yaml
+│   │               ├── hook.meta.yaml
 │   │               ├── impl.python.py
 │   │               └── middleware/
 │   │
@@ -490,7 +490,7 @@ draft → active → deprecated → archived
          ▼
 ┌──────────────────┐
 │ Store in         │
-│ meta.yaml        │
+│ <id>.yaml        │
 │ versions[].hash  │
 └────────┬─────────┘
          │
@@ -758,10 +758,10 @@ CLI (new command)
   │
   ├─ Parse arguments
   ├─ Create directory: prompts/agents/python/python-pro/
-  ├─ Generate meta.yaml from template
-  ├─ Generate python-pro.prompt.v1.md from template
+  ├─ Generate python-pro.yaml from template
+  ├─ Generate python-pro.v1.md from template
   ├─ Calculate BLAKE3 hash
-  ├─ Add version entry to meta.yaml
+  ├─ Add version entry to python-pro.yaml
   │
   ▼
 Files Created
