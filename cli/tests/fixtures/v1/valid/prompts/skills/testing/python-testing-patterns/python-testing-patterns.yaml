@@ -21,6 +21,6 @@ versions:
     status: active
     hash: blake3:0000000000000000000000000000000000000000000000000000000000000000
     created: "2025-01-20"
+    notes: Initial version
 
 default_version: 1
-

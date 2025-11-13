@@ -3,7 +3,7 @@ kind: tool
 category: shell
 description: Execute test suites in various languages and frameworks
 
-parameters:
+args:
   - name: framework
     type: string
     required: true
@@ -17,23 +17,10 @@ parameters:
     required: false
     description: Test name pattern to filter
 
-outputs:
-  - name: exit_code
-    type: integer
-    description: Test suite exit code (0 = passed)
-  - name: stdout
-    type: string
-    description: Test output
-  - name: summary
-    type: object
-    description: Test run summary (passed, failed, skipped)
-
 examples:
   - description: Run Python tests
-    parameters:
+    args:
       framework: pytest
       path: tests/
-    expected_output:
-      exit_code: 0
-      summary: { passed: 42, failed: 0, skipped: 3 }
+    expected_result: "All tests passed"
 
