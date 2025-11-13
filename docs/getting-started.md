@@ -107,11 +107,15 @@ This creates the following structure:
 ```
 my-primitives/
 ├── primitives.config.yaml
-├── prompts/
-├── tools/
-├── hooks/
+├── specs/
+│   └── v1/
+├── primitives/
+│   ├── v1/
+│   │   ├── prompts/
+│   │   ├── tools/
+│   │   └── hooks/
+│   └── experimental/
 ├── providers/
-├── schemas/
 └── docs/
 ```
 
@@ -130,14 +134,14 @@ agentic new prompt agent python/python-pro
 This creates:
 
 ```
-prompts/agents/python/python-pro/
-├── python-pro.prompt.v1.md
-└── python-pro.meta.yaml
+primitives/v1/prompts/agents/python/python-pro/
+├── prompt.v1.md
+└── meta.yaml
 ```
 
 ### Step 2: Fill in the Prompt
 
-Edit `prompts/agents/python/python-pro/python-pro.prompt.v1.md`:
+Edit `primitives/v1/prompts/agents/python/python-pro/prompt.v1.md`:
 
 ```markdown
 You are **Python Pro**, a senior Python engineer with expertise in:
@@ -176,11 +180,12 @@ When suggesting code:
 
 ### Step 3: Configure Metadata
 
-Edit `prompts/agents/python/python-pro/python-pro.meta.yaml`:
+Edit `primitives/v1/prompts/agents/python/python-pro/meta.yaml`:
 
 ```yaml
 id: python-pro
 kind: agent
+spec_version: "v1"
 category: python
 domain: python
 summary: "Expert Python engineer for architecture, debugging, and best practices"
@@ -210,7 +215,6 @@ inputs: []
 
 versions:
   - version: 1
-    file: python-pro.prompt.v1.md
     status: active
     hash: blake3:...  # Auto-calculated on validation
     created: "2025-11-13"
@@ -222,7 +226,7 @@ default_version: 1
 ### Step 4: Validate
 
 ```bash
-agentic validate prompts/agents/python/python-pro
+agentic validate primitives/v1/prompts/agents/python/python-pro
 
 # Or validate everything
 agentic validate
@@ -240,7 +244,7 @@ Commands are discrete tasks or workflows. Let's create a code review command:
 agentic new prompt command review/code-review
 ```
 
-Edit `prompts/commands/review/code-review/code-review.prompt.v1.md`:
+Edit `primitives/v1/prompts/commands/review/code-review/prompt.v1.md`:
 
 ```markdown
 You are a code reviewer. Given a code diff or file, you will:
@@ -281,7 +285,7 @@ Skills are reusable knowledge patterns. Let's create a pytest patterns skill:
 agentic new prompt skill testing/pytest-patterns
 ```
 
-Edit `prompts/skills/testing/pytest-patterns/pytest-patterns.prompt.md`:
+Edit `primitives/v1/prompts/skills/testing/pytest-patterns/prompt.v1.md`:
 
 ```markdown
 # Pytest Best Practices and Patterns
@@ -353,7 +357,7 @@ agentic new tool shell/run-tests
 
 ### Configure Tool
 
-Edit `tools/shell/run-tests/tool.meta.yaml`:
+Edit `primitives/v1/tools/shell/run-tests/meta.yaml`:
 
 ```yaml
 id: run-tests
@@ -387,7 +391,7 @@ providers:
 
 ### Add Provider Implementations
 
-Edit `tools/shell/run-tests/impl.claude.yaml`:
+Edit `primitives/v1/tools/shell/run-tests/impl.claude.yaml`:
 
 ```yaml
 tool: run-tests
@@ -416,7 +420,7 @@ This creates a complete hook structure with middleware examples.
 
 ### Configure Hook
 
-Edit `hooks/lifecycle/pre-tool-use/hook.meta.yaml`:
+Edit `primitives/v1/hooks/lifecycle/pre-tool-use/meta.yaml`:
 
 ```yaml
 id: pre-tool-use
@@ -460,7 +464,7 @@ Validate your primitives to ensure they're correct:
 agentic validate
 
 # Validate specific primitive
-agentic validate prompts/agents/python/python-pro
+agentic validate primitives/v1/prompts/agents/python/python-pro
 
 # Get JSON output for scripting
 agentic validate --json
@@ -564,11 +568,30 @@ Hooks run automatically during agent execution:
 
 ---
 
+## Understanding Versioning
+
+The repository uses two layers of versioning:
+
+1. **System-Level Versioning**: Architectural versions (v1, v2, experimental)
+   - Current version: v1
+   - Directory: `/primitives/v1/`
+   - Schemas: `/specs/v1/`
+
+2. **Prompt-Level Versioning**: Content versions (prompt.v1.md, prompt.v2.md)
+   - Tracks refinements to individual primitives
+   - BLAKE3 hash verification
+   - Status lifecycle: draft → active → deprecated
+
+For complete details, see `docs/versioning-guide.md`.
+
+---
+
 ## Next Steps
 
 ### Learn More
 
 - **[Architecture Guide](architecture.md)** - Understand the system design
+- **[Versioning Guide](versioning-guide.md)** - Complete versioning documentation
 - **[CLI Reference](cli-reference.md)** - All available commands
 - **[Hooks Guide](hooks-guide.md)** - Writing middleware
 - **[Contributing](contributing.md)** - How to contribute

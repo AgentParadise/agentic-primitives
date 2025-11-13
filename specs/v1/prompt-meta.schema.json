@@ -1,7 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agentic-primitives.dev/schemas/prompt-meta.schema.json",
-  "title": "Prompt Primitive Metadata Schema",
+  "$id": "https://agentic-primitives.dev/specs/v1/prompt-meta.schema.json",
+  "specVersion": "v1",
+  "title": "Prompt Primitive Metadata Schema (v1)",
   "description": "Schema for prompt primitive metadata files (agents, commands, skills, meta-prompts)",
   "type": "object",
   "required": ["id", "kind", "category", "domain", "summary"],

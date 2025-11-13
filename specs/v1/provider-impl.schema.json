@@ -1,7 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agentic-primitives.dev/schemas/provider-impl.schema.json",
-  "title": "Provider Implementation Schema",
+  "$id": "https://agentic-primitives.dev/specs/v1/provider-impl.schema.json",
+  "specVersion": "v1",
+  "title": "Provider Implementation Schema (v1)",
   "description": "Schema for provider-specific implementation files (Claude, OpenAI, local)",
   "type": "object",
   "oneOf": [
