@@ -1,0 +1,26 @@
+id: python-testing-patterns
+kind: skill
+category: testing
+domain: development
+summary: Comprehensive Python testing patterns and best practices
+
+context_usage:
+  as_system: false
+  as_user: false
+  as_overlay: true
+
+tags:
+  - python
+  - testing
+  - pytest
+  - best-practices
+
+versions:
+  - version: 1
+    file: prompt.v1.md
+    status: active
+    hash: blake3:0000000000000000000000000000000000000000000000000000000000000000
+    created: "2025-01-20"
+
+default_version: 1
+

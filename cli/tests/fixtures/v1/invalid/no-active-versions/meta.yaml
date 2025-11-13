@@ -1,0 +1,15 @@
+id: no-active-versions
+kind: agent
+category: testing
+summary: Agent with no active versions
+versions:
+  - version: 1
+    file: prompt.v1.md
+    status: draft
+    created: "2025-01-01"
+  - version: 2
+    file: prompt.v2.md
+    status: deprecated
+    created: "2025-01-02"
+default_version: 1
+

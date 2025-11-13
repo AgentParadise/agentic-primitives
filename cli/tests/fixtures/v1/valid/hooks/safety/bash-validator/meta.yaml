@@ -1,0 +1,8 @@
+id: bash-validator
+kind: hook
+category: safety
+summary: Validate bash commands before execution for safety
+event: PreToolUse
+execution:
+  strategy: pipeline
+

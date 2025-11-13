@@ -1,0 +1,11 @@
+id: InvalidName_WithUnderscore
+kind: agent
+category: testing
+summary: Agent with non-kebab-case ID
+versions:
+  - version: 1
+    file: prompt.v1.md
+    status: active
+    created: "2025-01-01"
+default_version: 1
+
