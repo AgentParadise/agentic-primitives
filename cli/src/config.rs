@@ -15,12 +15,18 @@ pub struct PrimitivesConfig {
 /// Directory paths configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathsConfig {
-    pub prompts: PathBuf,
-    pub tools: PathBuf,
-    pub hooks: PathBuf,
+    #[serde(default = "default_specs_path")]
+    pub specs: PathBuf,
+    #[serde(default = "default_primitives_path")]
+    pub primitives: PathBuf,
+    #[serde(default = "default_experimental_path")]
+    pub experimental: PathBuf,
+    #[serde(default = "default_providers_path")]
     pub providers: PathBuf,
-    pub schemas: PathBuf,
+    #[serde(default = "default_cli_path")]
     pub cli: PathBuf,
+    #[serde(default = "default_docs_path")]
+    pub docs: PathBuf,
 }
 
 /// Validation settings
@@ -63,6 +69,30 @@ impl Default for DefaultsConfig {
 }
 
 // Default value functions for serde
+fn default_specs_path() -> PathBuf {
+    PathBuf::from("specs/v1")
+}
+
+fn default_primitives_path() -> PathBuf {
+    PathBuf::from("primitives/v1")
+}
+
+fn default_experimental_path() -> PathBuf {
+    PathBuf::from("primitives/experimental")
+}
+
+fn default_providers_path() -> PathBuf {
+    PathBuf::from("providers")
+}
+
+fn default_cli_path() -> PathBuf {
+    PathBuf::from("cli")
+}
+
+fn default_docs_path() -> PathBuf {
+    PathBuf::from("docs")
+}
+
 fn default_id_pattern() -> String {
     "^[a-z0-9]+(-[a-z0-9]+)*$".to_string()
 }
@@ -143,12 +173,12 @@ impl Default for PrimitivesConfig {
         Self {
             version: "1.0".to_string(),
             paths: PathsConfig {
-                prompts: PathBuf::from("prompts"),
-                tools: PathBuf::from("tools"),
-                hooks: PathBuf::from("hooks"),
-                providers: PathBuf::from("providers"),
-                schemas: PathBuf::from("schemas"),
-                cli: PathBuf::from("cli"),
+                specs: default_specs_path(),
+                primitives: default_primitives_path(),
+                experimental: default_experimental_path(),
+                providers: default_providers_path(),
+                cli: default_cli_path(),
+                docs: default_docs_path(),
             },
             validation: ValidationConfig {
                 required_fields: vec![],
@@ -173,12 +203,12 @@ mod tests {
         let config_yaml = r#"
 version: "1.0"
 paths:
-  prompts: "prompts"
-  tools: "tools"
-  hooks: "hooks"
+  specs: "specs/v1"
+  primitives: "primitives/v1"
+  experimental: "primitives/experimental"
   providers: "providers"
-  schemas: "schemas"
   cli: "cli"
+  docs: "docs"
 validation:
   required_fields: ["id", "kind"]
   id_pattern: "^[a-z0-9-]+$"
@@ -198,8 +228,8 @@ defaults:
         let config = PrimitivesConfig::load(temp_file.path()).unwrap();
 
         assert_eq!(config.version, "1.0");
-        assert_eq!(config.paths.prompts, PathBuf::from("prompts"));
-        assert_eq!(config.paths.tools, PathBuf::from("tools"));
+        assert_eq!(config.paths.specs, PathBuf::from("specs/v1"));
+        assert_eq!(config.paths.primitives, PathBuf::from("primitives/v1"));
         assert_eq!(config.validation.max_summary_length, 500);
         assert!(config.validation.enforce_category);
         assert_eq!(config.defaults.prompt_kind, "skill");
@@ -210,7 +240,7 @@ defaults:
         let config = PrimitivesConfig::default();
 
         assert_eq!(config.version, "1.0");
-        assert_eq!(config.paths.prompts, PathBuf::from("prompts"));
+        assert_eq!(config.paths.primitives, PathBuf::from("primitives/v1"));
         assert_eq!(config.validation.max_summary_length, 500);
         assert_eq!(config.defaults.prompt_kind, "skill");
         assert_eq!(config.defaults.execution_strategy, "pipeline");
@@ -238,12 +268,12 @@ defaults:
         let minimal_yaml = r#"
 version: "1.0"
 paths:
-  prompts: "prompts"
-  tools: "tools"
-  hooks: "hooks"
+  specs: "specs/v1"
+  primitives: "primitives/v1"
+  experimental: "primitives/experimental"
   providers: "providers"
-  schemas: "schemas"
   cli: "cli"
+  docs: "docs"
 validation:
   max_summary_length: 300
 "#;
