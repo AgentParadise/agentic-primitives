@@ -1,0 +1,5 @@
+id: run-tests
+kind: tool
+category: shell
+description: Execute test suites in various languages and frameworks
+

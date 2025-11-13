@@ -1,0 +1,31 @@
+id: bash-validator
+kind: hook
+category: safety
+event: PreToolUse
+summary: Validate bash commands before execution for safety
+
+execution:
+  strategy: pipeline
+  timeout_ms: 1000
+
+triggers:
+  - tool_id: shell-runner
+  - tool_id: bash-executor
+
+validation_rules:
+  - rule: no_rm_rf
+    description: Block 'rm -rf' commands
+    pattern: "rm\\s+-rf"
+  - rule: no_sudo
+    description: Block sudo commands
+    pattern: "^sudo\\s+"
+  - rule: no_curl_pipe_bash
+    description: Block curl | bash patterns
+    pattern: "curl.*\\|.*bash"
+
+actions:
+  on_violation:
+    - log_warning
+    - block_execution
+    - notify_user
+

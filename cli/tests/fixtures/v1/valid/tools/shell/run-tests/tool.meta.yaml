@@ -1,0 +1,39 @@
+id: run-tests
+kind: tool
+category: shell
+description: Execute test suites in various languages and frameworks
+
+parameters:
+  - name: framework
+    type: string
+    required: true
+    description: Testing framework (pytest, jest, cargo-test, etc.)
+  - name: path
+    type: string
+    required: false
+    description: Path to test directory or file
+  - name: pattern
+    type: string
+    required: false
+    description: Test name pattern to filter
+
+outputs:
+  - name: exit_code
+    type: integer
+    description: Test suite exit code (0 = passed)
+  - name: stdout
+    type: string
+    description: Test output
+  - name: summary
+    type: object
+    description: Test run summary (passed, failed, skipped)
+
+examples:
+  - description: Run Python tests
+    parameters:
+      framework: pytest
+      path: tests/
+    expected_output:
+      exit_code: 0
+      summary: { passed: 42, failed: 0, skipped: 3 }
+
