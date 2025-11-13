@@ -3,6 +3,9 @@
 
 version: "1.0"
 
+# System-level specification version
+spec_version: "v1"
+
 # Repository metadata
 repository:
   name: "agentic-primitives"
@@ -11,11 +14,10 @@ repository:
 
 # Directory paths (relative to repository root)
 paths:
-  prompts: "prompts"
-  tools: "tools"
-  hooks: "hooks"
-  providers: "providers"
-  schemas: "schemas"
+  specs: "specs/v1"              # Schema specifications for v1
+  primitives: "primitives/v1"    # v1 primitives (prompts, tools, hooks)
+  experimental: "primitives/experimental"  # Sandbox for v2+ testing
+  providers: "providers"         # Provider adapters (unchanged)
   cli: "cli"
   docs: "docs"
 

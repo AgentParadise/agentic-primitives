@@ -1,3 +1,4 @@
+use agentic_primitives::spec_version::SpecVersion;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -5,6 +6,10 @@ use clap::{Parser, Subcommand};
 #[command(about = "Manage agentic primitives", long_about = None)]
 #[command(version)]
 struct Cli {
+    /// Specification version to use (v1, experimental)
+    #[arg(long, global = true, default_value = "v1")]
+    spec_version: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -79,41 +84,56 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
+    // Parse spec version
+    let spec_version: SpecVersion = match cli.spec_version.parse() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    println!("Using spec version: {spec_version}");
+
     // TODO: Implement command routing
     match cli.command {
         Commands::Init { path } => {
-            println!("Init command not yet implemented (path: {path:?})");
+            println!(
+                "Init command not yet implemented (path: {path:?}, spec_version: {spec_version})"
+            );
         }
         Commands::New {} => {
-            println!("New command not yet implemented");
+            println!("New command not yet implemented (spec_version: {spec_version})");
         }
         Commands::Validate { path } => {
-            println!("Validate command not yet implemented (path: {path:?})");
+            println!("Validate command not yet implemented (path: {path:?}, spec_version: {spec_version})");
         }
         Commands::List {} => {
-            println!("List command not yet implemented");
+            println!("List command not yet implemented (spec_version: {spec_version})");
         }
         Commands::Inspect { id } => {
-            println!("Inspect command not yet implemented (id: {id})");
+            println!(
+                "Inspect command not yet implemented (id: {id}, spec_version: {spec_version})"
+            );
         }
         Commands::Version {} => {
-            println!("Version command not yet implemented");
+            println!("Version command not yet implemented (spec_version: {spec_version})");
         }
         Commands::Migrate { add_versions } => {
-            println!("Migrate command not yet implemented (add_versions: {add_versions})");
+            println!("Migrate command not yet implemented (add_versions: {add_versions}, spec_version: {spec_version})");
         }
         Commands::Build { provider, output } => {
             println!(
-                "Build command not yet implemented (provider: {provider}, output: {output:?})"
+                "Build command not yet implemented (provider: {provider}, output: {output:?}, spec_version: {spec_version})"
             );
         }
         Commands::Install { provider, global } => {
             println!(
-                "Install command not yet implemented (provider: {provider}, global: {global})"
+                "Install command not yet implemented (provider: {provider}, global: {global}, spec_version: {spec_version})"
             );
         }
         Commands::TestHook { path, input } => {
-            println!("TestHook command not yet implemented (path: {path}, input: {input})");
+            println!("TestHook command not yet implemented (path: {path}, input: {input}, spec_version: {spec_version})");
         }
     }
 }

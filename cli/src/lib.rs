@@ -5,5 +5,6 @@ pub mod models;
 pub mod primitives;
 pub mod providers;
 pub mod schema;
+pub mod spec_version;
 pub mod templates;
-pub mod validation;
+pub mod validators;

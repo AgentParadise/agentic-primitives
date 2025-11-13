@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use crate::spec_version::SpecVersion;
 use jsonschema::JSONSchema;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -7,11 +8,20 @@ use std::path::Path;
 /// JSON Schema validator with cached compiled schemas
 pub struct SchemaValidator {
     schemas: HashMap<String, JSONSchema>,
+    spec_version: SpecVersion,
 }
 
 impl SchemaValidator {
-    /// Load all schemas from schemas/ directory
+    /// Load all schemas from schemas/ directory (uses default V1)
     pub fn load<P: AsRef<Path>>(schemas_dir: P) -> Result<Self> {
+        Self::load_with_version(schemas_dir, SpecVersion::V1)
+    }
+
+    /// Load all schemas with a specific spec version
+    pub fn load_with_version<P: AsRef<Path>>(
+        schemas_dir: P,
+        spec_version: SpecVersion,
+    ) -> Result<Self> {
         let schemas_dir = schemas_dir.as_ref();
 
         if !schemas_dir.exists() {
@@ -54,7 +64,15 @@ impl SchemaValidator {
             schemas.insert(key, compiled);
         }
 
-        Ok(Self { schemas })
+        Ok(Self {
+            schemas,
+            spec_version,
+        })
+    }
+
+    /// Get the spec version being used
+    pub fn spec_version(&self) -> SpecVersion {
+        self.spec_version
     }
 
     /// Validate prompt metadata
@@ -133,7 +151,7 @@ mod tests {
             }
         };
 
-        let schemas_dir = repo_root.join("schemas");
+        let schemas_dir = repo_root.join("specs/v1");
         let validator = SchemaValidator::load(&schemas_dir);
 
         match validator {
@@ -142,6 +160,7 @@ mod tests {
                 assert!(v.schemas.contains_key("tool-meta"));
                 assert!(v.schemas.contains_key("hook-meta"));
                 assert!(v.schemas.contains_key("model-config"));
+                assert_eq!(v.spec_version(), SpecVersion::V1);
             }
             Err(e) => {
                 eprintln!("Warning: Could not load schemas: {}", e);
@@ -159,7 +178,7 @@ mod tests {
             }
         };
 
-        let schemas_dir = repo_root.join("schemas");
+        let schemas_dir = repo_root.join("specs/v1");
         let validator = match SchemaValidator::load(&schemas_dir) {
             Ok(v) => v,
             Err(_) => {
@@ -204,7 +223,7 @@ mod tests {
             }
         };
 
-        let schemas_dir = repo_root.join("schemas");
+        let schemas_dir = repo_root.join("specs/v1");
         let validator = match SchemaValidator::load(&schemas_dir) {
             Ok(v) => v,
             Err(_) => {
@@ -235,7 +254,7 @@ mod tests {
             }
         };
 
-        let schemas_dir = repo_root.join("schemas");
+        let schemas_dir = repo_root.join("specs/v1");
         let validator = match SchemaValidator::load(&schemas_dir) {
             Ok(v) => v,
             Err(_) => {
@@ -265,7 +284,7 @@ mod tests {
             }
         };
 
-        let schemas_dir = repo_root.join("schemas");
+        let schemas_dir = repo_root.join("specs/v1");
         let validator = match SchemaValidator::load(&schemas_dir) {
             Ok(v) => v,
             Err(_) => {
@@ -299,7 +318,7 @@ mod tests {
             }
         };
 
-        let schemas_dir = repo_root.join("schemas");
+        let schemas_dir = repo_root.join("specs/v1");
         let validator = match SchemaValidator::load(&schemas_dir) {
             Ok(v) => v,
             Err(_) => {

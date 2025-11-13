@@ -112,6 +112,7 @@ mod tests {
 
         assert!(result.contains("id: test-agent"));
         assert!(result.contains("kind: agent"));
+        assert!(result.contains("spec_version: \"v1\""));
         assert!(result.contains("category: testing"));
         assert!(result.contains("summary: \"A test agent for unit tests\""));
         assert!(result.contains("as_system: true"));
@@ -383,6 +384,7 @@ mod tests {
         let yaml = parsed.unwrap();
         assert_eq!(yaml["id"], "test-agent");
         assert_eq!(yaml["kind"], "agent");
+        assert_eq!(yaml["spec_version"], "v1");
         assert_eq!(yaml["category"], "testing");
     }
 

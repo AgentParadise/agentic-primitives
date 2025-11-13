@@ -4,16 +4,66 @@ This document provides a comprehensive overview of the agentic-primitives system
 
 ## Table of Contents
 
-1. [System Overview](#system-overview)
-2. [Core Concepts](#core-concepts)
-3. [Repository Structure](#repository-structure)
-4. [Data Structures](#data-structures)
-5. [Validation System](#validation-system)
-6. [Versioning System](#versioning-system)
-7. [Provider System](#provider-system)
-8. [Hook System](#hook-system)
-9. [CLI Architecture](#cli-architecture)
-10. [Data Flows](#data-flows)
+1. [System-Level Versioning](#system-level-versioning)
+2. [System Overview](#system-overview)
+3. [Core Concepts](#core-concepts)
+4. [Repository Structure](#repository-structure)
+5. [Data Structures](#data-structures)
+6. [Validation System](#validation-system)
+7. [Versioning System](#versioning-system)
+8. [Provider System](#provider-system)
+9. [Hook System](#hook-system)
+10. [CLI Architecture](#cli-architecture)
+11. [Data Flows](#data-flows)
+
+---
+
+## System-Level Versioning
+
+The agentic primitives repository uses **system-level versioning** to allow architectural evolution without breaking existing work.
+
+### Version Directories
+
+All specifications and primitives are organized by version:
+
+```
+/specs/
+  v1/                          # v1 contract layer
+    *.schema.json
+  v2/                          # Future: v2 contract (when needed)
+
+/primitives/
+  v1/                          # v1 primitives
+    prompts/...
+    tools/...
+    hooks/...
+  v2/                          # Future: v2 primitives
+  experimental/                # Sandbox for v2+ testing
+```
+
+### Current Version: v1
+
+- **Status**: Active
+- **Structure**: Generic provider-agnostic primitives
+- **Organized by**: Type → Category → ID
+- **Metadata**: `spec_version: "v1"` in meta.yaml
+
+### Evolution Strategy
+
+When the architecture needs fundamental changes:
+
+1. **Experiment** in `/primitives/experimental/`
+2. **Stabilize** the new approach
+3. **Create v2**:
+   - New schemas in `/specs/v2/`
+   - New structure in `/primitives/v2/`
+   - v2-aware CLI validators
+4. **Coexist**: v1 and v2 work in parallel
+5. **Migrate gradually** (optional): `agentic migrate spec v1 v2`
+
+This prevents the "1-2 week refactor" scenario when architectural assumptions change.
+
+See **ADR 010: System-Level Versioning** and `docs/versioning-guide.md` for complete details.
 
 ---
 
@@ -142,31 +192,43 @@ Only primitives are version-controlled. Provider files are build artifacts.
 ```
 agentic-primitives/
 │
-├── prompts/                    # Prompt primitives
-│   ├── agents/                 # Router structure:
-│   │   └── <category>/         # /agents/<category>/<id>
-│   │       └── <id>/
-│   │           ├── <id>.prompt.v1.md
-│   │           └── <id>.meta.yaml
-│   ├── commands/
-│   │   └── <category>/         # /commands/<category>/<id>
-│   ├── skills/
-│   │   └── <category>/         # /skills/<category>/<id>
-│   └── meta-prompts/
-│       └── <category>/         # /meta-prompts/<category>/<id>
+├── specs/                      # Versioned specifications
+│   └── v1/                     # v1 schemas (active)
+│       ├── prompt-meta.schema.json
+│       ├── tool-meta.schema.json
+│       ├── hook-meta.schema.json
+│       ├── model-config.schema.json
+│       └── provider-impl.schema.json
 │
-├── tools/                      # Tool primitives
-│   └── <category>/             # /tools/<category>/<id>
-│       └── <id>/
-│           ├── tool.meta.yaml
-│           └── impl.*
-│
-├── hooks/                      # Hook primitives
-│   └── <category>/             # /hooks/<category>/<id>
-│       └── <id>/
-│           ├── hook.meta.yaml
-│           ├── impl.python.py
-│           └── middleware/
+├── primitives/                 # Versioned primitives
+│   ├── v1/                     # v1 structure (active)
+│   │   ├── prompts/            # Prompt primitives
+│   │   │   ├── agents/         # Router structure:
+│   │   │   │   └── <category>/ # /agents/<category>/<id>
+│   │   │   │       └── <id>/
+│   │   │   │           ├── prompt.v1.md
+│   │   │   │           └── meta.yaml
+│   │   │   ├── commands/
+│   │   │   │   └── <category>/ # /commands/<category>/<id>
+│   │   │   ├── skills/
+│   │   │   │   └── <category>/ # /skills/<category>/<id>
+│   │   │   └── meta-prompts/
+│   │   │       └── <category>/ # /meta-prompts/<category>/<id>
+│   │   │
+│   │   ├── tools/              # Tool primitives
+│   │   │   └── <category>/     # /tools/<category>/<id>
+│   │   │       └── <id>/
+│   │   │           ├── meta.yaml
+│   │   │           └── impl.*
+│   │   │
+│   │   └── hooks/              # Hook primitives
+│   │       └── <category>/     # /hooks/<category>/<id>
+│   │           └── <id>/
+│   │               ├── meta.yaml
+│   │               ├── impl.python.py
+│   │               └── middleware/
+│   │
+│   └── experimental/           # Sandbox for v2+ testing
 │
 ├── providers/                  # Provider adapters
 │   ├── <provider>/
@@ -174,16 +236,12 @@ agentic-primitives/
 │   │   ├── templates/          # Handlebars templates
 │   │   └── transformer/        # Transformation logic
 │
-├── schemas/                    # JSON Schemas
-│   ├── prompt-meta.schema.json
-│   ├── tool-meta.schema.json
-│   └── hook-meta.schema.json
-│
 ├── cli/                        # Rust CLI
 │   ├── src/
 │   └── tests/
 │
 └── docs/                       # Documentation
+    ├── versioning-guide.md     # Complete versioning documentation
     ├── adrs/                   # Architecture Decision Records
     ├── getting-started.md
     └── architecture.md
@@ -194,14 +252,14 @@ agentic-primitives/
 Primitives use a **router-like** nested structure:
 
 ```
-/<type>/<category>/<id>
+/primitives/<version>/<type>/<category>/<id>
 ```
 
 Examples:
-- `/prompts/agents/python/python-pro`
-- `/prompts/commands/review/code-review`
-- `/tools/shell/run-tests`
-- `/hooks/lifecycle/pre-tool-use`
+- `/primitives/v1/prompts/agents/python/python-pro`
+- `/primitives/v1/prompts/commands/review/code-review`
+- `/primitives/v1/tools/shell/run-tests`
+- `/primitives/v1/hooks/lifecycle/pre-tool-use`
 
 Benefits:
 - 🧭 Easy navigation for AI agents

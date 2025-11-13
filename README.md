@@ -107,30 +107,30 @@ agentic install --provider claude --global
 Organized by **kind** and **category** for router-like navigation:
 
 ```
-prompts/
+primitives/v1/prompts/
 ├── agents/<category>/<id>/          # Personas & roles
 ├── commands/<category>/<id>/        # Discrete tasks
 ├── skills/<category>/<id>/          # Knowledge overlays
 └── meta-prompts/<category>/<id>/    # Prompt generators
 ```
 
-**Example**: `prompts/agents/python/python-pro/`
+**Example**: `primitives/v1/prompts/agents/python/python-pro/`
 
 Each primitive contains:
-- `<id>.prompt.v1.md` - Versioned prompt content (for agents/commands/meta-prompts)
-- `<id>.prompt.md` - Unversioned (for skills, or opt-in versioning)
-- `<id>.meta.yaml` - Metadata with version registry, model preferences, tool dependencies
+- `prompt.v1.md` - Versioned prompt content (for agents/commands/meta-prompts)
+- `prompt.md` - Unversioned (for skills, or opt-in versioning)
+- `meta.yaml` - Metadata with version registry, model preferences, tool dependencies
 
 ### Tool Primitives
 
 Logical capability definitions with optional provider bindings:
 
 ```
-tools/<category>/<id>/
-├── tool.meta.yaml          # Generic specification
-├── impl.claude.yaml        # Claude SDK binding
-├── impl.openai.json        # OpenAI function calling
-└── impl.local.{rs|py|ts}   # Local implementation
+primitives/v1/tools/<category>/<id>/
+├── meta.yaml                  # Generic specification
+├── impl.claude.yaml           # Claude SDK binding
+├── impl.openai.json           # OpenAI function calling
+└── impl.local.{rs|py|ts}      # Local implementation
 ```
 
 ### Hook Primitives
@@ -138,8 +138,8 @@ tools/<category>/<id>/
 Lifecycle event handlers with **middleware pipelines**:
 
 ```
-hooks/<category>/<id>/
-├── hook.meta.yaml          # Event config & middleware list
+primitives/v1/hooks/<category>/<id>/
+├── meta.yaml               # Event config & middleware list
 ├── impl.python.py          # Orchestrator (uv)
 ├── impl.bun.ts             # Alternative (bun)
 └── middleware/
@@ -158,15 +158,14 @@ Agents, commands, and meta-prompts **require versioning**:
 
 ```yaml
 # In meta.yaml
+spec_version: "v1"
 versions:
   - version: 1
-    file: python-pro.prompt.v1.md
     status: active
     hash: blake3:abc123...
     created: "2025-11-13"
     notes: "Initial version"
   - version: 2
-    file: python-pro.prompt.v2.md
     status: draft
     hash: blake3:def456...
     created: "2025-11-14"
@@ -259,6 +258,7 @@ make git-hooks-install
 
 - **[Getting Started Guide](docs/getting-started.md)** - Step-by-step tutorial
 - **[Architecture](docs/architecture.md)** - System design and diagrams
+- **[Versioning Guide](docs/versioning-guide.md)** - Complete versioning documentation
 - **[CLI Reference](docs/cli-reference.md)** - All commands and options
 - **[Hooks Guide](docs/hooks-guide.md)** - Writing middleware and orchestrators
 - **[Contributing](docs/contributing.md)** - How to contribute
@@ -275,6 +275,7 @@ make git-hooks-install
 - [ADR-007: Generated Provider Outputs](docs/adrs/007-generated-outputs.md)
 - [ADR-008: Test-Driven Development](docs/adrs/008-test-driven-development.md)
 - [ADR-009: Versioned Primitives](docs/adrs/009-versioned-primitives.md)
+- [ADR-010: System-Level Versioning](docs/adrs/010-system-level-versioning.md)
 
 ---
 
@@ -301,21 +302,45 @@ cd hooks && uv run pytest --cov
 
 ---
 
-## 🏗️ Project Structure
+## 🏗️ Repository Structure
 
 ```
 agentic-primitives/
-├── prompts/              # Prompt primitives (agents, commands, skills, meta-prompts)
-├── tools/                # Tool capability primitives
-├── hooks/                # Lifecycle event primitives
-├── providers/            # Provider-specific adapters (Claude, OpenAI, Cursor)
-├── schemas/              # JSON Schema validation
-├── cli/                  # Rust CLI tool
-├── docs/                 # Documentation and ADRs
-├── primitives.config.yaml
-├── Makefile
-└── README.md
+├── specs/                      # Versioned specification contracts
+│   └── v1/                     # v1 primitive schemas (active)
+│       ├── prompt-meta.schema.json
+│       ├── tool-meta.schema.json
+│       ├── hook-meta.schema.json
+│       ├── model-config.schema.json
+│       └── provider-impl.schema.json
+│
+├── primitives/                 # Versioned primitive storage
+│   ├── v1/                     # v1 primitives (active)
+│   │   ├── prompts/
+│   │   │   ├── agents/<category>/<id>/
+│   │   │   ├── commands/<category>/<id>/
+│   │   │   ├── skills/<category>/<id>/
+│   │   │   └── meta-prompts/<category>/<id>/
+│   │   ├── tools/<category>/<id>/
+│   │   └── hooks/<category>/<id>/
+│   └── experimental/           # Sandbox for v2+ testing
+│
+├── providers/                  # Provider-specific adapters
+│   ├── claude/
+│   ├── openai/
+│   ├── cursor/
+│   └── gemini/
+│
+├── cli/                        # Rust CLI tool
+└── docs/                       # Documentation
+    ├── versioning-guide.md     # Complete versioning documentation
+    └── adrs/                   # Architecture Decision Records
+        └── 010-system-level-versioning.md
 ```
+
+### Versioning
+
+This repository uses system-level versioning (v1, v2, ...) for architectural evolution. The current active version is **v1**. For details, see `docs/versioning-guide.md`.
 
 ---
 

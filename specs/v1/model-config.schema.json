@@ -1,7 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agentic-primitives.dev/schemas/model-config.schema.json",
-  "title": "Model Configuration Schema",
+  "$id": "https://agentic-primitives.dev/specs/v1/model-config.schema.json",
+  "specVersion": "v1",
+  "title": "Model Configuration Schema (v1)",
   "description": "Schema for AI model configuration files (provider-specific models)",
   "type": "object",
   "required": ["id", "full_name", "api_name", "provider", "capabilities", "performance", "pricing"],
