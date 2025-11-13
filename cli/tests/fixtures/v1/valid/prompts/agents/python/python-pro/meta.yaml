@@ -30,13 +30,13 @@ preferred_models:
 
 versions:
   - version: 1
-    file: prompt.v1.md
+    file: python-pro.v1.md
     status: deprecated
     hash: blake3:46f8dcdff309707477307690545f15247f16ed85881efaddceb5571ff3c042cd
     created: "2025-01-01"
     notes: Initial version with basic Python expertise
   - version: 2
-    file: prompt.v2.md
+    file: python-pro.v2.md
     status: active
     hash: blake3:73b8f53f8ed02c9e449e347053234754066c8e5883fc4f4a289ebdf2cf834418
     created: "2025-02-01"

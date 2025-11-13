@@ -7,7 +7,7 @@ preferred_models:
   - claude/missing-model
 versions:
   - version: 1
-    file: prompt.v1.md
+    file: missing-model.v1.md
     status: active
     created: "2025-01-01"
 default_version: 1

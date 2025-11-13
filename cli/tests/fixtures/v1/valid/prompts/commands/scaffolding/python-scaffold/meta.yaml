@@ -20,7 +20,7 @@ tools:
 
 versions:
   - version: 1
-    file: prompt.v1.md
+    file: python-scaffold.v1.md
     status: active
     hash: blake3:e8e8a5f5c0e3a2f1b8e8a5f5c0e3a2f1b8e8a5f5c0e3a2f1b8e8a5f5c0e3a2f1
     created: "2025-01-15"
