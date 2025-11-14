@@ -9,6 +9,6 @@ pub mod validate;
 pub mod version;
 
 // TODO: Wave 9 commands
-// pub mod build;        // Build provider outputs
-// pub mod install;      // Install to provider dirs
-// pub mod test_hook;    // Test hook locally
+pub mod build; // Build provider outputs
+pub mod install; // Install to provider dirs
+                 // pub mod test_hook;    // Test hook locally

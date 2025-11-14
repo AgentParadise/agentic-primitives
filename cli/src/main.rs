@@ -128,24 +128,60 @@ enum Commands {
 
     /// Build provider-specific outputs
     Build {
-        /// Provider (claude, openai, cursor)
+        /// Provider (claude, openai)
         #[arg(short, long)]
         provider: String,
 
-        /// Output directory
+        /// Output directory (default: ./build/<provider>/)
         #[arg(short, long)]
-        output: Option<String>,
+        output: Option<PathBuf>,
+
+        /// Build single primitive (path to primitive directory)
+        #[arg(long)]
+        primitive: Option<String>,
+
+        /// Filter by type (prompt, tool, hook)
+        #[arg(long)]
+        type_filter: Option<String>,
+
+        /// Filter by kind (agent, command, skill, etc.)
+        #[arg(long)]
+        kind: Option<String>,
+
+        /// Clean output directory before build
+        #[arg(long)]
+        clean: bool,
+
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
     },
 
-    /// Install to provider directory
+    /// Install built primitives to system or project location
     Install {
-        /// Provider (claude, openai, cursor)
+        /// Provider (claude, openai)
         #[arg(short, long)]
         provider: String,
 
-        /// Install globally
+        /// Install globally to user directory (default: project)
         #[arg(short, long)]
         global: bool,
+
+        /// Build directory to install from (default: ./build/<provider>/)
+        #[arg(long)]
+        build_dir: Option<PathBuf>,
+
+        /// Backup existing files before install (default: true)
+        #[arg(long, default_value = "true")]
+        backup: bool,
+
+        /// Dry-run mode (don't actually copy files)
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
     },
 
     /// Test a hook locally
@@ -338,14 +374,44 @@ fn main() {
 
         Commands::Migrate(args) => commands::migrate::execute(&args, &config),
 
-        Commands::Build { provider, output } => {
-            eprintln!("Build command not yet implemented (Wave 9): provider={provider}, output={output:?}");
-            std::process::exit(1);
+        Commands::Build {
+            provider,
+            output,
+            primitive,
+            type_filter,
+            kind,
+            clean,
+            verbose,
+        } => {
+            let args = commands::build::BuildArgs {
+                provider,
+                output,
+                primitive,
+                type_filter,
+                kind,
+                clean,
+                verbose,
+            };
+            commands::build::execute(&args, &config)
         }
 
-        Commands::Install { provider, global } => {
-            eprintln!("Install command not yet implemented (Wave 9): provider={provider}, global={global}");
-            std::process::exit(1);
+        Commands::Install {
+            provider,
+            global,
+            build_dir,
+            backup,
+            dry_run,
+            verbose,
+        } => {
+            let args = commands::install::InstallArgs {
+                provider,
+                global,
+                build_dir,
+                backup,
+                dry_run,
+                verbose,
+            };
+            commands::install::execute(&args, &config).map(|_| ())
         }
 
         Commands::TestHook { path, input } => {
