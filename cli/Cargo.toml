@@ -32,6 +32,7 @@ thiserror = "1.0"
 
 # File system
 walkdir = "2.5"
+dirs = "5.0"
 
 # Terminal output
 colored = "2.1"
