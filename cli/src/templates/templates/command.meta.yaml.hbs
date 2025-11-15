@@ -6,18 +6,18 @@ summary: "{{summary}}"
 {{#if tags}}
 tags:
 {{#each tags}}
-- {{this}}
+  - {{this}}
 {{/each}}
 {{/if}}
 
 defaults:
-preferred_models:
-- claude/sonnet
+  preferred_models:
+    - claude/sonnet
 
 context_usage:
-as_system: false
-as_user: true
-as_overlay: false
+  as_system: false
+  as_user: true
+  as_overlay: false
 
 tools: []
 
