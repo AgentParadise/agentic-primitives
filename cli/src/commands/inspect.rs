@@ -176,10 +176,7 @@ fn load_primitive_info(path: &Path, args: &InspectArgs) -> Result<InspectInfo> {
             let file_name = entry.file_name().to_string_lossy().to_string();
 
             // Check for {id}.tool.yaml or {id}.hook.yaml first
-            if file_name.ends_with(".tool.yaml") {
-                found_meta = Some(entry.path());
-                break;
-            } else if file_name.ends_with(".hook.yaml") {
+            if file_name.ends_with(".tool.yaml") || file_name.ends_with(".hook.yaml") {
                 found_meta = Some(entry.path());
                 break;
             } else if file_name == format!("{dir_name}.yaml") {

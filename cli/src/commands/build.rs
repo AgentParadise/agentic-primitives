@@ -89,16 +89,12 @@ fn has_metadata_file(path: &Path) -> bool {
     let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
     // Check for any metadata file format
-    let possible_files = [
-        format!("{dir_name}.yaml"),
-        format!("{dir_name}.tool.yaml"),
-        format!("{dir_name}.hook.yaml"),
-        "meta.yaml".to_string(),
-        "tool.meta.yaml".to_string(),
-        "hook.meta.yaml".to_string(),
-    ];
-
-    possible_files.iter().any(|f| path.join(f).exists())
+    path.join(format!("{dir_name}.yaml")).exists()
+        || path.join(format!("{dir_name}.tool.yaml")).exists()
+        || path.join(format!("{dir_name}.hook.yaml")).exists()
+        || path.join("meta.yaml").exists()
+        || path.join("tool.meta.yaml").exists()
+        || path.join("hook.meta.yaml").exists()
 }
 
 /// Check if a primitive should be included based on filters

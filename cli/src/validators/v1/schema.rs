@@ -89,20 +89,19 @@ impl SchemaValidator {
             .and_then(|n| n.to_str())
             .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
 
-        let possible_meta_files = vec![
+        // Try to find metadata file (prioritize new naming convention)
+        let meta_path = [
             format!("{}.yaml", dir_name),      // Prompt: {id}.yaml
             format!("{}.tool.yaml", dir_name), // Tool: {id}.tool.yaml
             format!("{}.hook.yaml", dir_name), // Hook: {id}.hook.yaml
             "meta.yaml".to_string(),           // Legacy prompt
             "tool.meta.yaml".to_string(),      // Legacy tool
             "hook.meta.yaml".to_string(),      // Legacy hook
-        ];
-
-        let meta_path = possible_meta_files
-            .iter()
-            .map(|f| primitive_path.join(f))
-            .find(|p| p.exists())
-            .ok_or_else(|| SchemaError::MissingMetaFile(primitive_path.display().to_string()))?;
+        ]
+        .iter()
+        .map(|f| primitive_path.join(f))
+        .find(|p| p.exists())
+        .ok_or_else(|| SchemaError::MissingMetaFile(primitive_path.display().to_string()))?;
 
         // Read and parse metadata file
         let meta_content = std::fs::read_to_string(&meta_path)
