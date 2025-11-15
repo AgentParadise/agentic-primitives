@@ -102,14 +102,15 @@ fn should_include_primitive(path: &Path, args: &BuildArgs) -> Result<bool> {
     // Type filter (prompt, tool, hook)
     if let Some(ref type_filter) = args.type_filter {
         let has_component = path.components().any(|c| {
-            c.as_os_str().to_string_lossy() == match type_filter.as_str() {
-                "prompt" => "prompts",
-                "tool" => "tools",
-                "hook" => "hooks",
-                _ => "",
-            }
+            c.as_os_str().to_string_lossy()
+                == match type_filter.as_str() {
+                    "prompt" => "prompts",
+                    "tool" => "tools",
+                    "hook" => "hooks",
+                    _ => "",
+                }
         });
-        
+
         if !has_component {
             if !matches!(type_filter.as_str(), "prompt" | "tool" | "hook") {
                 bail!("Invalid type filter: {type_filter}. Use: prompt, tool, hook");
@@ -121,10 +122,10 @@ fn should_include_primitive(path: &Path, args: &BuildArgs) -> Result<bool> {
     // Kind filter (agent, command, skill, etc.)
     if let Some(ref kind_filter) = args.kind {
         let kind_plural = format!("{kind_filter}s");
-        let has_kind = path.components().any(|c| {
-            c.as_os_str().to_string_lossy() == kind_plural
-        });
-        
+        let has_kind = path
+            .components()
+            .any(|c| c.as_os_str().to_string_lossy() == kind_plural);
+
         if !has_kind {
             return Ok(false);
         }
