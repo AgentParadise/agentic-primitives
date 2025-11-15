@@ -1,0 +1,59 @@
+name: Python Development
+description: Primitives for Python projects with FastAPI, pytest, and modern tooling
+icon: 🐍
+
+presets:
+  minimal:
+    agents:
+      - id: python/python-pro
+        description: Python expert with FastAPI and modern tooling expertise
+  
+  standard:
+    agents:
+      - id: python/python-pro
+        description: Python expert with FastAPI and modern tooling
+    commands:
+      - id: python/refactor-code
+        description: Refactor Python code following PEP 8 and modern patterns
+      - id: python/write-tests
+        description: Write pytest tests with fixtures and parametrization
+    tools:
+      - id: shell/run-tests
+        description: Execute pytest with coverage reporting
+  
+  full:
+    skills:
+      - id: testing/pytest-patterns
+        description: Pytest best practices and advanced fixtures
+      - id: python/async-best-practices
+        description: Asyncio, ASGI, and concurrent programming patterns
+    hooks:
+      - id: safety/block-dangerous-commands
+        description: Block rm -rf, chmod 777, and other dangerous operations
+      - id: safety/protect-sensitive-files
+        description: Prevent modifications to .env, secrets, private keys
+      - id: observability/log-operations
+        description: Log all tool executions with timestamps and metadata
+
+providers:
+  default: claude
+  supported:
+    - claude
+    - openai
+
+tools_integration:
+  uv: true
+  pytest: true
+  ruff: true
+  mypy: true
+
+gitignore_entries:
+  - "*.pyc"
+  - "__pycache__/"
+  - ".pytest_cache/"
+  - ".mypy_cache/"
+  - ".ruff_cache/"
+  - "venv/"
+  - ".venv/"
+  - "*.egg-info/"
+

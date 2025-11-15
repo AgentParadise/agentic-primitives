@@ -1,0 +1,104 @@
+name: Security
+
+on:
+  schedule:
+    # Every Monday at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:  # Allow manual runs
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      
+      - name: Run cargo audit
+        run: cargo audit
+        working-directory: ./cli
+        continue-on-error: true
+        id: audit
+      
+      - name: Create issue if vulnerabilities found
+        if: steps.audit.outcome == 'failure'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🔒 Security vulnerabilities detected',
+              body: 'The weekly security audit found vulnerabilities. Please review the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.',
+              labels: ['security', 'dependencies']
+            })
+
+  outdated-dependencies:
+    name: Check Outdated Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-outdated
+        run: cargo install cargo-outdated
+      
+      - name: Check for outdated dependencies
+        run: cargo outdated --root-deps-only --format json > outdated.json
+        working-directory: ./cli
+        continue-on-error: true
+      
+      - name: Parse and report
+        run: |
+          echo "## Outdated Dependencies Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cargo outdated --root-deps-only >> $GITHUB_STEP_SUMMARY
+        working-directory: ./cli
+      
+      - name: Upload report
+        uses: actions/upload-artifact@v3
+        with:
+          name: outdated-dependencies
+          path: cli/outdated.json
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-sbom
+        run: cargo install cargo-sbom
+      
+      - name: Generate SBOM (SPDX format)
+        run: cargo sbom --output-format spdx > sbom-spdx.json
+        working-directory: ./cli
+      
+      - name: Generate SBOM (CycloneDX format)
+        run: cargo sbom --output-format cyclonedx > sbom-cyclonedx.json
+        working-directory: ./cli
+      
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: sbom
+          path: |
+            cli/sbom-spdx.json
+            cli/sbom-cyclonedx.json
+

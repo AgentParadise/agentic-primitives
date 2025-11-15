@@ -1,0 +1,55 @@
+name: Rust Development
+description: Primitives for Rust projects with cargo and clippy
+icon: 🦀
+
+presets:
+  minimal:
+    agents:
+      - id: rust/rust-expert
+        description: Rust expert with systems programming knowledge
+  
+  standard:
+    agents:
+      - id: rust/rust-expert
+        description: Rust expert
+      - id: rust/systems-programmer
+        description: Systems programming specialist
+    commands:
+      - id: rust/refactor-rust
+        description: Refactor Rust code following idioms
+      - id: rust/write-tests
+        description: Write unit and integration tests
+    tools:
+      - id: shell/cargo-test
+        description: Run cargo tests
+      - id: shell/cargo-clippy
+        description: Run clippy lints
+  
+  full:
+    skills:
+      - id: rust/ownership-patterns
+        description: Ownership and borrowing patterns
+      - id: rust/error-handling
+        description: Error handling with Result and Option
+    hooks:
+      - id: safety/block-dangerous-commands
+        description: Safety checks
+      - id: observability/log-operations
+        description: Operation logging
+
+providers:
+  default: claude
+  supported:
+    - claude
+    - openai
+
+tools_integration:
+  cargo: true
+  rustc: true
+  clippy: true
+
+gitignore_entries:
+  - "target/"
+  - "Cargo.lock"
+  - "**/*.rs.bk"
+
