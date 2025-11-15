@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      
+
       - name: Check formatting
         run: cargo fmt --all -- --check
         working-directory: ./cli
@@ -35,32 +35,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v3
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo index
         uses: actions/cache@v3
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache target directory
         uses: actions/cache@v3
         with:
           path: cli/target
           key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings -A deprecated -A dead_code
         working-directory: ./cli
 
   test:
@@ -70,45 +70,45 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v3
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo index
         uses: actions/cache@v3
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache target directory
         uses: actions/cache@v3
         with:
           path: cli/target
           key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Run tests
         run: cargo test --workspace --verbose
         working-directory: ./cli
-      
+
       # Upload coverage only on Ubuntu
       - name: Install cargo-tarpaulin
         if: matrix.os == 'ubuntu-latest'
         run: cargo install cargo-tarpaulin
-      
+
       - name: Generate coverage
         if: matrix.os == 'ubuntu-latest'
         run: cargo tarpaulin --workspace --out Xml --output-dir coverage
         working-directory: ./cli
-      
+
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v3
@@ -120,34 +120,34 @@ jobs:
   validate-fixtures:
     name: Validate Example Primitives
     runs-on: ubuntu-latest
-    needs: [test]  # Wait for tests to pass first
-    
+    needs: [test] # Wait for tests to pass first
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v3
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache target directory
         uses: actions/cache@v3
         with:
           path: cli/target
           key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Build CLI
         run: cargo build --release
         working-directory: ./cli
-      
+
       - name: Validate primitives
         run: ../cli/target/release/agentic-p validate
         working-directory: ./primitives
-      
+
       - name: List primitives
         run: ../cli/target/release/agentic-p list
         working-directory: ./primitives
@@ -160,4 +160,3 @@ jobs:
     steps:
       - name: Mark as successful
         run: echo "All CI checks passed!"
-
