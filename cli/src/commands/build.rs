@@ -65,21 +65,40 @@ fn discover_primitives(args: &BuildArgs, config: &PrimitivesConfig) -> Result<Ve
     }
 
     for entry in WalkDir::new(&primitives_dir)
-        .min_depth(3)
-        .max_depth(5)
+        .min_depth(1)
+        .max_depth(10)
         .into_iter()
-        .filter_entry(|e| e.file_type().is_dir())
+        .filter_map(|e| e.ok())
     {
-        let entry = entry?;
         let path = entry.path();
 
-        // Apply filters
-        if should_include_primitive(path, args)? {
-            primitives.push(path.to_path_buf());
+        // Check if this directory contains a metadata file
+        if path.is_dir() && has_metadata_file(path) {
+            // Apply filters
+            if should_include_primitive(path, args)? {
+                primitives.push(path.to_path_buf());
+            }
         }
     }
 
     Ok(primitives)
+}
+
+/// Check if a directory contains a metadata file
+fn has_metadata_file(path: &Path) -> bool {
+    let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+    // Check for any metadata file format
+    let possible_files = [
+        format!("{dir_name}.yaml"),
+        format!("{dir_name}.tool.yaml"),
+        format!("{dir_name}.hook.yaml"),
+        "meta.yaml".to_string(),
+        "tool.meta.yaml".to_string(),
+        "hook.meta.yaml".to_string(),
+    ];
+
+    possible_files.iter().any(|f| path.join(f).exists())
 }
 
 /// Check if a primitive should be included based on filters

@@ -189,9 +189,17 @@ enum Commands {
         /// Hook path
         path: String,
 
-        /// Input JSON file
+        /// Input JSON file or inline JSON
         #[arg(short, long)]
         input: String,
+
+        /// Output JSON format
+        #[arg(long)]
+        json: bool,
+
+        /// Verbose output (show stdout/stderr)
+        #[arg(short, long)]
+        verbose: bool,
     },
 }
 
@@ -414,9 +422,19 @@ fn main() {
             commands::install::execute(&args, &config).map(|_| ())
         }
 
-        Commands::TestHook { path, input } => {
-            eprintln!("TestHook command not yet implemented (Wave 10): path={path}, input={input}");
-            std::process::exit(1);
+        Commands::TestHook {
+            path,
+            input,
+            json,
+            verbose,
+        } => {
+            let args = commands::test_hook::TestHookArgs {
+                path,
+                input,
+                json,
+                verbose,
+            };
+            commands::test_hook::execute(&args, &config).map(|_| ())
         }
     };
 

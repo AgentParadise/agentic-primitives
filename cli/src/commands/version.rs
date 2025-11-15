@@ -150,7 +150,7 @@ fn bump_version(
     config: &PrimitivesConfig,
 ) -> Result<()> {
     let primitive_path = resolve_primitive_path(primitive, config)?;
-    let meta_path = primitive_path.join("meta.yaml");
+    let meta_path = get_meta_path(&primitive_path)?;
     let mut meta = load_meta(&primitive_path)?;
 
     // Find highest version number
@@ -241,7 +241,7 @@ fn promote_version(
     config: &PrimitivesConfig,
 ) -> Result<()> {
     let primitive_path = resolve_primitive_path(primitive, config)?;
-    let meta_path = primitive_path.join("meta.yaml");
+    let meta_path = get_meta_path(&primitive_path)?;
     let mut meta = load_meta(&primitive_path)?;
 
     // Find version entry
@@ -289,7 +289,7 @@ fn deprecate_version(
     config: &PrimitivesConfig,
 ) -> Result<()> {
     let primitive_path = resolve_primitive_path(primitive, config)?;
-    let meta_path = primitive_path.join("meta.yaml");
+    let meta_path = get_meta_path(&primitive_path)?;
     let mut meta = load_meta(&primitive_path)?;
 
     // Find version entry
@@ -484,23 +484,39 @@ fn resolve_primitive_path(primitive: &str, config: &PrimitivesConfig) -> Result<
     anyhow::bail!("Primitive not found: {primitive}")
 }
 
+/// Get the meta file path for a primitive directory
+fn get_meta_path(primitive_path: &Path) -> Result<PathBuf> {
+    // Try new naming convention first ({id}.yaml), then fall back to legacy (meta.yaml)
+    let dir_name = primitive_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    let id_meta_path = primitive_path.join(format!("{dir_name}.yaml"));
+    let legacy_meta_path = primitive_path.join("meta.yaml");
+
+    if id_meta_path.exists() {
+        Ok(id_meta_path)
+    } else if legacy_meta_path.exists() {
+        Ok(legacy_meta_path)
+    } else {
+        anyhow::bail!("No meta file found in {}", primitive_path.display())
+    }
+}
+
 /// Load meta.yaml from primitive directory
 fn load_meta(primitive_path: &Path) -> Result<PromptMeta> {
-    let meta_path = primitive_path.join("meta.yaml");
-    if !meta_path.exists() {
-        anyhow::bail!("meta.yaml not found in {}", primitive_path.display());
-    }
+    let meta_path = get_meta_path(primitive_path)?;
 
-    let content = fs::read_to_string(&meta_path).context("Failed to read meta.yaml")?;
-    let meta: PromptMeta = serde_yaml::from_str(&content).context("Failed to parse meta.yaml")?;
+    let content = fs::read_to_string(&meta_path).context("Failed to read meta file")?;
+    let meta: PromptMeta = serde_yaml::from_str(&content).context("Failed to parse meta file")?;
 
     Ok(meta)
 }
 
 /// Save meta.yaml to primitive directory
 fn save_meta(meta_path: &Path, meta: &PromptMeta) -> Result<()> {
-    let yaml = serde_yaml::to_string(meta).context("Failed to serialize meta.yaml")?;
-    fs::write(meta_path, yaml).context("Failed to write meta.yaml")?;
+    let yaml = serde_yaml::to_string(meta).context("Failed to serialize meta file")?;
+    fs::write(meta_path, yaml).context("Failed to write meta file")?;
     Ok(())
 }
 

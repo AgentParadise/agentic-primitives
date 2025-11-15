@@ -122,7 +122,8 @@ fn find_primitives(path: &Path) -> Result<Vec<PathBuf>> {
             primitives.push(parent.to_path_buf());
         }
     } else if path.is_dir() {
-        // Recursively find all primitives (directories with meta.yaml, tool.meta.yaml, or hook.meta.yaml)
+        // Recursively find all primitives (directories with metadata files)
+        // Supports both new ({id}.yaml, {id}.tool.yaml, {id}.hook.yaml) and legacy formats
         for entry in WalkDir::new(path)
             .min_depth(1)
             .max_depth(10)
@@ -130,10 +131,20 @@ fn find_primitives(path: &Path) -> Result<Vec<PathBuf>> {
             .filter_map(|e| e.ok())
         {
             let file_name = entry.file_name().to_string_lossy();
-            if file_name == "meta.yaml"
+
+            // Check for metadata files in both new and legacy formats
+            let is_meta_file = file_name == "meta.yaml"
                 || file_name == "tool.meta.yaml"
                 || file_name == "hook.meta.yaml"
-            {
+                || (file_name.ends_with(".yaml")
+                    && !file_name.starts_with('.')
+                    && (file_name.ends_with(".tool.yaml")
+                        || file_name.ends_with(".hook.yaml")
+                        || (!file_name.contains(".tool.")
+                            && !file_name.contains(".hook.")
+                            && !file_name.contains(".v"))));
+
+            if is_meta_file {
                 if let Some(parent) = entry.path().parent() {
                     primitives.push(parent.to_path_buf());
                 }

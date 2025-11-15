@@ -120,18 +120,26 @@ fn discover_primitives(path: &Path) -> Result<Vec<PrimitiveInfo>> {
     {
         let file_name = entry.file_name().to_string_lossy();
 
-        // Look for meta files
-        if file_name == "meta.yaml" {
-            if let Ok(info) = extract_prompt_info(entry.path()) {
-                primitives.push(info);
-            }
-        } else if file_name == "tool.meta.yaml" {
+        // Look for meta files (new naming convention and legacy)
+        if file_name.ends_with(".tool.yaml") {
             if let Ok(info) = extract_tool_info(entry.path()) {
                 primitives.push(info);
             }
-        } else if file_name == "hook.meta.yaml" {
+        } else if file_name.ends_with(".hook.yaml") {
             if let Ok(info) = extract_hook_info(entry.path()) {
                 primitives.push(info);
+            }
+        } else if file_name == "meta.yaml"
+            || (file_name.ends_with(".yaml")
+                && !file_name.contains("tool.")
+                && !file_name.contains("hook."))
+        {
+            // Check if it's a prompt meta file (either legacy meta.yaml or {id}.yaml)
+            // Skip primitive config files and other non-meta yamls
+            if file_name != "primitives.config.yaml" {
+                if let Ok(info) = extract_prompt_info(entry.path()) {
+                    primitives.push(info);
+                }
             }
         }
     }
