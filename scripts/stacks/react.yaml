@@ -1,0 +1,55 @@
+name: React Development
+description: Primitives for React applications with component patterns
+icon: ⚛️
+
+presets:
+  minimal:
+    agents:
+      - id: react/react-expert
+        description: React expert with hooks and modern patterns
+  
+  standard:
+    agents:
+      - id: react/react-expert
+        description: React expert
+      - id: react/component-architect
+        description: Component design and architecture specialist
+    commands:
+      - id: react/create-component
+        description: Create new React components with tests
+      - id: react/refactor-hooks
+        description: Refactor to modern hooks patterns
+    tools:
+      - id: shell/run-tests
+        description: Run component tests
+  
+  full:
+    skills:
+      - id: react/hooks-patterns
+        description: Advanced React hooks patterns
+      - id: testing/react-testing-library
+        description: Component testing best practices
+    hooks:
+      - id: safety/block-dangerous-commands
+        description: Safety checks
+      - id: observability/log-operations
+        description: Operation logging
+
+providers:
+  default: claude
+  supported:
+    - claude
+    - openai
+
+tools_integration:
+  react: true
+  vite: true
+  vitest: true
+
+gitignore_entries:
+  - "node_modules/"
+  - "dist/"
+  - ".next/"
+  - ".vercel/"
+  - "storybook-static/"
+

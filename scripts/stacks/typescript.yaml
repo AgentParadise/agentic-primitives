@@ -1,0 +1,54 @@
+name: TypeScript Development
+description: Primitives for TypeScript projects with Bun and modern tooling
+icon: 📘
+
+presets:
+  minimal:
+    agents:
+      - id: typescript/typescript-pro
+        description: TypeScript expert with Bun and modern patterns
+  
+  standard:
+    agents:
+      - id: typescript/typescript-pro
+        description: TypeScript expert
+    commands:
+      - id: typescript/refactor-code
+        description: Refactor TypeScript following best practices
+      - id: typescript/write-tests
+        description: Write tests with Vitest or Jest
+    tools:
+      - id: shell/run-tests
+        description: Execute tests with coverage
+  
+  full:
+    skills:
+      - id: testing/vitest-patterns
+        description: Modern testing with Vitest
+      - id: typescript/advanced-types
+        description: Advanced TypeScript type patterns
+    hooks:
+      - id: safety/block-dangerous-commands
+        description: Block dangerous shell operations
+      - id: observability/log-operations
+        description: Log tool executions
+
+providers:
+  default: claude
+  supported:
+    - claude
+    - openai
+
+tools_integration:
+  bun: true
+  node: true
+  vitest: true
+  typescript: true
+
+gitignore_entries:
+  - "node_modules/"
+  - "dist/"
+  - "build/"
+  - ".turbo/"
+  - "*.log"
+
