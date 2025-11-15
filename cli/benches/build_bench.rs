@@ -43,7 +43,7 @@ fn build_single_primitive(c: &mut Criterion) {
             let prim_path = temp_dir
                 .path()
                 .join("primitives/v1/prompts/agents/testing/test-agent-0");
-            let meta = fs::read_to_string(prim_path.join("test-agent-0.yaml")).unwrap();
+            let _meta = fs::read_to_string(prim_path.join("test-agent-0.yaml")).unwrap();
             let content = fs::read_to_string(prim_path.join("test-agent-0.v1.md")).unwrap();
 
             // Simulate transformation
@@ -63,7 +63,7 @@ fn build_100_primitives(c: &mut Criterion) {
             for i in 0..100 {
                 let prim_id = format!("test-agent-{i}");
                 let prim_path = base_path.join(&prim_id);
-                let meta = fs::read_to_string(prim_path.join(format!("{prim_id}.yaml"))).unwrap();
+                let _meta = fs::read_to_string(prim_path.join(format!("{prim_id}.yaml"))).unwrap();
                 let content =
                     fs::read_to_string(prim_path.join(format!("{prim_id}.v1.md"))).unwrap();
 
