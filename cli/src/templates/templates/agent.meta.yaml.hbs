@@ -6,21 +6,21 @@ summary: "{{summary}}"
 {{#if tags}}
 tags:
 {{#each tags}}
-- {{this}}
+  - {{this}}
 {{/each}}
 {{/if}}
 
 defaults:
-preferred_models:
-- claude/sonnet
+  preferred_models:
+    - claude/sonnet
 {{#if max_iterations}}
-max_iterations: {{max_iterations}}
+  max_iterations: {{max_iterations}}
 {{/if}}
 
 context_usage:
-as_system: true
-as_user: false
-as_overlay: false
+  as_system: true
+  as_user: false
+  as_overlay: false
 
 tools: []
 

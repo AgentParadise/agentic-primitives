@@ -6,19 +6,19 @@ summary: "{{summary}}"
 {{#if tags}}
 tags:
 {{#each tags}}
-- {{this}}
+  - {{this}}
 {{/each}}
 {{/if}}
 
 defaults:
-preferred_models:
-- claude/opus
-- claude/sonnet
+  preferred_models:
+    - claude/opus
+    - claude/sonnet
 
 context_usage:
-as_system: true
-as_user: false
-as_overlay: false
+  as_system: true
+  as_user: false
+  as_overlay: false
 
 tools: []
 
