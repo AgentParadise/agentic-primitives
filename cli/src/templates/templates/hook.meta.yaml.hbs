@@ -1,11 +1,11 @@
 id: {{id}}
 kind: {{kind}}
-spec_version: "v1"
 category: {{category}}
 event: {{event}}
 summary: "{{summary}}"
 
-execution: pipeline
+execution:
+  strategy: pipeline
 
 middleware:
   - id: main
@@ -14,11 +14,11 @@ middleware:
     enabled: true
 
 providers:
-  - claude
+  claude:
+    impl_file: "impl.python.py"
 
 {{#if default_decision}}
 default_decision: {{default_decision}}
 {{/if}}
 
-versions: []
 

@@ -1,35 +1,25 @@
 id: {{id}}
 kind: meta-prompt
-spec_version: "v1"
 category: {{category}}
-{{#if domain}}
-domain: {{domain}}
-{{/if}}
+domain: {{#if domain}}{{domain}}{{else}}meta{{/if}}
 summary: "{{summary}}"
 {{#if tags}}
 tags:
 {{#each tags}}
-  - {{this}}
+- {{this}}
 {{/each}}
 {{/if}}
 
 defaults:
-  preferred_models:
-    - claude/opus
-    - claude/sonnet
+preferred_models:
+- claude/opus
+- claude/sonnet
 
 context_usage:
-  as_system: true
-  as_user: false
-  as_overlay: false
+as_system: true
+as_user: false
+as_overlay: false
 
 tools: []
 
-inputs:
-  - name: specification
-    type: string
-    required: true
-    description: "Specification of what to generate"
-
-versions: []
-
+inputs: {}

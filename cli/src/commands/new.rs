@@ -202,14 +202,17 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     });
 
     let prompt_content = renderer.render_prompt_content(&prompt_data)?;
-    // Filename must match directory name (id.v1.md, not prompt.v1.md)
-    let prompt_filename = format!("{}.v1.md", args.id);
+    // Filename must match pattern: {id}.prompt.v{N}.md
+    let prompt_filename = format!("{}.prompt.v1.md", args.id);
     let prompt_path = path.join(&prompt_filename);
     fs::write(&prompt_path, &prompt_content)
         .with_context(|| format!("Failed to write prompt: {prompt_path:?}"))?;
 
-    // 2. Calculate BLAKE3 hash
-    let hash = blake3::hash(prompt_content.as_bytes()).to_hex().to_string();
+    // 2. Calculate BLAKE3 hash with prefix
+    let hash = format!(
+        "blake3:{}",
+        blake3::hash(prompt_content.as_bytes()).to_hex()
+    );
 
     // 3. Render {id}.yaml with versions array
     let meta_data = serde_json::json!({
@@ -226,13 +229,14 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
         PromptKind::MetaPrompt => renderer.render_meta_prompt_meta(&meta_data)?,
     };
 
-    // Add versions array to {id}.yaml
+    // Add versions array to {id}.yaml with proper format
+    let created_date = Utc::now().format("%Y-%m-%d").to_string();
     let meta_with_versions = format!(
-        "{}\nversions:\n  - version: 1\n    file: {}\n    hash: \"{}\"\n    status: draft\n    created: \"{}\"\ndefault_version: 1\n",
+        "{}\nversions:\n  - version: 1\n    file: {}\n    hash: \"{}\"\n    status: active\n    created: \"{}\"\n    notes: \"Initial version\"\ndefault_version: 1\n",
         meta_content.trim_end(),
         prompt_filename,
         hash,
-        Utc::now().to_rfc3339()
+        created_date
     );
 
     let meta_filename = format!("{}.yaml", &args.id);
@@ -248,7 +252,7 @@ fn create_tool_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     // Render {id}.tool.yaml
     let tool_data = serde_json::json!({
         "id": &args.id,
-        "kind": "shell",  // Default kind
+        "kind": "tool",  // Correct kind for tools
         "category": &args.category,
         "description": format!("TODO: Describe what {} does", &args.id),
     });
@@ -261,7 +265,7 @@ fn create_tool_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     // Create stub implementation files
     fs::write(
         path.join("impl.claude.yaml"),
-        "# Claude MCP tool implementation\n# TODO: Add Claude-specific tool definition\n",
+        "# Claude MCP tool implementation\ncommand: \"echo\"\nargs:\n  - \"TODO: Implement tool\"\n",
     )
     .with_context(|| "Failed to write impl.claude.yaml")?;
 
@@ -280,7 +284,7 @@ fn create_hook_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     // Render {id}.hook.yaml
     let hook_data = serde_json::json!({
         "id": &args.id,
-        "kind": "safety",  // Default kind
+        "kind": "hook",  // Correct kind for hooks
         "category": &args.category,
         "event": "PreToolUse",  // Default event
         "summary": format!("TODO: Describe what {} does", &args.id),
@@ -538,17 +542,18 @@ mod tests {
         let result = create_prompt_primitive(&path, &args);
         assert!(result.is_ok());
 
-        // Check files exist (filename must match ID)
-        assert!(path.join("test-agent.v1.md").exists());
+        // Check files exist (new naming pattern)
+        assert!(path.join("test-agent.prompt.v1.md").exists());
         assert!(path.join("test-agent.yaml").exists());
 
-        // Check {id}.yaml has versions
+        // Check {id}.yaml has versions with correct format
         let meta_content = fs::read_to_string(path.join("test-agent.yaml")).unwrap();
         assert!(meta_content.contains("versions:"));
         assert!(meta_content.contains("version: 1"));
-        assert!(meta_content.contains("file: test-agent.v1.md"));
-        assert!(meta_content.contains("hash:"));
-        assert!(meta_content.contains("status: draft"));
+        assert!(meta_content.contains("file: test-agent.prompt.v1.md"));
+        assert!(meta_content.contains("hash: \"blake3:"));
+        assert!(meta_content.contains("status: active"));
+        assert!(meta_content.contains("notes:"));
     }
 
     #[test]

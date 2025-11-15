@@ -55,11 +55,11 @@ fn test_transform_agent_to_system_message() {
         .expect("messages should be array");
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0]["role"], "system");
-    assert!(messages[0]["content"].as_str().unwrap().len() > 0);
+    assert!(!messages[0]["content"].as_str().unwrap().is_empty());
 
     // Check metadata
     assert_eq!(json["metadata"]["domain"], "development");
-    assert!(json["metadata"]["tags"].as_array().unwrap().len() > 0);
+    assert!(!json["metadata"]["tags"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -164,7 +164,7 @@ fn test_transform_tool_to_function_calling() {
     // Check function definition
     let function = &json["function"];
     assert_eq!(function["name"], "run_tests"); // Hyphens converted to underscores
-    assert!(function["description"].as_str().unwrap().len() > 0);
+    assert!(!function["description"].as_str().unwrap().is_empty());
 
     // Check parameters
     let parameters = &function["parameters"];
@@ -204,7 +204,7 @@ fn test_transform_hook_to_middleware() {
     assert_eq!(json["event"], "pre_tool_use");
 
     // Check metadata
-    assert!(json["metadata"]["description"].as_str().unwrap().len() > 0);
+    assert!(!json["metadata"]["description"].as_str().unwrap().is_empty());
     assert!(json["metadata"]["execution"].is_string());
 }
 

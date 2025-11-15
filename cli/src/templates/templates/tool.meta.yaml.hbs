@@ -1,6 +1,5 @@
 id: {{id}}
 kind: {{kind}}
-spec_version: "v1"
 category: {{category}}
 description: "{{description}}"
 
@@ -16,7 +15,8 @@ safety:
   allow_write: false
 
 providers:
-  - local
+  local:
+    impl_file: "impl.local.py"
+    runtime: "python"
 
-versions: []
 

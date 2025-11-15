@@ -52,19 +52,36 @@ impl StructuralValidator {
             return Err(StructuralError::NotADirectory(primitive_path.to_path_buf()).into());
         }
 
-        // Check for meta.yaml file
-        let meta_path = primitive_path.join("meta.yaml");
-        if !meta_path.exists() {
-            return Err(StructuralError::MissingFile {
-                path: primitive_path.to_path_buf(),
-                file: "meta.yaml".to_string(),
-            }
-            .into());
-        }
+        // Check for metadata file - try multiple naming conventions
+        // Priority: {id}.yaml > {id}.tool.yaml > {id}.hook.yaml > meta.yaml (legacy)
+        let dir_name = primitive_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
 
-        // Parse meta.yaml to get primitive type and ID
+        let possible_meta_files = vec![
+            format!("{}.yaml", dir_name),      // Prompt: {id}.yaml
+            format!("{}.tool.yaml", dir_name), // Tool: {id}.tool.yaml
+            format!("{}.hook.yaml", dir_name), // Hook: {id}.hook.yaml
+            "meta.yaml".to_string(),           // Legacy prompt
+            "tool.meta.yaml".to_string(),      // Legacy tool
+            "hook.meta.yaml".to_string(),      // Legacy hook
+        ];
+
+        let meta_path = possible_meta_files
+            .iter()
+            .map(|f| primitive_path.join(f))
+            .find(|p| p.exists())
+            .ok_or_else(|| StructuralError::MissingFile {
+                path: primitive_path.to_path_buf(),
+                file: format!(
+                    "{dir_name}.yaml, {dir_name}.tool.yaml, {dir_name}.hook.yaml, or meta.yaml"
+                ),
+            })?;
+
+        // Parse metadata file to get primitive type and ID
         let meta_content = std::fs::read_to_string(&meta_path)
-            .with_context(|| format!("Failed to read meta.yaml from {}", meta_path.display()))?;
+            .with_context(|| format!("Failed to read metadata from {}", meta_path.display()))?;
 
         let meta: Value = serde_yaml::from_str(&meta_content)
             .with_context(|| format!("Failed to parse meta.yaml from {}", meta_path.display()))?;
@@ -202,12 +219,15 @@ impl StructuralValidator {
                     .and_then(|n| n.to_str())
                     .context("Invalid primitive directory name")?;
 
-                // Prompts require at least one version file matching pattern: {id}.v{N}.md
+                // Prompts require at least one version file matching pattern:
+                // {id}.prompt.v{N}.md (new) or {id}.v{N}.md (legacy)
                 let has_version_file = std::fs::read_dir(primitive_path)?
                     .filter_map(|e| e.ok())
                     .any(|e| {
                         let filename = e.file_name().to_string_lossy().to_string();
-                        filename.starts_with(&format!("{dir_name}.v")) && filename.ends_with(".md")
+                        (filename.starts_with(&format!("{dir_name}.prompt.v"))
+                            || filename.starts_with(&format!("{dir_name}.v")))
+                            && filename.ends_with(".md")
                     });
 
                 if !has_version_file {
@@ -215,23 +235,37 @@ impl StructuralValidator {
                 }
             }
             "tool" => {
-                // Tools require tool.meta.yaml
-                let tool_meta = primitive_path.join("tool.meta.yaml");
-                if !tool_meta.exists() {
+                // Tools require {id}.tool.yaml or tool.meta.yaml (legacy)
+                let dir_name = primitive_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .context("Invalid tool directory name")?;
+
+                let new_tool_meta = primitive_path.join(format!("{dir_name}.tool.yaml"));
+                let legacy_tool_meta = primitive_path.join("tool.meta.yaml");
+
+                if !new_tool_meta.exists() && !legacy_tool_meta.exists() {
                     return Err(StructuralError::MissingFile {
                         path: primitive_path.to_path_buf(),
-                        file: "tool.meta.yaml".to_string(),
+                        file: format!("{dir_name}.tool.yaml or tool.meta.yaml"),
                     }
                     .into());
                 }
             }
             "hook" => {
-                // Hooks require hook.meta.yaml
-                let hook_meta = primitive_path.join("hook.meta.yaml");
-                if !hook_meta.exists() {
+                // Hooks require {id}.hook.yaml or hook.meta.yaml (legacy)
+                let dir_name = primitive_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .context("Invalid hook directory name")?;
+
+                let new_hook_meta = primitive_path.join(format!("{dir_name}.hook.yaml"));
+                let legacy_hook_meta = primitive_path.join("hook.meta.yaml");
+
+                if !new_hook_meta.exists() && !legacy_hook_meta.exists() {
                     return Err(StructuralError::MissingFile {
                         path: primitive_path.to_path_buf(),
-                        file: "hook.meta.yaml".to_string(),
+                        file: format!("{dir_name}.hook.yaml or hook.meta.yaml"),
                     }
                     .into());
                 }

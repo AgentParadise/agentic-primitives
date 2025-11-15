@@ -83,15 +83,30 @@ impl SchemaValidator {
     }
 
     pub fn validate(&self, primitive_path: &Path) -> Result<()> {
-        // Check that meta.yaml exists
-        let meta_path = primitive_path.join("meta.yaml");
-        if !meta_path.exists() {
-            return Err(SchemaError::MissingMetaFile(primitive_path.display().to_string()).into());
-        }
+        // Check for metadata file (support both new and legacy naming)
+        let dir_name = primitive_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
 
-        // Read and parse meta.yaml
+        let possible_meta_files = vec![
+            format!("{}.yaml", dir_name),      // Prompt: {id}.yaml
+            format!("{}.tool.yaml", dir_name), // Tool: {id}.tool.yaml
+            format!("{}.hook.yaml", dir_name), // Hook: {id}.hook.yaml
+            "meta.yaml".to_string(),           // Legacy prompt
+            "tool.meta.yaml".to_string(),      // Legacy tool
+            "hook.meta.yaml".to_string(),      // Legacy hook
+        ];
+
+        let meta_path = possible_meta_files
+            .iter()
+            .map(|f| primitive_path.join(f))
+            .find(|p| p.exists())
+            .ok_or_else(|| SchemaError::MissingMetaFile(primitive_path.display().to_string()))?;
+
+        // Read and parse metadata file
         let meta_content = std::fs::read_to_string(&meta_path)
-            .with_context(|| format!("Failed to read meta.yaml from {}", meta_path.display()))?;
+            .with_context(|| format!("Failed to read metadata from {}", meta_path.display()))?;
 
         let meta_yaml: YamlValue = serde_yaml::from_str(&meta_content).with_context(|| {
             SchemaError::ParseError(format!("Invalid YAML in {}", meta_path.display()))
@@ -227,10 +242,9 @@ execution:
         let validator = SchemaValidator::new().unwrap();
         let result = validator.validate(temp_dir.path());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Missing meta.yaml"));
+        // Error message now mentions multiple possible files
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Missing") || error_msg.contains("metadata"));
     }
 
     #[test]

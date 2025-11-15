@@ -112,7 +112,6 @@ mod tests {
 
         assert!(result.contains("id: test-agent"));
         assert!(result.contains("kind: agent"));
-        assert!(result.contains("spec_version: \"v1\""));
         assert!(result.contains("category: testing"));
         assert!(result.contains("summary: \"A test agent for unit tests\""));
         assert!(result.contains("as_system: true"));
@@ -121,8 +120,8 @@ mod tests {
         assert!(result.contains("preferred_models:"));
         assert!(result.contains("- claude/sonnet"));
         assert!(result.contains("tools: []"));
-        assert!(result.contains("inputs: []"));
-        assert!(result.contains("versions: []"));
+        assert!(result.contains("inputs: {}"));
+        // Note: spec_version and versions array are added by the `new` command, not in the template
     }
 
     #[test]
@@ -164,8 +163,7 @@ mod tests {
         assert!(result.contains("as_system: false"));
         assert!(result.contains("as_user: true"));
         assert!(result.contains("as_overlay: false"));
-        assert!(result.contains("inputs:"));
-        assert!(result.contains("- name: task_description"));
+        assert!(result.contains("inputs: {}"));
     }
 
     #[test]
@@ -201,9 +199,10 @@ mod tests {
         assert!(result.contains("id: generate-primitive"));
         assert!(result.contains("kind: meta-prompt"));
         assert!(result.contains("category: generation"));
+        assert!(result.contains("domain: meta"));
         assert!(result.contains("- claude/opus"));
         assert!(result.contains("- claude/sonnet"));
-        assert!(result.contains("- name: specification"));
+        assert!(result.contains("inputs: {}"));
     }
 
     #[test]
@@ -274,7 +273,7 @@ mod tests {
         assert!(result.contains("safety:"));
         assert!(result.contains("max_runtime_sec: 60"));
         assert!(result.contains("providers:"));
-        assert!(result.contains("- local"));
+        assert!(result.contains("local:"));
     }
 
     #[test]
@@ -295,12 +294,13 @@ mod tests {
         assert!(result.contains("kind: safety"));
         assert!(result.contains("category: lifecycle"));
         assert!(result.contains("event: PreToolUse"));
-        assert!(result.contains("execution: pipeline"));
+        assert!(result.contains("execution:"));
+        assert!(result.contains("strategy: pipeline"));
         assert!(result.contains("middleware:"));
         assert!(result.contains("- id: main"));
         assert!(result.contains("type: safety"));
         assert!(result.contains("providers:"));
-        assert!(result.contains("- claude"));
+        assert!(result.contains("claude:"));
     }
 
     #[test]
@@ -384,8 +384,8 @@ mod tests {
         let yaml = parsed.unwrap();
         assert_eq!(yaml["id"], "test-agent");
         assert_eq!(yaml["kind"], "agent");
-        assert_eq!(yaml["spec_version"], "v1");
         assert_eq!(yaml["category"], "testing");
+        // Note: spec_version is added by the `new` command, not in the template
     }
 
     #[test]

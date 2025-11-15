@@ -166,24 +166,43 @@ fn resolve_primitive_path(short_path: &str, _config: &PrimitivesConfig) -> Resul
 
 /// Load complete primitive information
 fn load_primitive_info(path: &Path, args: &InspectArgs) -> Result<InspectInfo> {
-    // Detect primitive type
-    let meta_path = if path.join("meta.yaml").exists() {
-        path.join("meta.yaml")
-    } else if path.join("tool.meta.yaml").exists() {
-        path.join("tool.meta.yaml")
-    } else if path.join("hook.meta.yaml").exists() {
-        path.join("hook.meta.yaml")
+    // Detect primitive type by checking for meta files
+    // Try new naming convention first, then fall back to legacy
+    let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+    let meta_path = if let Ok(entries) = std::fs::read_dir(path) {
+        let mut found_meta = None;
+        for entry in entries.filter_map(|e| e.ok()) {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+
+            // Check for {id}.tool.yaml or {id}.hook.yaml first
+            if file_name.ends_with(".tool.yaml") {
+                found_meta = Some(entry.path());
+                break;
+            } else if file_name.ends_with(".hook.yaml") {
+                found_meta = Some(entry.path());
+                break;
+            } else if file_name == format!("{dir_name}.yaml") {
+                found_meta = Some(entry.path());
+            } else if file_name == "meta.yaml" && found_meta.is_none() {
+                found_meta = Some(entry.path());
+            }
+        }
+        found_meta
     } else {
-        anyhow::bail!("No meta file found in {path:?}");
+        None
     };
 
+    let meta_path = meta_path.ok_or_else(|| anyhow::anyhow!("No meta file found in {path:?}"))?;
+
     // Load based on type
-    if meta_path.file_name().unwrap() == "meta.yaml" {
-        load_prompt_info(path, &meta_path, args)
-    } else if meta_path.file_name().unwrap() == "tool.meta.yaml" {
+    let file_name = meta_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if file_name.ends_with(".tool.yaml") {
         load_tool_info(path, &meta_path, args)
-    } else {
+    } else if file_name.ends_with(".hook.yaml") {
         load_hook_info(path, &meta_path, args)
+    } else {
+        load_prompt_info(path, &meta_path, args)
     }
 }
 
