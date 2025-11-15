@@ -167,14 +167,140 @@ None - all tests passing, production ready.
 
 ---
 
+## [1.1.0] - 2025-11-15
+
+### 🚀 Phase 2: CI/CD & Distribution
+
+Complete CI/CD pipeline with automated testing, releases, security audits, and universal installation system.
+
+### Added
+
+#### GitHub Actions Workflows
+- **CI Workflow** (`.github/workflows/ci.yml`)
+  - Multi-OS testing (Ubuntu, macOS, Windows)
+  - Format checking with `cargo fmt`
+  - Linting with clippy (zero warnings)
+  - Fixture validation
+  - Code coverage with codecov
+  - Triggers on PRs and pushes to main
+
+- **Release Workflow** (`.github/workflows/release.yml`)
+  - Automated releases on version tags
+  - Multi-platform binary builds (Linux x64/ARM64, macOS x64/ARM, Windows x64)
+  - SHA256 checksum generation
+  - GitHub Release creation with binaries
+  - Optional crates.io publishing
+
+- **Security Workflow** (`.github/workflows/security.yml`)
+  - Weekly cargo audit for vulnerability scanning
+  - Dependency review on PRs
+  - SBOM (Software Bill of Materials) generation
+  - Automated security reporting
+
+- **Benchmarks Workflow** (`.github/workflows/benchmarks.yml`)
+  - Weekly performance benchmarking
+  - Baseline comparison tracking
+  - Regression detection
+  - Performance trend reporting
+
+#### Installation System
+- **Universal Install Script** (`scripts/install.sh`)
+  - One-line installation: `curl -fsSL ... | sh`
+  - OS/architecture auto-detection
+  - GitHub Release binary download
+  - SHA256 checksum verification
+  - Automatic PATH integration
+  - Version selection support
+  - Clean uninstall option
+
+- **Bootstrap Script** (`scripts/bootstrap.sh`)
+  - One-command repository setup
+  - Automatic CLI installation
+  - Stack detection (Python, TypeScript, React, NestJS, TurboRepo, Rust)
+  - Stack-specific primitive installation
+  - `.gitignore` configuration
+  - Optional git hook setup
+  - Composable integration for any tech stack
+
+#### Stack Presets
+Pre-configured primitive sets for popular stacks:
+- **Python** (`scripts/stacks/python.yaml`)
+  - UV-based tooling hooks
+  - Python testing agents
+  - Code quality commands
+- **TypeScript** (`scripts/stacks/typescript.yaml`)
+  - Bun runtime support
+  - TS linting hooks
+  - Type checking agents
+- **React** (`scripts/stacks/react.yaml`)
+  - Component generation agents
+  - React hooks validation
+  - UI best practices skills
+- **NestJS** (`scripts/stacks/nestjs.yaml`)
+  - API endpoint agents
+  - Dependency injection hooks
+  - Service scaffolding commands
+- **TurboRepo** (`scripts/stacks/turborepo.yaml`)
+  - Monorepo management agents
+  - Workspace coordination hooks
+  - Build orchestration commands
+- **Rust** (`scripts/stacks/rust.yaml`)
+  - Cargo integration hooks
+  - Rust best practices agents
+  - Safety validation commands
+
+#### Documentation
+- **CI/CD Guide** (`docs/ci-cd.md`)
+  - Workflow architecture
+  - Trigger conditions
+  - Badge integration
+  - Troubleshooting guide
+- **Release Process** (`docs/release-process.md`)
+  - Version bumping workflow
+  - Release checklist
+  - Rollback procedures
+  - Distribution channels
+- **Security Policy** (`docs/security.md`)
+  - Vulnerability reporting
+  - Security audit schedule
+  - Dependency management
+  - SBOM usage
+
+#### Validation & Quality
+- Stack preset validation script (`scripts/validate-stacks.sh`)
+- Bash script syntax validation
+- YAML workflow validation with yamllint
+- All 302 tests continue to pass
+
+### Improvements
+- **Code Quality**: Fixed remaining clippy warnings
+  - Replaced `vec![]` with array `[]` for static lists
+  - Simplified identical if blocks
+  - Improved code clarity
+
+### Breaking Changes
+None - fully backward compatible with v1.0.0.
+
+### Migration from v1.0.0
+No migration needed - drop-in replacement. Simply:
+```bash
+curl -fsSL https://raw.githubusercontent.com/AgentParadise/agentic-primitives/main/scripts/install.sh | sh
+```
+
+### Contributors
+Built with ❤️ for the AI agent community 🤖
+
+---
+
 ## [Unreleased]
 
-### Planned for 1.1.0
-- GitHub Actions CI/CD workflows
-- Automated release pipeline
-- Installation script (`curl | sh`)
-- Homebrew formula
-- Pre-built binaries for major platforms
+### Planned Features
+- Homebrew formula for macOS installation
+- Chocolatey package for Windows
+- Docker images for containerized usage
+- VSCode extension for primitive development
+- Web-based primitive explorer
+- Community primitive registry
 
 ---
 
