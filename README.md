@@ -432,17 +432,36 @@ Inspired by:
 
 ## 🗺️ Roadmap
 
+### ✅ Phase 1: Core Framework (Complete - v1.0.0)
+
 - [x] Core repository structure
-- [x] Versioning system with hash validation
-- [x] Three-layer validation engine
+- [x] Versioning system with hash validation (BLAKE3)
+- [x] Three-layer validation engine (structural, schema, semantic)
+- [x] Complete CLI with 10 commands
 - [x] Claude provider adapter
+- [x] OpenAI provider adapter
 - [x] Middleware-based hook system
-- [ ] OpenAI provider adapter
+- [x] Build & install pipeline
+- [x] E2E testing & benchmarks
+- [x] Comprehensive documentation
+
+### 🚧 Phase 2: CI/CD & Distribution (Planned)
+
+- [ ] GitHub Actions workflows (CI/CD)
+- [ ] Automated releases
+- [ ] Installable via script (`curl | sh`)
+- [ ] Homebrew formula
+- [ ] NPM package wrapper
+- [ ] Docker image
+
+### 🔮 Phase 3: Ecosystem (Future)
+
 - [ ] Cursor provider adapter
 - [ ] Meta-prompt library
 - [ ] Community primitive registry
 - [ ] VS Code extension
 - [ ] Web UI for browsing primitives
+- [ ] Plugin system for custom providers
 
 ---
 
