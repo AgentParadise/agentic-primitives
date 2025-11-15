@@ -101,31 +101,31 @@ fn has_metadata_file(path: &Path) -> bool {
 fn should_include_primitive(path: &Path, args: &BuildArgs) -> Result<bool> {
     // Type filter (prompt, tool, hook)
     if let Some(ref type_filter) = args.type_filter {
-        let path_str = path.to_string_lossy();
-        match type_filter.as_str() {
-            "prompt" => {
-                if !path_str.contains("/prompts/") {
-                    return Ok(false);
-                }
+        let has_component = path.components().any(|c| {
+            c.as_os_str().to_string_lossy() == match type_filter.as_str() {
+                "prompt" => "prompts",
+                "tool" => "tools",
+                "hook" => "hooks",
+                _ => "",
             }
-            "tool" => {
-                if !path_str.contains("/tools/") {
-                    return Ok(false);
-                }
+        });
+        
+        if !has_component {
+            if !matches!(type_filter.as_str(), "prompt" | "tool" | "hook") {
+                bail!("Invalid type filter: {type_filter}. Use: prompt, tool, hook");
             }
-            "hook" => {
-                if !path_str.contains("/hooks/") {
-                    return Ok(false);
-                }
-            }
-            _ => bail!("Invalid type filter: {type_filter}. Use: prompt, tool, hook"),
+            return Ok(false);
         }
     }
 
     // Kind filter (agent, command, skill, etc.)
     if let Some(ref kind_filter) = args.kind {
-        let path_str = path.to_string_lossy();
-        if !path_str.contains(&format!("/{kind_filter}s/")) {
+        let kind_plural = format!("{kind_filter}s");
+        let has_kind = path.components().any(|c| {
+            c.as_os_str().to_string_lossy() == kind_plural
+        });
+        
+        if !has_kind {
             return Ok(false);
         }
     }
