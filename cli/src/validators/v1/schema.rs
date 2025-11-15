@@ -94,9 +94,9 @@ impl SchemaValidator {
             format!("{dir_name}.yaml"),      // Prompt: {id}.yaml
             format!("{dir_name}.tool.yaml"), // Tool: {id}.tool.yaml
             format!("{dir_name}.hook.yaml"), // Hook: {id}.hook.yaml
-            "meta.yaml".to_string(),           // Legacy prompt
-            "tool.meta.yaml".to_string(),      // Legacy tool
-            "hook.meta.yaml".to_string(),      // Legacy hook
+            "meta.yaml".to_string(),         // Legacy prompt
+            "tool.meta.yaml".to_string(),    // Legacy tool
+            "hook.meta.yaml".to_string(),    // Legacy hook
         ]
         .iter()
         .map(|f| primitive_path.join(f))

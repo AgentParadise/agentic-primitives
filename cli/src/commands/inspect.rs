@@ -179,8 +179,9 @@ fn load_primitive_info(path: &Path, args: &InspectArgs) -> Result<InspectInfo> {
             if file_name.ends_with(".tool.yaml") || file_name.ends_with(".hook.yaml") {
                 found_meta = Some(entry.path());
                 break;
-            } else if file_name == format!("{dir_name}.yaml") 
-                || (file_name == "meta.yaml" && found_meta.is_none()) {
+            } else if file_name == format!("{dir_name}.yaml")
+                || (file_name == "meta.yaml" && found_meta.is_none())
+            {
                 found_meta = Some(entry.path());
             }
         }
