@@ -1,0 +1,57 @@
+# Session Analytics Tracker
+# Tracks when sessions start and end for understanding usage patterns
+#
+# Use cases:
+# - Session duration analytics
+# - Understand how users start sessions (startup vs resume)
+# - Track session end reasons (normal exit vs error)
+# - Identify session patterns and frequency
+
+version: 1
+id: session-tracking
+name: "Session Analytics Tracker"
+description: "Track session start and end events for analytics"
+
+# Only capture session lifecycle events
+events:
+  - SessionStart
+  - SessionEnd
+
+# Two-stage analytics pipeline
+middleware:
+  # Stage 1: Normalize provider-specific events to standard schema
+  - name: "analytics-normalizer"
+    type: analytics
+    impl: python
+    path: "../../../services/analytics/middleware/event_normalizer.py"
+    env:
+      # Provider name (claude, openai, cursor, etc.)
+      # Set this to match your AI provider
+      ANALYTICS_PROVIDER: "claude"
+  
+  # Stage 2: Publish normalized events to backend
+  - name: "analytics-publisher"
+    type: analytics
+    impl: python
+    path: "../../../services/analytics/middleware/event_publisher.py"
+    env:
+      # Backend type: "file" or "api"
+      ANALYTICS_PUBLISHER_BACKEND: "file"
+      
+      # File backend: Output file path (JSONL format)
+      # Creates parent directories automatically
+      ANALYTICS_OUTPUT_PATH: "./analytics/sessions.jsonl"
+      
+      # Optional: Enable debug logging
+      # ANALYTICS_DEBUG: "false"
+
+# Pipeline execution: normalizer output → publisher input
+execution: pipeline
+
+# Expected output format:
+# File: ./analytics/sessions.jsonl
+# Each line is a JSON object:
+#
+# {"event_type":"session_started","timestamp":"2025-11-19T10:00:00Z","session_id":"abc123",...}
+# {"event_type":"session_completed","timestamp":"2025-11-19T11:30:00Z","session_id":"abc123",...}
+

@@ -1,6 +1,8 @@
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Hook event types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -14,6 +16,48 @@ pub enum HookEvent {
     SessionEnd,
     PreCompact,
     Notification,
+}
+
+/// Middleware types defining execution behavior
+///
+/// - **Safety**: Blocking middleware that can stop execution (e.g., security checks)
+/// - **Observability**: Non-blocking middleware for monitoring (e.g., logging, metrics)
+/// - **Analytics**: Non-blocking middleware for event collection and analysis
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MiddlewareType {
+    /// Blocking middleware for security and safety checks
+    Safety,
+    /// Non-blocking middleware for observability (logging, metrics)
+    Observability,
+    /// Non-blocking middleware for analytics (event tracking, analysis)
+    Analytics,
+}
+
+impl fmt::Display for MiddlewareType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MiddlewareType::Safety => write!(f, "safety"),
+            MiddlewareType::Observability => write!(f, "observability"),
+            MiddlewareType::Analytics => write!(f, "analytics"),
+        }
+    }
+}
+
+impl FromStr for MiddlewareType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "safety" => Ok(MiddlewareType::Safety),
+            "observability" => Ok(MiddlewareType::Observability),
+            "analytics" => Ok(MiddlewareType::Analytics),
+            _ => Err(Error::InvalidFormat(format!(
+                "Invalid middleware type: '{}'. Expected: safety, observability, or analytics",
+                s
+            ))),
+        }
+    }
 }
 
 /// Execution strategy for middleware pipeline
@@ -63,7 +107,7 @@ pub struct MiddlewareConfig {
     pub id: String,
     pub path: String,
     #[serde(rename = "type")]
-    pub middleware_type: String,
+    pub middleware_type: MiddlewareType,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
@@ -249,10 +293,13 @@ middleware:
         let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(meta.middleware.len(), 2);
         assert_eq!(meta.middleware[0].id, "block-dangerous");
-        assert_eq!(meta.middleware[0].middleware_type, "safety");
+        assert_eq!(meta.middleware[0].middleware_type, MiddlewareType::Safety);
         assert_eq!(meta.middleware[0].priority, Some(10));
         assert_eq!(meta.middleware[1].id, "log-operations");
-        assert_eq!(meta.middleware[1].middleware_type, "observability");
+        assert_eq!(
+            meta.middleware[1].middleware_type,
+            MiddlewareType::Observability
+        );
     }
 
     #[test]
@@ -361,5 +408,87 @@ enabled: false
 "#;
         let middleware: MiddlewareConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(!middleware.enabled);
+    }
+
+    #[test]
+    fn test_middleware_type_parsing() {
+        // Test FromStr implementation
+        assert_eq!(
+            "safety".parse::<MiddlewareType>().unwrap(),
+            MiddlewareType::Safety
+        );
+        assert_eq!(
+            "observability".parse::<MiddlewareType>().unwrap(),
+            MiddlewareType::Observability
+        );
+        assert_eq!(
+            "analytics".parse::<MiddlewareType>().unwrap(),
+            MiddlewareType::Analytics
+        );
+
+        // Test case insensitivity
+        assert_eq!(
+            "SAFETY".parse::<MiddlewareType>().unwrap(),
+            MiddlewareType::Safety
+        );
+        assert_eq!(
+            "Observability".parse::<MiddlewareType>().unwrap(),
+            MiddlewareType::Observability
+        );
+        assert_eq!(
+            "ANALYTICS".parse::<MiddlewareType>().unwrap(),
+            MiddlewareType::Analytics
+        );
+    }
+
+    #[test]
+    fn test_middleware_type_display() {
+        // Test Display implementation
+        assert_eq!(MiddlewareType::Safety.to_string(), "safety");
+        assert_eq!(MiddlewareType::Observability.to_string(), "observability");
+        assert_eq!(MiddlewareType::Analytics.to_string(), "analytics");
+    }
+
+    #[test]
+    fn test_middleware_type_invalid() {
+        // Test invalid middleware type
+        let result = "invalid".parse::<MiddlewareType>();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid middleware type"));
+    }
+
+    #[test]
+    fn test_deserialize_hook_with_analytics_middleware() {
+        let yaml = r#"
+id: test-analytics-hook
+kind: hook
+category: analytics
+event: PreToolUse
+summary: "Test hook with analytics middleware"
+execution:
+  strategy: parallel
+middleware:
+  - id: "analytics-normalizer"
+    path: "middleware/analytics/event_normalizer.py"
+    type: "analytics"
+    enabled: true
+  - id: "analytics-publisher"
+    path: "middleware/analytics/event_publisher.py"
+    type: "analytics"
+    enabled: true
+"#;
+        let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(meta.middleware.len(), 2);
+        assert_eq!(
+            meta.middleware[0].middleware_type,
+            MiddlewareType::Analytics
+        );
+        assert_eq!(
+            meta.middleware[1].middleware_type,
+            MiddlewareType::Analytics
+        );
     }
 }
