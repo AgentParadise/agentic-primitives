@@ -262,11 +262,33 @@ impl ClaudeTransformer {
             }
         }
 
+        // Copy hook implementation files to build output
+        let scripts_dir = hooks_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir)?;
+        
+        let mut generated_files = vec![hooks_file.to_string_lossy().to_string()];
+        
+        // Copy shell script wrapper if it exists
+        let shell_script = path.join(format!("{}.sh", meta.id));
+        if shell_script.exists() {
+            let dest_script = scripts_dir.join(format!("{}.sh", meta.id));
+            fs::copy(&shell_script, &dest_script)?;
+            generated_files.push(dest_script.to_string_lossy().to_string());
+        }
+        
+        // Copy Python implementation if it exists (for analytics hooks)
+        let python_impl = path.join("impl.python.py");
+        if python_impl.exists() {
+            let dest_impl = scripts_dir.join(format!("{}.impl.python.py", meta.id));
+            fs::copy(&python_impl, &dest_impl)?;
+            generated_files.push(dest_impl.to_string_lossy().to_string());
+        }
+
         // Write updated hooks
         let json = serde_json::to_string_pretty(&hooks)?;
         fs::write(&hooks_file, json)?;
 
-        Ok(vec![hooks_file.to_string_lossy().to_string()])
+        Ok(generated_files)
     }
 
     /// Transform a tool primitive to MCP config entry

@@ -458,3 +458,54 @@ fn test_mcp_json_structure() {
     assert!(server_config.get("command").is_some());
     assert!(server_config["command"].is_string());
 }
+
+#[test]
+fn test_transform_analytics_hook_with_scripts() {
+    let transformer = ClaudeTransformer::new();
+    // Use the actual analytics-collector hook
+    let hook_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("primitives/v1/hooks/analytics/analytics-collector");
+    
+    // Skip test if analytics hook doesn't exist yet
+    if !hook_path.exists() {
+        return;
+    }
+    
+    let output_dir = TempDir::new().unwrap();
+
+    let result = transformer
+        .transform_primitive(&hook_path, output_dir.path())
+        .unwrap();
+
+    assert!(result.success);
+    assert_eq!(result.primitive_id, "analytics-collector");
+    assert_eq!(result.primitive_kind, "hook");
+
+    // Check that hooks.json was created
+    let hooks_file = output_dir.path().join("hooks/hooks.json");
+    assert!(hooks_file.exists());
+
+    // Check that shell script was copied
+    let shell_script = output_dir.path().join("hooks/scripts/analytics-collector.sh");
+    assert!(shell_script.exists(), "Shell script should be copied to build output");
+
+    // Check that Python implementation was copied
+    let python_impl = output_dir.path().join("hooks/scripts/analytics-collector.impl.python.py");
+    assert!(python_impl.exists(), "Python implementation should be copied to build output");
+
+    // Verify hooks.json structure
+    let content = fs::read_to_string(&hooks_file).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(json.get("PreToolUse").is_some());
+
+    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
+    assert!(!pre_tool_use.is_empty());
+    assert_eq!(pre_tool_use[0]["matcher"], "analytics");
+    
+    // Verify command references the shell script
+    let hooks = pre_tool_use[0]["hooks"].as_array().unwrap();
+    let command = hooks[0]["command"].as_str().unwrap();
+    assert!(command.contains("analytics-collector.sh"));
+}
