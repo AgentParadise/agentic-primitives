@@ -122,11 +122,8 @@ class ClaudeAdapter(BaseProviderAdapter):
             dict: Event metadata
         """
         return EventMetadata(
-            hook_event_name=str(
-                hook_input.data.get("hook_event_name", hook_input.event)
-            ),
+            hook_event_name=str(hook_input.data.get("hook_event_name", hook_input.event)),
             transcript_path=hook_input.data.get("transcript_path"),
             permission_mode=hook_input.data.get("permission_mode"),
             raw_event=dict(hook_input.data),
         ).model_dump()
-

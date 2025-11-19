@@ -235,9 +235,7 @@ class TestAPIPublisher:
         assert publisher is not None
         await publisher.close()
 
-    async def test_api_publisher_sends_http_post(
-        self, sample_event: NormalizedEvent
-    ) -> None:
+    async def test_api_publisher_sends_http_post(self, sample_event: NormalizedEvent) -> None:
         """Test that APIPublisher sends HTTP POST request"""
         from analytics.publishers.api import APIPublisher
 
@@ -251,9 +249,7 @@ class TestAPIPublisher:
             # Verify POST was called
             mock_post.assert_called_once()
 
-    async def test_api_publisher_sends_json_body(
-        self, sample_event: NormalizedEvent
-    ) -> None:
+    async def test_api_publisher_sends_json_body(self, sample_event: NormalizedEvent) -> None:
         """Test that APIPublisher sends event as JSON in request body"""
         from analytics.publishers.api import APIPublisher
 
@@ -297,17 +293,13 @@ class TestAPIPublisher:
 
             mock_post.side_effect = httpx.ConnectError("Connection refused")
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=0
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=0)
 
             # Should not raise exception (non-blocking middleware)
             await publisher.publish(sample_event)
             await publisher.close()
 
-    async def test_api_publisher_handles_timeout(
-        self, sample_event: NormalizedEvent
-    ) -> None:
+    async def test_api_publisher_handles_timeout(self, sample_event: NormalizedEvent) -> None:
         """Test that APIPublisher handles timeout errors"""
         from analytics.publishers.api import APIPublisher
 
@@ -316,9 +308,7 @@ class TestAPIPublisher:
 
             mock_post.side_effect = httpx.TimeoutException("Request timeout")
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=0
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=0)
 
             # Should not raise exception
             await publisher.publish(sample_event)
@@ -338,9 +328,7 @@ class TestAPIPublisher:
             )
             mock_post.return_value = response
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=0
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=0)
 
             # Should not raise exception
             await publisher.publish(sample_event)
@@ -356,9 +344,7 @@ class TestAPIPublisher:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", timeout=10
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", timeout=10)
             await publisher.close()
 
             # Verify timeout was passed to client
@@ -366,9 +352,7 @@ class TestAPIPublisher:
             if call_args and "timeout" in call_args.kwargs:
                 assert call_args.kwargs["timeout"] == 10
 
-    async def test_api_publisher_publish_batch(
-        self, sample_events: list[NormalizedEvent]
-    ) -> None:
+    async def test_api_publisher_publish_batch(self, sample_events: list[NormalizedEvent]) -> None:
         """Test that APIPublisher can publish batch of events"""
         from analytics.publishers.api import APIPublisher
 
@@ -387,9 +371,7 @@ class TestAPIPublisher:
 class TestAPIPublisherRetryLogic:
     """Test API publisher retry logic and exponential backoff"""
 
-    async def test_api_publisher_retries_on_5xx_errors(
-        self, sample_event: NormalizedEvent
-    ) -> None:
+    async def test_api_publisher_retries_on_5xx_errors(self, sample_event: NormalizedEvent) -> None:
         """Test that APIPublisher retries on 5xx server errors"""
         from analytics.publishers.api import APIPublisher
 
@@ -397,10 +379,8 @@ class TestAPIPublisherRetryLogic:
             # Fail twice, then succeed
             response_fail = MagicMock()
             response_fail.status_code = 500
-            response_fail.raise_for_status.side_effect = (
-                __import__("httpx").HTTPStatusError(
-                    "Server error", request=MagicMock(), response=response_fail
-                )
+            response_fail.raise_for_status.side_effect = __import__("httpx").HTTPStatusError(
+                "Server error", request=MagicMock(), response=response_fail
             )
 
             response_success = AsyncMock()
@@ -408,9 +388,7 @@ class TestAPIPublisherRetryLogic:
 
             mock_post.side_effect = [response_fail, response_fail, response_success]
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=3
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=3)
             await publisher.publish(sample_event)
             await publisher.close()
 
@@ -426,38 +404,28 @@ class TestAPIPublisherRetryLogic:
         with patch("httpx.AsyncClient.post") as mock_post:
             response = MagicMock()
             response.status_code = 400
-            response.raise_for_status.side_effect = (
-                __import__("httpx").HTTPStatusError(
-                    "Bad request", request=MagicMock(), response=response
-                )
+            response.raise_for_status.side_effect = __import__("httpx").HTTPStatusError(
+                "Bad request", request=MagicMock(), response=response
             )
             mock_post.return_value = response
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=3
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=3)
             await publisher.publish(sample_event)
             await publisher.close()
 
             # Should only be called once (no retries for 4xx)
             assert mock_post.call_count == 1
 
-    async def test_api_publisher_exponential_backoff(
-        self, sample_event: NormalizedEvent
-    ) -> None:
+    async def test_api_publisher_exponential_backoff(self, sample_event: NormalizedEvent) -> None:
         """Test that APIPublisher uses exponential backoff between retries"""
         from analytics.publishers.api import APIPublisher
 
-        with patch("httpx.AsyncClient.post") as mock_post, patch(
-            "asyncio.sleep"
-        ) as mock_sleep:
+        with patch("httpx.AsyncClient.post") as mock_post, patch("asyncio.sleep") as mock_sleep:
             import httpx
 
             mock_post.side_effect = httpx.ConnectError("Connection refused")
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=3
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=3)
             await publisher.publish(sample_event)
             await publisher.close()
 
@@ -469,9 +437,7 @@ class TestAPIPublisherRetryLogic:
                 for i in range(1, len(sleep_calls)):
                     assert sleep_calls[i] >= sleep_calls[i - 1]
 
-    async def test_api_publisher_max_retries(
-        self, sample_event: NormalizedEvent
-    ) -> None:
+    async def test_api_publisher_max_retries(self, sample_event: NormalizedEvent) -> None:
         """Test that APIPublisher respects max retry attempts"""
         from analytics.publishers.api import APIPublisher
 
@@ -480,9 +446,7 @@ class TestAPIPublisherRetryLogic:
 
             mock_post.side_effect = httpx.ConnectError("Connection refused")
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=2
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=2)
             await publisher.publish(sample_event)
             await publisher.close()
 
@@ -531,9 +495,7 @@ class TestPublisherErrorHandling:
 
             mock_post.side_effect = httpx.ConnectError("Connection refused")
 
-            publisher = APIPublisher(
-                endpoint="https://api.example.com/events", retry_attempts=0
-            )
+            publisher = APIPublisher(endpoint="https://api.example.com/events", retry_attempts=0)
             await publisher.publish(sample_event)
             await publisher.close()
 
@@ -555,11 +517,8 @@ class TestPublisherErrorHandling:
         await file_publisher.close()
 
         # API publisher with bad endpoint
-        api_publisher = APIPublisher(
-            endpoint="http://localhost:99999/invalid", retry_attempts=0
-        )
+        api_publisher = APIPublisher(endpoint="http://localhost:99999/invalid", retry_attempts=0)
 
         # Should not raise
         await api_publisher.publish(sample_event)
         await api_publisher.close()
-

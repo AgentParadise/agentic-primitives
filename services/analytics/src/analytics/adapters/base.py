@@ -59,4 +59,3 @@ class BaseProviderAdapter(ABC):
             str | None: Current working directory if available
         """
         return hook_input.data.get("cwd")
-

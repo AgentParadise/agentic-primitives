@@ -97,4 +97,3 @@ class EventNormalizer:
             list[str]: List of registered provider names
         """
         return list(self._adapters.keys())
-

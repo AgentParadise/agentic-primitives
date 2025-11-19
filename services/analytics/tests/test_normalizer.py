@@ -214,9 +214,7 @@ class TestEventNormalizerSessionEvents:
 class TestEventNormalizerUserEvents:
     """Test normalization of user interaction events"""
 
-    def test_normalize_user_prompt_submit(
-        self, user_prompt_submit_input: HookInput
-    ) -> None:
+    def test_normalize_user_prompt_submit(self, user_prompt_submit_input: HookInput) -> None:
         """Test normalization of UserPromptSubmit event"""
         from analytics.normalizer import EventNormalizer
 
@@ -311,9 +309,7 @@ class TestEventNormalizerEdgeCases:
         # Timestamp should be timezone-aware and in UTC
         assert event.timestamp.tzinfo == UTC
 
-    def test_timestamp_is_iso8601_serializable(
-        self, session_start_input: HookInput
-    ) -> None:
+    def test_timestamp_is_iso8601_serializable(self, session_start_input: HookInput) -> None:
         """Test that timestamp can be serialized to ISO 8601"""
         from analytics.normalizer import EventNormalizer
 
@@ -367,9 +363,7 @@ class TestEventNormalizerEdgeCases:
         assert event.provider == "gemini"
         assert event.event_type == "session_started"
 
-    def test_preserves_raw_event_in_metadata(
-        self, pre_tool_use_input: HookInput
-    ) -> None:
+    def test_preserves_raw_event_in_metadata(self, pre_tool_use_input: HookInput) -> None:
         """Test that raw event data is preserved in metadata"""
         from analytics.normalizer import EventNormalizer
 
@@ -400,9 +394,7 @@ class TestEventNormalizerValidation:
         assert reconstructed.event_type == event.event_type
         assert reconstructed.session_id == event.session_id
 
-    def test_normalized_event_json_serializable(
-        self, pre_tool_use_input: HookInput
-    ) -> None:
+    def test_normalized_event_json_serializable(self, pre_tool_use_input: HookInput) -> None:
         """Test that normalized event can be serialized to JSON"""
         from analytics.normalizer import EventNormalizer
 
@@ -516,4 +508,3 @@ class TestEventNormalizerExtensibility:
 
         # Should be stored as lowercase
         assert "gemini" in normalizer.get_supported_providers()
-
