@@ -90,4 +90,3 @@ class FilePublisher(BasePublisher):
         File publisher doesn't hold persistent resources, so this is a no-op.
         """
         pass
-

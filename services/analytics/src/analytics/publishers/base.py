@@ -47,4 +47,3 @@ class BasePublisher(ABC):
         Should be called when the publisher is no longer needed.
         """
         pass
-

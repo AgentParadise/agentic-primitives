@@ -8,4 +8,3 @@ from analytics.publishers.base import BasePublisher
 from analytics.publishers.file import FilePublisher
 
 __all__ = ["APIPublisher", "BasePublisher", "FilePublisher"]
-

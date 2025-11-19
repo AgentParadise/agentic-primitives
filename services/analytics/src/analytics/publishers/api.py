@@ -23,9 +23,7 @@ class APIPublisher(BasePublisher):
     exponential backoff for transient failures.
     """
 
-    def __init__(
-        self, endpoint: str, timeout: int = 30, retry_attempts: int = 3
-    ) -> None:
+    def __init__(self, endpoint: str, timeout: int = 30, retry_attempts: int = 3) -> None:
         """Initialize API publisher
 
         Args:
@@ -62,9 +60,7 @@ class APIPublisher(BasePublisher):
         for event in events:
             await self.publish(event)
 
-    async def _publish_with_retry(
-        self, event_data: dict[str, Any], event: NormalizedEvent
-    ) -> None:
+    async def _publish_with_retry(self, event_data: dict[str, Any], event: NormalizedEvent) -> None:
         """Publish with retry logic and exponential backoff
 
         Args:
@@ -171,4 +167,3 @@ class APIPublisher(BasePublisher):
     async def close(self) -> None:
         """Clean up HTTP client resources"""
         await self.client.aclose()
-

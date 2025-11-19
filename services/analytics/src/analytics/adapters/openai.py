@@ -63,14 +63,11 @@ class OpenAIAdapter(BaseProviderAdapter):
                     or "unknown"
                 ),
                 tool_input=dict(
-                    hook_input.data.get("tool_input")
-                    or hook_input.data.get("function_args")
-                    or {}
+                    hook_input.data.get("tool_input") or hook_input.data.get("function_args") or {}
                 ),
                 tool_response=hook_input.data.get("tool_response")
                 or hook_input.data.get("function_response"),
-                tool_use_id=hook_input.data.get("tool_use_id")
-                or hook_input.data.get("call_id"),
+                tool_use_id=hook_input.data.get("tool_use_id") or hook_input.data.get("call_id"),
             ).model_dump()
 
         # Session events
@@ -83,8 +80,7 @@ class OpenAIAdapter(BaseProviderAdapter):
         elif event_name == "SessionEnd":
             return SessionContext(
                 source=None,
-                reason=hook_input.data.get("reason")
-                or hook_input.data.get("end_reason"),
+                reason=hook_input.data.get("reason") or hook_input.data.get("end_reason"),
             ).model_dump()
 
         # User prompt events
@@ -108,11 +104,7 @@ class OpenAIAdapter(BaseProviderAdapter):
                     or hook_input.data.get("type")
                     or "unknown"
                 ),
-                message=str(
-                    hook_input.data.get("message")
-                    or hook_input.data.get("content")
-                    or ""
-                ),
+                message=str(hook_input.data.get("message") or hook_input.data.get("content") or ""),
             ).model_dump()
 
         # Stop events
@@ -150,13 +142,9 @@ class OpenAIAdapter(BaseProviderAdapter):
             dict: Event metadata
         """
         return EventMetadata(
-            hook_event_name=str(
-                hook_input.data.get("hook_event_name", hook_input.event)
-            ),
+            hook_event_name=str(hook_input.data.get("hook_event_name", hook_input.event)),
             transcript_path=hook_input.data.get("transcript_path")
             or hook_input.data.get("log_path"),
-            permission_mode=hook_input.data.get("permission_mode")
-            or hook_input.data.get("mode"),
+            permission_mode=hook_input.data.get("permission_mode") or hook_input.data.get("mode"),
             raw_event=dict(hook_input.data),
         ).model_dump()
-

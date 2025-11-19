@@ -8,4 +8,3 @@ from analytics.adapters.claude import ClaudeAdapter
 from analytics.adapters.openai import OpenAIAdapter
 
 __all__ = ["BaseProviderAdapter", "ClaudeAdapter", "OpenAIAdapter"]
-
