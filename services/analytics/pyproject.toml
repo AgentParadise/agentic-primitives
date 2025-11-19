@@ -126,3 +126,8 @@ exclude_lines = [
 line-length = 100
 target-version = ["py311"]
 include = '\.pyi?$'
+
+[dependency-groups]
+dev = [
+    "types-aiofiles>=25.1.0.20251011",
+]

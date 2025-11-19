@@ -94,8 +94,8 @@
           },
           "type": {
             "type": "string",
-            "enum": ["safety", "observability"],
-            "description": "Middleware type: safety (blocking) or observability (non-blocking)"
+            "enum": ["safety", "observability", "analytics"],
+            "description": "Middleware type: safety (blocking), observability (non-blocking), or analytics (non-blocking)"
           },
           "enabled": {
             "type": "boolean",

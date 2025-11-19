@@ -1,315 +1,520 @@
+# ADR-011: Analytics Middleware for Hook System
+
+```yaml
 ---
-title: "ADR-011: Analytics Middleware Architecture"
 status: accepted
 created: 2025-11-19
 updated: 2025-11-19
-author: AI Assistant (with user guidance)
-supersedes: null
-superseded_by: null
-tags: [analytics, middleware, hooks, provider-agnostic, architecture]
+deciders: System Architect
+consulted: Development Team, Analytics Team
+informed: All Stakeholders
 ---
-
-# ADR-011: Analytics Middleware Architecture
-
-## Status
-
-**Accepted**
-
-- Created: 2025-11-19
-- Updated: 2025-11-19
-- Author(s): AI Assistant (with user guidance)
+```
 
 ## Context
 
-The agentic-primitives system needs to capture analytics data from various providers (Claude, OpenAI, Cursor, Gemini) to understand system behavior, usage patterns, and performance metrics. This data is critical for:
+The agentic-primitives system supports multiple AI providers (Claude, OpenAI, Cursor, Gemini) through a flexible hook system. Each provider emits lifecycle events (SessionStart, PreToolUse, PostToolUse, etc.) that currently serve safety and observability purposes.
 
-1. **Operational Monitoring**: Track tool usage, session patterns, and errors
-2. **Performance Analysis**: Measure latency, throughput, and resource usage
-3. **User Behavior**: Understand how agents interact with the system
-4. **Debugging**: Investigate issues through event replay and correlation
+We need to add **analytics capabilities** to understand:
+- How agents use tools across providers
+- Session patterns and duration
+- User interaction frequency
+- Permission request patterns
+- Error rates and failure modes
 
-### Challenges
+### Current State
 
-1. **Provider Diversity**: Each provider has different hook event formats
-2. **DRY Principle**: Avoid duplicating provider lists across the codebase
-3. **Type Safety**: Ensure runtime validation without sacrificing flexibility
-4. **Extensibility**: Support new providers without code changes
-5. **Decoupling**: Analytics shouldn't depend on provider implementations
+The hook system (ADR-006) supports two middleware types:
+- **Safety**: Block dangerous operations (sequential, fail-fast)
+- **Observability**: Log and emit metrics (parallel, non-blocking)
 
-### Key Insight
+However, observability middleware is focused on real-time monitoring, not long-term analytics aggregation.
 
-During implementation, we recognized that hardcoding provider names in analytics configuration violates DRY:
-- Provider enum in `specs/v1/model-config.schema.json`
-- Provider enum in analytics configuration
-- Maintenance burden when adding providers
+### Requirements
 
-**Question posed**: "Does it make sense to put providers in the analytics config when we have the model config already?"
+1. **Provider-Agnostic**: Work with any provider without hardcoding names
+2. **Type-Safe**: Validate all data with strong typing
+3. **Extensible**: Easy to add new providers and backends
+4. **Non-Blocking**: Analytics failures shouldn't affect agent execution
+5. **Normalized Schema**: Consistent event format regardless of provider
+6. **Multiple Backends**: Support file (JSONL), API, and future backends (Redis, Kafka)
 
-**Answer**: No! The analytics system should be **truly provider-agnostic**.
+### Constraints
+
+- Must integrate with existing hook system
+- Python implementation for data transformations (better than Rust for this use case)
+- No breaking changes to existing hooks
+- <10ms overhead per event
+- TDD with >80% test coverage (>90% for core logic)
 
 ## Decision
 
-We will implement an analytics middleware system using the **Port & Adapter pattern** with **provider-agnostic** core logic:
-
-### Core Principles
-
-1. **Provider-Agnostic Core**: No hardcoded provider enums in analytics code
-2. **Port & Adapter Pattern**: Input adapters (provider-specific) + Output adapters (backend-specific)
-3. **Type Safety with Flexibility**: Use Pydantic for validation, `str` for provider names
-4. **Single Source of Truth**: Providers defined only in system configuration
-5. **Hook Integration**: Analytics as middleware in existing hook pipeline
+We will implement a **provider-agnostic analytics system** using the port & adapter pattern with two-stage middleware:
 
 ### Architecture
 
 ```
-Provider Hook Events (stdin JSON)
-         ↓
-  Input Adapters (Provider-Specific)
-    - ClaudeAdapter
-    - OpenAIAdapter (future)
-    - CursorAdapter (future)
-         ↓
-  Event Normalizer (Provider-Agnostic)
-    - Standard event schema
-    - Type validation
-    - Business logic
-         ↓
-  Output Adapters (Backend-Specific)
-    - FilePublisher (JSONL)
-    - APIPublisher (HTTP POST)
-    - Future: Redis, Kafka, etc.
-         ↓
-  Analytics Backend
+Provider Hook Event (JSON stdin)
+        ↓
+┌─────────────────────────────────────┐
+│   Stage 1: Event Normalizer         │
+│   (Input Adapter)                   │
+│   - Validate provider-specific JSON │
+│   - Map to normalized schema        │
+│   - Extract analytics context       │
+│   - Output: NormalizedEvent         │
+└────────────┬────────────────────────┘
+             │ stdout (JSON)
+             ▼
+┌─────────────────────────────────────┐
+│   Stage 2: Event Publisher           │
+│   (Output Adapter)                   │
+│   - Validate normalized event        │
+│   - Publish to backend(s)            │
+│   - Handle retries/errors            │
+│   - Backend: file, API, etc.         │
+└─────────────────────────────────────┘
 ```
 
-### Provider Field Design
+### Key Design Decisions
 
-**Before (WET)**:
+#### 1. Provider Agnostic
+
+**No hardcoded provider enums** in analytics code:
+
 ```python
+# ❌ BAD: Creates coupling
 provider: Literal["claude", "openai", "cursor", "gemini"]
-```
 
-**After (DRY)**:
-```python
+# ✅ GOOD: Provider-agnostic
 provider: str = Field(
     default="unknown",
     description="Provider name set by hook caller"
 )
 ```
 
-### Technology Stack
+Provider names are determined by the hook system, not validated by analytics. This means:
+- Single source of truth for providers (`primitives.config.yaml`, `specs/v1/model-config.schema.json`)
+- Adding new providers doesn't require analytics changes
+- System automatically works with custom providers
 
-- **Language**: Python 3.11+ with uv package manager
-- **Validation**: Pydantic v2 with strict mode
-- **Configuration**: pydantic-settings for environment variables
-- **Type Checking**: mypy with strict mode
-- **Testing**: pytest with >80% coverage requirement
+#### 2. Port & Adapter Pattern
+
+```
+Input Adapters (Provider-Specific)
+- ClaudeAdapter: Claude hook format → NormalizedEvent
+- OpenAIAdapter: OpenAI hook format → NormalizedEvent
+- Future: CursorAdapter, GeminiAdapter, etc.
+
+Core Domain (Provider-Agnostic)
+- Pydantic models for type safety
+- Event normalization logic
+- Business rules
+
+Output Adapters (Backend-Specific)
+- FilePublisher: Write to JSONL
+- APIPublisher: HTTP POST to API
+- Future: RedisPublisher, KafkaPublisher, etc.
+```
+
+#### 3. Two-Stage Middleware
+
+**Why two stages instead of one?**
+
+- **Separation of Concerns**: Normalization and publishing are distinct responsibilities
+- **Testability**: Each stage can be tested independently
+- **Flexibility**: Swap backends without changing normalization
+- **Pipeline Composition**: Can insert additional stages (filtering, enrichment, etc.)
+- **Debugging**: Inspect normalized events between stages
+
+#### 4. Pydantic for Type Safety
+
+All data validated with Pydantic v2:
+
+```python
+# Hook input validation
+hook_input = HookInput.model_validate(stdin_data)
+
+# Normalized event validation
+normalized = NormalizedEvent(
+    event_type="tool_execution_started",
+    timestamp=datetime.now(),
+    session_id=hook_input.data["session_id"],
+    provider=hook_input.provider,
+    context=ToolExecutionContext(
+        tool_name=hook_input.data["tool_name"],
+        tool_input=hook_input.data["tool_input"],
+    ),
+    metadata=EventMetadata(
+        hook_event_name=hook_input.event,
+        transcript_path=hook_input.data.get("transcript_path"),
+    ),
+)
+```
+
+Benefits:
+- Runtime validation catches errors early
+- Auto-generate JSON schemas
+- IDE autocomplete and type hints
+- Clear error messages for invalid data
+
+#### 5. Analytics as MiddlewareType
+
+Extend the Rust hook system with a new middleware type:
+
+```rust
+pub enum MiddlewareType {
+    Safety,       // Blocking, fail-fast
+    Observability, // Non-blocking, best-effort
+    Analytics,     // Non-blocking, best-effort (new)
+}
+```
+
+Analytics middleware behaves like observability:
+- Runs in parallel with other middleware
+- Errors don't block agent execution
+- Results logged but don't affect decisions
+
+### Event Schema
+
+Normalized events follow a consistent structure:
+
+```json
+{
+  "event_type": "tool_execution_started",
+  "timestamp": "2025-11-19T12:34:56.789Z",
+  "session_id": "abc123-def456",
+  "provider": "claude",
+  "context": {
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "src/main.py",
+      "contents": "print('Hello, World!')"
+    },
+    "tool_use_id": "toolu_01ABC123"
+  },
+  "metadata": {
+    "hook_event_name": "PreToolUse",
+    "transcript_path": "/path/to/transcript.jsonl",
+    "permission_mode": "default"
+  },
+  "cwd": "/Users/dev/project"
+}
+```
+
+### Event Type Mapping
+
+| Hook Event         | Analytics Event Type      | Context Data                  |
+|--------------------|---------------------------|-------------------------------|
+| SessionStart       | session_started           | source (startup/resume)       |
+| SessionEnd         | session_completed         | reason, duration              |
+| UserPromptSubmit   | user_prompt_submitted     | prompt, prompt_length         |
+| PreToolUse         | tool_execution_started    | tool_name, tool_input         |
+| PostToolUse        | tool_execution_completed  | tool_name, tool_response      |
+| PermissionRequest  | permission_requested      | tool_name, decision           |
+| Stop               | agent_stopped             | stop_hook_active              |
+| SubagentStop       | subagent_stopped          | stop_hook_active              |
+| Notification       | system_notification       | notification_type, message    |
+| PreCompact         | context_compacted         | trigger (manual/auto)         |
 
 ## Alternatives Considered
 
-### Alternative 1: Hardcoded Provider Enum
+### Alternative 1: Direct Provider Integration
 
-**Description**: Use `Literal["claude", "openai", ...]` throughout analytics code
-
-**Pros**:
-- Compile-time validation of provider names
-- IDE autocomplete for providers
-- Catches typos early
-
-**Cons**:
-- Violates DRY (provider list duplicated)
-- Maintenance burden (update multiple files for new providers)
-- Analytics code depends on provider implementations
-- Prevents custom/experimental providers
-
-**Reason for rejection**: Creates WET code and tight coupling. The validation benefit is minimal since provider names come from trusted hook system.
-
----
-
-### Alternative 2: Dynamic Provider Registry
-
-**Description**: Load provider list from config at runtime, validate against registry
+**Description**: Implement analytics directly in provider transformers (Claude, OpenAI, etc.)
 
 **Pros**:
-- Single source of truth
-- Runtime validation possible
-- Flexible for different deployments
+- No separate middleware needed
+- Direct access to provider internals
+- Potentially lower latency
 
 **Cons**:
-- Added complexity (registry loading, caching)
-- Runtime overhead for validation
-- YAGNI - validation not critical for internal system
+- **Tight coupling**: Each provider needs analytics code
+- **Duplication**: Same logic repeated per provider
+- **Maintenance burden**: Changes require updating all providers
+- **Not extensible**: Hard to add new backends
 
-**Reason for rejection**: Over-engineering. The hook system already knows valid providers, we don't need redundant validation.
+**Reason for rejection**: Violates DRY principle and creates maintenance burden
 
----
+### Alternative 2: Message Queue Architecture
 
-### Alternative 3: Separate Analytics Service with API
-
-**Description**: Build analytics as standalone microservice with REST API
+**Description**: Publish events to message queue (Redis Streams, Kafka), separate consumer processes events
 
 **Pros**:
-- Independent deployment and scaling
-- Language-agnostic interface
-- Clear boundaries
+- Truly decoupled
+- Scalable for high volume
+- Async processing
+- Multiple consumers possible
 
 **Cons**:
-- Operational complexity (deployment, monitoring)
-- Network latency for each event
-- YAGNI for current scale
-- Middleware pattern is simpler
+- **Over-engineering**: Too complex for v1
+- **Infrastructure dependency**: Requires Redis/Kafka
+- **Operational overhead**: More services to manage
+- **Latency**: Additional network hop
 
-**Reason for rejection**: Premature optimization. Start with middleware, evolve to service if needed.
+**Reason for rejection**: YAGNI (You Aren't Gonna Need It) - start simple, add message queue later if needed
+
+### Alternative 3: Embedded Rust Analytics
+
+**Description**: Implement analytics in Rust, embedded in CLI
+
+**Pros**:
+- Single-language codebase
+- Potentially faster
+- No Python dependency
+
+**Cons**:
+- **Less flexible**: Rust harder for data transformations
+- **Steeper learning curve**: More developers know Python
+- **Integration challenges**: Provider-specific logic in Rust more complex
+- **Pydantic benefits lost**: No auto schema generation
+
+**Reason for rejection**: Python better suited for data transformation and has richer ecosystem for analytics
+
+### Alternative 4: Dynamic Provider Enum
+
+**Description**: Load provider names from config at runtime, validate in analytics
+
+**Pros**:
+- Some validation of provider names
+- Still somewhat extensible
+
+**Cons**:
+- **Complexity**: Runtime enum generation is complex
+- **Not truly provider-agnostic**: Still coupled to provider list
+- **Unnecessary**: Hook system already validates providers
+
+**Reason for rejection**: Adds complexity without meaningful benefits
 
 ## Consequences
 
 ### Positive Consequences
 
-- **DRY Code**: Single source of truth for providers in `primitives.config.yaml`
-- **Zero Maintenance**: Adding providers doesn't require analytics changes
-- **Future-Proof**: Works with any provider, including custom ones
-- **Loose Coupling**: Analytics independent of provider implementations
-- **Type Safety**: Full Pydantic validation for data structures (97% coverage)
-- **Testability**: Clear boundaries enable comprehensive testing
+✅ **Provider Agnostic**: Adding new providers requires zero analytics code changes
+
+✅ **Type Safe**: Pydantic catches data errors at runtime with clear messages
+
+✅ **Testable**: Each component (adapters, normalizer, publishers) tested independently
+
+✅ **Extensible**: Easy to add new backends (Redis, Kafka, etc.)
+
+✅ **Non-Blocking**: Analytics failures don't affect agent execution
+
+✅ **Normalized Schema**: Consistent format enables cross-provider analytics
+
+✅ **Future-Proof**: Port & adapter pattern accommodates future requirements
+
+✅ **Developer Friendly**: Python better than Rust for data transformations
+
+✅ **Auto-Documentation**: Pydantic generates JSON schema automatically
 
 ### Negative Consequences
 
-- **No Compile-Time Provider Validation**: Typos in provider names not caught early
-  - **Mitigation**: Hook system validates providers before calling analytics
-- **String-Based Identification**: Less type-safe than enums
-  - **Mitigation**: Pydantic validates overall structure, provider names are metadata
-- **Learning Curve**: Port & adapter pattern requires understanding
-  - **Mitigation**: Comprehensive documentation and examples
+⚠️ **Additional Complexity**: Two-stage middleware more complex than single stage
+
+⚠️ **Python Dependency**: Requires Python 3.11+ and uv
+
+⚠️ **Performance Overhead**: Pydantic validation adds ~1-2ms per event
+
+⚠️ **Multi-Language**: Rust + Python increases cognitive load
+
+⚠️ **No Provider Validation**: Analytics doesn't validate provider names
 
 ### Neutral Consequences
 
-- **Provider Discovery**: System discovers providers dynamically
-- **Configuration Split**: Runtime config (analytics) vs system config (primitives)
-- **Testing Strategy**: Property-based tests for provider agnosticism
+ℹ️ **Two Middleware Stages**: Some hooks will have normalizer + publisher
+
+ℹ️ **Environment Variables**: Configuration via ANALYTICS_* env vars
+
+ℹ️ **JSONL Format**: File backend uses line-delimited JSON
+
+### Mitigations
+
+1. **Complexity**: Comprehensive documentation and examples (this ADR, integration guide)
+2. **Python Dependency**: Use uv for fast, reproducible Python environments
+3. **Performance**: Benchmark and optimize hot paths, use `model_validate()` only at boundaries
+4. **Multi-Language**: Clear separation of concerns, Python only for analytics
+5. **Provider Validation**: Hook system validates providers before analytics sees events
 
 ## Implementation Notes
 
-### File Structure
+### Directory Structure
 
 ```
 services/analytics/
+├── pyproject.toml              # uv project config
+├── uv.lock                     # Locked dependencies
 ├── src/analytics/
 │   ├── models/
-│   │   ├── hook_input.py      # Provider-specific input models
+│   │   ├── hook_input.py       # Provider-specific input models
 │   │   ├── events.py           # Normalized event models
-│   │   └── config.py           # Configuration (NO provider enum)
+│   │   └── config.py           # Configuration models
 │   ├── adapters/
-│   │   ├── base.py             # Adapter interface
-│   │   ├── claude.py           # Claude-specific logic
-│   │   └── openai.py           # OpenAI-specific logic (future)
-│   ├── normalizer.py           # Provider-agnostic core
+│   │   ├── base.py             # Abstract adapter interface
+│   │   ├── claude.py           # Claude adapter
+│   │   └── openai.py           # OpenAI adapter (future)
+│   ├── normalizer.py           # Event normalization logic
 │   └── publishers/
-│       ├── base.py             # Publisher interface
-│       ├── file.py             # JSONL file publisher
-│       └── api.py              # HTTP API publisher
+│       ├── base.py             # Abstract publisher interface
+│       ├── file.py             # File backend (JSONL)
+│       └── api.py              # API backend (HTTP POST)
 ├── middleware/
-│   ├── event_normalizer.py    # Entry point for normalization
-│   └── event_publisher.py     # Entry point for publishing
+│   ├── event_normalizer.py     # Stage 1: Normalize events
+│   └── event_publisher.py      # Stage 2: Publish events
 └── tests/
-    ├── fixtures/
-    │   ├── claude_hooks/       # Claude event samples
-    │   └── normalized_events/  # Expected outputs
-    └── test_*.py               # Comprehensive tests
+    ├── fixtures/               # Test data
+    ├── test_models.py          # Pydantic model tests
+    ├── test_adapters.py        # Adapter tests
+    ├── test_normalizer.py      # Normalizer tests
+    └── test_publishers.py      # Publisher tests
+```
+
+### Rust Integration
+
+```rust
+// cli/src/primitives/hook.rs
+pub enum MiddlewareType {
+    Safety,
+    Observability,
+    Analytics,  // Add this
+}
+```
+
+```json
+// specs/v1/hook-meta.schema.json
+{
+  "middleware": {
+    "type": {
+      "enum": ["safety", "observability", "analytics"]
+    }
+  }
+}
+```
+
+### Hook Configuration Example
+
+```yaml
+# primitives/v1/hooks/analytics/analytics-collector/hook.meta.yaml
+version: 1
+id: analytics-collector
+name: "Analytics Event Collector"
+description: "Collects and normalizes hook events for analytics"
+events:
+  - PreToolUse
+  - PostToolUse
+  - SessionStart
+  - SessionEnd
+  - UserPromptSubmit
+  - PermissionRequest
+  - Stop
+  - SubagentStop
+  - Notification
+  - PreCompact
+
+middleware:
+  - name: "analytics-normalizer"
+    type: analytics
+    impl: python
+    path: "../../services/analytics/middleware/event_normalizer.py"
+    env:
+      ANALYTICS_PROVIDER: "claude"
+  
+  - name: "analytics-publisher"
+    type: analytics
+    impl: python
+    path: "../../services/analytics/middleware/event_publisher.py"
+    env:
+      ANALYTICS_PUBLISHER_BACKEND: "file"
+      ANALYTICS_OUTPUT_PATH: "./analytics/events.jsonl"
+
+execution: pipeline
+```
+
+### Environment Variables
+
+```bash
+# Normalizer stage
+export ANALYTICS_PROVIDER=claude          # Set by hook system
+
+# Publisher stage
+export ANALYTICS_PUBLISHER_BACKEND=file   # or "api"
+export ANALYTICS_OUTPUT_PATH=./events.jsonl
+export ANALYTICS_API_ENDPOINT=https://analytics.example.com/events
+export ANALYTICS_API_TIMEOUT=30
+export ANALYTICS_RETRY_ATTEMPTS=3
+export ANALYTICS_DEBUG=false
 ```
 
 ### Migration Path
 
-1. ✅ **Phase 1 (Milestone 1)**: Foundation
-   - Pydantic models with provider: str
-   - Test fixtures and comprehensive tests
-   - JSON schema generation
+1. **Phase 1**: Foundation (Pydantic models, JSON schema) ✅ COMPLETE
+2. **Phase 2**: Core Logic (normalizer, adapters, publishers)
+3. **Phase 3**: Rust Integration (middleware type, schemas)
+4. **Phase 4**: System-Level Hook (analytics-collector primitive)
+5. **Phase 5**: Provider Transformers (include analytics in build)
 
-2. **Phase 2 (Milestone 2-3)**: Implementation
-   - Event normalizer with adapters
-   - File and API publishers
-   - Middleware entry points
+No breaking changes to existing hooks. Analytics is additive.
 
-3. **Phase 3 (Milestone 4)**: Integration
-   - Rust hook system integration
-   - Analytics middleware type in hook schema
-   - End-to-end testing
+## Success Criteria
 
-4. **Phase 4 (Future)**: Optimization
-   - Batching for high-volume scenarios
-   - Additional backends (Redis, Kafka)
-   - Performance monitoring
+Analytics middleware is successful when:
 
-### Breaking Changes
+1. ✅ Works with any provider without code changes
+2. ✅ >90% test coverage for normalization logic
+3. ✅ >80% test coverage for publishers
+4. ✅ <10ms performance overhead per event
+5. ✅ Fails gracefully without blocking agent execution
+6. ✅ Normalized schema consistent across all providers
+7. ✅ Easy to add new backends (file, API, Redis, Kafka)
+8. ✅ Comprehensive documentation with examples
 
-None - this is a new system.
+## Related Decisions
 
-### Configuration Example
-
-```bash
-# Runtime configuration (environment variables)
-export ANALYTICS_PROVIDER=claude           # Set by hook caller
-export ANALYTICS_PUBLISHER_BACKEND=file
-export ANALYTICS_OUTPUT_PATH=./events.jsonl
-
-# System configuration (primitives.config.yaml)
-providers:
-  enabled:
-    - claude
-    - openai
-    - cursor
-
-hooks:
-  middleware_types:
-    - safety
-    - observability  # Analytics is observability middleware
-    - analytics      # New type for analytics
-```
-
-### Adding New Providers
-
-**No analytics code changes needed!** Just:
-
-1. Add provider to `primitives.config.yaml`
-2. Create provider adapter if format differs significantly
-3. Hook system passes provider name in events
-
-Example adapter:
-```python
-# src/analytics/adapters/new_provider.py
-from analytics.models import NormalizedEvent
-
-def normalize_new_provider_event(
-    hook_input: dict
-) -> NormalizedEvent:
-    """Map NewProvider format to standard schema"""
-    return NormalizedEvent(
-        event_type=map_event_type(hook_input["event"]),
-        provider="new_provider",  # Just a string!
-        # ...
-    )
-```
+- **ADR-004: Provider-Scoped Models** - Provider naming and discovery
+- **ADR-005: Polyglot Implementations** - Python for analytics (type: python)
+- **ADR-006: Middleware-Based Hooks** - Foundation for analytics middleware
+- **ADR-008: Test-Driven Development** - TDD approach used for analytics
 
 ## References
 
-- [ADR-006: Middleware Hooks](./006-middleware-hooks.md) - Existing hook system
-- [ADR-004: Provider-Scoped Models](./004-provider-scoped-models.md) - Provider naming
-- [ADR-008: Test-Driven Development](./008-test-driven-development.md) - Testing approach
-- [Port & Adapter Pattern](https://alistair.cockburn.us/hexagonal-architecture/) - Hexagonal Architecture
-- [Pydantic v2 Documentation](https://docs.pydantic.dev/latest/) - Validation framework
-- [services/analytics/README.md](../../services/analytics/README.md) - Implementation docs
-- [services/analytics/ARCHITECTURE.md](../../services/analytics/ARCHITECTURE.md) - Detailed architecture
+- [Ports and Adapters Pattern](https://alistair.cockburn.us/hexagonal-architecture/)
+- [Pydantic v2 Documentation](https://docs.pydantic.dev/)
+- [Claude Hooks Reference](https://code.claude.com/docs/en/hooks)
+- [OpenTelemetry for inspiration](https://opentelemetry.io/)
 
-### Related Code
+## Notes
 
-- `specs/v1/model-config.schema.json` - Provider enum (source of truth)
-- `primitives.config.yaml` - Enabled providers list
-- `services/analytics/src/analytics/models/config.py` - Provider: str (not enum!)
-- `services/analytics/src/analytics/models/hook_input.py` - Generic wrapper
+### Why Not OpenTelemetry?
+
+OpenTelemetry is designed for distributed tracing and metrics, not for capturing detailed business events from AI agents. We need:
+- Rich, provider-specific context (tool inputs, prompts, etc.)
+- Normalized schema across providers
+- Simple file-based storage for v1
+- Lightweight integration without OTLP overhead
+
+OpenTelemetry might be useful later for infrastructure metrics, but not for analytics events.
+
+### Provider Agnostic Philosophy
+
+This decision embodies a core principle: **analytics should not know about providers**.
+
+The hook system knows which provider triggered an event. The hook system passes this information to analytics. Analytics treats it as an opaque string tag.
+
+This inverts the dependency: providers depend on hook system, hook system depends on nothing, analytics depends on hook system. Analytics never depends on providers.
+
+### Future Enhancements
+
+Possible future additions without breaking changes:
+- Event filtering (sample rates, allowlists)
+- Event enrichment (user info, project metadata)
+- Batching for high-volume scenarios
+- Compression for file backend
+- Event replay for debugging
+- Real-time streaming to dashboard
+
+All can be added through new adapters or configuration without changing core architecture.
 
 ---
 
 **Status**: Accepted  
-**Implementation**: Phase 1 complete (Milestone 1), Phase 2-4 pending  
-**Test Coverage**: 97.30% (exceeds 80% requirement)  
 **Last Updated**: 2025-11-19
-

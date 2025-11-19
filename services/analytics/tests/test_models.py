@@ -1,6 +1,7 @@
 """Tests for Pydantic models - 100% coverage required"""
 
 from datetime import datetime
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -24,7 +25,7 @@ from analytics.models import (
 class TestClaudeHookInputModels:
     """Test Claude hook input models"""
 
-    def test_claude_pre_tool_use_valid(self, claude_pre_tool_use_fixture: dict) -> None:
+    def test_claude_pre_tool_use_valid(self, claude_pre_tool_use_fixture: dict[str, Any]) -> None:
         """Test valid PreToolUse input"""
         model = ClaudePreToolUseInput.model_validate(claude_pre_tool_use_fixture)
         assert model.hook_event_name == "PreToolUse"
@@ -32,7 +33,7 @@ class TestClaudeHookInputModels:
         assert model.session_id == "abc123-def456-ghi789"
         assert "file_path" in model.tool_input
 
-    def test_claude_post_tool_use_valid(self, claude_post_tool_use_fixture: dict) -> None:
+    def test_claude_post_tool_use_valid(self, claude_post_tool_use_fixture: dict[str, Any]) -> None:
         """Test valid PostToolUse input"""
         model = ClaudePostToolUseInput.model_validate(claude_post_tool_use_fixture)
         assert model.hook_event_name == "PostToolUse"
@@ -40,32 +41,34 @@ class TestClaudeHookInputModels:
         assert "tool_response" in model.model_dump()
         assert model.tool_response["success"] is True
 
-    def test_claude_user_prompt_submit_valid(self, claude_user_prompt_submit_fixture: dict) -> None:
+    def test_claude_user_prompt_submit_valid(
+        self, claude_user_prompt_submit_fixture: dict[str, Any]
+    ) -> None:
         """Test valid UserPromptSubmit input"""
         model = ClaudeUserPromptSubmitInput.model_validate(claude_user_prompt_submit_fixture)
         assert model.hook_event_name == "UserPromptSubmit"
         assert "Hello World" in model.prompt
 
-    def test_claude_session_start_valid(self, claude_session_start_fixture: dict) -> None:
+    def test_claude_session_start_valid(self, claude_session_start_fixture: dict[str, Any]) -> None:
         """Test valid SessionStart input"""
         model = ClaudeSessionStartInput.model_validate(claude_session_start_fixture)
         assert model.hook_event_name == "SessionStart"
         assert model.source == "startup"
 
-    def test_claude_session_end_valid(self, claude_session_end_fixture: dict) -> None:
+    def test_claude_session_end_valid(self, claude_session_end_fixture: dict[str, Any]) -> None:
         """Test valid SessionEnd input"""
         model = ClaudeSessionEndInput.model_validate(claude_session_end_fixture)
         assert model.hook_event_name == "SessionEnd"
         assert model.reason == "exit"
 
-    def test_invalid_permission_mode(self, claude_pre_tool_use_fixture: dict) -> None:
+    def test_invalid_permission_mode(self, claude_pre_tool_use_fixture: dict[str, Any]) -> None:
         """Test invalid permission mode raises validation error"""
         invalid = claude_pre_tool_use_fixture.copy()
         invalid["permission_mode"] = "invalid_mode"
         with pytest.raises(ValidationError):
             ClaudePreToolUseInput.model_validate(invalid)
 
-    def test_missing_required_field(self, claude_pre_tool_use_fixture: dict) -> None:
+    def test_missing_required_field(self, claude_pre_tool_use_fixture: dict[str, Any]) -> None:
         """Test missing required field raises validation error"""
         invalid = claude_pre_tool_use_fixture.copy()
         del invalid["session_id"]
@@ -76,7 +79,9 @@ class TestClaudeHookInputModels:
 class TestHookInputConverter:
     """Test HookInput model and conversion methods"""
 
-    def test_hook_input_to_claude_pre_tool_use(self, claude_pre_tool_use_fixture: dict) -> None:
+    def test_hook_input_to_claude_pre_tool_use(
+        self, claude_pre_tool_use_fixture: dict[str, Any]
+    ) -> None:
         """Test converting HookInput to Claude PreToolUse"""
         from analytics.models.hook_input import HookInput
 
@@ -87,7 +92,9 @@ class TestHookInputConverter:
         assert claude_input.hook_event_name == "PreToolUse"
         assert claude_input.tool_name == "Write"
 
-    def test_hook_input_to_claude_post_tool_use(self, claude_post_tool_use_fixture: dict) -> None:
+    def test_hook_input_to_claude_post_tool_use(
+        self, claude_post_tool_use_fixture: dict[str, Any]
+    ) -> None:
         """Test converting HookInput to Claude PostToolUse"""
         from analytics.models.hook_input import HookInput
 
@@ -98,7 +105,7 @@ class TestHookInputConverter:
         assert claude_input.hook_event_name == "PostToolUse"
 
     def test_hook_input_to_claude_user_prompt_submit(
-        self, claude_user_prompt_submit_fixture: dict
+        self, claude_user_prompt_submit_fixture: dict[str, Any]
     ) -> None:
         """Test converting HookInput to Claude UserPromptSubmit"""
         from analytics.models.hook_input import HookInput
@@ -111,7 +118,9 @@ class TestHookInputConverter:
         claude_input = hook_input.to_claude_input()
         assert claude_input.hook_event_name == "UserPromptSubmit"
 
-    def test_hook_input_to_claude_session_start(self, claude_session_start_fixture: dict) -> None:
+    def test_hook_input_to_claude_session_start(
+        self, claude_session_start_fixture: dict[str, Any]
+    ) -> None:
         """Test converting HookInput to Claude SessionStart"""
         from analytics.models.hook_input import HookInput
 
@@ -121,7 +130,9 @@ class TestHookInputConverter:
         claude_input = hook_input.to_claude_input()
         assert claude_input.hook_event_name == "SessionStart"
 
-    def test_hook_input_to_claude_session_end(self, claude_session_end_fixture: dict) -> None:
+    def test_hook_input_to_claude_session_end(
+        self, claude_session_end_fixture: dict[str, Any]
+    ) -> None:
         """Test converting HookInput to Claude SessionEnd"""
         from analytics.models.hook_input import HookInput
 
@@ -131,7 +142,7 @@ class TestHookInputConverter:
         claude_input = hook_input.to_claude_input()
         assert claude_input.hook_event_name == "SessionEnd"
 
-    def test_hook_input_to_claude_notification(self, claude_hooks_dir: any) -> None:
+    def test_hook_input_to_claude_notification(self, claude_hooks_dir: Any) -> None:
         """Test converting HookInput to Claude Notification"""
         import json
 
@@ -144,7 +155,7 @@ class TestHookInputConverter:
         claude_input = hook_input.to_claude_input()
         assert claude_input.hook_event_name == "Notification"
 
-    def test_hook_input_to_claude_stop(self, claude_hooks_dir: any) -> None:
+    def test_hook_input_to_claude_stop(self, claude_hooks_dir: Any) -> None:
         """Test converting HookInput to Claude Stop"""
         import json
 
@@ -157,7 +168,7 @@ class TestHookInputConverter:
         claude_input = hook_input.to_claude_input()
         assert claude_input.hook_event_name == "Stop"
 
-    def test_hook_input_to_claude_pre_compact(self, claude_hooks_dir: any) -> None:
+    def test_hook_input_to_claude_pre_compact(self, claude_hooks_dir: Any) -> None:
         """Test converting HookInput to Claude PreCompact"""
         import json
 
@@ -188,7 +199,9 @@ class TestHookInputConverter:
         with pytest.raises(ValueError, match="Unknown Claude hook event"):
             hook_input.to_claude_input()
 
-    def test_hook_input_adds_hook_event_name(self, claude_pre_tool_use_fixture: dict) -> None:
+    def test_hook_input_adds_hook_event_name(
+        self, claude_pre_tool_use_fixture: dict[str, Any]
+    ) -> None:
         """Test that hook_event_name is added if missing"""
         from analytics.models.hook_input import HookInput
 
@@ -203,7 +216,9 @@ class TestHookInputConverter:
 class TestNormalizedEventModels:
     """Test normalized event models"""
 
-    def test_normalized_event_valid(self, normalized_tool_execution_started: dict) -> None:
+    def test_normalized_event_valid(
+        self, normalized_tool_execution_started: dict[str, Any]
+    ) -> None:
         """Test valid normalized event"""
         model = NormalizedEvent.model_validate(normalized_tool_execution_started)
         assert model.event_type == "tool_execution_started"
@@ -211,7 +226,9 @@ class TestNormalizedEventModels:
         assert model.session_id == "abc123-def456-ghi789"
         assert isinstance(model.timestamp, datetime)
 
-    def test_normalized_event_serialization(self, normalized_tool_execution_started: dict) -> None:
+    def test_normalized_event_serialization(
+        self, normalized_tool_execution_started: dict[str, Any]
+    ) -> None:
         """Test normalized event serialization"""
         model = NormalizedEvent.model_validate(normalized_tool_execution_started)
         json_str = model.model_dump_json()
@@ -279,7 +296,7 @@ class TestAnalyticsConfig:
         assert config.api_timeout == 60
 
     def test_validate_backend_config_file(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: any
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         """Test backend validation for file backend"""
         output_path = tmp_path / "analytics.jsonl"
@@ -310,7 +327,7 @@ class TestAnalyticsConfig:
         with pytest.raises(ValueError, match="api_endpoint is required"):
             config.validate_backend_config()
 
-    def test_get_output_path_resolved(self, monkeypatch: pytest.MonkeyPatch, tmp_path: any) -> None:
+    def test_get_output_path_resolved(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
         """Test output path resolution and directory creation"""
         output_path = tmp_path / "subdir" / "analytics.jsonl"
         monkeypatch.setenv("ANALYTICS_OUTPUT_PATH", str(output_path))

@@ -1,0 +1,55 @@
+# Tool Usage Monitoring
+# Tracks tool execution for understanding which tools agents use and how often
+#
+# Use cases:
+# - Tool usage analytics (which tools are most popular)
+# - Performance monitoring (tool execution time)
+# - Error tracking (tools that fail frequently)
+# - Permission patterns (which tools require permission)
+
+version: 1
+id: tool-monitoring
+name: "Tool Usage Monitor"
+description: "Track PreToolUse and PostToolUse events for analytics"
+
+# Capture tool execution lifecycle
+events:
+  - PreToolUse      # Before tool execution
+  - PostToolUse     # After tool execution
+  - PermissionRequest  # When permission is needed
+
+# Two-stage analytics pipeline
+middleware:
+  # Stage 1: Normalize events
+  - name: "analytics-normalizer"
+    type: analytics
+    impl: python
+    path: "../../../services/analytics/middleware/event_normalizer.py"
+    env:
+      ANALYTICS_PROVIDER: "claude"
+  
+  # Stage 2: Publish events
+  - name: "analytics-publisher"
+    type: analytics
+    impl: python
+    path: "../../../services/analytics/middleware/event_publisher.py"
+    env:
+      ANALYTICS_PUBLISHER_BACKEND: "file"
+      ANALYTICS_OUTPUT_PATH: "./analytics/tool-usage.jsonl"
+
+execution: pipeline
+
+# Output events:
+# - tool_execution_started (from PreToolUse)
+# - tool_execution_completed (from PostToolUse)
+# - permission_requested (from PermissionRequest)
+#
+# Each event includes:
+# - tool_name: Name of the tool (Write, Read, Bash, etc.)
+# - tool_input: Input parameters for the tool
+# - tool_response: Response from tool (only in completed events)
+# - timestamp: When the event occurred
+#
+# Example: Calculate tool execution time by matching start/complete events
+# cat tool-usage.jsonl | jq -r 'select(.event_type == "tool_execution_started") | .tool_use_id' | sort | uniq
+
