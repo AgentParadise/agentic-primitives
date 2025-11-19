@@ -54,11 +54,8 @@ async def main() -> None:
         # Validate with Pydantic
         hook_input = HookInput.model_validate(hook_input_dict)
         
-        # Load configuration from environment
-        config = AnalyticsConfig()
-        
-        # Normalize event
-        normalizer = EventNormalizer(provider=config.provider)
+        # Normalize event (provider is detected from hook_input.provider)
+        normalizer = EventNormalizer()
         normalized_event = normalizer.normalize(hook_input)
         
         # Output normalized event to stdout (JSON)
