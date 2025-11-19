@@ -1,0 +1,23 @@
+{
+  "event_type": "tool_execution_started",
+  "timestamp": "2025-11-19T12:34:56.789000",
+  "session_id": "abc123-def456-ghi789",
+  "provider": "claude",
+  "context": {
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "src/main.py",
+      "contents": "print('Hello, World!')\n"
+    },
+    "tool_response": null,
+    "tool_use_id": "toolu_01ABC123DEF456"
+  },
+  "metadata": {
+    "hook_event_name": "PreToolUse",
+    "transcript_path": "/Users/dev/.claude/projects/test-project/00893aaf-19fa-41d2-8238-13269b9b3ca0.jsonl",
+    "permission_mode": "default",
+    "raw_event": null
+  },
+  "cwd": "/Users/dev/agentic-primitives"
+}
+
