@@ -47,6 +47,9 @@ make build
 
 # Install the CLI to your PATH
 cargo install --path cli
+
+# Verify installation
+agentic-p --version
 ```
 
 ### Initialize a New Repository

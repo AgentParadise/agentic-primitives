@@ -466,7 +466,7 @@ export ANALYTICS_OUTPUT_PATH=./analytics/events.jsonl
 
 ### Problem: Hook doesn't validate
 
-**Symptom**: `agentic validate` fails with schema errors
+**Symptom**: `agentic-p validate` fails with schema errors
 
 **Cause**: Hook configuration doesn't match `hook-meta.schema.json`
 
@@ -475,7 +475,7 @@ export ANALYTICS_OUTPUT_PATH=./analytics/events.jsonl
 1. Check the schema error message:
 
 ```bash
-agentic validate docs/examples/analytics/session-tracking.hook.yaml
+agentic-p validate docs/examples/analytics/session-tracking.hook.yaml
 ```
 
 2. Common schema errors:
@@ -581,7 +581,7 @@ execution: pipeline
 
 ## Testing Issues
 
-### Problem: `agentic test-hook` fails
+### Problem: `agentic-p test-hook` fails
 
 **Symptom**: Hook validation passes but testing fails
 
@@ -627,7 +627,7 @@ cat tests/fixtures/claude_hooks/pre_tool_use.json | \
 
 ```bash
 export ANALYTICS_DEBUG=true
-agentic test-hook docs/examples/analytics/session-tracking.hook.yaml \
+agentic-p test-hook docs/examples/analytics/session-tracking.hook.yaml \
   --input test-input.json
 ```
 
@@ -1023,13 +1023,13 @@ export ANALYTICS_OUTPUT_PATH=./analytics/events.jsonl
 1. **Always validate hooks before deploying**:
 
 ```bash
-agentic validate hook.yaml
+agentic-p validate hook.yaml
 ```
 
 2. **Test with fixtures**:
 
 ```bash
-agentic test-hook hook.yaml --input fixture.json
+agentic-p test-hook hook.yaml --input fixture.json
 ```
 
 3. **Use debug mode during development**:

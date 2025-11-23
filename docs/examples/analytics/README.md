@@ -31,7 +31,7 @@ Each example shows how to configure analytics middleware for specific scenarios.
 Validate any example with the agentic CLI:
 
 ```bash
-agentic validate docs/examples/analytics/session-tracking.hook.yaml
+agentic-p validate docs/examples/analytics/session-tracking.hook.yaml
 ```
 
 ### Testing
@@ -56,7 +56,7 @@ cat > test-session-start.json <<'EOF'
 EOF
 
 # Test the hook
-agentic test-hook docs/examples/analytics/session-tracking.hook.yaml \
+agentic-p test-hook docs/examples/analytics/session-tracking.hook.yaml \
   --input test-session-start.json
 ```
 
@@ -158,8 +158,8 @@ Use absolute paths or `~` for home directory.
 
 1. **Choose an example** that matches your use case
 2. **Customize environment variables** for your setup
-3. **Validate the configuration** with `agentic validate`
-4. **Test with sample data** using `agentic test-hook`
+3. **Validate the configuration** with `agentic-p validate`
+4. **Test with sample data** using `agentic-p test-hook`
 5. **Deploy to your hook system** (e.g., Claude Code settings)
 
 ## Additional Resources

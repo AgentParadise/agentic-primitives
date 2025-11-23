@@ -222,7 +222,7 @@ graph TB
     end
     
     subgraph "CLI Build System"
-        BuildCmd[<span style='color:black'>agentic build</span>]
+        BuildCmd[<span style='color:black'>agentic-p build</span>]
         Transformer[<span style='color:black'>Provider Transformer</span>]
         
         subgraph "Transformers"
@@ -419,7 +419,7 @@ sequenceDiagram
     participant Transformer as <span style='color:black'>Transformer</span>
     participant FileSystem as <span style='color:black'>File System</span>
     
-    User->>CLI: agentic build --provider claude
+    User->>CLI: agentic-p build --provider claude
     CLI->>Validator: Validate Hook Primitive
     Validator->>FileSystem: Read YAML Metadata
     FileSystem-->>Validator: Metadata

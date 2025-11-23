@@ -13,7 +13,7 @@ informed: All Stakeholders
 
 ## Context
 
-The `agentic new` command creates new primitives by generating directory structures and template files. We need to decide how much interactivity this command should have:
+The `agentic-p new` command creates new primitives by generating directory structures and template files. We need to decide how much interactivity this command should have:
 
 - **Fully interactive**: Prompt for all fields (id, summary, domain, tools, models, etc.)
 - **Partially interactive**: Prompt for essentials, use defaults for rest
@@ -34,7 +34,7 @@ The `agentic new` command creates new primitives by generating directory structu
 
 1. **Fully Interactive CLI**
    ```bash
-   $ agentic new prompt agent
+   $ agentic-p new prompt agent
    Enter ID: python-pro
    Enter domain: python
    Enter summary: Expert Python engineer
@@ -47,7 +47,7 @@ The `agentic new` command creates new primitives by generating directory structu
 
 2. **Hybrid Approach**
    ```bash
-   $ agentic new prompt agent python/python-pro \
+   $ agentic-p new prompt agent python/python-pro \
        --domain python \
        --summary "Expert Python engineer" \
        --models claude/sonnet,openai/gpt-codex
@@ -57,7 +57,7 @@ The `agentic new` command creates new primitives by generating directory structu
 
 3. **Non-Interactive Scaffold** (CHOSEN)
    ```bash
-   $ agentic new prompt agent python/python-pro
+   $ agentic-p new prompt agent python/python-pro
    Created prompts/agents/python/python-pro/
    ├── python-pro.prompt.v1.md  (TODO: Fill in prompt content)
    ├── python-pro.meta.yaml     (Generated with templates)
@@ -165,7 +165,7 @@ default_version: 1
 ✅ **Scriptable**: Can generate multiple primitives in batch
    ```bash
    for agent in python-pro web-architect devops-sensei; do
-     agentic new prompt agent python/$agent
+     agentic-p new prompt agent python/$agent
    done
    ```
 
@@ -199,7 +199,7 @@ default_version: 1
 
 2. **Meta-Prompts**: Use `generate-primitive` meta-prompt to fill scaffolds
    ```bash
-   agentic new prompt agent python/python-pro
+   agentic-p new prompt agent python/python-pro
    # Use meta-prompt to generate content based on requirements
    claude --meta-prompt generate-primitive \
      "Create an expert Python agent for architecture and debugging"
@@ -209,11 +209,11 @@ default_version: 1
 
 4. **Editor Integration**: VS Code extension could auto-open generated files
 
-5. **Validation Feedback**: Run `agentic validate` to check if TODOs are filled
+5. **Validation Feedback**: Run `agentic-p validate` to check if TODOs are filled
 
 6. **Future Enhancement**: Optional `--fill` flag using embedded AI
    ```bash
-   agentic new prompt agent python/python-pro \
+   agentic-p new prompt agent python/python-pro \
      --fill "Expert Python engineer for architecture and debugging"
    ```
 
@@ -223,19 +223,19 @@ default_version: 1
 
 ```bash
 # Prompts
-agentic new prompt <kind> <category>/<id>
-agentic new prompt agent python/python-pro
-agentic new command review/code-review
-agentic new skill testing/pytest-patterns
-agentic new meta-prompt generation/generate-agent
+agentic-p new prompt <kind> <category>/<id>
+agentic-p new prompt agent python/python-pro
+agentic-p new command review/code-review
+agentic-p new skill testing/pytest-patterns
+agentic-p new meta-prompt generation/generate-agent
 
 # Tools
-agentic new tool <category>/<id>
-agentic new tool shell/run-tests
+agentic-p new tool <category>/<id>
+agentic-p new tool shell/run-tests
 
 # Hooks
-agentic new hook <category>/<id>
-agentic new hook lifecycle/pre-tool-use
+agentic-p new hook <category>/<id>
+agentic-p new hook lifecycle/pre-tool-use
 ```
 
 ### What Gets Generated
@@ -283,7 +283,7 @@ let rendered = handlebars.render("agent-meta", &data)?;
 
 Non-interactive scaffolding is successful when:
 
-1. ✅ `agentic new` generates valid directory structure in <1 second
+1. ✅ `agentic-p new` generates valid directory structure in <1 second
 2. ✅ Generated scaffolds pass Layer 1 (structural) validation
 3. ✅ Generated scaffolds pass Layer 2 (schema) validation
 4. ✅ Templates clearly indicate where content is needed
@@ -313,7 +313,7 @@ Interactive CLIs are great for humans but terrible for automation. Since our goa
 
 ```bash
 # 1. Generate scaffold
-$ agentic new prompt agent python/python-pro
+$ agentic-p new prompt agent python/python-pro
 
 # 2. Fill with AI (using meta-prompt)
 $ claude --system-prompt "$(agentic inspect meta-prompts/generation/generate-primitive)" \
@@ -321,17 +321,17 @@ $ claude --system-prompt "$(agentic inspect meta-prompts/generation/generate-pri
     > prompts/agents/python/python-pro/python-pro.prompt.v1.md
 
 # 3. Validate
-$ agentic validate prompts/agents/python/python-pro
+$ agentic-p validate prompts/agents/python/python-pro
 
 # 4. Build
-$ agentic build --provider claude
+$ agentic-p build --provider claude
 ```
 
 **Future: AI Integration**
 
 Could add optional AI integration:
 ```bash
-agentic new prompt agent python/python-pro \
+agentic-p new prompt agent python/python-pro \
   --fill-with-ai \
   --description "Expert Python engineer specializing in async patterns and debugging"
 ```

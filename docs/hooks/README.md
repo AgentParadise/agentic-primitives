@@ -39,7 +39,7 @@ Welcome to the comprehensive documentation for the Agentic Primitives hooks syst
 
 ```bash
 # Install the analytics-collector hook for Claude
-agentic install --provider claude \
+agentic-p install --provider claude \
   --primitive primitives/v1/hooks/analytics/analytics-collector
 ```
 
@@ -90,10 +90,10 @@ touch primitives/v1/hooks/my-category/my-hook/my-hook.sh
 
 ```bash
 # Validate
-agentic validate primitives/v1/hooks/my-category/my-hook/
+agentic-p validate primitives/v1/hooks/my-category/my-hook/
 
 # Build
-agentic build --provider claude \
+agentic-p build --provider claude \
   --primitive primitives/v1/hooks/my-category/my-hook
 
 # Test
@@ -209,7 +209,7 @@ sys.stdout.flush()
 Build hook primitives for a specific provider:
 
 ```bash
-agentic build --provider <provider> --primitive <path>
+agentic-p build --provider <provider> --primitive <path>
 ```
 
 **Options:**
@@ -226,7 +226,7 @@ agentic build --provider <provider> --primitive <path>
 Install built hooks to the provider's directory:
 
 ```bash
-agentic install --provider <provider> --build-dir <path>
+agentic-p install --provider <provider> --build-dir <path>
 ```
 
 **Options:**
@@ -241,7 +241,7 @@ agentic install --provider <provider> --build-dir <path>
 Validate hook primitive metadata:
 
 ```bash
-agentic validate <path>
+agentic-p validate <path>
 ```
 
 **Checks:**

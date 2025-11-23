@@ -669,13 +669,13 @@ primitives/v1/hooks/analytics/analytics-collector/
 1. **Validate the hook**:
 
 ```bash
-agentic validate primitives/v1/hooks/analytics/analytics-collector/
+agentic-p validate primitives/v1/hooks/analytics/analytics-collector/
 ```
 
 2. **Test the hook**:
 
 ```bash
-agentic test-hook primitives/v1/hooks/analytics/analytics-collector/ \
+agentic-p test-hook primitives/v1/hooks/analytics/analytics-collector/ \
   --event PreToolUse \
   --input test-input.json
 ```
@@ -683,7 +683,7 @@ agentic test-hook primitives/v1/hooks/analytics/analytics-collector/ \
 3. **Install for a provider**:
 
 ```bash
-agentic install --hook analytics-collector --provider claude
+agentic-p install --hook analytics-collector --provider claude
 ```
 
 ### Configuring for Different Providers

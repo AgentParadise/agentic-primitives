@@ -26,7 +26,7 @@ The `analytics-collector` hook provides a standardized way to capture analytics 
 ### 1. Validate the Hook
 
 ```bash
-agentic validate primitives/v1/hooks/analytics/analytics-collector/
+agentic-p validate primitives/v1/hooks/analytics/analytics-collector/
 ```
 
 ### 2. Test the Hook
@@ -102,10 +102,10 @@ Add to your `.claude/settings.json`:
 
 ```bash
 # Install analytics hooks for Claude
-agentic install --hook analytics-collector --provider claude
+agentic-p install --hook analytics-collector --provider claude
 
 # Install with custom configuration
-agentic install --hook analytics-collector --provider claude \
+agentic-p install --hook analytics-collector --provider claude \
   --config backend=api \
   --config api_endpoint=https://analytics.example.com/api/events
 ```

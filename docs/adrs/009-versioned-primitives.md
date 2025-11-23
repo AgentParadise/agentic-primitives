@@ -164,7 +164,7 @@ draft → active → deprecated → archived
 **Explicit version selection** (using `@vN` syntax):
 ```bash
 # Build with specific version
-agentic build --provider claude --agent python-pro@v1
+agentic-p build --provider claude --agent python-pro@v1
 
 # Inspect specific version
 agentic inspect python-pro@v2
@@ -195,7 +195,7 @@ prompts/agents/python-pro/
 └── python-pro.meta.yaml     # Updated with version registry
 ```
 
-CLI command: `agentic migrate --add-versions`
+CLI command: `agentic-p migrate --add-versions`
 
 ## Alternatives Considered
 
@@ -335,11 +335,11 @@ agentic version promote <primitive-id> --version 3
 agentic version deprecate <primitive-id> --version 1
 
 # Validate all hashes
-agentic validate --check-hashes
+agentic-p validate --check-hashes
 # Errors if any active/deprecated version has hash mismatch
 
 # Migrate existing primitives to versioned format
-agentic migrate --add-versions
+agentic-p migrate --add-versions
 
 # Benchmark versions
 agentic benchmark <primitive-id> --versions v1,v2,v3 \
