@@ -1,0 +1,44 @@
+id: claude-4-opus
+full_name: "Claude Opus 4"
+api_name: "claude-opus-4-20250514"
+alias: "claude-opus-4-0"
+prefer_alias: false
+version: "4.0"
+provider: anthropic
+status: "legacy"
+
+capabilities:
+  max_tokens: 32000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+
+performance:
+  speed: "moderate"
+  quality: "very-high"
+  reliability: "very-high"
+
+pricing:
+  input_per_1m_tokens: 15.00
+  output_per_1m_tokens: 75.00
+  currency: "USD"
+
+strengths:
+  - "Exceptional reasoning"
+  - "Deep analysis"
+  - "Complex problem solving"
+
+recommended_for:
+  - "agents"
+  - "meta-prompts"
+  - "specialized reasoning"
+
+knowledge_cutoff: "2025-01-31"
+training_cutoff: "2025-03-31"
+last_updated: "2025-11-24"
+
+notes: "Legacy model. Recommend migrating to Claude Opus 4.1 for improved specialized reasoning capabilities. Released May 14, 2025."
+

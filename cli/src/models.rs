@@ -37,13 +37,13 @@ impl ModelRef {
     }
 
     /// Resolve to full model config by loading YAML file
-    /// Looks for file at: providers/{provider}/models/{model_id}.yaml
+    /// Looks for file at: providers/models/{provider}/{model_id}.yaml
     pub fn resolve<P: AsRef<Path>>(&self, repo_root: P) -> Result<ModelConfig> {
         let model_path = repo_root
             .as_ref()
             .join("providers")
-            .join(&self.provider)
             .join("models")
+            .join(&self.provider)
             .join(format!("{}.yaml", self.model_id));
 
         if !model_path.exists() {
@@ -74,8 +74,14 @@ pub struct ModelConfig {
     pub full_name: String,
     pub api_name: String,
     #[serde(default)]
+    pub alias: Option<String>,
+    #[serde(default)]
+    pub prefer_alias: Option<bool>,
+    #[serde(default)]
     pub version: Option<String>,
     pub provider: String,
+    #[serde(default)]
+    pub status: Option<String>,
     pub capabilities: ModelCapabilities,
     pub performance: ModelPerformance,
     pub pricing: ModelPricing,
@@ -89,6 +95,10 @@ pub struct ModelConfig {
     pub deprecated: Option<bool>,
     #[serde(default)]
     pub replacement: Option<String>,
+    #[serde(default)]
+    pub knowledge_cutoff: Option<String>,
+    #[serde(default)]
+    pub training_cutoff: Option<String>,
     #[serde(default)]
     pub last_updated: Option<String>,
 }
@@ -204,19 +214,19 @@ mod tests {
             }
         }
 
-        // Try to resolve claude/sonnet
-        let model_ref = ModelRef::parse("claude/sonnet").unwrap();
+        // Try to resolve a model (structure may change during refactoring)
+        let model_ref = ModelRef::parse("anthropic/claude-4-5-sonnet").unwrap();
         match model_ref.resolve(repo_root) {
             Ok(config) => {
-                assert_eq!(config.id, "sonnet");
-                assert_eq!(config.provider, "claude");
+                assert_eq!(config.id, "claude-4-5-sonnet");
+                assert_eq!(config.provider, "anthropic");
                 assert!(config.capabilities.max_tokens > 0);
                 assert!(config.capabilities.context_window > 0);
                 assert!(!config.strengths.is_empty());
                 assert!(!config.recommended_for.is_empty());
             }
             Err(e) => {
-                eprintln!("Warning: Could not resolve claude/sonnet: {e}");
+                eprintln!("Warning: Could not resolve anthropic/claude-4-5-sonnet: {e}");
                 // Don't fail the test if file doesn't exist yet
             }
         }

@@ -1,0 +1,44 @@
+id: claude-4-sonnet
+full_name: "Claude Sonnet 4"
+api_name: "claude-sonnet-4-20250514"
+alias: "claude-sonnet-4-0"
+prefer_alias: false
+version: "4.0"
+provider: anthropic
+status: "legacy"
+
+capabilities:
+  max_tokens: 64000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+
+performance:
+  speed: "fast"
+  quality: "very-high"
+  reliability: "very-high"
+
+pricing:
+  input_per_1m_tokens: 3.00
+  output_per_1m_tokens: 15.00
+  currency: "USD"
+
+strengths:
+  - "Balanced intelligence and speed"
+  - "Strong coding capabilities"
+  - "Extended thinking support"
+
+recommended_for:
+  - "agents"
+  - "commands"
+  - "coding tasks"
+
+knowledge_cutoff: "2025-01-31"
+training_cutoff: "2025-03-31"
+last_updated: "2025-11-24"
+
+notes: "Legacy model. Recommend migrating to Claude Sonnet 4.5 for improved performance and capabilities. Released May 14, 2025."
+

@@ -1,0 +1,51 @@
+id: claude-4-5-sonnet
+full_name: "Claude Sonnet 4.5"
+api_name: "claude-sonnet-4-5-20250929"
+alias: "claude-sonnet-4-5"
+prefer_alias: false
+version: "4.5"
+provider: anthropic
+status: "current"
+
+capabilities:
+  max_tokens: 64000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+
+performance:
+  speed: "fast"
+  quality: "very-high"
+  reliability: "very-high"
+
+pricing:
+  input_per_1m_tokens: 3.00
+  output_per_1m_tokens: 15.00
+  currency: "USD"
+  notes: "1M context window available with beta header context-1m-2025-08-07 at higher rates"
+
+strengths:
+  - "Best balance of intelligence, speed, and cost"
+  - "Exceptional coding and agentic tasks"
+  - "Advanced reasoning capabilities"
+  - "Long context processing (1M tokens with beta)"
+  - "Extended thinking support"
+  - "Production-ready reliability"
+
+recommended_for:
+  - "agents"
+  - "commands"
+  - "meta-prompts"
+  - "coding and development"
+  - "agentic applications"
+  - "production systems"
+
+knowledge_cutoff: "2025-01-31"
+training_cutoff: "2025-07-31"
+last_updated: "2025-11-24"
+
+notes: "Claude Sonnet 4.5 is the smartest model for complex agents and coding. Released September 29, 2025, it offers the best balance of intelligence, speed, and cost. Recommended as the default choice for most use cases. Supports optional 1M token context window with beta header."
+

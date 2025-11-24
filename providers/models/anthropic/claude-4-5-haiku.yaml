@@ -1,0 +1,50 @@
+id: claude-4-5-haiku
+full_name: "Claude Haiku 4.5"
+api_name: "claude-haiku-4-5-20251001"
+alias: "claude-haiku-4-5"
+prefer_alias: false
+version: "4.5"
+provider: anthropic
+status: "current"
+
+capabilities:
+  max_tokens: 64000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+
+performance:
+  speed: "very-fast"
+  quality: "high"
+  reliability: "very-high"
+
+pricing:
+  input_per_1m_tokens: 1.00
+  output_per_1m_tokens: 5.00
+  currency: "USD"
+
+strengths:
+  - "Fastest with near-frontier intelligence"
+  - "Cost-effective at scale"
+  - "Low latency responses"
+  - "Extended thinking support"
+  - "Real-time applications"
+  - "High-volume processing"
+
+recommended_for:
+  - "skills"
+  - "real-time applications"
+  - "rapid prototyping"
+  - "high-volume operations"
+  - "cost-sensitive production"
+  - "simple to moderate commands"
+
+knowledge_cutoff: "2025-02-28"
+training_cutoff: "2025-07-31"
+last_updated: "2025-11-24"
+
+notes: "Claude Haiku 4.5 is the fastest model with near-frontier intelligence. Released October 1, 2025, it combines speed with advanced capabilities including extended thinking. Ideal for high-throughput scenarios requiring both speed and quality."
+
