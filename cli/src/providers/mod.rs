@@ -1,9 +1,11 @@
 pub mod claude;
 pub mod openai;
+pub mod registry;
 
 // Re-export for convenience
 pub use claude::ClaudeTransformer;
 pub use openai::OpenAITransformer;
+pub use registry::{AgentProvider, ModelProvider, ProviderRegistry};
 
 use anyhow::Result;
 use std::path::Path;

@@ -74,7 +74,17 @@ pub struct HookMeta {
     pub id: String,
     pub kind: String,
     pub category: String,
-    pub event: HookEvent,
+
+    /// Single event (deprecated - use `events` for multi-event support)
+    /// Kept for backward compatibility
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<HookEvent>,
+
+    /// Multiple events - hook will register for all specified events
+    /// If empty/None and event is also None, hook will register for ALL agent-supported events
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<HookEvent>>,
+
     pub summary: String,
     pub execution: ExecutionConfig,
     #[serde(default)]
@@ -156,6 +166,30 @@ pub struct VersionEntry {
 // Default value function
 fn default_true() -> bool {
     true
+}
+
+impl HookMeta {
+    /// Get all events this hook should register for
+    ///
+    /// Returns:
+    /// - If `events` is present: returns the vec of events
+    /// - If `event` is present: returns vec with single event (backward compat)
+    /// - If both are None: returns empty vec (means "register for ALL agent events")
+    pub fn get_events(&self) -> Vec<HookEvent> {
+        if let Some(events) = &self.events {
+            events.clone()
+        } else if let Some(event) = self.event {
+            vec![event]
+        } else {
+            // Empty means "use all agent-supported events"
+            vec![]
+        }
+    }
+
+    /// Check if hook should register for all agent events
+    pub fn is_universal(&self) -> bool {
+        self.event.is_none() && self.events.is_none()
+    }
 }
 
 /// Complete hook primitive with metadata
@@ -258,8 +292,10 @@ execution:
         assert_eq!(meta.id, "test-hook");
         assert_eq!(meta.kind, "hook");
         assert_eq!(meta.category, "testing");
-        assert_eq!(meta.event, HookEvent::PreToolUse);
+        assert_eq!(meta.event, Some(HookEvent::PreToolUse));
         assert_eq!(meta.execution.strategy, ExecutionStrategy::Pipeline);
+        // Test backward compat: single event
+        assert_eq!(meta.get_events(), vec![HookEvent::PreToolUse]);
     }
 
     #[test]
@@ -303,6 +339,53 @@ middleware:
     }
 
     #[test]
+    fn test_hook_meta_multiple_events() {
+        let yaml = r#"
+id: test-multi-event
+kind: hook
+category: testing
+events:
+  - PreToolUse
+  - PostToolUse
+  - SessionStart
+summary: "A test hook for multiple events"
+execution:
+  strategy: parallel
+"#;
+        let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(meta.id, "test-multi-event");
+        assert_eq!(meta.event, None); // Should be None when using events
+        assert_eq!(meta.events.as_ref().unwrap().len(), 3);
+        assert_eq!(
+            meta.get_events(),
+            vec![
+                HookEvent::PreToolUse,
+                HookEvent::PostToolUse,
+                HookEvent::SessionStart
+            ]
+        );
+        assert!(!meta.is_universal());
+    }
+
+    #[test]
+    fn test_hook_meta_universal() {
+        let yaml = r#"
+id: test-universal
+kind: hook
+category: "*"
+summary: "A universal hook that registers for all agent events"
+execution:
+  strategy: parallel
+"#;
+        let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(meta.id, "test-universal");
+        assert_eq!(meta.event, None);
+        assert_eq!(meta.events, None);
+        assert_eq!(meta.get_events(), vec![]); // Empty means use agent's supported events
+        assert!(meta.is_universal());
+    }
+
+    #[test]
     fn test_deserialize_hook_with_default_decision() {
         let yaml = r#"
 id: test-hook
@@ -316,6 +399,7 @@ default_decision: "allow"
 "#;
         let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(meta.default_decision, Some("allow".to_string()));
+        assert_eq!(meta.event, Some(HookEvent::PreToolUse));
     }
 
     #[test]
@@ -379,6 +463,7 @@ execution:
         let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(meta.execution.strategy, ExecutionStrategy::Parallel);
         assert_eq!(meta.execution.timeout_sec, Some(30));
+        assert_eq!(meta.event, Some(HookEvent::SessionStart));
     }
 
     #[test]
@@ -490,5 +575,60 @@ middleware:
             meta.middleware[1].middleware_type,
             MiddlewareType::Analytics
         );
+    }
+
+    #[test]
+    fn test_get_events_backward_compat() {
+        // Single event (old format)
+        let yaml = r#"
+id: old-style
+kind: hook
+category: testing
+event: PreToolUse
+summary: "Old style single event"
+execution:
+  strategy: pipeline
+"#;
+        let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(meta.get_events(), vec![HookEvent::PreToolUse]);
+        assert!(!meta.is_universal());
+    }
+
+    #[test]
+    fn test_get_events_new_multi() {
+        // Multiple events (new format)
+        let yaml = r#"
+id: new-style
+kind: hook
+category: testing
+events:
+  - PreToolUse
+  - PostToolUse
+summary: "New style multiple events"
+execution:
+  strategy: pipeline
+"#;
+        let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            meta.get_events(),
+            vec![HookEvent::PreToolUse, HookEvent::PostToolUse]
+        );
+        assert!(!meta.is_universal());
+    }
+
+    #[test]
+    fn test_get_events_universal_hook() {
+        // Universal hook (no events specified)
+        let yaml = r#"
+id: universal
+kind: hook
+category: "*"
+summary: "Universal hook for all events"
+execution:
+  strategy: parallel
+"#;
+        let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(meta.get_events(), vec![]); // Empty vec means "all agent events"
+        assert!(meta.is_universal());
     }
 }
