@@ -1,8 +1,17 @@
 id: analytics-collector
 kind: hook
 category: analytics
-event: PreToolUse
-summary: "Collects and normalizes analytics events from AI agent interactions, publishing them to configured backends (file or API) for monitoring and analysis"
+events:
+  - PreToolUse
+  - PostToolUse
+  - UserPromptSubmit
+  - Stop
+  - SubagentStop
+  - SessionStart
+  - SessionEnd
+  - PreCompact
+  - Notification
+summary: "Universal analytics collector for all hook events - collects and normalizes analytics events from AI agent interactions, publishing them to configured backends (file or API) for monitoring and analysis"
 
 execution:
   strategy: parallel
@@ -32,7 +41,7 @@ default_decision: "allow"
 
 providers:
   claude:
-    impl_file: "impl.python.py"
+    impl_file: "analytics-collector.py"
 
 metrics:
   enabled: true
