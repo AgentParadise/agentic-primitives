@@ -21,12 +21,17 @@ import importlib.util
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from agentic_logging import get_logger
+
 # yaml is optional - only needed for fallback config loading
 try:
     import yaml
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
+
+# Get logger for this module
+logger = get_logger(__name__)
 
 
 class HooksCollectorOrchestrator:
@@ -157,9 +162,12 @@ class HooksCollectorOrchestrator:
         # FIXME
         # For now, since analytics middleware is incomplete (has FIXME stubs),
         # we skip execution but log it
-        print(
-            f"⚠️  Middleware '{middleware_def['id']}' configured but analytics system incomplete - skipping",
-            file=sys.stderr
+        logger.warning(
+            "Middleware configured but analytics system incomplete - skipping",
+            extra={
+                "middleware_id": middleware_def['id'],
+                "middleware_type": middleware_def.get('type'),
+            }
         )
         
         # Return input unchanged (pass-through)
@@ -189,14 +197,24 @@ class HooksCollectorOrchestrator:
                     executed_middleware.append(middleware_def['id'])
                 except FileNotFoundError as e:
                     # Middleware missing - this is a configuration error, but fail-safe
-                    print(f"❌ {e}", file=sys.stderr)
+                    logger.error(
+                        "Middleware file not found",
+                        extra={
+                            "middleware_id": middleware_def['id'],
+                            "error": str(e),
+                        }
+                    )
                     skipped_middleware.append(middleware_def['id'])
                     continue
                 except Exception as e:
                     # Log but continue (fail-safe)
-                    print(
-                        f"⚠️  Middleware '{middleware_def['id']}' failed: {e}",
-                        file=sys.stderr
+                    logger.warning(
+                        "Middleware execution failed",
+                        extra={
+                            "middleware_id": middleware_def['id'],
+                            "middleware_type": middleware_def.get('type'),
+                            "error": str(e),
+                        }
                     )
                     # Safety middleware failures should block
                     if middleware_def.get('type') == 'safety':
@@ -222,7 +240,14 @@ class HooksCollectorOrchestrator:
             }
         
         except Exception as e:
-            print(f"❌ Pipeline failed: {e}", file=sys.stderr)
+            logger.error(
+                "Pipeline execution failed",
+                exc_info=True,
+                extra={
+                    "event_type": hook_event.get('hook_event_name', 'unknown'),
+                    "error": str(e),
+                }
+            )
             # Fail-safe: always allow on error
             return {"action": "allow", "error": str(e)}
 

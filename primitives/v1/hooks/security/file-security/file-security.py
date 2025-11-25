@@ -16,6 +16,10 @@ import hashlib
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 
+from agentic_logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class FileSecurityHook:
     """Smart file security with value redaction"""
@@ -204,6 +208,7 @@ def main():
         # Check if this is a sensitive file
         if not hook.is_sensitive_file(file_path):
             # Not sensitive, allow as-is
+            logger.debug("File not sensitive, allowing", extra={"file_path": file_path})
             print(json.dumps({
                 "action": "allow",
                 "metadata": {
@@ -219,6 +224,10 @@ def main():
         
         # For read operations, allow with redaction
         if tool_name in ['Read', 'read', 'ReadFile', 'read_file']:
+            logger.info(
+                "Sensitive file read with redaction",
+                extra={"file_path": file_path, "tool_name": tool_name}
+            )
             print(json.dumps({
                 "action": "allow",
                 "transform": "redact",
@@ -235,6 +244,10 @@ def main():
         # For write operations to sensitive files, warn but allow
         # (developers may legitimately need to update .env files)
         if tool_name in ['Write', 'write', 'WriteFile', 'write_file', 'Edit', 'edit']:
+            logger.warning(
+                "Sensitive file write operation",
+                extra={"file_path": file_path, "tool_name": tool_name}
+            )
             print(json.dumps({
                 "action": "allow",
                 "metadata": {

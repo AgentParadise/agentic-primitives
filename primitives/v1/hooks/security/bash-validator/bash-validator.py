@@ -11,6 +11,10 @@ import re
 import sys
 from typing import Dict, List, Any, Optional
 
+from agentic_logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class BashValidator:
     """Validates Bash commands for security risks"""
@@ -74,6 +78,13 @@ class BashValidator:
         
         # Determine risk level and safety
         if dangerous_matches:
+            logger.warning(
+                "Dangerous command pattern detected",
+                extra={
+                    "command_preview": command[:100],
+                    "dangerous_patterns": dangerous_matches,
+                }
+            )
             return {
                 "safe": False,
                 "risk_level": "high",
@@ -98,6 +109,10 @@ class BashValidator:
                 "suspicious_patterns": suspicious_matches
             }
         else:
+            logger.debug(
+                "Command passed security validation",
+                extra={"command_preview": command[:100]}
+            )
             return {
                 "safe": True,
                 "risk_level": "low",
@@ -169,6 +184,11 @@ def main():
     
     except Exception as e:
         # On error, allow but log
+        logger.error(
+            "Bash validation failed, allowing by default",
+            exc_info=True,
+            extra={"error": str(e)}
+        )
         print(json.dumps({
             "decision": "allow",
             "action": "allow",
