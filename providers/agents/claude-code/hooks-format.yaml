@@ -1,0 +1,154 @@
+format: claude_hooks_json
+version: "1.0"
+
+description: |
+  Claude Code hooks.json format specification.
+  Hooks are defined in .claude/hooks/hooks.json in the project root.
+
+schema:
+  type: object
+  properties:
+    PreToolUse:
+      type: array
+      items:
+        type: object
+        required: [matcher, hooks]
+        properties:
+          matcher:
+            type: string
+            description: "Tool name or glob pattern"
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    PostToolUse:
+      type: array
+      items:
+        type: object
+        required: [matcher, hooks]
+        properties:
+          matcher:
+            type: string
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    UserPromptSubmit:
+      type: array
+      items:
+        type: object
+        required: [hooks]
+        properties:
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    Stop:
+      type: array
+      items:
+        type: object
+        required: [hooks]
+        properties:
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    SubagentStop:
+      type: array
+      items:
+        type: object
+        required: [hooks]
+        properties:
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    SessionStart:
+      type: array
+      items:
+        type: object
+        properties:
+          matcher:
+            type: string
+            enum: [startup, resume, clear, compact]
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    SessionEnd:
+      type: array
+      items:
+        type: object
+        required: [hooks]
+        properties:
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    PreCompact:
+      type: array
+      items:
+        type: object
+        properties:
+          matcher:
+            type: string
+            enum: [manual, auto]
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+    
+    Notification:
+      type: array
+      items:
+        type: object
+        properties:
+          matcher:
+            type: string
+          hooks:
+            type: array
+            items:
+              $ref: "#/definitions/hook"
+
+definitions:
+  hook:
+    type: object
+    required: [type, command]
+    properties:
+      type:
+        type: string
+        enum: [command]
+        description: "Hook type (currently only 'command' supported)"
+      command:
+        type: string
+        description: "Command to execute, supports ${CLAUDE_PROJECT_DIR} variable"
+      timeout:
+        type: integer
+        minimum: 1
+        maximum: 300
+        description: "Timeout in seconds (1-300)"
+
+example:
+  PreToolUse:
+    - matcher: "analytics"
+      hooks:
+        - type: "command"
+          command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/scripts/analytics-collector.py"
+          timeout: 5
+  
+  SessionStart:
+    - matcher: "startup"
+      hooks:
+        - type: "command"
+          command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/scripts/session-logger.py"
+          timeout: 10
+
+
+

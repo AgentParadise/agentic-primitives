@@ -1,0 +1,54 @@
+agent: claude-code
+hook_id: hooks-collector
+
+# Reference to the hook primitive
+primitive:
+  id: hooks-collector
+  path: "../../../../primitives/v1/hooks/core/hooks-collector"
+  impl_file: "hooks-collector.impl.py"
+
+# Agent-specific middleware configuration
+middleware:
+  - id: "analytics-normalizer"
+    path: "../../../../services/analytics/middleware/event_normalizer.py"
+    type: analytics
+    enabled: true
+    events: ["*"]  # All Claude events (validated against hooks-supported.yaml)
+    priority: 10
+    config:
+      provider: "claude"
+      debug: false
+  
+  - id: "analytics-publisher"
+    path: "../../../../services/analytics/middleware/event_publisher.py"
+    type: analytics
+    enabled: true
+    events: ["*"]  # All Claude events
+    priority: 20
+    config:
+      backend: "file"
+      output_path: "./analytics/events.jsonl"
+
+  # Future middleware (disabled by default):
+  # - id: "safety-validator"
+  #   type: safety
+  #   enabled: false
+  #   priority: 5
+  #   events: ["PreToolUse", "PostToolUse"]
+  #
+  # - id: "observability-metrics"
+  #   type: observability
+  #   enabled: false
+  #   priority: 15
+  #   events: ["*"]
+
+# Execution configuration (can override primitive defaults)
+execution:
+  strategy: parallel
+  timeout_sec: 10
+  fail_on_error: false
+
+# Default decision when all middleware succeeds
+default_decision: "allow"
+
+

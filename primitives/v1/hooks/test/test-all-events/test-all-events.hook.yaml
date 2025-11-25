@@ -1,0 +1,25 @@
+id: test-all-events
+kind: hook
+category: testing
+event: PostToolUse
+summary: "Test hook for demonstrating PostToolUse event"
+
+execution:
+  strategy: parallel
+  timeout_sec: 5
+  fail_on_error: false
+
+default_decision: "allow"
+
+providers:
+  claude:
+    impl_file: "test-all-events.py"
+
+metrics:
+  enabled: false
+
+logging:
+  enabled: true
+  level: "info"
+
+

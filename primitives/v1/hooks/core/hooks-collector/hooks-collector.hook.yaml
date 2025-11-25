@@ -1,0 +1,52 @@
+id: hooks-collector
+kind: hook
+category: "*"
+
+# NO events field! This hook is universal - it will register for ALL agent-supported events
+# The build system will query the agent provider to determine which events to register
+
+summary: "Universal hook collector that captures all agent events and routes them through a configurable middleware pipeline for analytics, observability, safety checks, and custom processing"
+
+description: |
+  A generic, reusable hook primitive that works with ANY agent provider.
+  
+  Key Features:
+  - Registers for all events supported by the agent
+  - Loads agent-specific middleware configuration at build time
+  - Routes events through configurable middleware pipeline
+  - Supports analytics, safety, observability, and custom middleware
+  
+  Configuration:
+  - Middleware is NOT defined here (generic primitive)
+  - Middleware is defined in: providers/agents/{agent}/hooks-config/hooks-collector.yaml
+  - Each agent can customize middleware, events, priorities per their needs
+
+execution:
+  strategy: parallel
+  timeout_sec: 10
+  fail_on_error: false
+
+default_decision: "allow"
+
+providers:
+  claude:
+    impl_file: "hooks-collector.py"
+  cursor:
+    impl_file: "hooks-collector.py"
+  langgraph:
+    impl_file: "hooks-collector.py"
+
+versions:
+  - version: "1.0.0"
+    status: "stable"
+    hash: "initial"
+    created: "2025-11-23"
+    notes: "Universal hooks collector with pluggable middleware architecture"
+  - version: "1.1.0"
+    status: "stable"
+    hash: "refactor-middleware"
+    created: "2025-11-23"
+    notes: "Refactored to agent-specific middleware configuration"
+
+# NOTE: Middleware configuration is now agent-specific!
+# See: providers/agents/{agent}/hooks-config/hooks-collector.yaml

@@ -1,0 +1,48 @@
+id: bash-validator
+kind: hook
+category: "Bash"  # Matches only Bash tool calls
+
+# Specialized hook - only fires for specific event/tool combination
+events:
+  - PreToolUse
+
+summary: "Security validator for Bash commands - checks for dangerous patterns, validates command safety, and can block risky operations before execution"
+
+description: |
+  Specialized security hook that validates Bash commands before execution.
+  
+  Features:
+  - Detects dangerous command patterns (rm -rf /, dd, mkfs, etc.)
+  - Validates command syntax
+  - Checks for suspicious arguments
+  - Can block execution if security risk detected
+  - Fast, targeted validation (< 100ms typical)
+  
+  Use Cases:
+  - Prevent accidental system damage
+  - Block dangerous commands
+  - Log security-relevant commands
+  - Enforce command policies
+
+execution:
+  strategy: pipeline
+  timeout_sec: 5  # Fast - security checks must be quick
+  fail_on_error: true  # Block on validation failure
+
+default_decision: "allow"  # Default to allow, deny only on specific risks
+
+providers:
+  claude:
+    impl_file: "bash-validator.py"
+
+metadata:
+  version: "1.0.0"
+  category: security
+  priority: high  # Security hooks run with high priority
+  blocking: true  # Can block agent execution
+  tags:
+    - security
+    - bash
+    - validation
+    - safety
+
