@@ -9,6 +9,7 @@ dependencies = [
     "pydantic-settings>=2.6.1",
     "httpx>=0.27.2",
     "aiofiles>=24.1.0",
+    "agentic-logging",
 ]
 
 [project.optional-dependencies]
@@ -131,3 +132,6 @@ include = '\.pyi?$'
 dev = [
     "types-aiofiles>=25.1.0.20251011",
 ]
+
+[tool.uv.sources]
+agentic-logging = { workspace = true }

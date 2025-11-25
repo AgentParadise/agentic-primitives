@@ -1,14 +1,14 @@
 """File publisher for JSONL output"""
 
-import logging
 from pathlib import Path
 
 import aiofiles
+from agentic_logging import get_logger
 
 from analytics.models.events import NormalizedEvent
 from analytics.publishers.base import BasePublisher
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FilePublisher(BasePublisher):

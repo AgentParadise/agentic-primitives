@@ -1,15 +1,15 @@
 """API publisher for HTTP POST delivery"""
 
 import asyncio
-import logging
 from typing import Any
 
 import httpx
+from agentic_logging import get_logger
 
 from analytics.models.events import NormalizedEvent
 from analytics.publishers.base import BasePublisher
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # HTTP status code constants
 HTTP_CLIENT_ERROR_MIN = 400
