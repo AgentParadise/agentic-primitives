@@ -16,7 +16,7 @@ Agentic primitives are **atomic, reusable components** that define how AI agents
 
 - **🧠 Prompt Primitives**: Personas (agents), tasks (commands), knowledge patterns (skills), and meta-prompts for generating other primitives
 - **🔧 Tool Primitives**: Logical tool specifications with optional provider-specific implementations (Claude, OpenAI, local Rust/Python/Bun)
-- **🪝 Hook Primitives**: Lifecycle event handlers with composable middleware for safety, observability, and control
+- **🪝 Hook Primitives**: Lifecycle event handlers with composable middleware for safety, observability, and control (UV-based, no bash required!)
 
 All primitives are:
 - ✅ **Version-controlled** with immutable hashes (BLAKE3)
@@ -31,9 +31,36 @@ All primitives are:
 
 ### Prerequisites
 
-- **Rust** 1.75+ (for the CLI)
-- **Python** 3.11+ with `uv` (for hooks)
-- **Make** (for turnkey operations)
+- **Rust** 1.75+ (for building the CLI)
+- **UV** (for cross-platform Python execution)
+- **Python** 3.11+ (managed by UV)
+- **Make** (optional, for turnkey operations)
+
+#### Installing UV
+
+UV is **required** for running hooks with proper dependency management. It provides cross-platform Python execution without bash dependencies:
+
+**macOS/Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows:**
+```powershell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Verify Installation:**
+```bash
+uv --version
+```
+
+#### Why UV?
+
+- ✅ **Cross-platform:** Works on Windows, Mac, and Linux (no bash required!)
+- ✅ **Fast:** Rust-based, 10-100x faster than pip
+- ✅ **Isolated:** Manages Python environments per project automatically
+- ✅ **Zero config:** Just works out of the box
 
 ### Installation
 
@@ -91,14 +118,25 @@ agentic-p inspect python/python-pro
 ### Build for Your Provider
 
 ```bash
-# Build for Claude Agent SDK
+# Build for Claude Code
 agentic-p build --provider claude
 
-# Install to project .claude/ directory
-agentic-p install --provider claude --project
+# View the generated output
+ls -R build/claude/hooks
 
-# Install globally to ~/.claude/
-agentic-p install --provider claude --global
+# Install to project .claude/ directory
+cp -r build/claude/.claude /path/to/your/project/
+
+# Result: All hooks installed and ready to use!
+```
+
+**Build Output** (organized by category):
+```
+build/claude/hooks/
+├── hooks.json          ← All 9 events configured
+├── core/               ← Universal hooks
+├── security/           ← Security hooks  
+└── analytics/          ← Analytics hooks
 ```
 
 ---
@@ -138,22 +176,54 @@ primitives/v1/tools/<category>/<id>/
 
 ### Hook Primitives
 
-Lifecycle event handlers with **middleware pipelines**:
+Lifecycle event handlers with **middleware pipelines** and a **hybrid architecture**:
 
 ```
-primitives/v1/hooks/<category>/<id>/
-├── <id>.hook.yaml          # Event config & middleware list
-├── impl.python.py          # Orchestrator (uv)
-├── impl.bun.ts             # Alternative (bun)
-└── middleware/
-    ├── safety/             # Blocking: dangerous commands, sensitive files
-    └── observability/      # Non-blocking: logging, metrics
+primitives/v1/hooks/
+├── core/                        # Universal hooks (observability)
+│   └── hooks-collector/         # Catches ALL events, runs middleware
+│       ├── hooks-collector.hook.yaml
+│       └── impl.python.py
+└── security/                    # Specialized hooks (control)
+    ├── bash-validator/          # Dangerous command detection
+    ├── file-security/           # Sensitive file protection
+    └── prompt-filter/           # PII/credential scanning
 ```
+
+**Hybrid Architecture** (Composition over Choice):
+
+| Type | Purpose | Matcher | Priority | Can Block? |
+|------|---------|---------|----------|------------|
+| **Universal Collector** | Observability (analytics, metrics, logging) | `*` (all) | Low | ❌ Never |
+| **Specialized Hooks** | Control (security, validation) | Targeted | High | ✅ When needed |
+
+**Key Benefits**:
+- ✅ **Complete Coverage**: Universal collector sees every event
+- ✅ **Targeted Control**: Specialized hooks only fire when needed
+- ✅ **Zero Overhead**: Parallel execution, no performance penalty
+- ✅ **Composable**: Mix and match hooks for your needs
+
+**Agent-Centric Configuration**:
+
+Hooks are **generic implementations**, configured per-agent:
+
+```
+providers/agents/claude-code/
+├── hooks-supported.yaml         # All 9 Claude events
+└── hooks-config/
+    ├── hooks-collector.yaml     # Universal: analytics + observability
+    ├── bash-validator.yaml      # Security: dangerous commands
+    ├── file-security.yaml       # Security: sensitive files
+    └── prompt-filter.yaml       # Security: PII/credentials
+```
+
+Same `hooks-collector` primitive, different configs for Claude vs. Cursor vs. LangGraph!
 
 **Use cases**:
 - 🛡️ **Safety**: Block dangerous bash commands, protect sensitive files, validate tool inputs
 - 📊 **Observability**: Log operations, emit metrics, track token usage, debug tracing
 - 🎯 **Control**: Auto-approve safe operations, add context, enforce policies
+- 📈 **Analytics**: Comprehensive event tracking with 97.30% test coverage
 
 ### Versioning
 
@@ -193,22 +263,40 @@ agentic-p version promote python/python-pro --version 2
 agentic-p version deprecate python/python-pro --version 1
 ```
 
-### Provider Adapters
+### Provider Taxonomy
 
-Primitives are **compiled** to provider-specific formats:
+Providers are organized into **models** (LLM APIs) and **agents** (runtime frameworks):
 
 ```
 providers/
-├── claude/           # Claude Agent SDK
-├── openai/           # OpenAI API
-├── cursor/           # Cursor IDE
-└── gemini/           # Google Gemini (future)
+├── models/                      # LLM API providers
+│   ├── anthropic/               # Claude models (Opus, Sonnet, Haiku)
+│   ├── openai/                  # GPT models
+│   └── google/                  # Gemini (future)
+│
+└── agents/                      # Agent runtime providers
+    ├── claude-code/             # Claude Code (hooks: PreToolUse, PostToolUse, etc.)
+    │   ├── config.yaml          # Agent metadata
+    │   ├── hooks-supported.yaml # Supported hook events
+    │   ├── hooks-format.yaml    # hooks.json format spec
+    │   └── hooks-config/        # Hook configurations per primitive
+    ├── cursor/                  # Cursor IDE (future)
+    └── langgraph/               # LangGraph (future)
 ```
 
-Each provider has:
-- **Models**: Provider-specific model configs (`claude/sonnet`, `openai/gpt-codex`)
-- **Templates**: Handlebars templates for transforming primitives
-- **Transformers**: Rust code that does the compilation
+**Key Insight**: Agent providers *use* model providers. Claude Code can use Anthropic, OpenAI, or Google models!
+
+Each agent provider includes:
+- **Supported Events**: Which hook events the agent fires
+- **Hook Format**: How to generate `hooks.json` for the agent
+- **Hook Configurations**: Per-primitive middleware and matcher configs
+- **Validation**: JSON schemas for all configuration files
+
+**Build Process**:
+1. Read primitive from `primitives/v1/`
+2. Load agent provider config from `providers/agents/{agent}/`
+3. Generate provider-specific output in `build/{agent}/`
+4. Copy to project's `.{agent}/` directory
 
 ---
 
@@ -401,6 +489,8 @@ agentic-p inspect meta-prompts/generation/generate-primitive
 # Validate the generated output
 agentic-p validate
 ```
+
+**📖 For detailed real-world scenarios**, see the [Usage Guide](docs/examples/usage-guide.md) with 7 complete examples covering observability, security, regulated environments, team collaboration, and more.
 
 ---
 
