@@ -1,0 +1,9 @@
+[tool.uv.workspace]
+members = [
+    "lib/python/agentic_logging",
+    "services/analytics",
+]
+
+[tool.uv]
+dev-dependencies = []
+
