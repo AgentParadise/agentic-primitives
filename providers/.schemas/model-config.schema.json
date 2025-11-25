@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentic-primitives.dev/schemas/model-config.json",
+  "title": "Model Configuration",
+  "description": "Schema for model provider configuration files",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "family",
+    "provider",
+    "context_window",
+    "pricing",
+    "api"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Model identifier matching filename (without .yaml extension)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable model name"
+    },
+    "family": {
+      "type": "string",
+      "description": "Model family (e.g., claude-3, gpt-4, gemini)"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "anthropic",
+        "openai",
+        "google"
+      ],
+      "description": "Model provider identifier"
+    },
+    "context_window": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Context window size in tokens"
+    },
+    "max_output_tokens": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum output tokens per request"
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Model capabilities",
+      "properties": {
+        "vision": {
+          "type": "boolean",
+          "description": "Supports image understanding"
+        },
+        "function_calling": {
+          "type": "boolean",
+          "description": "Supports function/tool calling"
+        },
+        "streaming": {
+          "type": "boolean",
+          "description": "Supports streaming responses"
+        },
+        "json_mode": {
+          "type": "boolean",
+          "description": "Supports JSON output mode"
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "required": [
+        "input",
+        "output",
+        "currency",
+        "per_tokens"
+      ],
+      "description": "Pricing information",
+      "properties": {
+        "input": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Input price per token batch"
+        },
+        "output": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Output price per token batch"
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD",
+            "EUR"
+          ],
+          "description": "Currency code"
+        },
+        "per_tokens": {
+          "type": "integer",
+          "enum": [
+            1000,
+            1000000
+          ],
+          "description": "Price is per this many tokens"
+        },
+        "updated": {
+          "type": "string",
+          "format": "date",
+          "description": "When pricing was last updated (YYYY-MM-DD)"
+        }
+      }
+    },
+    "api": {
+      "type": "object",
+      "required": [
+        "model_id"
+      ],
+      "description": "API configuration",
+      "properties": {
+        "model_id": {
+          "type": "string",
+          "description": "Model identifier for API requests"
+        },
+        "endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "API endpoint URL"
+        }
+      }
+    },
+    "release_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Model release date (YYYY-MM-DD)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "deprecated",
+        "beta"
+      ],
+      "description": "Model status"
+    }
+  }
+}
