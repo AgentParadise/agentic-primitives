@@ -1,0 +1,36 @@
+[project]
+name = "claude-agent-sdk-integration"
+version = "1.0.0"
+description = "Claude Agent SDK integration with metrics collection and security hooks"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "claude-agent-sdk>=0.1.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "agentic-analytics",
+    "agentic-logging",
+]
+
+[tool.uv.sources]
+agentic-analytics = { path = "../../lib/python/agentic_analytics" }
+agentic-logging = { path = "../../lib/python/agentic_logging" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.6",
+]
+
