@@ -1,0 +1,449 @@
+name: QA
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/*]
+  workflow_dispatch:  # Allow manual runs
+
+# Cancel in-progress runs on same PR/branch
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  #############################################################################
+  # RUST JOBS - All run in parallel
+  #############################################################################
+
+  rust-format:
+    name: Rust Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        working-directory: ./cli
+
+  rust-lint:
+    name: Rust Lint (Clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/index
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo git
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-git-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: cli/target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lint-
+            ${{ runner.os }}-cargo-
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        working-directory: ./cli
+
+  rust-typecheck:
+    name: Rust Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/index
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo git
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-git-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: cli/target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-check-
+            ${{ runner.os }}-cargo-
+
+      - name: Run cargo check
+        run: cargo check --workspace --all-features
+        working-directory: ./cli
+
+  rust-test:
+    name: Rust Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/index
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo git
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-git-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: cli/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+            ${{ runner.os }}-cargo-
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
+        working-directory: ./cli
+
+      # Coverage only on Ubuntu
+      - name: Install cargo-tarpaulin
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo install cargo-tarpaulin || true
+
+      - name: Generate coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo tarpaulin --workspace --out Xml --output-dir coverage || true
+        working-directory: ./cli
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./cli/coverage/cobertura.xml
+          flags: rust
+          name: rust-coverage
+        continue-on-error: true
+
+  #############################################################################
+  # PYTHON JOBS - All run in parallel
+  #############################################################################
+
+  python-analytics-checks:
+    name: Python Analytics Service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "services/analytics/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+        working-directory: ./services/analytics
+
+      - name: Check formatting (ruff)
+        run: uv run ruff format --check .
+        working-directory: ./services/analytics
+
+      - name: Check formatting (black)
+        run: uv run black --check .
+        working-directory: ./services/analytics
+
+      - name: Lint
+        run: uv run ruff check .
+        working-directory: ./services/analytics
+
+      - name: Type check
+        run: uv run mypy .
+        working-directory: ./services/analytics
+
+      - name: Run tests
+        run: uv run pytest --cov=src --cov-report=xml --cov-report=term
+        working-directory: ./services/analytics
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./services/analytics/coverage.xml
+          flags: python-analytics
+          name: analytics-coverage
+        continue-on-error: true
+
+  python-logging-checks:
+    name: Python Logging Library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "lib/python/agentic_logging/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+        working-directory: ./lib/python/agentic_logging
+
+      - name: Check formatting (ruff)
+        run: uv run ruff format --check .
+        working-directory: ./lib/python/agentic_logging
+
+      - name: Lint
+        run: uv run ruff check .
+        working-directory: ./lib/python/agentic_logging
+
+      - name: Type check
+        run: uv run mypy .
+        working-directory: ./lib/python/agentic_logging
+
+      - name: Run tests
+        run: uv run pytest --cov=agentic_logging --cov-report=xml --cov-report=term --cov-fail-under=90
+        working-directory: ./lib/python/agentic_logging
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./lib/python/agentic_logging/coverage.xml
+          flags: python-logging
+          name: logging-coverage
+        continue-on-error: true
+
+  python-hooks-checks:
+    name: Python Hooks Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff and mypy
+        run: uv tool install ruff && uv tool install mypy
+
+      - name: Check formatting
+        run: uv tool run ruff format --check primitives/v1/hooks/**/*.py
+        continue-on-error: false
+
+      - name: Lint hooks
+        run: uv tool run ruff check primitives/v1/hooks/**/*.py
+        continue-on-error: false
+
+      - name: Type check hooks
+        run: uv tool run mypy primitives/v1/hooks/**/*.py --ignore-missing-imports --check-untyped-defs
+        continue-on-error: false
+
+  python-unit-tests:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "tests/unit/claude/hooks/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+        working-directory: ./tests/unit/claude/hooks
+
+      - name: Run unit tests
+        run: uv run pytest -v
+        working-directory: ./tests/unit/claude/hooks
+
+  #############################################################################
+  # INTEGRATION JOBS - Depend on Rust and Python jobs
+  #############################################################################
+
+  validate-primitives:
+    name: Validate Primitives
+    runs-on: ubuntu-latest
+    needs:
+      - rust-test
+      - python-analytics-checks
+      - python-logging-checks
+      - python-hooks-checks
+      - python-unit-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/index
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: cli/target
+          key: ${{ runner.os }}-cargo-validate-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-validate-
+            ${{ runner.os }}-cargo-
+
+      - name: Build CLI
+        run: cargo build --release
+        working-directory: ./cli
+
+      - name: Validate primitives repository
+        run: ../cli/target/release/agentic-p validate
+        working-directory: ./primitives
+
+      - name: List primitives (smoke test)
+        run: ../cli/target/release/agentic-p list
+        working-directory: ./primitives
+
+  e2e-integration:
+    name: E2E Integration Tests
+    runs-on: ubuntu-latest
+    needs: [validate-primitives]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Placeholder for E2E tests
+        run: |
+          echo "ℹ️ E2E integration tests not yet implemented"
+          echo "This job is a placeholder for future integration testing"
+          echo "Potential tests:"
+          echo "  - Build CLI and run full workflow"
+          echo "  - Test hooks with example project"
+          echo "  - Validate analytics middleware integration"
+
+  #############################################################################
+  # SUMMARY JOB - Required status check for PRs
+  #############################################################################
+
+  qa-success:
+    name: QA Success
+    if: always()
+    needs:
+      - rust-format
+      - rust-lint
+      - rust-typecheck
+      - rust-test
+      - python-analytics-checks
+      - python-logging-checks
+      - python-hooks-checks
+      - python-unit-tests
+      - validate-primitives
+      - e2e-integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs
+        run: |
+          # Check if any job failed
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "❌ Some QA checks failed"
+            exit 1
+          fi
+          
+          # Check if any job was cancelled
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "⚠️ Some QA checks were cancelled"
+            exit 1
+          fi
+          
+          echo "✅ All QA checks passed!"
+          echo ""
+          echo "## QA Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Rust Checks" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Format Check: ${{ needs.rust-format.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Lint (Clippy): ${{ needs.rust-lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Type Check: ${{ needs.rust-typecheck.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Tests: ${{ needs.rust-test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Python Checks" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Analytics Service: ${{ needs.python-analytics-checks.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Logging Library: ${{ needs.python-logging-checks.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Hooks Validation: ${{ needs.python-hooks-checks.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Unit Tests: ${{ needs.python-unit-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Integration Tests" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Validate Primitives: ${{ needs.validate-primitives.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ E2E Integration: ${{ needs.e2e-integration.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**All checks passed successfully!** 🎉" >> $GITHUB_STEP_SUMMARY
+
