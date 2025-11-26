@@ -4,14 +4,25 @@ Bash Command Validator
 
 Specialized security hook for validating Bash commands before execution.
 Detects dangerous patterns and can block risky operations.
+
+Each decision is logged to the analytics service for audit trail.
 """
 
 import json
 import re
 import sys
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict
 
 from agentic_logging import get_logger
+
+# Import analytics client for self-logging
+try:
+    from agentic_analytics import AnalyticsClient, HookDecision
+    analytics = AnalyticsClient()
+except ImportError:
+    # Fallback if analytics not installed
+    analytics = None  # type: ignore[assignment]
+    HookDecision = None  # type: ignore[assignment, misc]
 
 logger = get_logger(__name__)
 
@@ -148,6 +159,30 @@ def main():
         # Validate command
         validator = BashValidator()
         result = validator.validate_command(command)
+        
+        # Determine decision
+        decision = "block" if not result["safe"] else "allow"
+        
+        # Log decision to analytics (self-logging pattern)
+        if analytics and HookDecision:
+            try:
+                analytics.log(HookDecision(
+                    hook_id="bash-validator",
+                    event_type=hook_event.get("hook_event_name", "PreToolUse"),
+                    decision=decision,
+                    session_id=hook_event.get("session_id", "unknown"),
+                    tool_name=hook_event.get("tool_name", "Bash"),
+                    reason=result["reason"] if not result["safe"] else None,
+                    metadata={
+                        "risk_level": result["risk_level"],
+                        "command_preview": command[:100],
+                        "dangerous_patterns": result["dangerous_patterns"],
+                        "suspicious_patterns": result["suspicious_patterns"],
+                    },
+                ))
+            except Exception as log_err:
+                # Never block on analytics failure
+                logger.debug(f"Analytics logging failed: {log_err}")
         
         # Prepare response
         if not result["safe"]:

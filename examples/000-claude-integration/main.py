@@ -37,11 +37,11 @@ SCENARIOS = {
         "expected_decision": "allow",
     },
     "sensitive-file": {
-        "description": "Attempt to read sensitive file",
+        "description": "Attempt to read sensitive file (warns but allows with redaction)",
         "event": "PreToolUse",
         "tool": "Read",
         "input": {"file_path": ".env"},
-        "expected_decision": "block",
+        "expected_decision": "allow",  # file-security warns but allows with redaction
     },
     "normal-file": {
         "description": "Normal file operation",
@@ -191,7 +191,7 @@ def main():
     )
     parser.add_argument(
         "--hook",
-        choices=["bash-validator", "file-security", "prompt-filter", "hooks-collector", "all"],
+        choices=["bash-validator", "file-security", "prompt-filter", "all"],
         default="all",
         help="Hook to test (default: all)",
     )
@@ -214,12 +214,11 @@ def main():
         else [(args.scenario, SCENARIOS[args.scenario])]
     )
     
-    # Select hooks
+    # Select hooks (self-logging: each hook logs to analytics directly)
     hooks_to_test = {
         "bash-validator": hooks_dir / "security" / "bash-validator.py",
         "file-security": hooks_dir / "security" / "file-security.py",
         "prompt-filter": hooks_dir / "security" / "prompt-filter.py",
-        "hooks-collector": hooks_dir / "core" / "hooks-collector.py",
     }
     
     if args.hook != "all":
@@ -238,13 +237,13 @@ def main():
         event = create_hook_event(scenario)
         
         for hook_name, hook_path in hooks_to_test.items():
-            # Skip irrelevant combinations
+            # Skip irrelevant combinations (each hook handles specific events)
             if scenario["event"] == "UserPromptSubmit" and hook_name in ["bash-validator", "file-security"]:
-                continue
-            if scenario["tool"] == "Bash" and hook_name == "file-security":
-                continue
-            if scenario["tool"] in ["Read", "Write", "Edit", "Delete"] and hook_name == "bash-validator":
-                continue
+                continue  # bash-validator and file-security don't handle prompts
+            if scenario["tool"] == "Bash" and hook_name in ["file-security", "prompt-filter"]:
+                continue  # only bash-validator handles Bash tool
+            if scenario["tool"] in ["Read", "Write", "Edit", "Delete"] and hook_name in ["bash-validator", "prompt-filter"]:
+                continue  # only file-security handles file operations
             
             total_tests += 1
             result = test_hook(hook_path, event, scenario["expected_decision"])

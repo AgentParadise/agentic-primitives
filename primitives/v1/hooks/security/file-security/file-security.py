@@ -7,16 +7,26 @@ Instead of blocking sensitive files, this hook:
 - REDACTS sensitive values with hash + length
 - Enables AI to know IF content changed and HOW LONG values are
 - Maintains security while providing useful metadata
+
+Each decision is logged to the analytics service for audit trail.
 """
 
-import json
-import sys
-import re
 import hashlib
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+import json
+import re
+import sys
+from typing import Any, Dict, Tuple
 
 from agentic_logging import get_logger
+
+# Import analytics client for self-logging
+try:
+    from agentic_analytics import AnalyticsClient, HookDecision
+    analytics = AnalyticsClient()
+except ImportError:
+    # Fallback if analytics not installed
+    analytics = None  # type: ignore[assignment]
+    HookDecision = None  # type: ignore[assignment, misc]
 
 logger = get_logger(__name__)
 
@@ -183,7 +193,35 @@ class FileSecurityHook:
         return '\n'.join(redacted_lines), metadata
 
 
-def main():
+def _log_analytics(
+    hook_event: dict[str, Any],
+    decision: str,
+    file_path: str,
+    is_sensitive: bool,
+    reason: str | None = None,
+) -> None:
+    """Log decision to analytics service (fail-safe)."""
+    if not analytics or not HookDecision:
+        return
+    try:
+        analytics.log(HookDecision(
+            hook_id="file-security",
+            event_type=hook_event.get("hook_event_name", "PreToolUse"),
+            decision=decision,  # type: ignore[arg-type]
+            session_id=hook_event.get("session_id", "unknown"),
+            tool_name=hook_event.get("tool_name"),
+            reason=reason,
+            metadata={
+                "file_path": file_path,
+                "sensitive": is_sensitive,
+            },
+        ))
+    except Exception:
+        # Never block on analytics failure
+        pass
+
+
+def main() -> None:
     """Main hook entry point"""
     try:
         # Read hook event from stdin
@@ -209,6 +247,7 @@ def main():
         if not hook.is_sensitive_file(file_path):
             # Not sensitive, allow as-is
             logger.debug("File not sensitive, allowing", extra={"file_path": file_path})
+            _log_analytics(hook_event, "allow", file_path, is_sensitive=False)
             print(json.dumps({
                 "action": "allow",
                 "metadata": {
@@ -227,6 +266,10 @@ def main():
             logger.info(
                 "Sensitive file read with redaction",
                 extra={"file_path": file_path, "tool_name": tool_name}
+            )
+            _log_analytics(
+                hook_event, "warn", file_path, is_sensitive=True,
+                reason=f"Sensitive file read with redaction: {file_path}"
             )
             print(json.dumps({
                 "action": "allow",
@@ -248,6 +291,10 @@ def main():
                 "Sensitive file write operation",
                 extra={"file_path": file_path, "tool_name": tool_name}
             )
+            _log_analytics(
+                hook_event, "warn", file_path, is_sensitive=True,
+                reason=f"Write to sensitive file: {file_path}"
+            )
             print(json.dumps({
                 "action": "allow",
                 "metadata": {
@@ -261,6 +308,10 @@ def main():
             return
         
         # For other operations, allow with warning
+        _log_analytics(
+            hook_event, "warn", file_path, is_sensitive=True,
+            reason=f"Accessing sensitive file: {file_path}"
+        )
         print(json.dumps({
             "action": "allow",
             "metadata": {

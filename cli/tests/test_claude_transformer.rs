@@ -112,16 +112,17 @@ fn test_transform_hook_to_hooks_json() {
     assert_eq!(result.primitive_id, "bash-validator");
     assert_eq!(result.primitive_kind, "hook");
 
-    // Check that hooks.json was created
-    let hooks_file = output_dir.path().join("hooks/hooks.json");
-    assert!(hooks_file.exists());
+    // Check that .claude/settings.json was created
+    let settings_file = output_dir.path().join(".claude/settings.json");
+    assert!(settings_file.exists());
 
-    // Verify JSON structure
-    let content = fs::read_to_string(&hooks_file).unwrap();
+    // Verify JSON structure - hooks are nested under "hooks" key
+    let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
-    assert!(json.get("PreToolUse").is_some());
+    let hooks = json.get("hooks").expect("settings should have 'hooks' key");
+    assert!(hooks.get("PreToolUse").is_some());
 
-    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
+    let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
     assert!(!pre_tool_use.is_empty());
     assert_eq!(pre_tool_use[0]["matcher"], "safety");
 }
@@ -226,11 +227,12 @@ fn test_merge_multiple_hooks() {
     assert!(result2.success);
 
     // Check that hooks were merged
-    let hooks_file = output_dir.path().join("hooks/hooks.json");
-    let content = fs::read_to_string(&hooks_file).unwrap();
+    let settings_file = output_dir.path().join(".claude/settings.json");
+    let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
+    let hooks = json.get("hooks").expect("settings should have 'hooks' key");
+    let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
     // Should have 2 entries now
     assert_eq!(pre_tool_use.len(), 2);
 }
@@ -415,12 +417,13 @@ fn test_hooks_json_structure() {
         .transform_primitive(&hook_path, output_dir.path())
         .unwrap();
 
-    let hooks_file = output_dir.path().join("hooks/hooks.json");
-    let content = fs::read_to_string(&hooks_file).unwrap();
+    let settings_file = output_dir.path().join(".claude/settings.json");
+    let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-    // Verify structure
-    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
+    // Verify structure - hooks are nested under "hooks" key
+    let hooks_config = json.get("hooks").expect("settings should have 'hooks' key");
+    let pre_tool_use = hooks_config["PreToolUse"].as_array().unwrap();
     let hook_entry = &pre_tool_use[0];
 
     assert!(hook_entry.get("matcher").is_some());
@@ -431,10 +434,11 @@ fn test_hooks_json_structure() {
 
     let hook = &hooks[0];
     assert_eq!(hook["type"], "command");
+    // Note: transformer now generates .py wrappers, not .sh scripts
     assert!(hook["command"]
         .as_str()
         .unwrap()
-        .contains("bash-validator.sh"));
+        .contains("bash-validator.py"));
 }
 
 #[test]
@@ -483,39 +487,31 @@ fn test_transform_analytics_hook_with_scripts() {
     assert_eq!(result.primitive_id, "analytics-collector");
     assert_eq!(result.primitive_kind, "hook");
 
-    // Check that hooks.json was created
-    let hooks_file = output_dir.path().join("hooks/hooks.json");
-    assert!(hooks_file.exists());
+    // Check that .claude/settings.json was created
+    let settings_file = output_dir.path().join(".claude/settings.json");
+    assert!(settings_file.exists());
 
-    // Check that shell script was copied
-    let shell_script = output_dir
+    // Check that Python wrapper was created
+    let python_wrapper = output_dir
         .path()
-        .join("hooks/scripts/analytics-collector.sh");
+        .join(".claude/hooks/analytics/analytics-collector.py");
     assert!(
-        shell_script.exists(),
-        "Shell script should be copied to build output"
+        python_wrapper.exists(),
+        "Python wrapper should be created in build output"
     );
 
-    // Check that Python implementation was copied
-    let python_impl = output_dir
-        .path()
-        .join("hooks/scripts/analytics-collector.impl.python.py");
-    assert!(
-        python_impl.exists(),
-        "Python implementation should be copied to build output"
-    );
-
-    // Verify hooks.json structure
-    let content = fs::read_to_string(&hooks_file).unwrap();
+    // Verify settings.json structure
+    let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
-    assert!(json.get("PreToolUse").is_some());
+    let hooks = json.get("hooks").expect("settings should have 'hooks' key");
+    assert!(hooks.get("PreToolUse").is_some());
 
-    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
+    let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
     assert!(!pre_tool_use.is_empty());
     assert_eq!(pre_tool_use[0]["matcher"], "analytics");
 
-    // Verify command references the shell script
-    let hooks = pre_tool_use[0]["hooks"].as_array().unwrap();
-    let command = hooks[0]["command"].as_str().unwrap();
-    assert!(command.contains("analytics-collector.sh"));
+    // Verify command references the Python wrapper
+    let hook_entries = pre_tool_use[0]["hooks"].as_array().unwrap();
+    let command = hook_entries[0]["command"].as_str().unwrap();
+    assert!(command.contains("analytics-collector.py"));
 }

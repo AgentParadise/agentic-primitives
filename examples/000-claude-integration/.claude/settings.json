@@ -4,12 +4,22 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
-        "matcher": "*"
+        "matcher": "analytics"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "analytics"
       },
       {
         "hooks": [
@@ -26,12 +36,42 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/test/test-all-events.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
-        "matcher": "*"
+        "matcher": "testing"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "analytics"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/test/test-all-events.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "testing"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "analytics"
       },
       {
         "hooks": [
@@ -58,12 +98,22 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
-        "matcher": "*"
+        "matcher": "analytics"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "analytics"
       },
       {
         "hooks": [
@@ -80,12 +130,62 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/security/bash-validator.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
-        "matcher": "*"
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/security/file-security.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Read|Write|Edit|Delete"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "analytics"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/security/bash-validator.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/security/file-security.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Read|Write|Edit|Delete"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "analytics"
       },
       {
         "hooks": [
@@ -122,8 +222,18 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
@@ -144,12 +254,22 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
-        "matcher": "*"
+        "matcher": "analytics"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "analytics"
       },
       {
         "hooks": [
@@ -166,8 +286,18 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
@@ -188,8 +318,18 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
             "type": "command"
           }
         ],
@@ -210,8 +350,38 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py",
-            "timeout": 10,
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/security/prompt-filter.py",
+            "timeout": 3,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/security/prompt-filter.py",
+            "timeout": 3,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/analytics/analytics-collector.py",
+            "timeout": 5,
             "type": "command"
           }
         ],

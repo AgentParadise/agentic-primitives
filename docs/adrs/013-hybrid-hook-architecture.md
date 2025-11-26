@@ -1,9 +1,14 @@
 # ADR-013: Hybrid Hook Architecture
 
-**Status:** Accepted  
+**Status:** Superseded  
 **Date:** 2025-11-24  
+**Superseded By:** Self-logging hook architecture (2025-11-26)  
 **Deciders:** Core Team  
 **Related:** [ADR-006: Middleware-Based Hooks](./006-middleware-hooks.md)
+
+> **Note:** This ADR describes the original hybrid architecture with a central `hooks-collector`. 
+> This has been superseded by a simpler "self-logging" architecture where each hook logs its own 
+> decisions directly to the analytics service. See `lib/python/agentic_analytics/` for the new approach.
 
 ## Context
 

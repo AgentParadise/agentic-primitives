@@ -4,12 +4,27 @@ Bash Command Validator
 
 Specialized security hook for validating Bash commands before execution.
 Detects dangerous patterns and can block risky operations.
+
+Each decision is logged to the analytics service for audit trail.
 """
 
 import json
 import re
 import sys
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict
+
+from agentic_logging import get_logger
+
+# Import analytics client for self-logging
+try:
+    from agentic_analytics import AnalyticsClient, HookDecision
+    analytics = AnalyticsClient()
+except ImportError:
+    # Fallback if analytics not installed
+    analytics = None  # type: ignore[assignment]
+    HookDecision = None  # type: ignore[assignment, misc]
+
+logger = get_logger(__name__)
 
 
 class BashValidator:
@@ -18,14 +33,20 @@ class BashValidator:
     # Dangerous command patterns
     DANGEROUS_COMMANDS = [
         r'\brm\s+-rf\s+/',  # rm -rf /
+        r'\brm\s+-rf\s+\.',  # rm -rf .
+        r'\brm\s+-rf\s+\.\.',  # rm -rf ..
+        r'\brm\s+-rf\s+~',  # rm -rf ~
+        r'\brm\s+-rf\s+\*',  # rm -rf *
         r'\bdd\s+if=.*of=/dev/(sd|hd|nvme)',  # Disk overwrite
         r'\bmkfs\.',  # Format filesystem
-        r'\b:(){:\|:&};:',  # Fork bomb
+        r':\(\)\s*\{.*:\|:&.*\}',  # Fork bomb
         r'\bkill\s+-9\s+-1',  # Kill all processes
         r'\bchmod\s+-R\s+777\s+/',  # Overly permissive
         r'\bsudo\s+rm',  # Sudo rm (risky)
         r'\bcurl.*\|\s*bash',  # Pipe to bash (risky)
         r'\bwget.*\|\s*sh',  # Pipe to sh (risky)
+        r'\bgit\s+add\s+-A\b',  # Git add all (dangerous - stages unwanted files)
+        r'\bgit\s+add\s+\.\s*$',  # Git add current directory (dangerous - stages unwanted files)
     ]
     
     # Suspicious patterns (warn but don't block)
@@ -68,6 +89,13 @@ class BashValidator:
         
         # Determine risk level and safety
         if dangerous_matches:
+            logger.warning(
+                "Dangerous command pattern detected",
+                extra={
+                    "command_preview": command[:100],
+                    "dangerous_patterns": dangerous_matches,
+                }
+            )
             return {
                 "safe": False,
                 "risk_level": "high",
@@ -92,6 +120,10 @@ class BashValidator:
                 "suspicious_patterns": suspicious_matches
             }
         else:
+            logger.debug(
+                "Command passed security validation",
+                extra={"command_preview": command[:100]}
+            )
             return {
                 "safe": True,
                 "risk_level": "low",
@@ -128,9 +160,34 @@ def main():
         validator = BashValidator()
         result = validator.validate_command(command)
         
+        # Determine decision
+        decision = "block" if not result["safe"] else "allow"
+        
+        # Log decision to analytics (self-logging pattern)
+        if analytics and HookDecision:
+            try:
+                analytics.log(HookDecision(
+                    hook_id="bash-validator",
+                    event_type=hook_event.get("hook_event_name", "PreToolUse"),
+                    decision=decision,
+                    session_id=hook_event.get("session_id", "unknown"),
+                    tool_name=hook_event.get("tool_name", "Bash"),
+                    reason=result["reason"] if not result["safe"] else None,
+                    metadata={
+                        "risk_level": result["risk_level"],
+                        "command_preview": command[:100],
+                        "dangerous_patterns": result["dangerous_patterns"],
+                        "suspicious_patterns": result["suspicious_patterns"],
+                    },
+                ))
+            except Exception as log_err:
+                # Never block on analytics failure
+                logger.debug(f"Analytics logging failed: {log_err}")
+        
         # Prepare response
         if not result["safe"]:
             response = {
+                "decision": "block",
                 "action": "deny",
                 "reason": result["reason"],
                 "metadata": {
@@ -143,6 +200,7 @@ def main():
             }
         else:
             response = {
+                "decision": "allow",
                 "action": "allow",
                 "metadata": {
                     "hook": "bash-validator",
@@ -161,7 +219,13 @@ def main():
     
     except Exception as e:
         # On error, allow but log
+        logger.error(
+            "Bash validation failed, allowing by default",
+            exc_info=True,
+            extra={"error": str(e)}
+        )
         print(json.dumps({
+            "decision": "allow",
             "action": "allow",
             "error": str(e),
             "metadata": {

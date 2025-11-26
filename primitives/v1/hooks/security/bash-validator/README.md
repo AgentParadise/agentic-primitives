@@ -8,12 +8,11 @@
 
 ## Architecture Pattern
 
-This is a **specialized hook** as part of the hybrid architecture:
+This is a **self-logging security hook**:
 
-- **Universal Collector** (`hooks-collector`) → Observability (all events, all tools)
-- **Specialized Hooks** (`bash-validator`) → Control (specific events, specific tools)
-
-Both run in parallel for comprehensive coverage!
+- **Decision Making** → Validates commands, blocks dangerous patterns
+- **Self-Logging** → Logs all decisions to `.agentic/analytics/events.jsonl`
+- **Fail-Safe** → Analytics errors never block hook execution
 
 ## Features
 
@@ -142,29 +141,19 @@ execution:
 default_decision: "deny"  # Can override to be more strict
 ```
 
-## Hybrid Architecture Example
+## Self-Logging Architecture
 
-**Together with hooks-collector:**
+Each hook logs its own decisions - no central collector needed:
 
 ```json
 {
   "PreToolUse": [
     {
-      "matcher": "*",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/scripts/hooks-collector.py",
-          "timeout": 10
-        }
-      ]
-    },
-    {
       "matcher": "Bash",
       "hooks": [
         {
           "type": "command",
-          "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/scripts/bash-validator.py",
+          "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/security/bash-validator.py",
           "timeout": 5
         }
       ]
@@ -173,9 +162,15 @@ default_decision: "deny"  # Can override to be more strict
 }
 ```
 
-Both hooks run in parallel:
-- `hooks-collector` → Captures event for analytics
-- `bash-validator` → Validates command for security
+**Analytics Event Example:**
+```json
+{
+  "hook_id": "bash-validator",
+  "decision": "block",
+  "reason": "Dangerous command pattern detected",
+  "metadata": {"command_preview": "rm -rf /", "risk_level": "high"}
+}
+```
 
 ## Testing
 
@@ -235,11 +230,11 @@ agentic-p build --primitive . --provider claude --output build/claude
 ## Integration
 
 This primitive integrates with:
-- **hooks-collector** - Parallel analytics
-- **file-security** - File operation validation
-- **prompt-filter** - Prompt sanitization
+- **file-security** - File operation validation (self-logging)
+- **prompt-filter** - Prompt sanitization (self-logging)
+- **agentic_analytics** - Shared analytics client library
 
-Together, they provide comprehensive security coverage!
+All hooks log to `.agentic/analytics/events.jsonl` for a complete audit trail!
 
 ## License
 

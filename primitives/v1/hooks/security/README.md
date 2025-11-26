@@ -74,21 +74,15 @@ Decision: allow (with warning)
 Warning: Email address detected
 ```
 
-## Hybrid Architecture
+## Self-Logging Architecture
 
-Security hooks work alongside the **universal collector** for complete coverage:
+Security hooks **self-log** their decisions to a central analytics service:
 
-### Universal Collector (hooks-collector)
-- **Purpose:** Observability (analytics, logging, metrics)
-- **Matcher:** `*` (catches all events)
-- **Behavior:** Never blocks, always allows
-- **Coverage:** ALL 9 Claude events
-
-### Specialized Hooks (these security hooks)
-- **Purpose:** Control (security, validation, blocking)
-- **Matcher:** Targeted (only relevant tools)
-- **Behavior:** Can block dangerous operations
-- **Coverage:** Specific events/tools only
+### How It Works
+- Each hook logs its own decisions (no central collector needed)
+- Analytics are written to `.agentic/analytics/events.jsonl`
+- Errors in analytics never block hook execution (fail-safe)
+- Backend is configurable via environment variables
 
 ### Example: Bash Command
 
@@ -98,17 +92,24 @@ User: "Delete logs with rm -rf logs/"
 Claude Code triggers PreToolUse event
        ↓
   ┌──────────────────────────────────────┐
-  │ hooks-collector (matcher: "*")       │  ← Logs analytics
   │ bash-validator (matcher: "Bash")     │  ← Validates command
+  │   └── Logs decision to analytics     │  ← Self-logging
   └──────────────────────────────────────┘
-         Both run in parallel
        ↓
-bash-validator blocks + suggests alternative
+bash-validator blocks + logs "block" decision
        ↓
 Claude: "⚠️ That command is dangerous. Use 'rm -r logs/' instead."
 ```
 
-**See:** [ADR-013: Hybrid Hook Architecture](../../../../docs/adrs/013-hybrid-hook-architecture.md)
+**Analytics Event:**
+```json
+{
+  "hook_id": "bash-validator",
+  "decision": "block",
+  "reason": "Dangerous command pattern detected",
+  "metadata": {"command_preview": "rm -rf logs/"}
+}
+```
 
 ## Installation
 
@@ -130,29 +131,13 @@ cp -r /path/to/agentic-primitives/build/claude/hooks .claude/
 ```
 .claude/hooks/
 ├── hooks.json
-├── core/
-│   └── hooks-collector.py
 └── security/
-    ├── bash-validator.py
-    ├── file-security.py
-    └── prompt-filter.py
+    ├── bash-validator.py      # Self-logging
+    ├── file-security.py       # Self-logging
+    └── prompt-filter.py       # Self-logging
 ```
 
-### Security Only
-
-Install only security hooks (no analytics):
-
-```bash
-# Build hooks
-agentic-p build --provider claude
-
-# Install only security
-cp -r build/claude/hooks/security .claude/hooks/
-cp build/claude/hooks/hooks.json .claude/hooks/
-# Edit hooks.json to remove non-security entries
-```
-
-**Use case:** When you need security but don't want analytics overhead.
+Each security hook logs its decisions to `.agentic/analytics/events.jsonl`.
 
 ## Configuration
 
@@ -372,17 +357,14 @@ if __name__ == "__main__":
 
 ## Best Practices
 
-### 1. Start with Observability
+### 1. Install Security Hooks
 
-Install universal collector first:
 ```bash
-cp -r build/claude/hooks/core .claude/hooks/
+agentic-p build --provider claude
+agentic-p install --provider claude --project
 ```
 
-Add security later when needed:
-```bash
-cp -r build/claude/hooks/security .claude/hooks/
-```
+Security hooks include built-in analytics logging.
 
 ### 2. Customize for Your Environment
 

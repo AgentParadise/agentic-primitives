@@ -134,4 +134,4 @@ dev = [
 ]
 
 [tool.uv.sources]
-agentic-logging = { workspace = true }
+agentic-logging = { path = "../../lib/python/agentic_logging" }

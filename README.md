@@ -176,32 +176,33 @@ primitives/v1/tools/<category>/<id>/
 
 ### Hook Primitives
 
-Lifecycle event handlers with **middleware pipelines** and a **hybrid architecture**:
+Lifecycle event handlers with **self-logging analytics**:
 
 ```
 primitives/v1/hooks/
-├── core/                        # Universal hooks (observability)
-│   └── hooks-collector/         # Catches ALL events, runs middleware
-│       ├── hooks-collector.hook.yaml
-│       └── impl.python.py
-└── security/                    # Specialized hooks (control)
+├── analytics/                   # Analytics hooks
+│   └── analytics-collector/     # Session tracking
+└── security/                    # Security hooks (with built-in analytics)
     ├── bash-validator/          # Dangerous command detection
     ├── file-security/           # Sensitive file protection
     └── prompt-filter/           # PII/credential scanning
 ```
 
-**Hybrid Architecture** (Composition over Choice):
+**Self-Logging Architecture**:
 
-| Type | Purpose | Matcher | Priority | Can Block? |
-|------|---------|---------|----------|------------|
-| **Universal Collector** | Observability (analytics, metrics, logging) | `*` (all) | Low | ❌ Never |
-| **Specialized Hooks** | Control (security, validation) | Targeted | High | ✅ When needed |
+Each hook logs its own decisions to a central analytics service:
+
+| Hook | Purpose | Events | Actions |
+|------|---------|--------|---------|
+| `bash-validator` | Block dangerous commands | `PreToolUse` | Block `rm -rf`, `sudo rm`, etc. |
+| `file-security` | Protect sensitive files | `PreToolUse` | Warn on `.env`, redact secrets |
+| `prompt-filter` | Detect PII in prompts | `UserPromptSubmit` | Warn on emails, API keys |
 
 **Key Benefits**:
-- ✅ **Complete Coverage**: Universal collector sees every event
-- ✅ **Targeted Control**: Specialized hooks only fire when needed
-- ✅ **Zero Overhead**: Parallel execution, no performance penalty
-- ✅ **Composable**: Mix and match hooks for your needs
+- ✅ **Complete Audit Trail**: Every hook decision logged to `.agentic/analytics/events.jsonl`
+- ✅ **Self-Contained**: Each hook handles its own analytics (no central collector needed)
+- ✅ **Fail-Safe**: Analytics errors never block hook execution
+- ✅ **DI-Friendly**: Configure file or API backend via environment variables
 
 **Agent-Centric Configuration**:
 
@@ -211,13 +212,12 @@ Hooks are **generic implementations**, configured per-agent:
 providers/agents/claude-code/
 ├── hooks-supported.yaml         # All 9 Claude events
 └── hooks-config/
-    ├── hooks-collector.yaml     # Universal: analytics + observability
     ├── bash-validator.yaml      # Security: dangerous commands
     ├── file-security.yaml       # Security: sensitive files
     └── prompt-filter.yaml       # Security: PII/credentials
 ```
 
-Same `hooks-collector` primitive, different configs for Claude vs. Cursor vs. LangGraph!
+Same hook primitives, different configs for Claude vs. Cursor vs. LangGraph!
 
 **Use cases**:
 - 🛡️ **Safety**: Block dangerous bash commands, protect sensitive files, validate tool inputs

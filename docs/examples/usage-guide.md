@@ -25,30 +25,21 @@ Real-world scenarios showing how to use Agentic Primitives hooks effectively.
 cd agentic-primitives
 agentic-p build --provider claude
 
-# Install observability hooks
+# Install hooks
 cd /path/to/your/project
-mkdir -p .claude/hooks
-cp -r /path/to/agentic-primitives/build/claude/hooks/core .claude/hooks/
-cp -r /path/to/agentic-primitives/build/claude/hooks/analytics .claude/hooks/
-cp /path/to/agentic-primitives/build/claude/hooks/hooks.json .claude/hooks/
+agentic-p install --provider claude --project
 ```
 
 ### What You Get
 
-**hooks-collector** captures all 9 Claude events:
-- `PreToolUse` - Before every tool execution
-- `PostToolUse` - After every tool execution
-- `UserPromptSubmit` - Every user message
-- `SessionStart` - Session begins
-- `SessionEnd` - Session ends
-- `Stop` - Agent stops
-- `SubagentStop` - Subagent stops
-- `PreCompact` - Before context compaction
-- `Notification` - System notifications
+**Self-logging security hooks** that capture events and log decisions:
+- `bash-validator` - Validates bash commands, logs all decisions
+- `file-security` - Protects sensitive files, logs access attempts
+- `prompt-filter` - Detects PII in prompts, logs warnings
 
-**analytics-collector** processes and stores event data:
-- Normalized JSON format
-- Published to `.agentic/analytics/events.jsonl`
+**Each hook logs to `.agentic/analytics/events.jsonl`:**
+- Structured JSON format
+- Complete audit trail
 - Ready for analysis
 
 ### Usage
@@ -192,21 +183,13 @@ mkdir -p .claude/hooks
 # Copy all hooks
 cp -r /path/to/agentic-primitives/build/claude/hooks/* .claude/hooks/
 
-# Configure audit backend
-vim providers/agents/claude-code/hooks-config/hooks-collector.yaml
+# Configure analytics backend
+export ANALYTICS_API_ENDPOINT="https://audit.company.com/api/events"
+export ANALYTICS_API_KEY="${AUDIT_API_KEY}"
 ```
 
-**Edit configuration:**
-```yaml
-middleware:
-  - id: event_publisher
-    config:
-      backend: api  # Send to compliance system
-      api_endpoint: https://audit.company.com/api/events
-      api_key: ${AUDIT_API_KEY}
-      retry: true
-      batch_size: 100
-```
+Each security hook self-logs to the configured backend.
+All hook decisions are automatically sent to your compliance system.
 
 ### What You Get
 
@@ -233,41 +216,23 @@ curl https://audit.company.com/api/reports/blocked?date=2025-11-24
 
 ## Scenario 4: Personal Productivity
 
-**Goal:** Lightweight observability without heavy security.
+**Goal:** Lightweight analytics without strict security blocking.
 
 ### Setup
 
 ```bash
-# Install only hooks-collector (universal observability)
+# Install hooks with analytics
 cd /path/to/your/project
-mkdir -p .claude/hooks/core
-
-cp /path/to/agentic-primitives/build/claude/hooks/hooks.json .claude/hooks/
-cp -r /path/to/agentic-primitives/build/claude/hooks/core .claude/hooks/
-
-# Edit hooks.json to keep only hooks-collector entries
-vim .claude/hooks/hooks.json
+agentic-p build --provider claude
+agentic-p install --provider claude --project
 ```
 
-**Simplified hooks.json:**
-```json
-{
-  "PreToolUse": [
-    {"matcher": "*", "hooks": [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py"}]}
-  ],
-  "PostToolUse": [
-    {"matcher": "*", "hooks": [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py"}]}
-  ],
-  "UserPromptSubmit": [
-    {"matcher": "*", "hooks": [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/core/hooks-collector.py"}]}
-  ]
-}
-```
+Security hooks still run but just log - they don't block by default for non-dangerous operations.
 
 ### What You Get
 
-- ✅ Lightweight analytics
-- ✅ No security blocking (work uninterrupted)
+- ✅ Complete audit trail in `.agentic/analytics/events.jsonl`
+- ✅ Automatic logging of all tool usage
 - ✅ Track your productivity
 - ✅ Debug when needed
 
@@ -301,8 +266,7 @@ cp -r /path/to/agentic-primitives/build/claude/hooks/analytics ~/.claude/hooks/
 cp /path/to/agentic-primitives/build/claude/hooks/hooks.json ~/.claude/hooks/
 
 # Configure team analytics backend
-vim ~/claude/hooks/core/hooks-collector.py
-# (Edit to point to team analytics server)
+export ANALYTICS_API_ENDPOINT="https://team-analytics.company.com/events"
 ```
 
 **Project-specific security:**
@@ -389,16 +353,11 @@ if __name__ == "__main__":
     main()
 ```
 
-**Add to hook config:**
-```yaml
-# providers/agents/claude-code/hooks-config/hooks-collector.yaml
-middleware:
-  - id: token_tracker
-    path: ../../../../services/custom-middleware/token_tracker.py
-    type: action
-    enabled: true
-    events: ["PostToolUse", "Stop"]  # After operations
-    priority: 60
+**Configure the analytics endpoint:**
+```bash
+# Set environment variables for analytics backend
+export ANALYTICS_OUTPUT_PATH=".agentic/analytics/events.jsonl"
+export COST_TRACKING_ENABLED=true
 ```
 
 ### Usage
@@ -429,21 +388,14 @@ cat .agentic/costs/token_usage.jsonl | jq -r '[.timestamp[:10], .cost_usd] | @ts
 
 ### Setup
 
-**Enable verbose logging:**
-```yaml
-# providers/agents/claude-code/hooks-config/hooks-collector.yaml
-middleware:
-  - id: debug_logger
-    path: ../../../../services/custom-middleware/debug_logger.py
-    type: action
-    enabled: true
-    events: ["*"]
-    priority: 5  # Run first
-    config:
-      log_file: .agentic/debug/hooks.log
-      log_level: DEBUG
-      include_full_payload: true
+**Enable verbose logging via environment:**
+```bash
+# Set debug mode
+export AGENTIC_LOG_LEVEL=DEBUG
+export AGENTIC_DEBUG=1
 ```
+
+Hooks will log detailed information to help with debugging.
 
 ### Usage
 
@@ -467,21 +419,20 @@ grep "PreToolUse" .agentic/debug/hooks.log | jq '.'
 ### Debug Output Example
 
 ```
-[2025-11-24T10:30:15.123Z] DEBUG hooks-collector - Event received
+[2025-11-24T10:30:15.123Z] DEBUG bash-validator - Event received
 {
   "event": "PreToolUse",
   "tool": "Bash",
-  "args": ["ls", "-la"],
-  "raw_payload": {...}
+  "command": "ls -la"
 }
 
-[2025-11-24T10:30:15.125Z] DEBUG middleware:event_normalizer - Normalizing event
-[2025-11-24T10:30:15.126Z] DEBUG middleware:event_normalizer - Normalized successfully
+[2025-11-24T10:30:15.125Z] DEBUG bash-validator - Validating command
+[2025-11-24T10:30:15.126Z] DEBUG bash-validator - No dangerous patterns detected
 
-[2025-11-24T10:30:15.127Z] DEBUG middleware:event_publisher - Publishing event
-[2025-11-24T10:30:15.128Z] DEBUG middleware:event_publisher - Published to file: .agentic/analytics/events.jsonl
+[2025-11-24T10:30:15.127Z] DEBUG analytics-client - Publishing event
+[2025-11-24T10:30:15.128Z] DEBUG analytics-client - Logged to: .agentic/analytics/events.jsonl
 
-[2025-11-24T10:30:15.129Z] DEBUG hooks-collector - Decision: allow
+[2025-11-24T10:30:15.129Z] DEBUG bash-validator - Decision: allow
 ```
 
 ---
@@ -514,14 +465,13 @@ Multiple hooks run in parallel for the same event:
 ```json
 {
   "PreToolUse": [
-    {"matcher": "*", "hooks": [{"command": "...hooks-collector.py"}]},  // Observability
-    {"matcher": "Bash", "hooks": [{"command": "...bash-validator.py"}]},  // Security
-    {"matcher": "*", "hooks": [{"command": "...custom-logger.py"}]}  // Custom
+    {"matcher": "Bash", "hooks": [{"command": "...bash-validator.py"}]},  // Bash security
+    {"matcher": "Read|Write", "hooks": [{"command": "...file-security.py"}]}  // File security
   ]
 }
 ```
 
-All three run simultaneously when a Bash command is executed.
+Both hooks run simultaneously and self-log their decisions.
 
 ### Pattern 3: Sequential Middleware
 
@@ -559,22 +509,17 @@ middleware:
 
 Begin with observability only:
 ```bash
-# Just hooks-collector for analytics
-cp -r build/claude/hooks/core .claude/hooks/
-```
-
-Add security later:
-```bash
-# Add security when needed
-cp -r build/claude/hooks/security .claude/hooks/
+# Install all hooks (each includes self-logging)
+agentic-p build --provider claude
+agentic-p install --provider claude --project
 ```
 
 ### 2. Test Before Deploying
 
 ```bash
 # Test hook execution
-echo '{"event":"PreToolUse","tool":"Bash","args":["ls"]}' | \
-  .claude/hooks/core/hooks-collector.py
+echo '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}' | \
+  .claude/hooks/security/bash-validator.py
 
 # Verify output
 cat .agentic/analytics/events.jsonl
@@ -595,13 +540,13 @@ git commit -m "Add agentic hooks for observability"
 
 ## Hooks Configuration
 
-This project uses the following hooks:
+This project uses the following self-logging hooks:
 
-- **hooks-collector**: Tracks all agent interactions
 - **bash-validator**: Blocks dangerous bash commands
 - **file-security**: Protects sensitive files (.env, keys)
+- **prompt-filter**: Detects PII in prompts
 
-Analytics are stored in `.agentic/analytics/events.jsonl`.
+All hook decisions are logged to `.agentic/analytics/events.jsonl`.
 
 ### For developers:
 

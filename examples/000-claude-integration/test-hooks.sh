@@ -88,7 +88,7 @@ test_hook \
     "file-security (sensitive)" \
     "$HOOKS_DIR/security/file-security.py" \
     "$FIXTURES_DIR/sensitive-file.json" \
-    "block"
+    "allow"  # Allows with warning + redaction
 
 test_hook \
     "file-security (normal)" \
@@ -110,21 +110,6 @@ test_hook \
     "$HOOKS_DIR/security/prompt-filter.py" \
     "$FIXTURES_DIR/normal-prompt.json" \
     "allow"
-
-echo -e "${BLUE}--- Universal Collector Tests ---${NC}"
-echo ""
-
-test_hook \
-    "hooks-collector (bash)" \
-    "$HOOKS_DIR/core/hooks-collector.py" \
-    "$FIXTURES_DIR/dangerous-bash.json" \
-    "allow"  # Never blocks
-
-test_hook \
-    "hooks-collector (prompt)" \
-    "$HOOKS_DIR/core/hooks-collector.py" \
-    "$FIXTURES_DIR/pii-prompt.json" \
-    "allow"  # Never blocks
 
 echo -e "${GREEN}═══════════════════════════════════════${NC}"
 echo -e "${GREEN}  All tests completed!${NC}"

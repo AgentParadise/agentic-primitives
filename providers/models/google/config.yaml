@@ -1,0 +1,29 @@
+id: google
+name: Google
+type: model_provider
+
+description: "Google AI provides the Gemini family of multimodal AI models."
+
+api:
+  base_url: "https://generativelanguage.googleapis.com/v1"
+  docs_url: "https://ai.google.dev/docs"
+  authentication: api_key
+  env_var: GOOGLE_API_KEY
+
+model_families:
+  - gemini-2
+  - gemini-1-5
+
+current_models:
+  flash: gemini-flash
+  flash-lite: gemini-flash-lite
+  pro: gemini-pro
+
+rate_limits:
+  requests_per_minute: 60
+  tokens_per_minute: 100000
+
+support:
+  website: "https://ai.google.dev"
+  documentation: "https://ai.google.dev/docs"
+

@@ -24,46 +24,80 @@ pub struct ModelProvider {
     pub metadata: ProviderMetadata,
 }
 
-/// Individual model configuration
+/// Individual model configuration (matches providers/models/*/model.yaml format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
     pub id: String,
-    pub name: String,
-    pub family: String,
+    pub full_name: String,
+    pub api_name: String,
+    #[serde(default)]
+    pub alias: Option<String>,
+    #[serde(default)]
+    pub prefer_alias: Option<bool>,
+    #[serde(default)]
+    pub version: Option<String>,
     pub provider: String,
-    pub context_window: u32,
-    pub max_output_tokens: Option<u32>,
-    pub capabilities: Option<Capabilities>,
-    pub pricing: PricingInfo,
-    pub api: ApiInfo,
-    pub release_date: Option<String>,
+    #[serde(default)]
     pub status: Option<String>,
+    pub capabilities: ModelCapabilities,
+    pub performance: ModelPerformance,
+    pub pricing: ModelPricing,
+    #[serde(default)]
+    pub strengths: Vec<String>,
+    #[serde(default)]
+    pub recommended_for: Vec<String>,
+    #[serde(default)]
+    pub limitations: Option<Vec<String>>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub deprecated: Option<bool>,
+    #[serde(default)]
+    pub replacement: Option<String>,
+    #[serde(default)]
+    pub knowledge_cutoff: Option<String>,
+    #[serde(default)]
+    pub training_cutoff: Option<String>,
+    #[serde(default)]
+    pub last_updated: Option<String>,
 }
 
 /// Model capabilities
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Capabilities {
-    pub vision: Option<bool>,
-    pub function_calling: Option<bool>,
-    pub streaming: Option<bool>,
-    pub json_mode: Option<bool>,
+pub struct ModelCapabilities {
+    pub max_tokens: u32,
+    pub context_window: u32,
+    #[serde(default)]
+    pub supports_vision: Option<bool>,
+    #[serde(default)]
+    pub supports_function_calling: Option<bool>,
+    #[serde(default)]
+    pub supports_streaming: Option<bool>,
+    #[serde(default)]
+    pub supports_json_mode: Option<bool>,
+    #[serde(default)]
+    pub supports_system_messages: Option<bool>,
+}
+
+/// Model performance characteristics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelPerformance {
+    #[serde(default)]
+    pub speed: Option<String>,
+    #[serde(default)]
+    pub quality: Option<String>,
+    #[serde(default)]
+    pub reliability: Option<String>,
 }
 
 /// Pricing information
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PricingInfo {
-    pub input: f64,
-    pub output: f64,
+pub struct ModelPricing {
+    pub input_per_1m_tokens: f64,
+    pub output_per_1m_tokens: f64,
     pub currency: String,
-    pub per_tokens: u32,
-    pub updated: Option<String>,
-}
-
-/// API configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApiInfo {
-    pub model_id: String,
-    pub endpoint: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 /// Provider metadata (for both model and agent providers)

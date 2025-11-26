@@ -15,7 +15,3 @@ dev = [
     "pytest-asyncio>=0.23.0",
 ]
 
-[tool.uv]
-dev-dependencies = []
-
-

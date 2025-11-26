@@ -41,11 +41,11 @@ graph TB
     Impl --> Result
     Result --> Claude
     
-    style Dev fill:#9f9,stroke:#333
-    style AgentConfig fill:#99f,stroke:#333
-    style Build fill:#f99,stroke:#333
-    style Output fill:#ff9,stroke:#333
-    style Claude fill:#f9f,stroke:#333
+    style Dev fill:#9f9,stroke:#333,color:#000
+    style AgentConfig fill:#99f,stroke:#333,color:#000
+    style Build fill:#f99,stroke:#333,color:#000
+    style Output fill:#ff9,stroke:#333,color:#000
+    style Claude fill:#f9f,stroke:#333,color:#000
 ```
 
 ## Three-Phase System
@@ -62,9 +62,9 @@ graph LR
         E[README.md] --> F[Documentation]
     end
     
-    style A fill:#9f9,stroke:#333
-    style C fill:#9f9,stroke:#333
-    style E fill:#9f9,stroke:#333
+    style A fill:#9f9,stroke:#333,color:#000
+    style C fill:#9f9,stroke:#333,color:#000
+    style E fill:#9f9,stroke:#333,color:#000
 ```
 
 **Key Principle:** Hooks are **generic** - they work with any agent provider.
@@ -90,10 +90,10 @@ graph LR
         C --> D[Set Fail Behavior]
     end
     
-    style A fill:#99f,stroke:#333
-    style B fill:#99f,stroke:#333
-    style C fill:#99f,stroke:#333
-    style D fill:#99f,stroke:#333
+    style A fill:#99f,stroke:#333,color:#000
+    style B fill:#99f,stroke:#333,color:#000
+    style C fill:#99f,stroke:#333,color:#000
+    style D fill:#99f,stroke:#333,color:#000
 ```
 
 **Key Principle:** Agents **configure** generic hooks for their needs.
@@ -119,11 +119,11 @@ flowchart LR
     B --> D[Wrapper.py<br/>+ Embedded Config]
     B --> E[Impl.py<br/>+ Business Logic]
     
-    style A fill:#9f9,stroke:#333
-    style C fill:#99f,stroke:#333
-    style B fill:#f99,stroke:#333
-    style D fill:#ff9,stroke:#333
-    style E fill:#ff9,stroke:#333
+    style A fill:#9f9,stroke:#333,color:#000
+    style C fill:#99f,stroke:#333,color:#000
+    style B fill:#f99,stroke:#333,color:#000
+    style D fill:#ff9,stroke:#333,color:#000
+    style E fill:#ff9,stroke:#333,color:#000
 ```
 
 **Output:**
@@ -196,10 +196,10 @@ graph LR
         D1 --> D4[Gemini Config]
     end
     
-    style A1 fill:#fbb,stroke:#333
-    style B1 fill:#fbb,stroke:#333
-    style C1 fill:#fbb,stroke:#333
-    style D1 fill:#9f9,stroke:#333
+    style A1 fill:#fbb,stroke:#333,color:#000
+    style B1 fill:#fbb,stroke:#333,color:#000
+    style C1 fill:#fbb,stroke:#333,color:#000
+    style D1 fill:#9f9,stroke:#333,color:#000
 ```
 
 **Benefits:**
@@ -231,9 +231,9 @@ graph TB
         E2 --> E5[✅ Build-time errors]
     end
     
-    style R1 fill:#fbb,stroke:#333
-    style B1 fill:#9f9,stroke:#333
-    style E1 fill:#9f9,stroke:#333
+    style R1 fill:#fbb,stroke:#333,color:#000
+    style B1 fill:#9f9,stroke:#333,color:#000
+    style E1 fill:#9f9,stroke:#333,color:#000
 ```
 
 ### 3. In-Process Execution
@@ -260,45 +260,47 @@ graph TB
         I6[No resource issues]
     end
     
-    style S1 fill:#fbb,stroke:#333
-    style I1 fill:#9f9,stroke:#333
+    style S1 fill:#fbb,stroke:#333,color:#000
+    style I1 fill:#9f9,stroke:#333,color:#000
 ```
 
-## Hybrid Architecture
+## Self-Logging Architecture
 
-The system supports both **universal** and **specialized** hooks running in parallel:
+Each hook is responsible for logging its own decisions to the analytics service:
 
 ```mermaid
 graph TD
     Event[Hook Event:<br/>PreToolUse + Bash + rm -rf /] --> Parallel{Parallel Execution}
     
-    Parallel --> Universal[hooks-collector<br/>Universal Observability]
-    Parallel --> Specialized[bash-validator<br/>Specialized Security]
+    Parallel --> Security[bash-validator<br/>Security Hook]
     
-    Universal --> U1[Event Normalization]
-    U1 --> U2[Analytics Publishing]
-    U2 --> U3[Always allows]
-    U3 --> UR[Decision: allow<br/>+ metadata]
-    
-    Specialized --> S1[Pattern Matching]
+    Security --> S1[Pattern Matching]
     S1 --> S2[Command Validation]
     S2 --> S3{Dangerous?}
     S3 -->|Yes| SR1[Decision: block]
     S3 -->|No| SR2[Decision: allow]
     
-    UR --> Merge[Merge Results]
-    SR1 --> Merge
-    SR2 --> Merge
+    SR1 --> Log1[Log to Analytics<br/>.agentic/analytics/events.jsonl]
+    SR2 --> Log2[Log to Analytics]
     
-    Merge --> Final{Any block?}
+    Log1 --> Final{Any block?}
+    Log2 --> Final
+    
     Final -->|Yes| Block[❌ BLOCK OPERATION]
     Final -->|No| Allow[✅ ALLOW OPERATION]
     
-    style Universal fill:#9cf,stroke:#333
-    style Specialized fill:#f99,stroke:#333
-    style Block fill:#fbb,stroke:#333
-    style Allow fill:#9f9,stroke:#333
+    style Security fill:#f99,stroke:#333,color:#000
+    style Log1 fill:#9cf,stroke:#333,color:#000
+    style Log2 fill:#9cf,stroke:#333,color:#000
+    style Block fill:#fbb,stroke:#333,color:#000
+    style Allow fill:#9f9,stroke:#333,color:#000
 ```
+
+**Key Benefits:**
+- ✅ **Self-Contained**: Each hook handles its own analytics (no central collector)
+- ✅ **Fail-Safe**: Analytics errors never block hook execution
+- ✅ **Complete Audit Trail**: Every decision logged with metadata
+- ✅ **DI-Friendly**: Configure file or API backend via environment variables
 
 ## File Organization
 
@@ -325,11 +327,11 @@ graph TB
     B --> W
     B --> I
     
-    style P fill:#9f9,stroke:#333
-    style C fill:#99f,stroke:#333
-    style B fill:#f99,stroke:#333
-    style W fill:#ff9,stroke:#333
-    style I fill:#ff9,stroke:#333
+    style P fill:#9f9,stroke:#333,color:#000
+    style C fill:#99f,stroke:#333,color:#000
+    style B fill:#f99,stroke:#333,color:#000
+    style W fill:#ff9,stroke:#333,color:#000
+    style I fill:#ff9,stroke:#333,color:#000
 ```
 
 ## Performance Characteristics
@@ -346,8 +348,8 @@ graph LR
         E --> F[JSON Output:<br/>1ms]
     end
     
-    style A fill:#9f9,stroke:#333
-    style F fill:#9f9,stroke:#333
+    style A fill:#9f9,stroke:#333,color:#000
+    style F fill:#9f9,stroke:#333,color:#000
 ```
 
 ### Scalability
@@ -364,30 +366,30 @@ graph LR
 
 ```mermaid
 flowchart TD
-    Start[New Hook Idea] --> Create[Create primitive<br/>in primitives/v1/hooks/]
+    Start[New Hook Idea] --> Create["Create primitive<br/>in primitives/v1/hooks/"]
     
-    Create --> WriteYAML[Write {hook}.hook.yaml<br/>Define metadata, events]
-    WriteYAML --> WriteImpl[Write {hook}.py<br/>Implement logic]
-    WriteImpl --> Test[Write tests<br/>tests/unit/claude/hooks/]
+    Create --> WriteYAML["Write hook.hook.yaml<br/>Define metadata, events"]
+    WriteYAML --> WriteImpl["Write hook.py<br/>Implement logic"]
+    WriteImpl --> Test["Write tests<br/>tests/unit/claude/hooks/"]
     
-    Test --> Config[Create agent config<br/>providers/agents/claude-code/]
-    Config --> Build[cargo run -- build --provider claude]
+    Test --> Config["Create agent config<br/>providers/agents/claude-code/"]
+    Config --> Build["agentic-p build --provider claude"]
     
     Build --> Verify{Tests pass?}
     Verify -->|No| Debug[Debug]
     Debug --> WriteImpl
     
-    Verify -->|Yes| Install[Install to project<br/>cp build/claude/.claude ~/project/]
+    Verify -->|Yes| Install["Install to project<br/>cp build/claude/.claude ~/project/"]
     Install --> Manual[Manual testing in Claude]
     
     Manual --> Works{Works?}
     Works -->|No| Debug
     Works -->|Yes| Commit[Commit changes]
     
-    style Start fill:#9f9,stroke:#333
-    style Test fill:#99f,stroke:#333
-    style Verify fill:#ff9,stroke:#333
-    style Commit fill:#9f9,stroke:#333
+    style Start fill:#9f9,stroke:#333,color:#000
+    style Test fill:#99f,stroke:#333,color:#000
+    style Verify fill:#ff9,stroke:#333,color:#000
+    style Commit fill:#9f9,stroke:#333,color:#000
 ```
 
 ## Related Documentation

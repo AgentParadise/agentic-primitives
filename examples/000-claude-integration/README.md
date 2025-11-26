@@ -30,15 +30,12 @@ This example shows:
 
 The hooks are already installed in `.claude/` directory. They include:
 
-**Universal Collector (`hooks-collector`):**
-- Captures all 9 Claude events
-- Logs to `.agentic/analytics/events.jsonl`
-- Never blocks operations
-
-**Security Hooks:**
+**Security Hooks (with built-in analytics):**
 - `bash-validator` - Blocks dangerous bash commands (rm -rf, dd, etc.)
-- `file-security` - Protects sensitive files (.env, keys, credentials)
+- `file-security` - Protects sensitive files (.env, keys, credentials)  
 - `prompt-filter` - Warns about PII in prompts
+
+Each hook **self-logs** its decisions to `.agentic/analytics/events.jsonl` for a complete audit trail.
 
 ## Running the Example
 
@@ -89,11 +86,7 @@ Watch for hook decisions in real-time:
    Command: rm -rf /
    Decision: ❌ BLOCKED
    Reason: Dangerous command detected
-   Alternative: Use specific paths, not root directory
-
-✅ Hook: hooks-collector
-   Event: PreToolUse
-   Logged to: .agentic/analytics/events.jsonl
+   Analytics: Decision logged to .agentic/analytics/events.jsonl
 ```
 
 ### 2. Analytics File
@@ -120,14 +113,12 @@ The hooks are organized by category:
 
 ```
 .claude/hooks/
-├── core/
-│   └── hooks-collector.py       ← Universal observability
 ├── security/
-│   ├── bash-validator.py        ← Bash security
-│   ├── file-security.py         ← File protection
-│   └── prompt-filter.py         ← PII detection
+│   ├── bash-validator.py        ← Bash security (self-logging)
+│   ├── file-security.py         ← File protection (self-logging)
+│   └── prompt-filter.py         ← PII detection (self-logging)
 └── analytics/
-    └── analytics-collector.py   ← Legacy analytics
+    └── analytics-collector.py   ← Session tracking
 ```
 
 ### 4. Settings Configuration
@@ -144,43 +135,36 @@ cat .claude/settings.json | jq '.hooks.PreToolUse'
 
 ```
 Task: List files in current directory
-Hook: hooks-collector → ✅ Allow (logged)
 Hook: bash-validator → ✅ Allow
+Analytics: Decision logged to .agentic/analytics/events.jsonl
 Result: Files listed successfully
-Analytics: Event logged to .agentic/analytics/events.jsonl
 ```
 
 ### Scenario: Dangerous Bash Command
 
 ```
 Task: Delete all files with rm -rf /
-Hook: hooks-collector → ✅ Allow (logged, never blocks)
 Hook: bash-validator → ❌ BLOCK
+Analytics: Block decision logged with reason
 Result: Operation blocked before execution
-Analytics: Blocked event logged
-Alternative: Suggested safer command
 ```
 
 ### Scenario: Sensitive File Access
 
 ```
 Task: Read .env file
-Hook: hooks-collector → ✅ Allow (logged)
-Hook: file-security → ❌ BLOCK
-Result: File access denied
-Analytics: Access attempt logged
-Reason: Sensitive configuration file
+Hook: file-security → ⚠️ WARN (allows with redaction)
+Analytics: Warning logged with file path
+Result: File content redacted, secrets replaced with hash+length
 ```
 
 ### Scenario: PII in Prompt
 
 ```
 Task: "Add my email john@company.com to config"
-Hook: hooks-collector → ✅ Allow (logged)
 Hook: prompt-filter → ⚠️ WARN (allows with warning)
-Result: Prompt processed with warning
 Analytics: PII detection logged
-Warning: Email address detected in prompt
+Result: Prompt processed with warning
 ```
 
 ## Understanding the Output
@@ -189,11 +173,11 @@ Warning: Email address detected in prompt
 
 ```
 User → Claude Agent → PreToolUse Event → Hooks Fire (Parallel)
-                                          ├─ hooks-collector (logs)
-                                          ├─ bash-validator (validates)
-                                          └─ file-security (protects)
+                                          ├─ bash-validator (validates + logs)
+                                          └─ file-security (protects + logs)
                                           ↓
                                       All hooks return decisions
+                                      Each hook logs to analytics
                                           ↓
                                       Agent combines decisions
                                       (block wins, allow if all allow)
@@ -247,15 +231,14 @@ cp -r build/claude/.claude examples/000-claude-integration/
 
 ### Change Analytics Backend
 
-Edit hooks-collector config to use API instead of file:
+Set environment variables to switch from file to API backend:
 
-```yaml
-middleware:
-  - id: event_publisher
-    config:
-      backend: api
-      api_endpoint: https://your-analytics-api.com/events
-      api_key: ${ANALYTICS_API_KEY}
+```bash
+# Use API backend instead of file
+export ANALYTICS_API_ENDPOINT="https://your-analytics-api.com/events"
+
+# Or customize file path
+export ANALYTICS_OUTPUT_PATH="/var/log/agentic/audit.jsonl"
 ```
 
 ### Disable Specific Hooks
@@ -295,7 +278,7 @@ mv tmp.json .claude/settings.json
    ls -la .agentic/analytics/
    ```
 
-2. **Verify hooks-collector is registered:**
+2. **Verify hooks are registered:**
    ```bash
    cat .claude/settings.json | jq '.hooks | keys'
    ```
@@ -304,6 +287,11 @@ mv tmp.json .claude/settings.json
    ```bash
    # Run with debug output
    DEBUG=1 uv run python main.py
+   ```
+
+4. **Validate events file:**
+   ```bash
+   uv run python -m agentic_analytics.validation .agentic/analytics/events.jsonl
    ```
 
 ### Permission Errors

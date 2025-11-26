@@ -3,7 +3,11 @@
 **Status:** Accepted  
 **Date:** 2025-11-25  
 **Decision Makers:** Core Team  
-**Related:** [ADR-013: Hybrid Hook Architecture](./013-hybrid-hook-architecture.md)
+**Related:** [ADR-013: Hybrid Hook Architecture](./013-hybrid-hook-architecture.md) (superseded)
+
+> **Note:** This ADR's Wrapper+Impl pattern is still valid and in use. However, examples 
+> referencing `hooks-collector` are outdated - that hook has been removed in favor of 
+> self-logging hooks where each hook logs its own decisions via `agentic_analytics`.
 
 ## Context
 

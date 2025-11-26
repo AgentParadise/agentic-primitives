@@ -7,14 +7,14 @@ This document explains the structure of the `build/` directory and the purpose o
 ```mermaid
 graph TB
     subgraph "Source (primitives/)"
-        P1[hooks-collector/<br/>hooks-collector.py]
         P2[bash-validator/<br/>bash-validator.py]
         P3[file-security/<br/>file-security.py]
+        P4[prompt-filter/<br/>prompt-filter.py]
     end
     
     subgraph "Configuration (providers/agents/)"
-        C1[claude-code/<br/>hooks-config/<br/>hooks-collector.yaml]
         C2[claude-code/<br/>hooks-config/<br/>bash-validator.yaml]
+        C3[claude-code/<br/>hooks-config/<br/>file-security.yaml]
     end
     
     subgraph "Build System"
@@ -23,29 +23,29 @@ graph TB
     
     subgraph "Output (build/claude/)"
         O1[.claude/settings.json]
-        O2[.claude/hooks/core/<br/>hooks-collector.py<br/>hooks-collector.impl.py]
         O3[.claude/hooks/security/<br/>bash-validator.py<br/>bash-validator.impl.py]
+        O4[.claude/hooks/security/<br/>file-security.py<br/>file-security.impl.py]
     end
     
-    P1 --> B
     P2 --> B
     P3 --> B
-    C1 --> B
+    P4 --> B
     C2 --> B
+    C3 --> B
     
     B --> O1
-    B --> O2
     B --> O3
+    B --> O4
     
-    style P1 fill:#9f9,stroke:#333
     style P2 fill:#9f9,stroke:#333
     style P3 fill:#9f9,stroke:#333
-    style C1 fill:#99f,stroke:#333
+    style P4 fill:#9f9,stroke:#333
     style C2 fill:#99f,stroke:#333
+    style C3 fill:#99f,stroke:#333
     style B fill:#f99,stroke:#333
     style O1 fill:#ff9,stroke:#333
-    style O2 fill:#ff9,stroke:#333
     style O3 fill:#ff9,stroke:#333
+    style O4 fill:#ff9,stroke:#333
 ```
 
 ## Directory Structure
@@ -56,16 +56,15 @@ build/
     ├── .claude/
     │   ├── settings.json           # Claude Code hook registration
     │   └── hooks/                  # Hook implementations
-    │       ├── core/               # Core/observability hooks
-    │       │   ├── hooks-collector.py      # Wrapper (generated)
-    │       │   └── hooks-collector.impl.py # Implementation (copied)
-    │       ├── security/           # Security hooks
-    │       │   ├── bash-validator.py
-    │       │   ├── bash-validator.impl.py
+    │       ├── security/           # Security hooks (self-logging)
+    │       │   ├── bash-validator.py       # Wrapper (generated)
+    │       │   ├── bash-validator.impl.py  # Implementation (copied)
     │       │   ├── file-security.py
     │       │   ├── file-security.impl.py
     │       │   ├── prompt-filter.py
     │       │   └── prompt-filter.impl.py
+    │       ├── analytics/          # Analytics hooks
+    │       │   └── analytics-collector.py
     │       └── test/               # Test hooks
     │           ├── test-all-events.py
     │           └── test-all-events.impl.py
@@ -297,7 +296,6 @@ sequenceDiagram
 ### Examples
 
 ```
-hooks-collector.py / hooks-collector.impl.py
 bash-validator.py / bash-validator.impl.py
 file-security.py / file-security.impl.py
 prompt-filter.py / prompt-filter.impl.py
@@ -374,10 +372,10 @@ tree build/claude/.claude/
 cat build/claude/.claude/settings.json | jq '.hooks'
 
 # Verify wrapper has embedded config
-grep "AGENT_CONFIG" build/claude/.claude/hooks/core/hooks-collector.py
+grep "AGENT_CONFIG" build/claude/.claude/hooks/security/bash-validator.py
 
 # Verify impl exists
-ls -la build/claude/.claude/hooks/core/*.impl.py
+ls -la build/claude/.claude/hooks/security/*.impl.py
 ```
 
 ### Test Hook Execution

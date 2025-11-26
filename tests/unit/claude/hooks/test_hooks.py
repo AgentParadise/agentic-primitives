@@ -306,59 +306,6 @@ class TestPromptFilter:
         assert result.decision == "allow", "Normal prompt should be allowed"
 
 
-class TestHooksCollector:
-    """Tests for hooks-collector (universal collector)"""
-    
-    def test_never_blocks(self):
-        """Test that universal collector never blocks operations"""
-        hook_path = tester.get_hook_path("core", "hooks-collector")
-        
-        # Test with dangerous bash command
-        fixture = HookTestFixture(
-            session_id="test-009",
-            transcript_path="/test/session.jsonl",
-            cwd="/test",
-            permission_mode="default",
-            hook_event_name="PreToolUse",
-            tool_name="Bash",
-            tool_input={"command": "rm -rf /"},
-            tool_use_id="toolu_test_009"
-        )
-        
-        result = tester.run_hook(hook_path, fixture)
-        
-        assert result.success, f"Hook execution failed: {result.error}"
-        assert result.decision == "allow", "Universal collector should never block"
-    
-    def test_handles_all_events(self):
-        """Test that hooks-collector handles all event types"""
-        hook_path = tester.get_hook_path("core", "hooks-collector")
-        
-        events = [
-            ("PreToolUse", {"tool_name": "Bash", "tool_input": {"command": "ls"}, "tool_use_id": "test"}),
-            ("PostToolUse", {"tool_name": "Bash", "tool_input": {"command": "ls"}, "tool_use_id": "test"}),
-            ("UserPromptSubmit", {"prompt": "Hello"}),
-            ("SessionStart", {}),
-            ("SessionEnd", {}),
-        ]
-        
-        for event_name, extra_fields in events:
-            fixture_dict = {
-                "session_id": "test-010",
-                "transcript_path": "/test/session.jsonl",
-                "cwd": "/test",
-                "permission_mode": "default",
-                "hook_event_name": event_name,
-                **extra_fields
-            }
-            fixture = HookTestFixture(**fixture_dict)
-            
-            result = tester.run_hook(hook_path, fixture)
-            
-            assert result.success, f"Hook failed for {event_name}: {result.error}"
-            assert result.decision == "allow", f"Should allow {event_name}"
-
-
 class TestHookIntegration:
     """Integration tests for multiple hooks"""
     
@@ -375,9 +322,8 @@ class TestHookIntegration:
             tool_use_id="toolu_test_011"
         )
         
-        # All hooks that would fire for PreToolUse + Bash
+        # Security hooks that would fire for PreToolUse + Bash
         hooks = [
-            ("core", "hooks-collector"),  # Universal
             ("security", "bash-validator"),  # Bash-specific
         ]
         
@@ -393,9 +339,6 @@ class TestHookIntegration:
         
         # Collect decisions
         decisions = {hook_name: result.decision for hook_name, result in results}
-        
-        # Universal collector never blocks
-        assert decisions["hooks-collector"] == "allow"
         
         # Bash validator blocks dangerous command
         assert decisions["bash-validator"] == "block"

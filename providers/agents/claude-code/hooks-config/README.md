@@ -12,25 +12,23 @@ Hook configurations define:
 
 ## Configuration Files
 
-### `hooks-collector.yaml`
+### Security Hooks
 
-Universal hook collector configuration for Claude Code. This is the recommended hook for most use cases.
+- `bash-validator.yaml` - Dangerous command detection
+- `file-security.yaml` - Sensitive file protection  
+- `prompt-filter.yaml` - PII/credential scanning
 
-**Features:**
-- Catches all 9 Claude Code events
-- Configurable middleware pipeline
-- Analytics, observability, safety checks
+Each security hook **self-logs** its decisions to the analytics service.
 
 **Usage:**
 ```bash
-agentic-p build --agent claude-code --hook hooks-collector --output build/claude
+agentic-p build --provider claude
+agentic-p install --provider claude --project
 ```
 
-### Future Configurations
+### Analytics Hooks
 
-- `analytics-collector.yaml` - Legacy analytics-only collector
-- `safety-validator.yaml` - Security-focused hook
-- `custom-workflow.yaml` - User-defined workflows
+- `analytics-collector.yaml` - Session tracking and metrics
 
 ## Configuration Schema
 
@@ -45,9 +43,9 @@ providers/.schemas/hook-config.schema.json
 
 ```yaml
 primitive:
-  id: hooks-collector
-  path: "../../../../primitives/v1/hooks/core/hooks-collector"
-  impl_file: "impl.python.py"
+  id: bash-validator
+  path: "../../../../primitives/v1/hooks/security/bash-validator"
+  impl_file: "bash-validator.py"
 ```
 
 Points to the generic hook implementation in `primitives/`. The primitive is reusable across multiple agents.
