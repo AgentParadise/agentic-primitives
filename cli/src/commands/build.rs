@@ -84,9 +84,14 @@ fn discover_primitives(args: &BuildArgs, config: &PrimitivesConfig) -> Result<Ve
     Ok(primitives)
 }
 
-/// Check if a directory contains a metadata file
+/// Check if a directory contains a metadata file or is an atomic hooks directory
 fn has_metadata_file(path: &Path) -> bool {
     let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+    // Check for atomic hooks structure (handlers/ directory)
+    if dir_name == "hooks" && path.join("handlers").exists() {
+        return true;
+    }
 
     // Check for any metadata file format
     path.join(format!("{dir_name}.yaml")).exists()

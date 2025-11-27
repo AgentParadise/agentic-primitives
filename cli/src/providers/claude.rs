@@ -17,6 +17,13 @@ impl ClaudeTransformer {
 
     /// Determine the kind of primitive at the given path
     fn detect_primitive_kind(&self, path: &Path) -> Result<PrimitiveKind> {
+        // Check for atomic hooks structure (handlers/ directory)
+        if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+            if dir_name == "hooks" && path.join("handlers").exists() {
+                return Ok(PrimitiveKind::Hook);
+            }
+        }
+
         // Check for meta files to determine kind
         // Try new pattern first ({id}.hook.yaml), then fall back to legacy (hook.meta.yaml)
         if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
@@ -206,13 +213,17 @@ impl ClaudeTransformer {
 
         let mut generated_files = vec![settings_file.to_string_lossy().to_string()];
 
-        // Find the primitives root (go up from path to find handlers/validators)
-        // Path structure: primitives/v1/hooks/{category}/{hook-id}/
-        // We want: primitives/v1/hooks/
-        let hooks_root = path
-            .parent() // {category}
-            .and_then(|p| p.parent()) // hooks
-            .context("Failed to find hooks root directory")?;
+        // Determine hooks root - if path already has handlers/, use it directly
+        // Otherwise assume legacy structure and go up
+        let hooks_root = if path.join("handlers").exists() {
+            path.to_path_buf()
+        } else {
+            // Legacy path structure: primitives/v1/hooks/{category}/{hook-id}/
+            path.parent()
+                .and_then(|p| p.parent())
+                .context("Failed to find hooks root directory")?
+                .to_path_buf()
+        };
 
         // Copy handlers if they exist
         let handlers_src = hooks_root.join("handlers");
@@ -310,7 +321,7 @@ impl ClaudeTransformer {
         Ok(copied)
     }
 
-    /// Generate settings.json with atomic handlers
+    /// Generate settings.json with atomic handlers for all Claude Code events
     pub fn generate_hooks_settings(&self) -> Result<serde_json::Value> {
         let settings = serde_json::json!({
             "hooks": {
@@ -334,6 +345,51 @@ impl ClaudeTransformer {
                     "hooks": [{
                         "type": "command",
                         "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/user-prompt.py",
+                        "timeout": 5
+                    }]
+                }],
+                "Stop": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/stop.py",
+                        "timeout": 5
+                    }]
+                }],
+                "SubagentStop": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/subagent-stop.py",
+                        "timeout": 5
+                    }]
+                }],
+                "SessionStart": [{
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/session-start.py",
+                        "timeout": 5
+                    }]
+                }],
+                "SessionEnd": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/session-end.py",
+                        "timeout": 5
+                    }]
+                }],
+                "PreCompact": [{
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/pre-compact.py",
+                        "timeout": 5
+                    }]
+                }],
+                "Notification": [{
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/notification.py",
                         "timeout": 5
                     }]
                 }]
@@ -456,9 +512,15 @@ impl ProviderTransformer for ClaudeTransformer {
                 (id, "meta-prompt", files)
             }
             PrimitiveKind::Hook => {
-                // Try new pattern first ({id}.hook.yaml), then legacy (hook.meta.yaml)
-                let meta_path =
-                    if let Some(dir_name) = primitive_path.file_name().and_then(|n| n.to_str()) {
+                // Check for atomic hooks structure (handlers/ directory)
+                if primitive_path.join("handlers").exists() {
+                    let files = self.transform_hook(primitive_path, output_dir)?;
+                    ("atomic-hooks".to_string(), "hook", files)
+                } else {
+                    // Legacy: Try new pattern first ({id}.hook.yaml), then legacy (hook.meta.yaml)
+                    let meta_path = if let Some(dir_name) =
+                        primitive_path.file_name().and_then(|n| n.to_str())
+                    {
                         let id_hook_path = primitive_path.join(format!("{dir_name}.hook.yaml"));
                         if id_hook_path.exists() {
                             id_hook_path
@@ -468,11 +530,12 @@ impl ProviderTransformer for ClaudeTransformer {
                     } else {
                         primitive_path.join("hook.meta.yaml")
                     };
-                let meta_content = fs::read_to_string(&meta_path)?;
-                let meta: HookMeta = serde_yaml::from_str(&meta_content)?;
-                let id = meta.id.clone();
-                let files = self.transform_hook(primitive_path, output_dir)?;
-                (id, "hook", files)
+                    let meta_content = fs::read_to_string(&meta_path)?;
+                    let meta: HookMeta = serde_yaml::from_str(&meta_content)?;
+                    let id = meta.id.clone();
+                    let files = self.transform_hook(primitive_path, output_dir)?;
+                    (id, "hook", files)
+                }
             }
             PrimitiveKind::Tool => {
                 // Try new pattern first ({id}.tool.yaml), then legacy (tool.meta.yaml)
