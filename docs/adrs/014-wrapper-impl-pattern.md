@@ -1,358 +1,352 @@
-# ADR-014: Wrapper+Impl Pattern for Hook Execution
+# ADR-014: Atomic Hook Architecture
 
-**Status:** Accepted  
-**Date:** 2025-11-25  
+**Status:** Accepted (Revision 2)  
+**Date:** 2025-11-27  
 **Decision Makers:** Core Team  
-**Related:** [ADR-013: Hybrid Hook Architecture](./013-hybrid-hook-architecture.md) (superseded)
-
-> **Note:** This ADR's Wrapper+Impl pattern is still valid and in use. However, examples 
-> referencing `hooks-collector` are outdated - that hook has been removed in favor of 
-> self-logging hooks where each hook logs its own decisions via `agentic_analytics`.
+**Supersedes:** Original ADR-014 (Wrapper+Impl Pattern)
 
 ## Context
 
-Our hook system needed to solve several competing requirements:
-1. **Generic primitives** - Hook implementations should work across any agent provider
-2. **Agent-specific configuration** - Each agent (Claude, OpenAI, Gemini) needs custom middleware, timeouts, and behaviors
-3. **Scalability** - System must handle 100+ concurrent agents without resource exhaustion
-4. **Performance** - Minimize subprocess overhead in the hot path
+The original Wrapper+Impl pattern attempted to solve configuration injection and subprocess optimization but introduced new problems:
 
-### The Problem
+### Why Wrapper+Impl Failed
 
-Initial implementations had two major issues:
-
-**Issue 1: Configuration Hell**
-
-```mermaid
-graph LR
-    A[Primitive YAML] --> B[Agent Config]
-    B --> C[Runtime Loading]
-    C --> D[Validation]
-    C --> E[❌ PyYAML Dependency]
-    C --> F[❌ File I/O Overhead]
-    C --> G[❌ Runtime Errors]
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  The Wrapper+Impl Pattern                                               │
+│                                                                         │
+│  ┌──────────────┐     spawn      ┌──────────────┐                      │
+│  │ Claude Agent │ ──────────────▶│ wrapper.py   │                      │
+│  └──────────────┘                └──────┬───────┘                      │
+│                                         │ import                        │
+│                                         ▼                               │
+│                                  ┌──────────────┐                      │
+│                                  │ impl.py      │                      │
+│                                  │              │                      │
+│                                  │ import ───────▶ agentic_analytics   │
+│                                  │              │          ❌ FAILS     │
+│                                  └──────────────┘                      │
+│                                                                         │
+│  Problems:                                                              │
+│  1. Subprocess has different Python environment                        │
+│  2. Editable installs don't persist across subprocess boundaries       │
+│  3. Import failures are silent (hooks return JSON but don't log)       │
+│  4. Two files per hook = complexity for no real benefit                │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-Loading YAML at runtime created:
-- Dependency on PyYAML in production
-- Runtime errors for config issues
-- Slower execution due to file I/O
-
-**Issue 2: Subprocess Cascade**
-
-```mermaid
-graph TD
-    A[Claude Agent] -->|spawn| B[Wrapper Script]
-    B -->|spawn| C[UV Process]
-    C -->|spawn| D[Python Impl]
-    D -->|spawn| E[Middleware Script]
-    E -->|spawn| F[UV Process]
-    F -->|spawn| G[Python Middleware]
-    
-    style A fill:#f9f,stroke:#333
-    style B fill:#fbb,stroke:#333
-    style C fill:#fbb,stroke:#333
-    style D fill:#fbb,stroke:#333
-    style E fill:#fbb,stroke:#333
-    style F fill:#fbb,stroke:#333
-    style G fill:#fbb,stroke:#333
-    
-    H[❌ 3-5 Subprocesses per Hook]
-    I[❌ BlockingIOError under Load]
-    J[❌ 100ms+ Latency]
-```
-
-Each hook call spawned 3-5 subprocesses, leading to:
-- `BlockingIOError: Resource temporarily unavailable` under load
-- 100ms+ latency per hook
-- System resource exhaustion with multiple agents
+**Root Cause:** Python packaging is unreliable across subprocess boundaries. When Claude spawns a hook, the subprocess may:
+- Use a different Python interpreter
+- Have different `sys.path` entries
+- Not see editable installs from the parent environment
+- Fail silently when imports don't resolve
 
 ## Decision
 
-We implemented a **Wrapper+Impl Pattern** that separates concerns:
+Replace the two-file pattern with an **Atomic Hook Architecture**:
 
-### Architecture
-
-```mermaid
-graph LR
-    subgraph "Build Output"
-        W[hooks-collector.py<br/>Wrapper - Generated]
-        I[hooks-collector.impl.py<br/>Implementation - Copied]
-    end
-    
-    subgraph "Wrapper Responsibilities"
-        W1[Embed Config at Build Time]
-        W2[Inject Config into stdin]
-        W3[Execute via runpy In-Process]
-        W4[Or Spawn UV for External Deps]
-    end
-    
-    subgraph "Impl Responsibilities"
-        I1[Pure Python Logic]
-        I2[Extract __agent_config__]
-        I3[Business Logic]
-        I4[Return JSON to stdout]
-    end
-    
-    W --> W1
-    W --> W2
-    W --> W3
-    W --> W4
-    
-    I --> I1
-    I --> I2
-    I --> I3
-    I --> I4
-    
-    style W fill:#9cf,stroke:#333
-    style I fill:#9f9,stroke:#333
+```
+.claude/hooks/
+  │
+  ├── handlers/                     # Entry points (3 files)
+  │   ├── pre-tool-use.py           # Routes PreToolUse events
+  │   ├── post-tool-use.py          # Handles PostToolUse events
+  │   └── user-prompt.py            # Handles UserPromptSubmit events
+  │
+  └── validators/                   # Pure validation functions
+      ├── security/
+      │   ├── bash.py               # Validates shell commands
+      │   └── file.py               # Validates file operations
+      │
+      └── prompt/
+          └── pii.py                # Detects PII patterns
 ```
 
-**File Structure:**
-```
-build/claude/.claude/hooks/core/
-├── hooks-collector.py         # Wrapper (generated)
-└── hooks-collector.impl.py    # Implementation (copied)
-```
+### Core Principles
 
-### Build-Time vs Runtime
+1. **No External Package Dependencies** - Hooks use Python stdlib only
+2. **Handlers Compose Validators** - Single entry point per event type
+3. **Validators Are Pure Functions** - Input → Validation → Output
+4. **Inline Analytics** - 6 lines of code, not a package import
+5. **In-Process Imports** - Validators imported dynamically, no subprocess
 
-```mermaid
-sequenceDiagram
-    participant Build as Build System (Rust)
-    participant Agent as Agent Config YAML
-    participant Template as Wrapper Template
-    participant Wrapper as Generated Wrapper
-    participant Impl as Implementation
-    
-    rect rgb(200, 220, 255)
-        Note over Build,Impl: BUILD TIME
-        Build->>Agent: Load config YAML
-        Agent-->>Build: middleware, timeouts, etc.
-        Build->>Build: Serialize to JSON
-        Build->>Template: Render with config
-        Template-->>Wrapper: Generate .py with embedded config
-        Build->>Impl: Copy from primitives/
-    end
-    
-    rect rgb(220, 255, 220)
-        Note over Build,Impl: RUNTIME
-        Note over Wrapper: Claude calls hook
-        Wrapper->>Wrapper: Parse embedded AGENT_CONFIG
-        Wrapper->>Wrapper: Read stdin (hook event)
-        Wrapper->>Wrapper: Inject config into event
-        Wrapper->>Impl: Execute via runpy (in-process)
-        Impl->>Impl: Extract __agent_config__
-        Impl->>Impl: Run business logic
-        Impl-->>Wrapper: Return JSON result
-        Wrapper-->>Build: Output to stdout
-    end
+### Architecture Diagram
+
+```
+Claude Event (stdin JSON)
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Handler (e.g., pre-tool-use.py)                                │
+│                                                                 │
+│  1. Parse event from stdin                                      │
+│  2. Route to validators based on tool_name                      │
+│  3. Import validators in-process (importlib.util)               │
+│  4. Call validate() functions                                   │
+│  5. Aggregate results                                           │
+│  6. Log to analytics (inline, no imports)                       │
+│  7. Output decision to stdout                                   │
+└─────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+   JSON Response (stdout)
 ```
 
-**Build Time Code:**
-```rust
-// cli/src/providers/claude.rs
-let agent_config = load_agent_hook_config("claude-code", "hooks-collector");
-let config_json = serde_json::to_string_pretty(&agent_config)?;
+### Handler Responsibilities
 
-// Generate wrapper with embedded config
-template.render({
-    "config_json": config_json,
-    "impl_filename": "hooks-collector.impl.py"
-})
-```
+| Responsibility | Implementation |
+|----------------|----------------|
+| Parse stdin JSON | `json.loads(sys.stdin.read())` |
+| Route to validators | `TOOL_VALIDATORS` mapping |
+| Call validators | `importlib.util.spec_from_file_location()` |
+| Aggregate decisions | First failure or success |
+| Log to analytics | Inline file append (6 lines) |
+| Output to stdout | `print(json.dumps(response))` |
 
-**Runtime Code:**
-```python
-# hooks-collector.py (Wrapper)
-AGENT_CONFIG = r'''{"agent": "claude-code", "middleware": [...]}'''
+### Validator Contract
 
-def main():
-    config_data = json.loads(AGENT_CONFIG)
-    hook_event = json.loads(sys.stdin.read())
-    hook_event['__agent_config__'] = config_data
-    
-    # Execute impl in-process (no subprocess!)
-    sys.stdin = io.StringIO(json.dumps(hook_event))
-    runpy.run_path("hooks-collector.impl.py")
-```
+Each validator exports a single `validate()` function:
 
 ```python
-# hooks-collector.impl.py (Implementation)
-async def main():
-    hook_event = json.loads(sys.stdin.read())
-    agent_config = hook_event.pop('__agent_config__', None)
+def validate(tool_input: dict, context: dict | None = None) -> dict:
+    """
+    Args:
+        tool_input: The tool_input from the hook event
+        context: Optional context (session_id, tool_name, etc.)
     
-    orchestrator = HooksCollectorOrchestrator(agent_config=agent_config)
-    result = await orchestrator.execute(hook_event)
-    print(json.dumps(result))
+    Returns:
+        {
+            "safe": bool,
+            "reason": str | None,      # Required if safe=False
+            "metadata": dict | None    # Optional extra data
+        }
+    """
 ```
+
+**Validators MUST:**
+- Be pure functions (no side effects)
+- Use only Python stdlib
+- Return the standard response format
+- Be testable standalone
+
+**Validators MUST NOT:**
+- Import external packages
+- Read/write files
+- Make network calls
+- Log to analytics (handlers do this)
+
+### Inline Analytics
+
+Analytics logging is embedded directly in handlers (no package import):
+
+```python
+def log_analytics(event: dict) -> None:
+    """Log to analytics file. Fail-safe - never blocks."""
+    try:
+        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a") as f:
+            f.write(json.dumps({"timestamp": datetime.now(UTC).isoformat(), **event}) + "\n")
+    except Exception:
+        pass  # Never block on analytics failure
+```
+
+This eliminates the need for `agentic_analytics` package imports in hooks.
 
 ## Consequences
 
 ### Positive
 
-✅ **Zero Runtime I/O** - No YAML loading, config is embedded in Python source  
-✅ **Fail Fast** - Config errors caught at build time, not in production  
-✅ **Performance** - In-process execution eliminates 2-3 subprocess spawns  
-✅ **Scalability** - Tested with 100+ concurrent hooks, no resource exhaustion  
-✅ **Generic Primitives** - Same impl file works for any agent provider  
-✅ **Agent Flexibility** - Each agent customizes via build-time config injection  
+✅ **Reliability** - No import failures across subprocess boundaries  
+✅ **Simplicity** - Single entry point per event type (3 handlers vs N wrappers)  
+✅ **Testability** - Validators are pure functions, easily unit tested  
+✅ **Composability** - Handlers can mix-and-match validators  
+✅ **Zero Dependencies** - Python stdlib only, works anywhere  
+✅ **Debuggability** - Clear stack traces, no wrapper→runpy→impl layers
 
 ### Negative
 
-⚠️ **Build Complexity** - Two files per hook increases artifact count  
-⚠️ **Learning Curve** - Developers must understand wrapper vs impl roles  
-⚠️ **Debugging** - Stack traces show wrapper → runpy → impl layers  
+⚠️ **Validator Discovery** - Handlers must know validator locations  
+⚠️ **Manual Routing** - Must update `TOOL_VALIDATORS` map for new validators
 
-### Trade-offs
+### Comparison
 
-| Aspect | Alternative Considered | Why Rejected |
-|--------|----------------------|--------------|
-| **Single file** | Merge wrapper+impl into one | Config would need YAML loading (slow, fragile) |
-| **Environment vars** | Pass config via ENV | Limited data types, harder to debug |
-| **Subprocess always** | Keep subprocess spawn | BlockingIOError under load, poor performance |
-| **Compiled binary** | Rust hooks instead | Loses Python ecosystem, harder to extend |
+| Aspect | Wrapper+Impl | Atomic |
+|--------|--------------|--------|
+| Files per hook | 2 (wrapper + impl) | 1 (validator) |
+| Entry points | N (one per hook) | 3 (one per event type) |
+| Package deps | Required (agentic_analytics) | None (stdlib only) |
+| Analytics | Package import | Inline (6 lines) |
+| Import reliability | ❌ Fails in subprocess | ✅ In-process |
+| Testing | Complex (mock subprocess) | Simple (call function) |
 
-## Implementation Details
+## Implementation
 
-### When to Use In-Process Execution
-
-```mermaid
-flowchart TD
-    Start[Wrapper Execution] --> Check{Is impl in<br/>same directory?}
-    
-    Check -->|Yes| InProcess[Execute In-Process]
-    Check -->|No| External[External Dependency]
-    
-    InProcess --> Runpy[Use runpy.run_path]
-    Runpy --> Fast[✅ Fast - 15ms]
-    Runpy --> NoFork[✅ No subprocess]
-    Runpy --> Scalable[✅ Scales to 100+ agents]
-    
-    External --> HasPyProject{Has pyproject.toml?}
-    HasPyProject -->|Yes| UV[Use UV subprocess]
-    HasPyProject -->|No| System[Use system Python]
-    
-    UV --> Deps[Manages dependencies]
-    System --> Direct[Direct execution]
-    
-    style InProcess fill:#9f9,stroke:#333
-    style Runpy fill:#9f9,stroke:#333
-    style Fast fill:#9f9,stroke:#333
-    style NoFork fill:#9f9,stroke:#333
-    style Scalable fill:#9f9,stroke:#333
-    style External fill:#ff9,stroke:#333
-```
-
-**Code:**
-```python
-impl_in_same_dir = impl_file.parent == hook_dir
-
-if impl_in_same_dir:
-    # Same directory = self-contained hook
-    # Execute in-process via runpy
-    runpy.run_path(str(impl_file))
-else:
-    # External dependency (e.g., analytics middleware)
-    # Spawn subprocess with UV
-    subprocess.Popen(["uv", "run", ...])
-```
-
-### Performance Comparison
-
-| Execution Method | Latency | Forks | Scalability |
-|------------------|---------|-------|-------------|
-| Bash script chain | 150ms | 4-5 | ❌ Fails at 20 agents |
-| Subprocess Python | 80ms | 2-3 | ⚠️ Fails at 50 agents |
-| **In-process runpy** | **15ms** | **0** | ✅ **100+ agents** |
-
-### File Naming Convention
-
-```
-{hook-id}.py         # Wrapper (generated from template)
-{hook-id}.impl.py    # Implementation (copied from primitive)
-```
-
-**Why `.impl.py` suffix?**
-- Clearly distinguishes generated vs source files
-- Prevents accidental wrapper execution
-- Makes debugging easier (stack traces show `.impl.py`)
-- Allows tooling to filter by purpose
-
-## Examples
-
-### Simple Hook (bash-validator)
+### Handler Template
 
 ```python
-# bash-validator.py (Wrapper - 65 lines)
-AGENT_CONFIG = r'''{"timeout": 5, "fail_on_error": true}'''
-# ... inject config, execute impl via runpy
+#!/usr/bin/env python3
+"""PreToolUse Handler - Routes tool validation to atomic validators."""
 
-# bash-validator.impl.py (Implementation - 45 lines)
-def validate_bash_command(command):
-    if "rm -rf /" in command:
-        return {"decision": "block", "reason": "Dangerous command"}
-    return {"decision": "allow"}
+import json
+import os
+import sys
+from datetime import datetime, UTC
+from pathlib import Path
+
+TOOL_VALIDATORS = {
+    "Bash": ["security.bash"],
+    "Write": ["security.file"],
+    "Edit": ["security.file"],
+    "Read": ["security.file"],
+}
+
+def log_analytics(event: dict) -> None:
+    try:
+        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a") as f:
+            f.write(json.dumps({"timestamp": datetime.now(UTC).isoformat(), **event}) + "\n")
+    except Exception:
+        pass
+
+def run_validators(tool_name: str, tool_input: dict, context: dict) -> dict:
+    validators_dir = Path(__file__).parent.parent / "validators"
+    for validator_name in TOOL_VALIDATORS.get(tool_name, []):
+        module_path = validators_dir / (validator_name.replace(".", "/") + ".py")
+        if module_path.exists():
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(validator_name, module_path)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                result = module.validate(tool_input, context)
+                if not result.get("safe", True):
+                    return result
+    return {"safe": True}
+
+def main():
+    try:
+        event = json.loads(sys.stdin.read()) if not sys.stdin.isatty() else {}
+        tool_name = event.get("tool_name", "")
+        tool_input = event.get("tool_input", {})
+        context = {
+            "session_id": event.get("session_id"),
+            "tool_use_id": event.get("tool_use_id"),
+        }
+        
+        result = run_validators(tool_name, tool_input, context)
+        decision = "block" if not result.get("safe", True) else "allow"
+        
+        log_analytics({
+            "event_type": "hook_decision",
+            "handler": "pre-tool-use",
+            "tool_name": tool_name,
+            "decision": decision,
+            "reason": result.get("reason"),
+            "tool_use_id": context.get("tool_use_id"),
+        })
+        
+        print(json.dumps({"decision": decision, "reason": result.get("reason")}))
+    except Exception as e:
+        print(json.dumps({"decision": "allow", "error": str(e)}))
+
+if __name__ == "__main__":
+    main()
 ```
 
-### Complex Hook (hooks-collector)
+### Validator Template
 
 ```python
-# hooks-collector.py (Wrapper - 150 lines)
-AGENT_CONFIG = r'''{
-    "middleware": [
-        {"id": "normalizer", "path": "../../../../services/analytics/..."},
-        {"id": "publisher", "path": "../../../../services/analytics/..."}
+#!/usr/bin/env python3
+"""Bash Command Validator - Checks for dangerous patterns."""
+
+import re
+
+DANGEROUS_PATTERNS = [
+    (r'\brm\s+-rf\s+/', "rm -rf / (root deletion)"),
+    (r'\bdd\s+if=.*of=/dev/', "disk overwrite"),
+    (r'\bcurl.*\|\s*bash', "curl pipe to bash"),
+]
+
+def validate(tool_input: dict, context: dict | None = None) -> dict:
+    command = tool_input.get("command", "")
+    for pattern, description in DANGEROUS_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return {"safe": False, "reason": f"Blocked: {description}"}
+    return {"safe": True}
+
+if __name__ == "__main__":
+    import json, sys
+    print(json.dumps(validate(json.loads(sys.stdin.read()) if not sys.stdin.isatty() else {})))
+```
+
+### Build Output
+
+```
+build/claude/.claude/hooks/
+├── handlers/
+│   ├── pre-tool-use.py
+│   ├── post-tool-use.py
+│   └── user-prompt.py
+└── validators/
+    ├── security/
+    │   ├── bash.py
+    │   └── file.py
+    └── prompt/
+        └── pii.py
+```
+
+### Settings.json
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": ["$CLAUDE_PROJECT_DIR/.claude/hooks/handlers/pre-tool-use.py"]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": ["$CLAUDE_PROJECT_DIR/.claude/hooks/handlers/post-tool-use.py"]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": ["$CLAUDE_PROJECT_DIR/.claude/hooks/handlers/user-prompt.py"]
+      }
     ]
-}'''
-# ... inject config, execute impl via runpy
-
-# hooks-collector.impl.py (Implementation - 250 lines)
-class HooksCollectorOrchestrator:
-    def __init__(self, agent_config):
-        self.middleware = agent_config['middleware']
-    
-    async def execute(self, hook_event):
-        # Orchestrate middleware pipeline
-        for mw in self.middleware:
-            result = await self.run_middleware(mw, hook_event)
-        return {"action": "allow", "metadata": {...}}
+  }
+}
 ```
 
-## Testing Strategy
+## Migration
 
-**Unit Tests** - Test impl files directly:
-```python
-# tests/unit/claude/hooks/test_hooks.py
-def test_bash_validator():
-    result = run_hook("bash-validator", {"command": "rm -rf /"})
-    assert result["decision"] == "block"
-```
+### Files Removed
+- `cli/src/templates/hook_wrapper.py.template`
+- `cli/src/templates/hook_wrapper_with_config.py.template`
+- All `*.impl.py` files in examples
+- All individual hook wrapper files
 
-**Integration Tests** - Test full wrapper+impl flow:
-```python
-def test_wrapper_integration():
-    subprocess.run([
-        "build/claude/.claude/hooks/security/bash-validator.py"
-    ], input=json.dumps(fixture), check=True)
-```
+### Files Added
+- `primitives/v1/hooks/handlers/*.py`
+- `primitives/v1/hooks/validators/**/*.py`
 
-## Future Considerations
-
-1. **Compiled Wrappers** - Pre-compile wrapper to bytecode (`.pyc`) for faster startup
-2. **Shared Memory** - For high-volume scenarios, use shared memory for config
-3. **Hot Reload** - Support reloading impl without restarting wrapper
-4. **Metrics** - Add execution time tracking in wrapper layer
+### Build System Changes
+- Removed: `generate_python_wrapper()` functions
+- Added: `copy_handlers()` and `copy_validators()` functions
+- Simplified: Direct file copy instead of template rendering
 
 ## References
 
 - [ADR-013: Hybrid Hook Architecture](./013-hybrid-hook-architecture.md)
-- [Python runpy documentation](https://docs.python.org/3/library/runpy.html)
-- [Hook Build System](../../cli/src/providers/claude.rs)
-- [Wrapper Template](../../cli/src/templates/hook_wrapper_with_config.py.template)
+- [ADR-016: Hook Event Correlation](./016-hook-event-correlation.md)
+- [Python importlib.util](https://docs.python.org/3/library/importlib.html#importlib.util.spec_from_file_location)
 
 ## Revision History
 
-- **2025-11-25**: Initial version documenting wrapper+impl pattern
-
+- **2025-11-27**: Revision 2 - Replaced with Atomic Hook Architecture
+- **2025-11-25**: Revision 1 - Original Wrapper+Impl pattern (deprecated)

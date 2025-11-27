@@ -1,8 +1,7 @@
-#![allow(deprecated)]
-
-use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
 use std::fs;
+use std::process::Command;
 use tempfile::TempDir;
 
 fn setup_test_hook(temp_dir: &TempDir, hook_id: &str, event: &str) -> std::path::PathBuf {
@@ -84,8 +83,7 @@ fn test_hook_with_passing_test_case() {
     )
     .unwrap();
 
-    Command::cargo_bin("agentic-p")
-        .unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"))
         .arg("test-hook")
         .arg(hook_dir.to_str().unwrap())
         .arg("--input")
@@ -107,8 +105,7 @@ fn test_hook_with_blocking_test_case() {
     )
     .unwrap();
 
-    Command::cargo_bin("agentic-p")
-        .unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"))
         .arg("test-hook")
         .arg(hook_dir.to_str().unwrap())
         .arg("--input")
@@ -124,8 +121,7 @@ fn test_hook_with_inline_json() {
     let temp_dir = TempDir::new().unwrap();
     let hook_dir = setup_test_hook(&temp_dir, "test-hook", "PreToolUse");
 
-    Command::cargo_bin("agentic-p")
-        .unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"))
         .arg("test-hook")
         .arg(hook_dir.to_str().unwrap())
         .arg("--input")
@@ -147,8 +143,7 @@ fn test_hook_json_output_mode() {
     )
     .unwrap();
 
-    Command::cargo_bin("agentic-p")
-        .unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"))
         .arg("test-hook")
         .arg(hook_dir.to_str().unwrap())
         .arg("--input")
@@ -172,8 +167,7 @@ fn test_hook_verbose_mode() {
     )
     .unwrap();
 
-    Command::cargo_bin("agentic-p")
-        .unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"))
         .arg("test-hook")
         .arg(hook_dir.to_str().unwrap())
         .arg("--input")
@@ -203,8 +197,7 @@ execution:
 
     fs::write(hook_dir.join("missing-impl-hook.hook.yaml"), meta_content).unwrap();
 
-    Command::cargo_bin("agentic-p")
-        .unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"))
         .arg("test-hook")
         .arg(hook_dir.to_str().unwrap())
         .arg("--input")
@@ -219,8 +212,7 @@ fn test_hook_malformed_input_json() {
     let temp_dir = TempDir::new().unwrap();
     let hook_dir = setup_test_hook(&temp_dir, "test-hook", "PreToolUse");
 
-    Command::cargo_bin("agentic-p")
-        .unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"))
         .arg("test-hook")
         .arg(hook_dir.to_str().unwrap())
         .arg("--input")

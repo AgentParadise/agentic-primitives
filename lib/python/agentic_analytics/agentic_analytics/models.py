@@ -19,6 +19,7 @@ class HookDecision:
         event_type: The hook event type (e.g., "PreToolUse", "SessionStart")
         decision: The hook's decision ("allow", "block", or "warn")
         session_id: Session identifier from the agent
+        tool_use_id: Unique identifier for the tool call (for correlation with agent events)
         provider: Agent provider name (default: "claude")
         tool_name: Name of the tool being used (if applicable)
         reason: Human-readable reason for the decision (especially for blocks)
@@ -30,6 +31,7 @@ class HookDecision:
             event_type="PreToolUse",
             decision="block",
             session_id="sess-abc123",
+            tool_use_id="toolu_01ABC123",
             tool_name="Bash",
             reason="Dangerous command: rm -rf /",
             metadata={"command": "rm -rf /", "blocked_pattern": "rm -rf /"},
@@ -40,6 +42,7 @@ class HookDecision:
     event_type: str
     decision: Literal["allow", "block", "warn"]
     session_id: str
+    tool_use_id: str | None = None  # Correlation key for linking to agent tool_call events
     provider: str = "claude"
     tool_name: str | None = None
     reason: str | None = None
@@ -47,7 +50,7 @@ class HookDecision:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "hook_id": self.hook_id,
             "event_type": self.event_type,
             "decision": self.decision,
@@ -57,3 +60,7 @@ class HookDecision:
             "reason": self.reason,
             "metadata": self.metadata,
         }
+        # Only include tool_use_id if present (backward compatible)
+        if self.tool_use_id:
+            result["tool_use_id"] = self.tool_use_id
+        return result

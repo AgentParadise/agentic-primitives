@@ -6,403 +6,286 @@ A visual guide to understanding the agentic-primitives hook system.
 
 ```mermaid
 graph TB
-    subgraph "Development (You)"
-        Dev[Write Generic Hook<br/>primitives/v1/hooks/]
-    end
-    
-    subgraph "Configuration"
-        AgentConfig[Agent-Specific Config<br/>providers/agents/claude-code/]
+    subgraph "Primitives (Source)"
+        Handlers[handlers/<br/>pre-tool-use.py<br/>post-tool-use.py<br/>user-prompt.py]
+        Validators[validators/<br/>security/bash.py<br/>security/file.py<br/>prompt/pii.py]
     end
     
     subgraph "Build System"
         Build[agentic-p build<br/>--provider claude]
     end
     
-    subgraph "Output (Ready to Deploy)"
-        Output[build/claude/.claude/<br/>✓ settings.json<br/>✓ hooks/ with wrappers + impls]
+    subgraph "Output (.claude/)"
+        Settings[settings.json]
+        OutHandlers[hooks/handlers/]
+        OutValidators[hooks/validators/]
     end
     
-    subgraph "Runtime (Claude Code)"
-        Claude[Claude Code IDE]
-        Event[Hook Event]
-        Wrapper[Wrapper.py<br/>Config Injection]
-        Impl[Impl.py<br/>Business Logic]
-        Result[Decision]
+    subgraph "Runtime (Claude)"
+        Event[Hook Event] --> Handler[Handler]
+        Handler --> Validator1[Validator]
+        Handler --> Validator2[Validator]
+        Handler --> Analytics[Log Analytics]
+        Handler --> Decision[Return Decision]
     end
     
-    Dev --> Build
-    AgentConfig --> Build
-    Build --> Output
-    Output --> Claude
+    Handlers --> Build
+    Validators --> Build
+    Build --> Settings
+    Build --> OutHandlers
+    Build --> OutValidators
+    OutHandlers --> Event
     
-    Claude --> Event
-    Event --> Wrapper
-    Wrapper --> Impl
-    Impl --> Result
-    Result --> Claude
-    
-    style Dev fill:#9f9,stroke:#333,color:#000
-    style AgentConfig fill:#99f,stroke:#333,color:#000
+    style Handlers fill:#9f9,stroke:#333,color:#000
+    style Validators fill:#9f9,stroke:#333,color:#000
     style Build fill:#f99,stroke:#333,color:#000
-    style Output fill:#ff9,stroke:#333,color:#000
-    style Claude fill:#f9f,stroke:#333,color:#000
+    style Handler fill:#ff9,stroke:#333,color:#000
 ```
 
-## Three-Phase System
+## Atomic Architecture
 
-### Phase 1: Development
+The hook system follows an **Atomic Architecture** with two types of components:
 
-**Location:** `primitives/v1/hooks/{category}/{hook-id}/`
+### Handlers (Entry Points)
 
-```mermaid
-graph LR
-    subgraph "Write Generic Hook"
-        A[hook-id.hook.yaml<br/>Metadata] --> B[Define events, category]
-        C[hook-id.py<br/>Implementation] --> D[Pure Python logic]
-        E[README.md] --> F[Documentation]
-    end
-    
-    style A fill:#9f9,stroke:#333,color:#000
-    style C fill:#9f9,stroke:#333,color:#000
-    style E fill:#9f9,stroke:#333,color:#000
-```
+Three handlers serve as entry points for Claude's hook events:
 
-**Key Principle:** Hooks are **generic** - they work with any agent provider.
+| Handler | Event | Purpose |
+|---------|-------|---------|
+| `pre-tool-use.py` | PreToolUse | Validate tools before execution |
+| `post-tool-use.py` | PostToolUse | Log tool execution results |
+| `user-prompt.py` | UserPromptSubmit | Validate user prompts |
 
-```python
-# primitives/v1/hooks/security/bash-validator/bash-validator.py
-def validate_bash_command(command):
-    """Generic validation logic - no agent-specific code"""
-    if "rm -rf /" in command:
-        return {"decision": "block"}
-    return {"decision": "allow"}
-```
+### Validators (Pure Functions)
 
-### Phase 2: Configuration
+Validators are atomic, single-purpose validation functions:
 
-**Location:** `providers/agents/{agent-id}/hooks-config/{hook-id}.yaml`
+| Validator | Purpose |
+|-----------|---------|
+| `security/bash.py` | Check shell commands for dangerous patterns |
+| `security/file.py` | Check file operations for security issues |
+| `prompt/pii.py` | Detect PII in user prompts |
 
-```mermaid
-graph LR
-    subgraph "Agent Customization"
-        A[Select Hook] --> B[Set Timeout]
-        B --> C[Configure Middleware]
-        C --> D[Set Fail Behavior]
-    end
-    
-    style A fill:#99f,stroke:#333,color:#000
-    style B fill:#99f,stroke:#333,color:#000
-    style C fill:#99f,stroke:#333,color:#000
-    style D fill:#99f,stroke:#333,color:#000
-```
-
-**Key Principle:** Agents **configure** generic hooks for their needs.
-
-```yaml
-# providers/agents/claude-code/hooks-config/bash-validator.yaml
-agent: claude-code
-hook_id: bash-validator
-
-execution:
-  timeout_sec: 5          # Claude wants fast response
-  fail_on_error: true     # Block on validation failure
-```
-
-### Phase 3: Build
-
-**Command:** `agentic-p build --provider claude`
-
-```mermaid
-flowchart LR
-    A[Generic Hook] --> B[Build System]
-    C[Agent Config] --> B
-    B --> D[Wrapper.py<br/>+ Embedded Config]
-    B --> E[Impl.py<br/>+ Business Logic]
-    
-    style A fill:#9f9,stroke:#333,color:#000
-    style C fill:#99f,stroke:#333,color:#000
-    style B fill:#f99,stroke:#333,color:#000
-    style D fill:#ff9,stroke:#333,color:#000
-    style E fill:#ff9,stroke:#333,color:#000
-```
-
-**Output:**
-```
-build/claude/.claude/
-├── settings.json                    # Hook registration
-└── hooks/
-    └── security/
-        ├── bash-validator.py        # Wrapper (generated)
-        └── bash-validator.impl.py   # Implementation (copied)
-```
-
-## Runtime Execution Flow
+## Data Flow
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant Claude as Claude Code IDE
-    participant Wrapper as bash-validator.py<br/>(Wrapper)
-    participant Impl as bash-validator.impl.py<br/>(Implementation)
+    participant Claude
+    participant Handler as pre-tool-use.py
+    participant Validator as validators/security/bash.py
+    participant Analytics as events.jsonl
     
-    User->>Claude: Types command: "rm -rf /"
-    activate Claude
-    
-    Claude->>Claude: Trigger PreToolUse event
-    Claude->>Claude: Check settings.json
-    Note over Claude: Find hook for PreToolUse + Bash
-    
-    Claude->>Wrapper: Execute with stdin:<br/>{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}
-    activate Wrapper
-    
-    Wrapper->>Wrapper: Parse AGENT_CONFIG<br/>(embedded in source)
-    Note over Wrapper: No file I/O!<br/>Config already in memory
-    
-    Wrapper->>Wrapper: Inject config into event<br/>event['__agent_config__'] = config
-    
-    Wrapper->>Impl: Execute via runpy<br/>(in same process)
-    Note over Wrapper,Impl: No subprocess spawn!<br/>15ms execution
-    
-    activate Impl
-    Impl->>Impl: Extract config
-    Impl->>Impl: Validate command
-    Note over Impl: Found "rm -rf /"<br/>→ DANGEROUS!
-    
-    Impl-->>Wrapper: {"decision":"block","reason":"Dangerous"}
-    deactivate Impl
-    
-    Wrapper-->>Claude: Output to stdout
-    deactivate Wrapper
-    
-    Claude->>User: ⚠️ Command blocked:<br/>"Dangerous command detected"
-    deactivate Claude
+    Claude->>Handler: Event JSON via stdin
+    Handler->>Handler: Parse event
+    Handler->>Handler: Determine validators to run
+    Handler->>Validator: import + validate()
+    Validator-->>Handler: {safe: false, reason: "..."}
+    Handler->>Analytics: Append event (inline)
+    Handler-->>Claude: {decision: "block", reason: "..."}
 ```
 
-## Key Design Decisions
+## File Structure
 
-### 1. Generic Primitives, Agent Configuration
+```
+primitives/v1/hooks/
+├── handlers/                    # Entry points (3 files)
+│   ├── pre-tool-use.py         # Routes PreToolUse events
+│   ├── post-tool-use.py        # Logs PostToolUse events
+│   └── user-prompt.py          # Validates user prompts
+│
+└── validators/                  # Pure functions
+    ├── security/
+    │   ├── bash.py             # Shell command validation
+    │   └── file.py             # File operation validation
+    └── prompt/
+        └── pii.py              # PII detection
+```
+
+## Key Design Principles
+
+### 1. No External Dependencies
+
+Hooks use **Python stdlib only**. No package imports that could fail.
+
+```python
+# ✅ Good - stdlib only
+import json
+import os
+import sys
+from pathlib import Path
+
+# ❌ Bad - external package (removed)
+from agentic_analytics import AnalyticsClient
+```
+
+### 2. Inline Analytics
+
+Analytics logging is 6 lines of inline code, not a package import:
+
+```python
+def log_analytics(event: dict) -> None:
+    try:
+        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a") as f:
+            f.write(json.dumps({"timestamp": datetime.now(UTC).isoformat(), **event}) + "\n")
+    except Exception:
+        pass  # Never block on analytics failure
+```
+
+### 3. Validators Are Pure
+
+Validators have no side effects - they receive input and return output:
+
+```python
+def validate(tool_input: dict, context: dict | None = None) -> dict:
+    """
+    Returns:
+        {"safe": bool, "reason": str | None, "metadata": dict | None}
+    """
+```
+
+### 4. Handlers Compose Validators
+
+Handlers dynamically import and call validators based on tool type:
+
+```python
+TOOL_VALIDATORS = {
+    "Bash": ["security.bash"],
+    "Write": ["security.file"],
+    "Edit": ["security.file"],
+}
+
+def run_validators(tool_name: str, tool_input: dict, context: dict) -> dict:
+    validators_dir = Path(__file__).parent.parent / "validators"
+    for validator_name in TOOL_VALIDATORS.get(tool_name, []):
+        # Dynamic import
+        module = load_validator(validator_name, validators_dir)
+        result = module.validate(tool_input, context)
+        if not result.get("safe", True):
+            return result
+    return {"safe": True}
+```
+
+## Runtime Execution
 
 ```mermaid
 graph LR
-    subgraph "❌ Old Approach"
-        A1[claude-bash-validator] --> A2[Hard-coded for Claude]
-        B1[openai-bash-validator] --> B2[Hard-coded for OpenAI]
-        C1[gemini-bash-validator] --> C2[Hard-coded for Gemini]
+    subgraph "Claude Invokes Hook"
+        A[PreToolUse Event] -->|stdin JSON| B[pre-tool-use.py]
     end
     
-    subgraph "✅ New Approach"
-        D1[bash-validator<br/>Generic Hook] --> D2[Claude Config]
-        D1 --> D3[OpenAI Config]
-        D1 --> D4[Gemini Config]
+    subgraph "Handler Processing"
+        B --> C{Tool = Bash?}
+        C -->|Yes| D[import bash.py]
+        D --> E[bash.validate]
+        E --> F{Safe?}
+        F -->|No| G[Block + Log]
+        F -->|Yes| H[Allow + Log]
     end
     
-    style A1 fill:#fbb,stroke:#333,color:#000
-    style B1 fill:#fbb,stroke:#333,color:#000
-    style C1 fill:#fbb,stroke:#333,color:#000
-    style D1 fill:#9f9,stroke:#333,color:#000
+    subgraph "Response"
+        G --> I[stdout: decision=block]
+        H --> J[stdout: decision=allow]
+    end
+    
+    style B fill:#ff9,stroke:#333,color:#000
+    style D fill:#9f9,stroke:#333,color:#000
 ```
 
-**Benefits:**
-- ✅ Write once, use everywhere
-- ✅ Easy to add new agents
-- ✅ Centralized logic updates
+## Settings.json Configuration
 
-### 2. Build-Time Config Embedding
-
-```mermaid
-graph TB
-    subgraph "❌ Runtime Loading"
-        R1[Hook Execution] --> R2[Read YAML file]
-        R2 --> R3[Parse config]
-        R3 --> R4[Validate]
-        R4 --> R5[Execute logic]
-        R2 --> R6[❌ Slow I/O]
-        R2 --> R7[❌ Runtime errors]
-    end
-    
-    subgraph "✅ Build-Time Embedding"
-        B1[Build Time] --> B2[Read YAML]
-        B2 --> B3[Validate config]
-        B3 --> B4[Embed in source]
-        
-        E1[Hook Execution] --> E2[Parse embedded JSON]
-        E2 --> E3[Execute logic]
-        E2 --> E4[✅ Fast - no I/O]
-        E2 --> E5[✅ Build-time errors]
-    end
-    
-    style R1 fill:#fbb,stroke:#333,color:#000
-    style B1 fill:#9f9,stroke:#333,color:#000
-    style E1 fill:#9f9,stroke:#333,color:#000
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/pre-tool-use.py",
+        "timeout": 10
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/post-tool-use.py",
+        "timeout": 10
+      }]
+    }],
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "type": "command",
+        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/user-prompt.py",
+        "timeout": 5
+      }]
+    }]
+  }
+}
 ```
 
-### 3. In-Process Execution
+## Performance
 
-```mermaid
-graph TB
-    subgraph "❌ Subprocess Cascade"
-        S1[Claude] -->|fork| S2[Wrapper]
-        S2 -->|fork| S3[UV]
-        S3 -->|fork| S4[Python]
-        S4 -->|fork| S5[Impl]
-        
-        S6[100ms latency]
-        S7[Resource exhaustion]
-        S8[BlockingIOError]
-    end
-    
-    subgraph "✅ In-Process with runpy"
-        I1[Claude] -->|fork| I2[Wrapper]
-        I2 -->|runpy| I3[Impl<br/>same process]
-        
-        I4[15ms latency]
-        I5[Scales to 100+ agents]
-        I6[No resource issues]
-    end
-    
-    style S1 fill:#fbb,stroke:#333,color:#000
-    style I1 fill:#9f9,stroke:#333,color:#000
+| Metric | Value |
+|--------|-------|
+| Handler execution | ~15ms |
+| Validator call | ~5ms |
+| Analytics log | ~1ms |
+| No subprocess spawns | In-process imports |
+
+## Adding New Validators
+
+1. Create validator in `primitives/v1/hooks/validators/{category}/{name}.py`
+2. Implement `validate(tool_input, context) -> dict`
+3. Add to `TOOL_VALIDATORS` map in relevant handler
+4. Rebuild and test
+
+## Audit Trail & Correlation
+
+Every hook decision event includes correlation and audit fields:
+
+```json
+{
+  "timestamp": "2025-11-27T12:00:00Z",
+  "event_type": "hook_decision",
+  "handler": "pre-tool-use",
+  "tool_name": "Bash",
+  "decision": "block",
+  "reason": "Dangerous command blocked",
+  "session_id": "abc123",
+  "tool_use_id": "toolu_01ABC123",
+  "validators_run": ["security.bash"],
+  "audit": {
+    "transcript_path": "~/.claude/projects/.../session.jsonl",
+    "cwd": "/Users/project",
+    "permission_mode": "default"
+  }
+}
 ```
 
-## Self-Logging Architecture
+### Key Fields
 
-Each hook is responsible for logging its own decisions to the analytics service:
+| Field | Purpose |
+|-------|---------|
+| `tool_use_id` | Correlation key - links to agent `tool_call` events |
+| `audit.transcript_path` | **Direct link to Claude Code conversation log** |
+| `audit.cwd` | Working directory context |
+| `audit.permission_mode` | Security context (`default`, `plan`, `bypassPermissions`) |
 
-```mermaid
-graph TD
-    Event[Hook Event:<br/>PreToolUse + Bash + rm -rf /] --> Parallel{Parallel Execution}
-    
-    Parallel --> Security[bash-validator<br/>Security Hook]
-    
-    Security --> S1[Pattern Matching]
-    S1 --> S2[Command Validation]
-    S2 --> S3{Dangerous?}
-    S3 -->|Yes| SR1[Decision: block]
-    S3 -->|No| SR2[Decision: allow]
-    
-    SR1 --> Log1[Log to Analytics<br/>.agentic/analytics/events.jsonl]
-    SR2 --> Log2[Log to Analytics]
-    
-    Log1 --> Final{Any block?}
-    Log2 --> Final
-    
-    Final -->|Yes| Block[❌ BLOCK OPERATION]
-    Final -->|No| Allow[✅ ALLOW OPERATION]
-    
-    style Security fill:#f99,stroke:#333,color:#000
-    style Log1 fill:#9cf,stroke:#333,color:#000
-    style Log2 fill:#9cf,stroke:#333,color:#000
-    style Block fill:#fbb,stroke:#333,color:#000
-    style Allow fill:#9f9,stroke:#333,color:#000
-```
+### Reading the Transcript
 
-**Key Benefits:**
-- ✅ **Self-Contained**: Each hook handles its own analytics (no central collector)
-- ✅ **Fail-Safe**: Analytics errors never block hook execution
-- ✅ **Complete Audit Trail**: Every decision logged with metadata
-- ✅ **DI-Friendly**: Configure file or API backend via environment variables
+The `transcript_path` points to Claude Code's conversation JSONL. You can read it to see:
+- What prompt triggered the tool call
+- Previous context in the conversation
+- Complete audit trail
 
-## File Organization
-
-```mermaid
-graph TB
-    subgraph "Source Code"
-        P[primitives/v1/hooks/<br/>✓ Generic implementations<br/>✓ Version controlled<br/>✓ Testable]
-        
-        C[providers/agents/<br/>✓ Agent-specific configs<br/>✓ Timeouts, middleware<br/>✓ Execution preferences]
-    end
-    
-    subgraph "Build System"
-        B[agentic-p build]
-    end
-    
-    subgraph "Build Output"
-        W[{hook}.py Wrappers<br/>✓ Generated from template<br/>✓ Embedded config<br/>✓ Injection logic]
-        
-        I[{hook}.impl.py Impls<br/>✓ Copied from primitives<br/>✓ Pure business logic<br/>✓ No agent-specific code]
-    end
-    
-    P --> B
-    C --> B
-    B --> W
-    B --> I
-    
-    style P fill:#9f9,stroke:#333,color:#000
-    style C fill:#99f,stroke:#333,color:#000
-    style B fill:#f99,stroke:#333,color:#000
-    style W fill:#ff9,stroke:#333,color:#000
-    style I fill:#ff9,stroke:#333,color:#000
-```
-
-## Performance Characteristics
-
-### Latency Breakdown
-
-```mermaid
-graph LR
-    subgraph "Total Hook Execution: 15-20ms"
-        A[Claude Invoke:<br/>2ms] --> B[Wrapper Init:<br/>3ms]
-        B --> C[Config Parse:<br/>1ms]
-        C --> D[runpy Execute:<br/>5ms]
-        D --> E[Business Logic:<br/>3-8ms]
-        E --> F[JSON Output:<br/>1ms]
-    end
-    
-    style A fill:#9f9,stroke:#333,color:#000
-    style F fill:#9f9,stroke:#333,color:#000
-```
-
-### Scalability
-
-| Metric | Old System | New System |
-|--------|------------|------------|
-| **Subprocess spawns per hook** | 3-5 | 0 (in-process) |
-| **Latency (avg)** | 100ms | 15ms |
-| **Max concurrent agents** | ~20 | 100+ |
-| **Resource exhaustion** | Yes (BlockingIOError) | No |
-| **Config load time** | 20ms (YAML I/O) | <1ms (embedded) |
-
-## Development Workflow
-
-```mermaid
-flowchart TD
-    Start[New Hook Idea] --> Create["Create primitive<br/>in primitives/v1/hooks/"]
-    
-    Create --> WriteYAML["Write hook.hook.yaml<br/>Define metadata, events"]
-    WriteYAML --> WriteImpl["Write hook.py<br/>Implement logic"]
-    WriteImpl --> Test["Write tests<br/>tests/unit/claude/hooks/"]
-    
-    Test --> Config["Create agent config<br/>providers/agents/claude-code/"]
-    Config --> Build["agentic-p build --provider claude"]
-    
-    Build --> Verify{Tests pass?}
-    Verify -->|No| Debug[Debug]
-    Debug --> WriteImpl
-    
-    Verify -->|Yes| Install["Install to project<br/>cp build/claude/.claude ~/project/"]
-    Install --> Manual[Manual testing in Claude]
-    
-    Manual --> Works{Works?}
-    Works -->|No| Debug
-    Works -->|Yes| Commit[Commit changes]
-    
-    style Start fill:#9f9,stroke:#333,color:#000
-    style Test fill:#99f,stroke:#333,color:#000
-    style Verify fill:#ff9,stroke:#333,color:#000
-    style Commit fill:#9f9,stroke:#333,color:#000
+```bash
+# View conversation that triggered a hook decision
+cat ~/.claude/projects/.../session.jsonl | jq '.'
 ```
 
 ## Related Documentation
 
-- **Deep Dives:**
-  - [ADR-014: Wrapper+Impl Pattern](../adrs/014-wrapper-impl-pattern.md)
-  - [ADR-013: Hybrid Hook Architecture](../adrs/013-hybrid-hook-architecture.md)
-
-- **Reference:**
-  - [Build Output Structure](../_reference/build-output-structure.md)
-  - [Hook Development Guide](../_reference/hook-development.md)
-
-- **Examples:**
-  - [USAGE_EXAMPLES.md](../../USAGE_EXAMPLES.md)
-  - [INSTALLATION.md](../../INSTALLATION.md)
-
+- [ADR-014: Atomic Hook Architecture](../adrs/014-wrapper-impl-pattern.md)
+- [ADR-016: Hook Event Correlation](../adrs/016-hook-event-correlation.md)

@@ -198,7 +198,7 @@ middleware:
 "#;
 
         let meta: HookMeta = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(meta.middleware[0].enabled, false);
+        assert!(!meta.middleware[0].enabled);
     }
 
     /// Test that invalid middleware type fails parsing

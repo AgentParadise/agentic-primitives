@@ -117,6 +117,7 @@ fn test_transform_hook_to_hooks_json() {
     assert!(settings_file.exists());
 
     // Verify JSON structure - hooks are nested under "hooks" key
+    // New atomic architecture uses handlers with * matcher
     let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
     let hooks = json.get("hooks").expect("settings should have 'hooks' key");
@@ -124,7 +125,8 @@ fn test_transform_hook_to_hooks_json() {
 
     let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
     assert!(!pre_tool_use.is_empty());
-    assert_eq!(pre_tool_use[0]["matcher"], "safety");
+    // Atomic architecture uses * matcher for all tools
+    assert_eq!(pre_tool_use[0]["matcher"], "*");
 }
 
 #[test]
@@ -210,12 +212,12 @@ fn test_transform_batch_multiple_primitives() {
 }
 
 #[test]
-fn test_merge_multiple_hooks() {
+fn test_hook_transform_is_idempotent() {
     let transformer = ClaudeTransformer::new();
     let hook_path = fixture_path("hooks/safety/bash-validator");
     let output_dir = TempDir::new().unwrap();
 
-    // Transform the same hook twice to test merging
+    // Transform the same hook twice
     let result1 = transformer
         .transform_primitive(&hook_path, output_dir.path())
         .unwrap();
@@ -226,15 +228,15 @@ fn test_merge_multiple_hooks() {
     assert!(result1.success);
     assert!(result2.success);
 
-    // Check that hooks were merged
+    // In atomic architecture, settings.json is regenerated each time
     let settings_file = output_dir.path().join(".claude/settings.json");
     let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
 
     let hooks = json.get("hooks").expect("settings should have 'hooks' key");
     let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
-    // Should have 2 entries now
-    assert_eq!(pre_tool_use.len(), 2);
+    // Atomic architecture: 1 handler entry (idempotent)
+    assert_eq!(pre_tool_use.len(), 1);
 }
 
 #[test]
@@ -434,11 +436,11 @@ fn test_hooks_json_structure() {
 
     let hook = &hooks[0];
     assert_eq!(hook["type"], "command");
-    // Note: transformer now generates .py wrappers, not .sh scripts
+    // Atomic architecture uses handlers, not individual wrappers
     assert!(hook["command"]
         .as_str()
         .unwrap()
-        .contains("bash-validator.py"));
+        .contains("pre-tool-use.py"));
 }
 
 #[test]
@@ -464,54 +466,21 @@ fn test_mcp_json_structure() {
 }
 
 #[test]
-fn test_transform_analytics_hook_with_scripts() {
+fn test_generate_hooks_settings() {
     let transformer = ClaudeTransformer::new();
-    // Use the actual analytics-collector hook
-    let hook_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("primitives/v1/hooks/analytics/analytics-collector");
 
-    // Skip test if analytics hook doesn't exist yet
-    if !hook_path.exists() {
-        return;
-    }
+    // Test that generate_hooks_settings produces valid structure
+    let settings = transformer.generate_hooks_settings().unwrap();
 
-    let output_dir = TempDir::new().unwrap();
-
-    let result = transformer
-        .transform_primitive(&hook_path, output_dir.path())
-        .unwrap();
-
-    assert!(result.success);
-    assert_eq!(result.primitive_id, "analytics-collector");
-    assert_eq!(result.primitive_kind, "hook");
-
-    // Check that .claude/settings.json was created
-    let settings_file = output_dir.path().join(".claude/settings.json");
-    assert!(settings_file.exists());
-
-    // Check that Python wrapper was created
-    let python_wrapper = output_dir
-        .path()
-        .join(".claude/hooks/analytics/analytics-collector.py");
-    assert!(
-        python_wrapper.exists(),
-        "Python wrapper should be created in build output"
-    );
-
-    // Verify settings.json structure
-    let content = fs::read_to_string(&settings_file).unwrap();
-    let json: serde_json::Value = serde_json::from_str(&content).unwrap();
-    let hooks = json.get("hooks").expect("settings should have 'hooks' key");
+    // Verify structure
+    assert!(settings.get("hooks").is_some());
+    let hooks = settings.get("hooks").unwrap();
     assert!(hooks.get("PreToolUse").is_some());
+    assert!(hooks.get("PostToolUse").is_some());
+    assert!(hooks.get("UserPromptSubmit").is_some());
 
+    // Verify handler paths
     let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
-    assert!(!pre_tool_use.is_empty());
-    assert_eq!(pre_tool_use[0]["matcher"], "analytics");
-
-    // Verify command references the Python wrapper
-    let hook_entries = pre_tool_use[0]["hooks"].as_array().unwrap();
-    let command = hook_entries[0]["command"].as_str().unwrap();
-    assert!(command.contains("analytics-collector.py"));
+    let command = pre_tool_use[0]["hooks"][0]["command"].as_str().unwrap();
+    assert!(command.contains("handlers/pre-tool-use.py"));
 }

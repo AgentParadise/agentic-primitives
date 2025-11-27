@@ -1,10 +1,10 @@
-use crate::primitives::{HookEvent, HookMeta, PromptKind, PromptMeta, ToolMeta};
+use crate::primitives::{HookMeta, PromptKind, PromptMeta, ToolMeta};
 use crate::providers::{ProviderTransformer, TransformResult};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Claude provider transformer - converts primitives to .claude/ format
 pub struct ClaudeTransformer {}
@@ -190,198 +190,157 @@ impl ClaudeTransformer {
         Ok(vec![skills_file.to_string_lossy().to_string()])
     }
 
-    /// Transform a hook primitive to .claude/settings.json entry
+    /// Transform hooks using atomic architecture (handlers + validators)
+    /// This is called once to set up the entire hooks system, not per-hook
     fn transform_hook(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
-        use crate::providers::registry::ProviderRegistry;
-
         // Create .claude directory structure
         let claude_dir = output_dir.join(".claude");
         let hooks_dir = claude_dir.join("hooks");
-        fs::create_dir_all(&hooks_dir)?;
+        let handlers_dir = hooks_dir.join("handlers");
+        let validators_dir = hooks_dir.join("validators");
 
-        // Use settings.json instead of hooks.json
+        fs::create_dir_all(&handlers_dir)?;
+        fs::create_dir_all(&validators_dir)?;
+
         let settings_file = claude_dir.join("settings.json");
-
-        // Load hook metadata - try new pattern first
-        let meta_path = if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-            let id_hook_path = path.join(format!("{dir_name}.hook.yaml"));
-            if id_hook_path.exists() {
-                id_hook_path
-            } else {
-                path.join("hook.meta.yaml")
-            }
-        } else {
-            path.join("hook.meta.yaml")
-        };
-
-        let meta_content = fs::read_to_string(&meta_path).context(format!(
-            "Failed to read hook meta file from {}",
-            path.display()
-        ))?;
-        let meta: HookMeta = serde_yaml::from_str(&meta_content)?;
-
-        // Try to load agent hook config (optional)
-        // Look for providers/agents/claude-code/hooks-config/{hook_id}.yaml
-        let workspace_root = output_dir
-            .parent()
-            .and_then(|p| p.parent())
-            .context("Failed to find workspace root")?;
-
-        let providers_dir = workspace_root.join("providers");
-        let agent_hook_config = if providers_dir.exists() {
-            // Try to load provider registry and agent hook config
-            match ProviderRegistry::load(&providers_dir) {
-                Ok(registry) => {
-                    if let Some(agent) = registry.get_agent("claude-code") {
-                        match agent.load_hook_config(&meta.id) {
-                            Ok(config) => {
-                                // Validate middleware events
-                                if let Err(e) = agent.validate_middleware_events(&config.middleware)
-                                {
-                                    eprintln!("⚠️  Warning: {}", e);
-                                }
-                                Some(config)
-                            }
-                            Err(_) => {
-                                // No agent-specific config, use primitive config only
-                                None
-                            }
-                        }
-                    } else {
-                        None
-                    }
-                }
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
-
-        // Load existing settings or create new
-        // Settings file contains: { "hooks": { ... } }
-        let mut settings = if settings_file.exists() {
-            let content = fs::read_to_string(&settings_file)?;
-            serde_json::from_str(&content)?
-        } else {
-            serde_json::json!({})
-        };
-
-        // Extract hooks from settings, or create new
-        let mut hooks: ClaudeHooksConfig = if let Some(hooks_obj) = settings.get("hooks") {
-            serde_json::from_value(hooks_obj.clone())?
-        } else {
-            ClaudeHooksConfig::default()
-        };
-
-        // Determine events to register
-        let events_to_register = if let Some(ref _agent_config) = agent_hook_config {
-            // Use agent's supported events (universal hook)
-            if let Ok(registry) = ProviderRegistry::load(&providers_dir) {
-                if let Some(agent) = registry.get_agent("claude-code") {
-                    agent.supported_events.clone()
-                } else {
-                    meta.get_events()
-                }
-            } else {
-                meta.get_events()
-            }
-        } else {
-            meta.get_events()
-        };
-
-        if events_to_register.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Hook '{}' has no events specified",
-                meta.id
-            ));
-        }
-
-        // Generate ONE Python wrapper that will be used for ALL events
-        // Organize by category (e.g., hooks/core/, hooks/security/)
-        // Extract category from path: primitives/v1/hooks/{category}/{id}/
-        let category = path
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .unwrap_or("uncategorized");
-
-        let category_dir = hooks_dir.join(category);
-        fs::create_dir_all(&category_dir)?;
 
         let mut generated_files = vec![settings_file.to_string_lossy().to_string()];
 
-        // Generate Python wrapper with embedded config
-        let wrapper_path = self.generate_python_wrapper_with_config(
-            &meta,
-            &category_dir,
-            output_dir,
-            agent_hook_config.as_ref(),
-        )?;
-        generated_files.push(wrapper_path.to_string_lossy().to_string());
+        // Find the primitives root (go up from path to find handlers/validators)
+        // Path structure: primitives/v1/hooks/{category}/{hook-id}/
+        // We want: primitives/v1/hooks/
+        let hooks_root = path
+            .parent() // {category}
+            .and_then(|p| p.parent()) // hooks
+            .context("Failed to find hooks root directory")?;
 
-        // Copy Python implementation if it exists (use directory name, not impl.python.py)
-        let python_impl = path.join(format!("{}.py", meta.id));
-        if python_impl.exists() {
-            let dest_impl = category_dir.join(format!("{}.impl.py", meta.id));
-            fs::copy(&python_impl, &dest_impl)?;
-            generated_files.push(dest_impl.to_string_lossy().to_string());
+        // Copy handlers if they exist
+        let handlers_src = hooks_root.join("handlers");
+        if handlers_src.exists() {
+            generated_files.extend(self.copy_directory(&handlers_src, &handlers_dir)?);
         }
 
-        // Load agent provider for event config
-        let agent_provider = if providers_dir.exists() {
-            ProviderRegistry::load(&providers_dir)
-                .ok()
-                .and_then(|r| r.get_agent("claude-code").cloned())
-        } else {
-            None
-        };
-
-        // Register the same hook command for ALL events
-        for event in &events_to_register {
-            let event_key = self.hook_event_to_claude(event);
-
-            // Determine if matcher is needed for this event
-            let matcher = if let Some(ref agent) = agent_provider {
-                if let Some(event_cfg) = agent.get_event_config(event) {
-                    if event_cfg.requires_matcher {
-                        Some(meta.category.clone())
-                    } else {
-                        None
-                    }
-                } else {
-                    Some(meta.category.clone())
-                }
-            } else {
-                Some(meta.category.clone())
-            };
-
-            // Create hook entry (using .py wrapper, not .sh!)
-            let hook_entry = ClaudeHookEntry {
-                matcher: matcher.unwrap_or_else(|| "*".to_string()),
-                hooks: vec![ClaudeHook {
-                    hook_type: "command".to_string(),
-                    command: format!(
-                        "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/{}/{}.py",
-                        category, meta.id
-                    ),
-                    timeout: agent_hook_config
-                        .as_ref()
-                        .and_then(|c| c.execution.as_ref())
-                        .and_then(|e| e.timeout_sec)
-                        .or(meta.execution.timeout_sec),
-                }],
-            };
-
-            // Add hook entry for this event
-            hooks.add_hook(&event_key, hook_entry);
+        // Copy validators if they exist
+        let validators_src = hooks_root.join("validators");
+        if validators_src.exists() {
+            generated_files.extend(Self::copy_directory_recursive(
+                &validators_src,
+                &validators_dir,
+            )?);
         }
 
-        // Write updated settings.json with hooks nested under "hooks" key
-        settings["hooks"] = serde_json::to_value(&hooks)?;
+        // Generate settings.json with handlers
+        let settings = self.generate_hooks_settings()?;
         let json = serde_json::to_string_pretty(&settings)?;
         fs::write(&settings_file, json)?;
 
         Ok(generated_files)
+    }
+
+    /// Copy a directory's Python files (non-recursive)
+    fn copy_directory(&self, src: &Path, dest: &Path) -> Result<Vec<String>> {
+        let mut copied = Vec::new();
+
+        if !src.exists() {
+            return Ok(copied);
+        }
+
+        fs::create_dir_all(dest)?;
+
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_file() && path.extension().is_some_and(|e| e == "py") {
+                let dest_file = dest.join(path.file_name().unwrap());
+                fs::copy(&path, &dest_file)?;
+
+                // Make executable
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(&dest_file)?.permissions();
+                    perms.set_mode(0o755);
+                    fs::set_permissions(&dest_file, perms)?;
+                }
+
+                copied.push(dest_file.to_string_lossy().to_string());
+            }
+        }
+
+        Ok(copied)
+    }
+
+    /// Copy a directory recursively (for validators with subdirectories)
+    fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<Vec<String>> {
+        let mut copied = Vec::new();
+
+        if !src.exists() {
+            return Ok(copied);
+        }
+
+        fs::create_dir_all(dest)?;
+
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let path = entry.path();
+            let file_name = path.file_name().unwrap();
+
+            if path.is_dir() {
+                // Recurse into subdirectory
+                let dest_subdir = dest.join(file_name);
+                copied.extend(Self::copy_directory_recursive(&path, &dest_subdir)?);
+            } else if path.is_file() && path.extension().is_some_and(|e| e == "py") {
+                let dest_file = dest.join(file_name);
+                fs::copy(&path, &dest_file)?;
+
+                // Make executable
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(&dest_file)?.permissions();
+                    perms.set_mode(0o755);
+                    fs::set_permissions(&dest_file, perms)?;
+                }
+
+                copied.push(dest_file.to_string_lossy().to_string());
+            }
+        }
+
+        Ok(copied)
+    }
+
+    /// Generate settings.json with atomic handlers
+    pub fn generate_hooks_settings(&self) -> Result<serde_json::Value> {
+        let settings = serde_json::json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/pre-tool-use.py",
+                        "timeout": 10
+                    }]
+                }],
+                "PostToolUse": [{
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/post-tool-use.py",
+                        "timeout": 10
+                    }]
+                }],
+                "UserPromptSubmit": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/user-prompt.py",
+                        "timeout": 5
+                    }]
+                }]
+            }
+        });
+
+        Ok(settings)
     }
 
     /// Transform a tool primitive to MCP config entry
@@ -447,180 +406,6 @@ impl ClaudeTransformer {
         fs::write(&mcp_file, json)?;
 
         Ok(vec![mcp_file.to_string_lossy().to_string()])
-    }
-
-    /// Generate Python wrapper for hook execution (replaces bash scripts)
-    fn generate_python_wrapper(
-        &self,
-        hook_meta: &HookMeta,
-        scripts_dir: &Path,
-        output_dir: &Path,
-    ) -> Result<std::path::PathBuf> {
-        // Wrapper will be hook_id.py (NOT .sh!)
-        let wrapper_path = scripts_dir.join(format!("{}.py", hook_meta.id));
-
-        // Load template
-        let template_str = include_str!("../templates/hook_wrapper.py.template");
-
-        // Calculate relative path from build output to services directory
-        let services_relative_path = self.calculate_services_path(output_dir)?;
-
-        // Simple template substitution (not using handlebars to avoid extra dependency)
-        let mut rendered = template_str.replace("{{hook_id}}", &hook_meta.id);
-        rendered = rendered.replace("{{impl_filename}}", &format!("{}.impl.py", hook_meta.id));
-
-        // Handle conditional for services path
-        if !services_relative_path.is_empty() {
-            // Replace placeholders when we have a services path
-            rendered = rendered.replace("{{services_relative_path}}", &services_relative_path);
-
-            // Remove conditional markers
-            rendered = rendered.replace("{{#if services_relative_path}}", "");
-            rendered = rendered.replace("{{else}}", "# No services path, using:");
-            rendered = rendered.replace("{{/if}}", "");
-        } else {
-            // When no services path, remove the if block content, keep else
-            if let Some(if_start) = rendered.find("{{#if services_relative_path}}") {
-                if let Some(else_start) = rendered.find("{{else}}") {
-                    if let Some(if_end) = rendered.find("{{/if}}") {
-                        let before = &rendered[..if_start];
-                        let else_content = &rendered[else_start + 8..if_end]; // Skip "{{else}}"
-                        let after = &rendered[if_end + 7..]; // Skip "{{/if}}"
-                        rendered = format!("{}{}{}", before, else_content, after);
-                    }
-                }
-            }
-        }
-
-        // Write wrapper
-        fs::write(&wrapper_path, rendered)?;
-
-        // Make executable (Unix only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&wrapper_path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&wrapper_path, perms)?;
-        }
-
-        Ok(wrapper_path)
-    }
-
-    /// Generate Python wrapper with embedded middleware config
-    fn generate_python_wrapper_with_config(
-        &self,
-        hook_meta: &HookMeta,
-        scripts_dir: &Path,
-        output_dir: &Path,
-        agent_config: Option<&crate::providers::registry::AgentHookConfig>,
-    ) -> Result<PathBuf> {
-        // If agent config provided, use the new template with embedded config
-        if let Some(config) = agent_config {
-            self.generate_python_wrapper_with_embedded_config(
-                hook_meta,
-                scripts_dir,
-                output_dir,
-                config,
-            )
-        } else {
-            // Fallback to original wrapper without embedded config
-            self.generate_python_wrapper(hook_meta, scripts_dir, output_dir)
-        }
-    }
-
-    /// Generate Python wrapper with embedded middleware config (new approach)
-    fn generate_python_wrapper_with_embedded_config(
-        &self,
-        hook_meta: &HookMeta,
-        scripts_dir: &Path,
-        output_dir: &Path,
-        agent_config: &crate::providers::registry::AgentHookConfig,
-    ) -> Result<PathBuf> {
-        use handlebars::Handlebars;
-        use serde_json::json;
-
-        let wrapper_path = scripts_dir.join(format!("{}.py", hook_meta.id));
-
-        // Serialize middleware config as JSON
-        let config_json = serde_json::to_string_pretty(&agent_config)?;
-
-        // Load template
-        let template_str = include_str!("../templates/hook_wrapper_with_config.py.template");
-        let handlebars = Handlebars::new();
-
-        // Calculate services path
-        let services_relative_path = self
-            .calculate_services_path(output_dir)
-            .unwrap_or_else(|_| String::new());
-
-        // Prepare template data
-        let data = json!({
-            "hook_id": hook_meta.id,
-            "impl_filename": agent_config.primitive.impl_file,
-            "services_relative_path": services_relative_path,
-            "config_json": config_json,
-            "has_config": true,
-        });
-
-        // Render template
-        let rendered = handlebars.render_template(template_str, &data)?;
-
-        // Write wrapper
-        fs::write(&wrapper_path, rendered)?;
-
-        // Make executable (Unix only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&wrapper_path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&wrapper_path, perms)?;
-        }
-
-        Ok(wrapper_path)
-    }
-
-    /// Calculate relative path from build output to services directory
-    fn calculate_services_path(&self, output_dir: &Path) -> Result<String> {
-        // From build/claude/hooks/scripts/ to services/analytics/
-        // This is: ../../../../services/analytics
-
-        // Try to find services directory relative to output
-        let output_abs = output_dir
-            .canonicalize()
-            .unwrap_or_else(|_| output_dir.to_path_buf());
-        let services_dir = output_abs
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.join("services/analytics"));
-
-        if let Some(services) = services_dir {
-            if services.exists() {
-                // Calculate relative path from scripts_dir to services
-                // scripts_dir is output_dir/hooks/scripts
-                // So we need: ../../../../services/analytics
-                return Ok("../../../../services/analytics".to_string());
-            }
-        }
-
-        // No services directory found, use current directory
-        Ok(String::new())
-    }
-
-    /// Convert HookEvent to Claude event name
-    fn hook_event_to_claude(&self, event: &HookEvent) -> String {
-        match event {
-            HookEvent::PreToolUse => "PreToolUse".to_string(),
-            HookEvent::PostToolUse => "PostToolUse".to_string(),
-            HookEvent::UserPromptSubmit => "UserPromptSubmit".to_string(),
-            HookEvent::Stop => "Stop".to_string(),
-            HookEvent::SubagentStop => "SubagentStop".to_string(),
-            HookEvent::SessionStart => "SessionStart".to_string(),
-            HookEvent::SessionEnd => "SessionEnd".to_string(),
-            HookEvent::PreCompact => "PreCompact".to_string(),
-            HookEvent::Notification => "Notification".to_string(),
-        }
     }
 }
 
@@ -812,91 +597,6 @@ struct SkillEntry {
     version: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
-struct ClaudeHooksConfig {
-    #[serde(rename = "PreToolUse", skip_serializing_if = "Option::is_none")]
-    pre_tool_use: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "PostToolUse", skip_serializing_if = "Option::is_none")]
-    post_tool_use: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "UserPromptSubmit", skip_serializing_if = "Option::is_none")]
-    user_prompt_submit: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "Stop", skip_serializing_if = "Option::is_none")]
-    stop: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "SubagentStop", skip_serializing_if = "Option::is_none")]
-    subagent_stop: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "SessionStart", skip_serializing_if = "Option::is_none")]
-    session_start: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "SessionEnd", skip_serializing_if = "Option::is_none")]
-    session_end: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "PreCompact", skip_serializing_if = "Option::is_none")]
-    pre_compact: Option<Vec<ClaudeHookEntry>>,
-
-    #[serde(rename = "Notification", skip_serializing_if = "Option::is_none")]
-    notification: Option<Vec<ClaudeHookEntry>>,
-}
-
-impl ClaudeHooksConfig {
-    /// Add a hook entry to the appropriate event
-    fn add_hook(&mut self, event: &str, entry: ClaudeHookEntry) {
-        match event {
-            "PreToolUse" => {
-                self.pre_tool_use.get_or_insert_with(Vec::new).push(entry);
-            }
-            "PostToolUse" => {
-                self.post_tool_use.get_or_insert_with(Vec::new).push(entry);
-            }
-            "UserPromptSubmit" => {
-                self.user_prompt_submit
-                    .get_or_insert_with(Vec::new)
-                    .push(entry);
-            }
-            "Stop" => {
-                self.stop.get_or_insert_with(Vec::new).push(entry);
-            }
-            "SubagentStop" => {
-                self.subagent_stop.get_or_insert_with(Vec::new).push(entry);
-            }
-            "SessionStart" => {
-                self.session_start.get_or_insert_with(Vec::new).push(entry);
-            }
-            "SessionEnd" => {
-                self.session_end.get_or_insert_with(Vec::new).push(entry);
-            }
-            "PreCompact" => {
-                self.pre_compact.get_or_insert_with(Vec::new).push(entry);
-            }
-            "Notification" => {
-                self.notification.get_or_insert_with(Vec::new).push(entry);
-            }
-            _ => {
-                eprintln!("⚠️  Unknown hook event: {}", event);
-            }
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ClaudeHookEntry {
-    matcher: String,
-    hooks: Vec<ClaudeHook>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ClaudeHook {
-    #[serde(rename = "type")]
-    hook_type: String,
-    command: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    timeout: Option<u32>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct McpConfig {
     #[serde(rename = "mcpServers")]
@@ -930,15 +630,15 @@ mod tests {
     }
 
     #[test]
-    fn test_hook_event_conversion() {
+    fn test_generate_hooks_settings() {
         let transformer = ClaudeTransformer::new();
-        assert_eq!(
-            transformer.hook_event_to_claude(&HookEvent::PreToolUse),
-            "PreToolUse"
-        );
-        assert_eq!(
-            transformer.hook_event_to_claude(&HookEvent::PostToolUse),
-            "PostToolUse"
-        );
+        let settings = transformer.generate_hooks_settings().unwrap();
+
+        // Verify structure
+        assert!(settings.get("hooks").is_some());
+        let hooks = settings.get("hooks").unwrap();
+        assert!(hooks.get("PreToolUse").is_some());
+        assert!(hooks.get("PostToolUse").is_some());
+        assert!(hooks.get("UserPromptSubmit").is_some());
     }
 }
