@@ -2,7 +2,7 @@
 
 ```yaml
 ---
-status: accepted
+status: rejected
 created: 2025-11-19
 updated: 2025-11-19
 deciders: System Architect
