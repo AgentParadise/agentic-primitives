@@ -4,10 +4,11 @@
 A universal framework for building and deploying agentic primitives (prompts, tools, hooks) across multiple AI providers (Claude, OpenAI, Google). This project provides a CLI tool and specification system that enables standardized, versioned, and provider-agnostic agentic workflows with built-in analytics and middleware support.
 
 ## Current Milestone
-**✅ Audit Trail Enhancement - COMPLETE** - Added full audit trail fields and security test scenarios.
+**✅ Full Build System - COMPLETE** - Build generates all 9 Claude Code event handlers + validators.
 
-### Previous Milestone
-**✅ Atomic Hook Architecture - COMPLETE** - Replaced wrapper+impl pattern with atomic handlers + pure validators.
+### Previous Milestones
+- **✅ Audit Trail Enhancement** - Added full audit trail fields and security test scenarios
+- **✅ Atomic Hook Architecture** - Replaced wrapper+impl pattern with atomic handlers + pure validators
 
 ## Architecture / Structure Summary
 - **CLI (Rust)**: Core command-line tool (`agentic-p`) in `/cli` with commands for init, build, validate, install, test, migrate
@@ -60,9 +61,9 @@ A universal framework for building and deploying agentic primitives (prompts, to
 ## Status Summary
 ✅ **Core Architecture** - All tests passing (324 Rust tests, 9 E2E hook tests)
 ✅ **CI/CD** - Parallelized QA workflows for Rust + Python validation
+✅ **Build System** - Auto-discovers handlers/, generates settings.json for all 9 events
+✅ **9 Event Handlers** - PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, SessionStart, SessionEnd, PreCompact, Notification
 ✅ **Example 000** - Updated with atomic hooks + audit trail
 ✅ **Example 001** - Updated with atomic hooks + analytics + security scenarios
 ✅ **ADR-014** - Rewritten for atomic hook architecture
 ✅ **ADR-016** - Hook event correlation with audit trail fields
-✅ **Atomic Hook Refactor** - 9/9 milestones complete
-✅ **Audit Trail Enhancement** - 5/5 milestones complete

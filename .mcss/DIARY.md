@@ -2,6 +2,45 @@
 
 ---
 
+## 2025-11-27 (Evening) — Full Build System ✅ COMPLETE
+
+### Objective
+Fix build system to auto-discover handlers and generate all 9 Claude Code event handlers.
+
+### Problem
+- Build said "No primitives found" because it looked for `.hook.yaml` files
+- Old architecture had YAML metadata per hook, new atomic architecture doesn't
+- Only 3 handlers existed (PreToolUse, PostToolUse, UserPromptSubmit)
+- Claude Code supports 9 hook events
+
+### Solution Implemented
+1. **Build Discovery** - Modified `has_metadata_file()` and `detect_primitive_kind()` to recognize `handlers/` directory as atomic hooks
+2. **Path Fix** - `transform_hook()` now correctly uses source path when `handlers/` exists
+3. **6 New Handlers** - Added missing event handlers:
+   - `stop.py` - Conversation stop
+   - `subagent-stop.py` - Subagent completion
+   - `session-start.py` - Session lifecycle
+   - `session-end.py` - Session lifecycle
+   - `pre-compact.py` - Context compaction
+   - `notification.py` - Various notifications
+4. **settings.json** - Generates all 9 events with correct handler paths
+
+### Build Output
+```
+15 files:
+- 9 handlers
+- 5 validators
+- 1 settings.json
+- 0 .impl files ✅
+```
+
+### Test Results
+- ✅ All Rust tests passing
+- ✅ Python lint passing
+- ✅ Build generates complete hooks
+
+---
+
 ## 2025-11-27 (Afternoon) — Audit Trail Enhancement ✅ COMPLETE
 
 ### Objective

@@ -2,38 +2,34 @@
 Project: Agentic Primitives
 
 ## Where I Left Off
-**✅ Audit Trail Enhancement - COMPLETE**
+**✅ Full Build System - COMPLETE**
 
-Added full audit trail fields and security test scenarios to hook analytics.
+Build system now auto-discovers handlers/ directory and generates settings.json for all 9 Claude Code events.
 
-### What Was Accomplished (Audit Trail)
-All 5 milestones completed:
+### What Was Accomplished
+1. ✅ **Build Discovery** - Detects `handlers/` directory without needing YAML files
+2. ✅ **9 Event Handlers** - All Claude Code hook events covered
+3. ✅ **settings.json Generation** - Correct paths for all handlers
+4. ✅ **No .impl Files** - Clean build output
+5. ✅ **QA Passed** - All Rust + Python tests pass
 
-1. ✅ **M1: Handler Analytics** - Added `audit` object with `transcript_path`, `cwd`, `permission_mode`
-2. ✅ **M2: Security Scenarios** - Added 4 new test scenarios (`.env`, `/etc/passwd`, `git add -A`, PII)
-3. ✅ **M3: Examples Updated** - Copied updated handlers to 000 and 001
-4. ✅ **M4: Documentation** - Updated ADR-016, hooks-system-overview.md
-5. ✅ **M5: QA Validation** - All 324 Rust tests + 9 E2E tests pass
+### Previous Milestones
+- ✅ **Audit Trail Enhancement** - Full audit fields + security scenarios
+- ✅ **Atomic Hook Architecture** - Handlers + validators pattern
 
-### Previous: Atomic Hook Architecture (COMPLETE)
-All 9 milestones completed:
-1. ✅ ADR-014 Rewrite
-2. ✅ Handler Templates
-3. ✅ Atomic Validators
-4. ✅ Build System
-5. ✅ Primitives Restructure
-6. ✅ Examples Updated
-7. ✅ Documentation
-8. ✅ Tests Updated
-9. ✅ Validation
-
-### New Architecture
+### Architecture: All 9 Claude Code Events
 ```
 .claude/hooks/
-  handlers/                    # Composition layer (3 files)
-    pre-tool-use.py           # Routes PreToolUse → validators
-    post-tool-use.py          # Handles PostToolUse (logging)
-    user-prompt.py            # Handles UserPromptSubmit (PII)
+  handlers/                    # ALL 9 Claude Code events
+    pre-tool-use.py           # PreToolUse → security validators
+    post-tool-use.py          # PostToolUse (tool completion logging)
+    user-prompt.py            # UserPromptSubmit → PII validator
+    stop.py                   # Stop (conversation end)
+    subagent-stop.py          # SubagentStop (subagent completion)
+    session-start.py          # SessionStart (session lifecycle)
+    session-end.py            # SessionEnd (session lifecycle)
+    pre-compact.py            # PreCompact (context compaction)
+    notification.py           # Notification (alerts, errors)
   
   validators/                  # Atomic, pure functions
     security/
@@ -79,21 +75,22 @@ All 9 milestones completed:
 | `git add -A` | bash.py | 🛡️ BLOCK |
 | PII in prompt (SSN) | pii.py | 🛡️ BLOCK |
 
-## Next Steps
-Ready to commit with:
+## Build Output
 ```
-feat(hooks): add audit trail and security scenarios
+build/claude/
+  .claude/
+    settings.json             # All 9 event handlers configured
+    hooks/
+      handlers/               # 9 Python scripts
+      validators/             # 5 Python files (security + prompt)
+```
 
-- Add transcript_path, cwd, permission_mode to hook analytics
-- Add hook_event and tool_input_preview fields
-- Add 4 new security test scenarios
-- Update ADR-016 and docs
-```
+**15 files generated, 0 .impl files** ✅
 
 ## Context
 - **Git branch**: `feat/hooks-v0`
-- **Project plan**: `/PROJECT-PLAN_20251127_atomic-hook-architecture.md` (marked COMPLETE)
-- **Ready to commit**: Yes
+- **Commits ahead**: 3 (atomic refactor, session state, build fix)
+- **QA Status**: All passing
 
 ---
 Updated: 2025-11-27
