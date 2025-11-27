@@ -165,7 +165,9 @@ def validate(
     is_sensitive_file, file_reason = check_file_pattern(file_path)
     if is_sensitive_file:
         # For read operations on sensitive files, redact instead of block
-        operation = tool_input.get("command", context.get("tool_name", "") if context else "")
+        operation = tool_input.get(
+            "command", context.get("tool_name", "") if context else ""
+        )
         if operation in ("Read", "read"):
             return {
                 "safe": True,
@@ -224,4 +226,3 @@ if __name__ == "__main__":
         print(json.dumps(result))
     else:
         print(json.dumps({"safe": True, "message": "No input provided"}))
-

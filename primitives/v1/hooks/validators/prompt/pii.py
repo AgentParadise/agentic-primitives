@@ -19,13 +19,21 @@ PII_PATTERNS: list[tuple[str, str, str]] = [
     (r"\b4[0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{1,4}\b", "Visa card", "high"),
     (r"\b4[0-9]{12}(?:[0-9]{3})?\b", "Visa card", "high"),
     # Mastercard: starts with 51-55 or 2221-2720, 16 digits
-    (r"\b5[1-5][0-9]{2}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b", "Mastercard", "high"),
+    (
+        r"\b5[1-5][0-9]{2}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b",
+        "Mastercard",
+        "high",
+    ),
     (r"\b5[1-5][0-9]{14}\b", "Mastercard", "high"),
     # Amex: starts with 34 or 37, 15 digits
     (r"\b3[47][0-9]{2}[-\s]?[0-9]{6}[-\s]?[0-9]{5}\b", "Amex card", "high"),
     (r"\b3[47][0-9]{13}\b", "Amex card", "high"),
     # Discover: starts with 6011, 622126-622925, 644-649, 65, 16 digits
-    (r"\b6(?:011|5[0-9]{2})[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b", "Discover card", "high"),
+    (
+        r"\b6(?:011|5[0-9]{2})[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b",
+        "Discover card",
+        "high",
+    ),
     (r"\b6(?:011|5[0-9]{2})[0-9]{12}\b", "Discover card", "high"),
     # Phone numbers (various formats)
     (
@@ -33,14 +41,26 @@ PII_PATTERNS: list[tuple[str, str, str]] = [
         "US phone number",
         "medium",
     ),
-    (r"\b\+\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b", "international phone", "medium"),
+    (
+        r"\b\+\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b",
+        "international phone",
+        "medium",
+    ),
     # Email addresses
     (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "email address", "low"),
     # IP addresses
     (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "IP address", "low"),
     # Dates of birth (various formats)
-    (r"\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:19|20)\d{2}\b", "date (MM/DD/YYYY)", "low"),
-    (r"\b(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])\b", "date (YYYY-MM-DD)", "low"),
+    (
+        r"\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:19|20)\d{2}\b",
+        "date (MM/DD/YYYY)",
+        "low",
+    ),
+    (
+        r"\b(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])\b",
+        "date (YYYY-MM-DD)",
+        "low",
+    ),
     # Passport numbers (basic patterns)
     (r"\b[A-Z]{1,2}\d{6,9}\b", "potential passport number", "medium"),
     # Driver's license (very generic, state-dependent)
@@ -148,4 +168,3 @@ if __name__ == "__main__":
         print(json.dumps(result))
     else:
         print(json.dumps({"safe": True, "message": "No input provided"}))
-

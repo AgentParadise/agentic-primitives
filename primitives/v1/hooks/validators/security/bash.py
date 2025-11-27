@@ -123,4 +123,3 @@ if __name__ == "__main__":
     else:
         # Interactive test mode
         print(json.dumps({"safe": True, "message": "No input provided"}))
-
