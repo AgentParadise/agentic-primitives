@@ -15,7 +15,8 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\brm\s+-rf\s+/(?!\w)", "rm -rf / (root deletion)"),
     (r"\brm\s+-rf\s+~", "rm -rf ~ (home deletion)"),
     (r"\brm\s+-rf\s+\*", "rm -rf * (wildcard deletion)"),
-    (r"\brm\s+-rf\s+\.\.", "rm -rf .. (parent deletion)"),
+    (r"\brm\s+-rf\s+\.\.(?:\s|$)", "rm -rf .. (parent deletion)"),
+    (r"\brm\s+-rf\s+\.(?:\s|$)", "rm -rf . (current dir deletion)"),
     # Disk operations
     (r"\bdd\s+if=.*of=/dev/(sd|hd|nvme)", "disk overwrite"),
     (r"\bmkfs\.", "filesystem format"),

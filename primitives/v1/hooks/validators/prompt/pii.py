@@ -14,11 +14,19 @@ PII_PATTERNS: list[tuple[str, str, str]] = [
     # SSN (US Social Security Number)
     (r"\b\d{3}-\d{2}-\d{4}\b", "SSN", "high"),
     (r"\b\d{9}\b", "potential SSN (9 digits)", "medium"),
-    # Credit card numbers (basic Luhn-checkable patterns)
-    (r"\b(?:4[0-9]{12}(?:[0-9]{3})?)\b", "Visa card", "high"),
-    (r"\b(?:5[1-5][0-9]{14})\b", "Mastercard", "high"),
-    (r"\b(?:3[47][0-9]{13})\b", "Amex card", "high"),
-    (r"\b(?:6(?:011|5[0-9]{2})[0-9]{12})\b", "Discover card", "high"),
+    # Credit card numbers - with or without dashes/spaces
+    # Visa: starts with 4, 13-16 digits
+    (r"\b4[0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{1,4}\b", "Visa card", "high"),
+    (r"\b4[0-9]{12}(?:[0-9]{3})?\b", "Visa card", "high"),
+    # Mastercard: starts with 51-55 or 2221-2720, 16 digits
+    (r"\b5[1-5][0-9]{2}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b", "Mastercard", "high"),
+    (r"\b5[1-5][0-9]{14}\b", "Mastercard", "high"),
+    # Amex: starts with 34 or 37, 15 digits
+    (r"\b3[47][0-9]{2}[-\s]?[0-9]{6}[-\s]?[0-9]{5}\b", "Amex card", "high"),
+    (r"\b3[47][0-9]{13}\b", "Amex card", "high"),
+    # Discover: starts with 6011, 622126-622925, 644-649, 65, 16 digits
+    (r"\b6(?:011|5[0-9]{2})[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b", "Discover card", "high"),
+    (r"\b6(?:011|5[0-9]{2})[0-9]{12}\b", "Discover card", "high"),
     # Phone numbers (various formats)
     (
         r"\b(?:\+1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",

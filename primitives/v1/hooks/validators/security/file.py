@@ -50,12 +50,13 @@ SENSITIVE_FILE_PATTERNS: list[tuple[str, str]] = [
     (r"id_ed25519(?:\.pub)?$", "SSH key"),
     (r"\.p12$", "PKCS12 certificate"),
     (r"\.pfx$", "PFX certificate"),
-    (r"credentials\.json$", "credentials file"),
+    (r"credentials(?:\.json)?$", "credentials file"),
     (r"secrets\.ya?ml$", "secrets file"),
     (r"\.htpasswd$", "htpasswd file"),
     (r"\.netrc$", "netrc file"),
     (r"\.npmrc$", "npm config (may contain tokens)"),
     (r"\.pypirc$", "pypi config (may contain tokens)"),
+    (r"\.aws/", "AWS config directory"),
 ]
 
 # Content patterns that indicate sensitive data
@@ -97,11 +98,15 @@ def check_path_sensitive(file_path: str) -> tuple[bool, str | None]:
 
 
 def check_file_pattern(file_path: str) -> tuple[bool, str | None]:
-    """Check if filename matches sensitive patterns."""
+    """Check if filename or path matches sensitive patterns."""
     filename = Path(file_path).name
 
     for pattern, description in SENSITIVE_FILE_PATTERNS:
+        # Check filename first
         if re.search(pattern, filename, re.IGNORECASE):
+            return True, f"Sensitive file type: {description}"
+        # Also check full path for directory-based patterns (e.g., .aws/)
+        if re.search(pattern, file_path, re.IGNORECASE):
             return True, f"Sensitive file type: {description}"
 
     return False, None
