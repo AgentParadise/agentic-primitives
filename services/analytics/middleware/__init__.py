@@ -8,4 +8,3 @@ Modules:
 - event_normalizer: Normalizes hook input events to provider-agnostic format
 - event_publisher: Publishes normalized events to configured backend
 """
-

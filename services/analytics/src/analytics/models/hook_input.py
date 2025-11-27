@@ -147,7 +147,7 @@ class HookInput(BaseModel):
     provider: str = Field(
         default="unknown",
         description=(
-            "Provider name (e.g., claude, openai, cursor, gemini). " "Determined by hook caller."
+            "Provider name (e.g., claude, openai, cursor, gemini). Determined by hook caller."
         ),
     )
     event: str = Field(description="Event name from the provider's hook system")

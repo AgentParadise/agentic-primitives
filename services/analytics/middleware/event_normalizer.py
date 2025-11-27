@@ -7,6 +7,7 @@ and outputs normalized event to stdout (JSON).
 
 This is a middleware entry point called by the agentic-primitives hook system.
 """
+
 import asyncio
 import json
 import sys
@@ -26,10 +27,11 @@ except ImportError:
     class EventNormalizer:  # type: ignore
         def __init__(self, provider: str):
             self.provider = provider
-        
+
         def normalize(self, hook_input: HookInput):
             # FIXME: This is a stub - Agent A needs to implement the actual normalizer
             from analytics.models.events import NormalizedEvent
+
             return NormalizedEvent(
                 event_id=f"evt_{hook_input.hook_id}",
                 timestamp=hook_input.timestamp,
@@ -50,19 +52,19 @@ async def main() -> None:
         # Read hook input from stdin
         hook_input_json = sys.stdin.read()
         hook_input_dict = json.loads(hook_input_json)
-        
+
         # Validate with Pydantic
         hook_input = HookInput.model_validate(hook_input_dict)
-        
+
         # Normalize event (provider is detected from hook_input.provider)
         normalizer = EventNormalizer()
         normalized_event = normalizer.normalize(hook_input)
-        
+
         # Output normalized event to stdout (JSON)
         output = normalized_event.model_dump_json()
         sys.stdout.write(output)
         sys.stdout.flush()
-        
+
     except Exception as e:
         # Log error but don't crash (observability middleware is non-blocking)
         sys.stderr.write(f"Analytics normalizer error: {e}\n")
@@ -74,4 +76,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

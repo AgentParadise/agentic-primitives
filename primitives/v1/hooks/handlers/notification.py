@@ -50,7 +50,9 @@ def main() -> None:
                 "handler": "notification",
                 "hook_event": event.get("hook_event_name", "Notification"),
                 "session_id": event.get("session_id"),
-                "notification_type": event.get("matcher"),  # permission_prompt, idle_prompt, error, warning
+                "notification_type": event.get(
+                    "matcher"
+                ),  # permission_prompt, idle_prompt, error, warning
                 "message": event.get("message"),
                 "audit": {
                     "transcript_path": event.get("transcript_path"),
@@ -65,4 +67,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

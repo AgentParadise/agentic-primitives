@@ -212,7 +212,8 @@ class TestMiddlewareScripts:
         middleware_path = Path(__file__).parent.parent / "middleware" / "event_normalizer.py"
         result = subprocess.run(
             [sys.executable, str(middleware_path)],
-            check=False, input=input_json,
+            check=False,
+            input=input_json,
             capture_output=True,
             text=True,
             timeout=5,
@@ -241,7 +242,8 @@ class TestMiddlewareScripts:
 
         result = subprocess.run(
             [sys.executable, str(middleware_path)],
-            check=False, input=json.dumps(normalized_event_data),
+            check=False,
+            input=json.dumps(normalized_event_data),
             capture_output=True,
             text=True,
             env={**subprocess.os.environ, **env},
@@ -272,7 +274,8 @@ class TestMiddlewareScripts:
         normalizer_path = Path(__file__).parent.parent / "middleware" / "event_normalizer.py"
         normalizer_result = subprocess.run(
             [sys.executable, str(normalizer_path)],
-            check=False, input=input_json,
+            check=False,
+            input=input_json,
             capture_output=True,
             text=True,
             timeout=5,
@@ -292,7 +295,8 @@ class TestMiddlewareScripts:
 
         publisher_result = subprocess.run(
             [sys.executable, str(publisher_path)],
-            check=False, input=normalized_json,
+            check=False,
+            input=normalized_json,
             capture_output=True,
             text=True,
             env={**subprocess.os.environ, **env},

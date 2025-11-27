@@ -32,9 +32,7 @@ TOOL_VALIDATORS: dict[str, list[str]] = {
 def log_analytics(event: dict[str, Any]) -> None:
     """Log to analytics file. Fail-safe - never blocks."""
     try:
-        path = Path(
-            os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl")
-        )
+        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a") as f:
             f.write(
@@ -160,4 +158,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

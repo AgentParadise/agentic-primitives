@@ -20,9 +20,7 @@ from typing import Any
 def log_analytics(event: dict[str, Any]) -> None:
     """Log to analytics file. Fail-safe - never blocks."""
     try:
-        path = Path(
-            os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl")
-        )
+        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a") as f:
             f.write(
@@ -96,7 +94,9 @@ def main() -> None:
         analytics_event = {
             "event_type": "tool_execution",
             "handler": "post-tool-use",
-            "hook_event": event.get("hook_event_name", "PostToolUse"),  # Claude's hook event
+            "hook_event": event.get(
+                "hook_event_name", "PostToolUse"
+            ),  # Claude's hook event
             "tool_name": tool_name,
             "session_id": event.get("session_id"),
             "tool_use_id": event.get("tool_use_id"),
@@ -118,4 +118,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
