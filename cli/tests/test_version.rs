@@ -1,8 +1,9 @@
 //! Integration tests for version command
 
-use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
 use std::fs;
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Helper to setup a test primitive with versioning
@@ -87,7 +88,7 @@ fn test_version_list_displays_versions() {
     )
     .unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("list")
@@ -123,7 +124,7 @@ versions: []
 "#;
     fs::write(primitive_dir.join("meta.yaml"), meta_yaml).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("list")
@@ -140,7 +141,7 @@ fn test_version_bump_creates_new_version() {
     setup_config(&tmp_dir).unwrap();
     setup_versioned_primitive(&tmp_dir, "test-agent", &[(1, "Initial version")]).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("bump")
@@ -175,7 +176,7 @@ fn test_version_bump_with_set_default() {
     setup_config(&tmp_dir).unwrap();
     setup_versioned_primitive(&tmp_dir, "test-agent", &[(1, "Initial version")]).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("bump")
@@ -205,7 +206,7 @@ fn test_version_promote_changes_status() {
     )
     .unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("promote")
@@ -243,7 +244,7 @@ fn test_version_promote_with_set_default() {
     setup_config(&tmp_dir).unwrap();
     setup_versioned_primitive(&tmp_dir, "test-agent", &[(1, "Initial"), (2, "Draft")]).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("promote")
@@ -274,7 +275,7 @@ fn test_version_deprecate() {
     .unwrap();
 
     // First promote version 2 to active
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("promote")
@@ -283,7 +284,7 @@ fn test_version_deprecate() {
     cmd.assert().success();
 
     // Now deprecate version 1
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("deprecate")
@@ -355,7 +356,7 @@ versions:
     );
     fs::write(primitive_dir.join("meta.yaml"), meta_yaml).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path()).arg("version").arg("check");
 
     cmd.assert()
@@ -399,7 +400,7 @@ versions:
     );
     fs::write(primitive_dir.join("meta.yaml"), meta_yaml).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path()).arg("version").arg("check");
 
     cmd.assert()
@@ -415,7 +416,7 @@ fn test_version_check_specific_primitive() {
     setup_config(&tmp_dir).unwrap();
     setup_versioned_primitive(&tmp_dir, "test-agent", &[(1, "Version 1")]).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("check")
@@ -455,7 +456,7 @@ versions: []
     )
     .unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("bump")
@@ -478,7 +479,7 @@ fn test_version_promote_version_not_found() {
     setup_config(&tmp_dir).unwrap();
     setup_versioned_primitive(&tmp_dir, "test-agent", &[(1, "Version 1")]).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("version")
         .arg("promote")

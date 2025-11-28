@@ -1,10 +1,10 @@
 //! Integration tests for the build command
 
-#[allow(deprecated)]
-use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Helper to create a minimal test primitive directory structure
@@ -127,7 +127,7 @@ fn test_build_claude_all_primitives() {
 
     let output_dir = temp_dir.path().join("build/claude");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -153,7 +153,7 @@ fn test_build_openai_all_primitives() {
 
     let output_dir = temp_dir.path().join("build/openai");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -180,7 +180,7 @@ fn test_build_single_primitive() {
     let primitive_path = primitives_dir.join("prompts/agents/test-agent");
     let output_dir = temp_dir.path().join("build/claude");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -204,7 +204,7 @@ fn test_build_with_type_filter() {
 
     let output_dir = temp_dir.path().join("build/claude");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -228,7 +228,7 @@ fn test_build_with_kind_filter() {
 
     let output_dir = temp_dir.path().join("build/claude");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -250,7 +250,7 @@ fn test_build_unknown_provider() {
     let primitives_dir = create_test_primitives_dir(&temp_dir);
     create_test_config(&temp_dir, &primitives_dir);
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -275,7 +275,7 @@ fn test_build_clean_mode() {
     fs::write(&dummy_file, "old content").unwrap();
     assert!(dummy_file.exists());
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -298,7 +298,7 @@ fn test_build_custom_output() {
 
     let custom_output_dir = temp_dir.path().join("custom/output/path");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -320,7 +320,7 @@ fn test_build_default_output_path() {
     let primitives_dir = create_test_primitives_dir(&temp_dir);
     create_test_config(&temp_dir, &primitives_dir);
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -341,7 +341,7 @@ fn test_build_nonexistent_primitive() {
     let primitives_dir = create_test_primitives_dir(&temp_dir);
     create_test_config(&temp_dir, &primitives_dir);
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")
@@ -360,7 +360,7 @@ fn test_build_invalid_type_filter() {
     let primitives_dir = create_test_primitives_dir(&temp_dir);
     create_test_config(&temp_dir, &primitives_dir);
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("build")
         .arg("--provider")

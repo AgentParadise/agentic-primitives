@@ -34,12 +34,13 @@ models/
 **Option B: Provider-scoped**
 ```
 providers/
-├── claude/models/
-│   ├── sonnet.yaml
-│   └── opus.yaml
-├── openai/models/
-│   ├── gpt-codex.yaml
-│   └── gpt-large.yaml
+├── models/
+│   ├── anthropic/
+│   │   ├── claude-sonnet-4-5.yaml
+│   │   └── claude-opus-4-1.yaml
+│   ├── openai/
+│   │   ├── gpt-codex.yaml
+│   │   └── gpt-large.yaml
 ```
 
 ### Reference Syntax
@@ -56,26 +57,29 @@ We will organize models **under provider directories** and reference them using 
 
 1. **Directory Structure**
    ```
-   providers/<provider>/models/<model-id>.yaml
+   providers/models/<provider>/<model-id>.yaml
    ```
-   - Example: `providers/claude/models/sonnet.yaml`
-   - Example: `providers/openai/models/gpt-codex.yaml`
+   - Example: `providers/models/anthropic/claude-sonnet-4-5.yaml`
+   - Example: `providers/models/openai/gpt-codex.yaml`
 
 2. **Reference Syntax**
    ```
    provider/model-id
    ```
-   - Example: `claude/sonnet`
+   - Example: `anthropic/claude-sonnet-4-5`
    - Example: `openai/gpt-codex`
    - Example: `cursor/gpt-4`
 
 3. **Model Config Schema**
    ```yaml
-   id: sonnet
-   full_name: "Claude 3.5 Sonnet"
-   api_name: "claude-3-5-sonnet-20241022"
-   version: "20241022"
-   provider: claude
+   id: claude-4-5-sonnet
+   full_name: "Claude Sonnet 4.5"
+   api_name: "claude-sonnet-4-5-20250929"
+   alias: "claude-sonnet-4-5"
+   prefer_alias: false
+   version: "4.5"
+   provider: anthropic
+   status: "current"
    
    capabilities:
      max_tokens: 200000
@@ -177,17 +181,18 @@ Some suggested starting simple with generic aliases like `sonnet-large`, `gpt-la
 ### Model File Location
 
 ```
-providers/claude/models/
-├── sonnet.yaml       (claude-3-5-sonnet-20241022)
-├── opus.yaml         (claude-3-opus-20240229)
-└── haiku.yaml        (claude-3-haiku-20240307)
+providers/models/anthropic/
+├── claude-4-5-sonnet.yaml    (claude-sonnet-4-5-20250929)
+├── claude-4-5-haiku.yaml     (claude-haiku-4-5-20251001)
+├── claude-4-1-opus.yaml      (claude-opus-4-1-20250805)
+└── claude-3-haiku.yaml       (legacy)
 
-providers/openai/models/
+providers/models/openai/
 ├── gpt-codex.yaml    (gpt-4-turbo-2024-11-20)
 ├── gpt-large.yaml    (gpt-4.5-preview)
 └── o1.yaml           (o1-preview)
 
-providers/cursor/models/
+providers/models/cursor/
 ├── gpt-4.yaml        (whatever Cursor uses)
 └── claude.yaml       (whatever Cursor uses)
 ```
@@ -195,15 +200,15 @@ providers/cursor/models/
 ### Resolution Logic
 
 ```rust
-// Parse "claude/sonnet"
-let model_ref = ModelRef::parse("claude/sonnet")?;
-// model_ref.provider = "claude"
-// model_ref.model = "sonnet"
+// Parse "anthropic/claude-4-5-sonnet"
+let model_ref = ModelRef::parse("anthropic/claude-4-5-sonnet")?;
+// model_ref.provider = "anthropic"
+// model_ref.model = "claude-4-5-sonnet"
 
 // Load config
 let config = model_ref.resolve()?;
-// Reads: providers/claude/models/sonnet.yaml
-// Returns: ModelConfig { full_name: "Claude 3.5 Sonnet", ... }
+// Reads: providers/models/anthropic/claude-4-5-sonnet.yaml
+// Returns: ModelConfig { full_name: "Claude Sonnet 4.5", ... }
 ```
 
 ### Usage in Primitives
@@ -212,9 +217,9 @@ let config = model_ref.resolve()?;
 # prompts/agents/python/python-pro.meta.yaml
 defaults:
   preferred_models:
-    - claude/sonnet      # Primary choice
-    - openai/gpt-codex   # Fallback
-    - cursor/gpt-4       # Fallback
+    - anthropic/claude-4-5-sonnet   # Primary choice
+    - openai/gpt-codex              # Fallback
+    - cursor/gpt-4                  # Fallback
 ```
 
 ### Provider Configuration
@@ -222,10 +227,10 @@ defaults:
 ```yaml
 # primitives.config.yaml
 providers:
-  default: "claude"
+  default: "anthropic"
   
-  claude:
-    default_model: "claude/sonnet"
+  anthropic:
+    default_model: "anthropic/claude-4-5-sonnet"
   
   openai:
     default_model: "openai/gpt-codex"
@@ -235,12 +240,13 @@ providers:
 
 This decision is successful when:
 
-1. ✅ All model configs live in `providers/<provider>/models/`
+1. ✅ All model configs live in `providers/models/<provider>/`
 2. ✅ All model references use `provider/model` format
-3. ✅ Model resolution works reliably
+3. ✅ Model resolution works reliably via `providers/models/{provider}/{model}.yaml`
 4. ✅ Adding a new provider is straightforward
 5. ✅ No ambiguity in which model is being used
 6. ✅ Validation can verify model references exist
+7. ✅ Clear separation between `providers/models/` and `providers/agents/`
 
 ## Related Decisions
 
@@ -280,5 +286,6 @@ But for now: **YAGNI** (You Aren't Gonna Need It).
 ---
 
 **Status**: Accepted  
-**Last Updated**: 2025-11-13
+**Last Updated**: 2025-11-24  
+**Amended**: 2025-11-24 - Updated path structure to `providers/models/{provider}/` for clear separation of model vs agent providers
 

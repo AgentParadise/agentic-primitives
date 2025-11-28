@@ -113,16 +113,16 @@ See `/primitives/experimental/README.md` for detailed workflow.
 
 ```bash
 # Validate v1 primitive (default)
-agentic validate primitives/v1/prompts/agents/python/python-pro
+agentic-p validate primitives/v1/prompts/agents/python/python-pro
 
 # Explicit v1
-agentic validate --spec-version v1 primitives/v1/prompts/...
+agentic-p validate --spec-version v1 primitives/v1/prompts/...
 
 # Validate experimental
-agentic validate --spec-version experimental primitives/experimental/my-test
+agentic-p validate --spec-version experimental primitives/experimental/my-test
 
 # Future: v2
-agentic validate --spec-version v2 primitives/v2/...
+agentic-p validate --spec-version v2 primitives/v2/...
 ```
 
 ### Declaring System Version
@@ -219,7 +219,7 @@ Each version file is hashed with BLAKE3 for:
 
 The CLI verifies hashes during validation:
 ```bash
-agentic validate primitives/v1/prompts/agents/python/python-pro
+agentic-p validate primitives/v1/prompts/agents/python/python-pro
 # ✅ Version 1 hash verified: blake3:abc123...
 # ✅ Version 2 hash verified: blake3:def456...
 ```
@@ -229,7 +229,7 @@ agentic validate primitives/v1/prompts/agents/python/python-pro
 #### List Versions
 
 ```bash
-agentic version list primitives/v1/prompts/agents/python/python-pro
+agentic-p version list primitives/v1/prompts/agents/python/python-pro
 ```
 
 Output:
@@ -243,7 +243,7 @@ Versions for python-pro:
 #### Bump Version
 
 ```bash
-agentic version bump primitives/v1/prompts/agents/python/python-pro
+agentic-p version bump primitives/v1/prompts/agents/python/python-pro
 ```
 
 This:
@@ -256,7 +256,7 @@ This:
 #### Promote Version
 
 ```bash
-agentic version promote primitives/v1/prompts/agents/python/python-pro 3
+agentic-p version promote primitives/v1/prompts/agents/python/python-pro 3
 ```
 
 This:
@@ -267,7 +267,7 @@ This:
 #### Deprecate Version
 
 ```bash
-agentic version deprecate primitives/v1/prompts/agents/python/python-pro 1
+agentic-p version deprecate primitives/v1/prompts/agents/python/python-pro 1
 ```
 
 This:
@@ -291,9 +291,9 @@ primitives/v1/prompts/agents/python/python-pro/
 #### Step 2: Improve Prompt Content (v1 system, v2 prompt)
 
 ```bash
-agentic version bump primitives/v1/prompts/agents/python/python-pro
+agentic-p version bump primitives/v1/prompts/agents/python/python-pro
 # Edit prompt.v2.md
-agentic version promote primitives/v1/prompts/agents/python/python-pro 2
+agentic-p version promote primitives/v1/prompts/agents/python/python-pro 2
 ```
 
 ```
@@ -332,40 +332,40 @@ The two versioning systems are **independent**:
 
 ```bash
 # Validate with specific system version
-agentic validate --spec-version v1 <path>
-agentic validate --spec-version experimental <path>
+agentic-p validate --spec-version v1 <path>
+agentic-p validate --spec-version experimental <path>
 
 # Build for provider (uses system version)
-agentic build --provider claude --spec-version v1
+agentic-p build --provider claude --spec-version v1
 
 # Create new primitive (outputs to version directory)
-agentic new agent python python-pro --spec-version v1
+agentic-p new agent python python-pro --spec-version v1
 ```
 
 ### Prompt-Level Commands
 
 ```bash
 # List prompt versions
-agentic version list <primitive-path>
+agentic-p version list <primitive-path>
 
 # Bump to new prompt version
-agentic version bump <primitive-path>
+agentic-p version bump <primitive-path>
 
 # Promote draft to active
-agentic version promote <primitive-path> <version>
+agentic-p version promote <primitive-path> <version>
 
 # Deprecate old version
-agentic version deprecate <primitive-path> <version>
+agentic-p version deprecate <primitive-path> <version>
 
 # Validate hash integrity
-agentic validate <primitive-path>  # Checks hashes
+agentic-p validate <primitive-path>  # Checks hashes
 ```
 
 ### Migration Commands (Future)
 
 ```bash
 # Migrate primitive from v1 to v2 system
-agentic migrate spec v1 v2 <primitive-path>
+agentic-p migrate spec v1 v2 <primitive-path>
 ```
 
 ---
@@ -378,20 +378,20 @@ agentic migrate spec v1 v2 <primitive-path>
 
 ```bash
 # 1. Bump version
-agentic version bump primitives/v1/prompts/agents/python/python-pro
+agentic-p version bump primitives/v1/prompts/agents/python/python-pro
 
 # 2. Edit the new version file
 vim primitives/v1/prompts/agents/python/python-pro/prompt.v3.md
 
 # 3. Test the new version
-agentic build --provider claude primitives/v1/prompts/agents/python/python-pro
+agentic-p build --provider claude primitives/v1/prompts/agents/python/python-pro
 # Use the built output to test
 
 # 4. If good, promote
-agentic version promote primitives/v1/prompts/agents/python/python-pro 3
+agentic-p version promote primitives/v1/prompts/agents/python/python-pro 3
 
 # 5. Validate
-agentic validate primitives/v1/prompts/agents/python/python-pro
+agentic-p validate primitives/v1/prompts/agents/python/python-pro
 ```
 
 ### Workflow 2: Experimenting with v2 Architecture
@@ -407,7 +407,7 @@ cat > primitives/experimental/v2-claude-commands/python-scaffold/command.md <<EO
 EOF
 
 # 2. Test with experimental flag
-agentic validate --spec-version experimental primitives/experimental/v2-claude-commands
+agentic-p validate --spec-version experimental primitives/experimental/v2-claude-commands
 
 # 3. Iterate freely (can break, change, delete)
 # ... make changes ...
@@ -425,7 +425,7 @@ agentic validate --spec-version experimental primitives/experimental/v2-claude-c
 
 ```bash
 # Future command (not yet implemented)
-agentic migrate spec v1 v2 primitives/v1/prompts/agents/python/python-pro
+agentic-p migrate spec v1 v2 primitives/v1/prompts/agents/python/python-pro
 
 # This would:
 # 1. Read v1 primitive
@@ -440,19 +440,19 @@ agentic migrate spec v1 v2 primitives/v1/prompts/agents/python/python-pro
 
 ```bash
 # 1. Create version 3 as alternative approach
-agentic version bump primitives/v1/prompts/agents/python/python-pro
+agentic-p version bump primitives/v1/prompts/agents/python/python-pro
 vim primitives/v1/prompts/agents/python/python-pro/prompt.v3.md
 
 # 2. Promote both v2 and v3 to active
-agentic version promote primitives/v1/prompts/agents/python/python-pro 3
+agentic-p version promote primitives/v1/prompts/agents/python/python-pro 3
 
 # 3. Both versions are now active
 # Build and test each
-agentic build --provider claude primitives/v1/prompts/agents/python/python-pro --version 2
-agentic build --provider claude primitives/v1/prompts/agents/python/python-pro --version 3
+agentic-p build --provider claude primitives/v1/prompts/agents/python/python-pro --version 2
+agentic-p build --provider claude primitives/v1/prompts/agents/python/python-pro --version 3
 
 # 4. After testing, deprecate the losing version
-agentic version deprecate primitives/v1/prompts/agents/python/python-pro 2
+agentic-p version deprecate primitives/v1/prompts/agents/python/python-pro 2
 ```
 
 ### Workflow 5: Creating a New Primitive
@@ -461,7 +461,7 @@ agentic version deprecate primitives/v1/prompts/agents/python/python-pro 2
 
 ```bash
 # 1. Create new primitive in v1
-agentic new agent rust rust-expert --spec-version v1
+agentic-p new agent rust rust-expert --spec-version v1
 
 # This creates:
 # primitives/v1/prompts/agents/rust/rust-expert/
@@ -472,13 +472,13 @@ agentic new agent rust rust-expert --spec-version v1
 vim primitives/v1/prompts/agents/rust/rust-expert/prompt.v1.md
 
 # 3. Validate
-agentic validate primitives/v1/prompts/agents/rust/rust-expert
+agentic-p validate primitives/v1/prompts/agents/rust/rust-expert
 
 # 4. Promote to active
-agentic version promote primitives/v1/prompts/agents/rust/rust-expert 1
+agentic-p version promote primitives/v1/prompts/agents/rust/rust-expert 1
 
 # 5. Build for provider
-agentic build --provider claude primitives/v1/prompts/agents/rust/rust-expert
+agentic-p build --provider claude primitives/v1/prompts/agents/rust/rust-expert
 ```
 
 ---
@@ -497,7 +497,7 @@ agentic build --provider claude primitives/v1/prompts/agents/rust/rust-expert
 ### Prompt-Level Versioning
 
 1. **Bump versions for meaningful changes** - Not for typos in metadata
-2. **Always hash verify** - Run `agentic validate` before promoting
+2. **Always hash verify** - Run `agentic-p validate` before promoting
 3. **Keep at least one active** - Never deprecate all versions
 4. **Use draft liberally** - Iterate in draft, promote when ready
 5. **Document changes** - Add comments in prompt explaining version differences
@@ -555,8 +555,8 @@ But this is up to the migration tool. You might start fresh at v1 in the new sys
 
 **A**: No, the CLI does it automatically:
 ```bash
-agentic version bump <path>   # Calculates hash
-agentic version promote <path> <version>  # Verifies hash
+agentic-p version bump <path>   # Calculates hash
+agentic-p version promote <path> <version>  # Verifies hash
 ```
 
 ### Q: Can I edit an `active` prompt version?
@@ -581,10 +581,10 @@ See `/primitives/experimental/README.md`.
 
 **A**: More lenient:
 ```bash
-agentic validate --spec-version v1 <path>
+agentic-p validate --spec-version v1 <path>
 # ✅ Structural, schema, semantic validation
 
-agentic validate --spec-version experimental <path>
+agentic-p validate --spec-version experimental <path>
 # ✅ Structural validation only
 # ⚠️  Schema and semantic skipped
 ```
@@ -593,7 +593,7 @@ agentic validate --spec-version experimental <path>
 
 **A**: Just promote it again:
 ```bash
-agentic version promote <path> 1  # Reactivate version 1
+agentic-p version promote <path> 1  # Reactivate version 1
 ```
 
 Multiple versions can be `active` simultaneously for A/B testing.
@@ -616,16 +616,16 @@ primitives/v2/...    # v2 primitive
 **A**: Yes! The CLI handles routing:
 ```bash
 # Build both v1 and v2 primitives
-agentic build --provider claude primitives/v1/prompts/agents/python/python-pro
-agentic build --provider claude primitives/v2/commands/rust-expert
+agentic-p build --provider claude primitives/v1/prompts/agents/python/python-pro
+agentic-p build --provider claude primitives/v2/commands/rust-expert
 ```
 
 ### Q: What happens if I don't specify --spec-version?
 
 **A**: The CLI defaults to v1:
 ```bash
-agentic validate primitives/v1/prompts/...
-# Same as: agentic validate --spec-version v1 primitives/v1/prompts/...
+agentic-p validate primitives/v1/prompts/...
+# Same as: agentic-p validate --spec-version v1 primitives/v1/prompts/...
 ```
 
 ### Q: Should I version tools and hooks?

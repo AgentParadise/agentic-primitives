@@ -253,9 +253,3 @@ cp docs/adrs/000-adr-template.md docs/adrs/009-versioned-primitives.md
 # Update status to 'accepted'
 ```
 
----
-
-**Created**: 2025-11-13  
-**Last Updated**: 2025-11-13  
-**Version**: 1.0
-

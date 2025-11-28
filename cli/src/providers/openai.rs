@@ -270,11 +270,28 @@ impl OpenAITransformer {
             })
             .collect();
 
+        // Get events for this hook
+        let events = meta.get_events();
+        let event_str = if events.is_empty() {
+            "all".to_string() // Universal hook
+        } else {
+            // For OpenAI, we'll use the first event
+            // TODO: OpenAI provider may need refactoring for multi-event support
+            format!("{:?}", events[0])
+                .to_lowercase()
+                .replace("tooluse", "_tool_use")
+                .replace("promptsubmit", "_prompt_submit")
+                .replace("agentstop", "_agent_stop")
+                .replace("sessionstart", "_session_start")
+                .replace("sessionend", "_session_end")
+                .replace("precompact", "_pre_compact")
+        };
+
         // Build the output JSON
         let output = json!({
             "id": meta.id,
             "type": "hook",
-            "event": format!("{:?}", meta.event).to_lowercase().replace("tooluse", "_tool_use").replace("promptsubmit", "_prompt_submit").replace("agentstop", "_agent_stop").replace("sessionstart", "_session_start").replace("sessionend", "_session_end").replace("precompact", "_pre_compact"),
+            "event": event_str,
             "matcher": ".*", // Default matcher
             "middleware": middleware_configs,
             "metadata": {

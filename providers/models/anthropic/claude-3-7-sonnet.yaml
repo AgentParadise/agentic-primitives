@@ -1,0 +1,44 @@
+id: claude-3-7-sonnet
+full_name: "Claude Sonnet 3.7"
+api_name: "claude-3-7-sonnet-20250219"
+alias: "claude-3-7-sonnet-latest"
+prefer_alias: false
+version: "3.7"
+provider: anthropic
+status: "legacy"
+
+capabilities:
+  max_tokens: 64000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+
+performance:
+  speed: "fast"
+  quality: "high"
+  reliability: "high"
+
+pricing:
+  input_per_1m_tokens: 3.00
+  output_per_1m_tokens: 15.00
+  currency: "USD"
+
+strengths:
+  - "Good coding performance"
+  - "Extended thinking support"
+  - "Long context support"
+
+recommended_for:
+  - "agents"
+  - "commands"
+  - "general tasks"
+
+knowledge_cutoff: "2024-10-31"
+training_cutoff: "2024-11-30"
+last_updated: "2025-11-24"
+
+notes: "Legacy model. Recommend migrating to Claude Sonnet 4.5 for significantly improved performance. Released February 19, 2025. Supports 128K output tokens with beta header."
+

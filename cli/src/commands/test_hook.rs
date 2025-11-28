@@ -86,7 +86,7 @@ fn load_hook_meta_file(path: &Path) -> anyhow::Result<HookMeta> {
     Ok(meta)
 }
 
-/// Find implementation file (impl.python.py, impl.typescript.ts, impl.rust.rs, etc.)
+/// Find implementation file (prefer directory-named files like bash-validator.py)
 fn find_implementation_file(hook_path: &Path) -> Option<PathBuf> {
     let hook_dir = if hook_path.is_dir() {
         hook_path
@@ -94,7 +94,26 @@ fn find_implementation_file(hook_path: &Path) -> Option<PathBuf> {
         hook_path.parent()?
     };
 
-    let patterns = vec![
+    // Get directory name for preferred naming pattern
+    let dir_name = hook_dir.file_name()?.to_str()?;
+
+    // Try directory-named files first (NEW PATTERN: bash-validator.py)
+    let preferred_patterns = vec![
+        format!("{}.py", dir_name),
+        format!("{}.ts", dir_name),
+        format!("{}.rs", dir_name),
+        format!("{}.sh", dir_name),
+    ];
+
+    for pattern in preferred_patterns {
+        let impl_path = hook_dir.join(&pattern);
+        if impl_path.exists() {
+            return Some(impl_path);
+        }
+    }
+
+    // Fallback to old impl.* naming (DEPRECATED)
+    let legacy_patterns = vec![
         "impl.python.py",
         "impl.py",
         "impl.typescript.ts",
@@ -105,7 +124,7 @@ fn find_implementation_file(hook_path: &Path) -> Option<PathBuf> {
         "impl.sh",
     ];
 
-    for pattern in patterns {
+    for pattern in legacy_patterns {
         let impl_path = hook_dir.join(pattern);
         if impl_path.exists() {
             return Some(impl_path);
@@ -343,14 +362,26 @@ pub fn execute(args: &TestHookArgs, _config: &PrimitivesConfig) -> anyhow::Resul
 
     // 3. Find implementation file
     let impl_path = find_implementation_file(hook_path)
-        .ok_or_else(|| anyhow!(
-            "No implementation file found in hook directory: {}\nLooked for: impl.python.py, impl.typescript.ts, impl.rust.rs, impl.sh",
-            hook_path.display()
-        ))?;
+        .ok_or_else(|| {
+            let dir_name = hook_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            anyhow!(
+                "No implementation file found in hook directory: {}\nLooked for: {}.py, {}.ts, {}.rs, {}.sh (or legacy impl.* files)",
+                hook_path.display(),
+                dir_name, dir_name, dir_name, dir_name
+            )
+        })?;
 
     if args.verbose {
         eprintln!("Hook: {}", hook_meta.id.cyan());
-        eprintln!("Event: {:?}", hook_meta.event);
+        let events = hook_meta.get_events();
+        if events.is_empty() {
+            eprintln!("Events: Universal (all agent events)");
+        } else {
+            eprintln!("Events: {:?}", events);
+        }
         eprintln!("Implementation: {}", impl_path.display());
         eprintln!("Executing...\n");
     }
@@ -360,7 +391,12 @@ pub fn execute(args: &TestHookArgs, _config: &PrimitivesConfig) -> anyhow::Resul
 
     // Fill in metadata
     result.hook_id = hook_meta.id.clone();
-    result.event = format!("{:?}", hook_meta.event);
+    let events = hook_meta.get_events();
+    result.event = if events.is_empty() {
+        "Universal".to_string()
+    } else {
+        format!("{:?}", events)
+    };
 
     // 5. Output results
     if args.json {

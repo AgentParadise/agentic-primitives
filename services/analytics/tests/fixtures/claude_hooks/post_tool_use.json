@@ -1,0 +1,18 @@
+{
+  "session_id": "abc123-def456-ghi789",
+  "transcript_path": "/Users/dev/.claude/projects/test-project/00893aaf-19fa-41d2-8238-13269b9b3ca0.jsonl",
+  "cwd": "/Users/dev/agentic-primitives",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "src/main.py",
+    "contents": "print('Hello, World!')\n"
+  },
+  "tool_response": {
+    "file_path": "src/main.py",
+    "success": true
+  },
+  "tool_use_id": "toolu_01ABC123DEF456"
+}
+

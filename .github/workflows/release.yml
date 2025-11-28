@@ -51,10 +51,16 @@ jobs:
           cat changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+  run-qa:
+    name: Run Full QA Suite
+    needs: validate-release
+    uses: ./.github/workflows/qa.yml
+    secrets: inherit
+
   build-binaries:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    needs: validate-release
+    needs: [validate-release, run-qa]
     
     strategy:
       matrix:
@@ -137,6 +143,18 @@ jobs:
         with:
           name: ${{ matrix.artifact }}.sha256
           path: ${{ matrix.artifact }}.sha256
+
+  #############################################################################
+  # PYTHON PACKAGES (Placeholder - Not Published Yet)
+  #############################################################################
+  # The Python packages (analytics, agentic_logging) are internal libraries.
+  # The main distribution is the Rust CLI binary (agentic-p).
+  #
+  # Future: If we decide to publish Python packages to PyPI:
+  # - Add build-python-wheels job
+  # - Add publish-pypi job with manual approval gate
+  # - Configure PYPI_API_TOKEN secret
+  #############################################################################
 
   create-release:
     name: Create GitHub Release

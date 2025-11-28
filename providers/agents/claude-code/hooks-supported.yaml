@@ -1,0 +1,81 @@
+agent: claude-code
+version: "1.0"
+
+# All supported hook events
+supported_events:
+  - PreToolUse
+  - PostToolUse
+  - UserPromptSubmit
+  - Stop
+  - SubagentStop
+  - SessionStart
+  - SessionEnd
+  - PreCompact
+  - Notification
+
+# Event-specific configuration
+event_config:
+  PreToolUse:
+    requires_matcher: true
+    decision_control: true
+    description: "Runs before a tool is executed, can prevent execution"
+    matchers:
+      - "Tool name or glob pattern (e.g., 'read_file', 'write_*')"
+    
+  PostToolUse:
+    requires_matcher: true
+    decision_control: true
+    description: "Runs after a tool completes, can modify output"
+    matchers:
+      - "Tool name or glob pattern"
+    
+  UserPromptSubmit:
+    requires_matcher: false
+    decision_control: true
+    description: "Runs when user submits a prompt, can modify or block"
+    
+  Stop:
+    requires_matcher: false
+    decision_control: true
+    description: "Runs when conversation stops normally"
+    
+  SubagentStop:
+    requires_matcher: false
+    decision_control: true
+    description: "Runs when a subagent completes"
+    
+  SessionStart:
+    requires_matcher: true
+    decision_control: false
+    description: "Runs when a session starts"
+    matchers:
+      - startup  # Fresh Claude Code startup
+      - resume   # Resume existing session
+      - clear    # Clear conversation
+      - compact  # After auto-compact
+    
+  SessionEnd:
+    requires_matcher: false
+    decision_control: false
+    description: "Runs when session ends gracefully"
+    
+  PreCompact:
+    requires_matcher: true
+    decision_control: false
+    description: "Runs before context compaction"
+    matchers:
+      - manual  # User-triggered compact
+      - auto    # Automatic compact
+    
+  Notification:
+    requires_matcher: true
+    decision_control: false
+    description: "Runs on various notifications"
+    matchers:
+      - permission_prompt
+      - idle_prompt
+      - error
+      - warning
+
+
+

@@ -86,10 +86,10 @@ We have three layers of validation:
 We will enforce **strict validation by default** across all three layers:
 
 1. **All Commands Validate**
-   - `agentic validate` runs all three layers, fails on any error
-   - `agentic build` validates before building, fails if invalid
-   - `agentic install` validates before installing, fails if invalid
-   - `agentic new` generates valid primitives from templates
+   - `agentic-p validate` runs all three layers, fails on any error
+   - `agentic-p build` validates before building, fails if invalid
+   - `agentic-p install` validates before installing, fails if invalid
+   - `agentic-p new` generates valid primitives from templates
 
 2. **No Permissive Mode in v1**
    - No `--lenient` or `--warn-only` flags
@@ -105,7 +105,7 @@ We will enforce **strict validation by default** across all three layers:
    - Clear, actionable error messages
    - Show exact file path, line number, and field causing issue
    - Suggest fixes where possible
-   - `agentic validate --json` for programmatic use
+   - `agentic-p validate --json` for programmatic use
 
 ## Consequences
 
@@ -139,7 +139,7 @@ We will enforce **strict validation by default** across all three layers:
 
 2. **Helpful Error Messages**: Show exactly what's wrong and how to fix it
 
-3. **Template Generation**: `agentic new` generates valid scaffolds automatically
+3. **Template Generation**: `agentic-p new` generates valid scaffolds automatically
 
 4. **Validation on Save**: Recommend editor integration to validate continuously
 
@@ -200,7 +200,7 @@ Semantic Errors:
     Tool 'run-tests' referenced but not found in tools/
     → Fix: Create tools/shell/run-tests/ or remove from tools list
 
-Run 'agentic validate' to see all validation errors.
+Run 'agentic-p validate' to see all validation errors.
 ```
 
 ### Configuration Options
@@ -220,7 +220,7 @@ validation:
 Strict validation is successful when:
 
 1. ✅ All primitives in repository pass all three validation layers
-2. ✅ `agentic build` never fails due to invalid primitives
+2. ✅ `agentic-p build` never fails due to invalid primitives
 3. ✅ Generated primitives (from meta-prompts) are immediately valid
 4. ✅ Contributors understand validation rules from error messages
 5. ✅ Technical debt does not accumulate over time
@@ -252,7 +252,7 @@ Permissive modes create a "gray area" where primitives might work in development
 
 **Future considerations:**
 
-- May add `agentic validate --fix` to auto-correct common issues
+- May add `agentic-p validate --fix` to auto-correct common issues
 - May add `--warn` flag for specific rules (but still fail on errors)
 - Editor plugins could validate on save and suggest fixes
 - GitHub Actions could validate PRs automatically

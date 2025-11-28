@@ -59,7 +59,7 @@ When the architecture needs fundamental changes:
    - New structure in `/primitives/v2/`
    - v2-aware CLI validators
 4. **Coexist**: v1 and v2 work in parallel
-5. **Migrate gradually** (optional): `agentic migrate spec v1 v2`
+5. **Migrate gradually** (optional): `agentic-p migrate spec v1 v2`
 
 This prevents the "1-2 week refactor" scenario when architectural assumptions change.
 
@@ -679,7 +679,7 @@ def process(
 ### Command Structure
 
 ```
-agentic (main binary)
+agentic-p (main binary)
 ├── init          # Bootstrap repository
 ├── new           # Scaffold primitives
 ├── validate      # Run validation
@@ -751,7 +751,7 @@ cli/src/
 ```
 User
   │
-  ├─ agentic new prompt agent python/python-pro
+  ├─ agentic-p new prompt agent python/python-pro
   │
   ▼
 CLI (new command)
@@ -766,7 +766,7 @@ CLI (new command)
   ▼
 Files Created
   │
-  └─ User edits files → agentic validate
+  └─ User edits files → agentic-p validate
 ```
 
 ### Build & Install Flow
@@ -774,7 +774,7 @@ Files Created
 ```
 User
   │
-  ├─ agentic build --provider claude
+  ├─ agentic-p build --provider claude
   │
   ▼
 CLI (build command)
@@ -790,7 +790,7 @@ CLI (build command)
   ▼
 Build Artifacts
   │
-  ├─ agentic install --provider claude --global
+  ├─ agentic-p install --provider claude --global
   │
   ▼
 CLI (install command)
@@ -810,7 +810,7 @@ Installed
 ```
 User
   │
-  ├─ agentic validate
+  ├─ agentic-p validate
   │
   ▼
 CLI (validate command)

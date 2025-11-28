@@ -112,18 +112,21 @@ fn test_transform_hook_to_hooks_json() {
     assert_eq!(result.primitive_id, "bash-validator");
     assert_eq!(result.primitive_kind, "hook");
 
-    // Check that hooks.json was created
-    let hooks_file = output_dir.path().join("hooks/hooks.json");
-    assert!(hooks_file.exists());
+    // Check that .claude/settings.json was created
+    let settings_file = output_dir.path().join(".claude/settings.json");
+    assert!(settings_file.exists());
 
-    // Verify JSON structure
-    let content = fs::read_to_string(&hooks_file).unwrap();
+    // Verify JSON structure - hooks are nested under "hooks" key
+    // New atomic architecture uses handlers with * matcher
+    let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
-    assert!(json.get("PreToolUse").is_some());
+    let hooks = json.get("hooks").expect("settings should have 'hooks' key");
+    assert!(hooks.get("PreToolUse").is_some());
 
-    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
+    let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
     assert!(!pre_tool_use.is_empty());
-    assert_eq!(pre_tool_use[0]["matcher"], "safety");
+    // Atomic architecture uses * matcher for all tools
+    assert_eq!(pre_tool_use[0]["matcher"], "*");
 }
 
 #[test]
@@ -209,12 +212,12 @@ fn test_transform_batch_multiple_primitives() {
 }
 
 #[test]
-fn test_merge_multiple_hooks() {
+fn test_hook_transform_is_idempotent() {
     let transformer = ClaudeTransformer::new();
     let hook_path = fixture_path("hooks/safety/bash-validator");
     let output_dir = TempDir::new().unwrap();
 
-    // Transform the same hook twice to test merging
+    // Transform the same hook twice
     let result1 = transformer
         .transform_primitive(&hook_path, output_dir.path())
         .unwrap();
@@ -225,14 +228,15 @@ fn test_merge_multiple_hooks() {
     assert!(result1.success);
     assert!(result2.success);
 
-    // Check that hooks were merged
-    let hooks_file = output_dir.path().join("hooks/hooks.json");
-    let content = fs::read_to_string(&hooks_file).unwrap();
+    // In atomic architecture, settings.json is regenerated each time
+    let settings_file = output_dir.path().join(".claude/settings.json");
+    let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
-    // Should have 2 entries now
-    assert_eq!(pre_tool_use.len(), 2);
+    let hooks = json.get("hooks").expect("settings should have 'hooks' key");
+    let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
+    // Atomic architecture: 1 handler entry (idempotent)
+    assert_eq!(pre_tool_use.len(), 1);
 }
 
 #[test]
@@ -415,12 +419,13 @@ fn test_hooks_json_structure() {
         .transform_primitive(&hook_path, output_dir.path())
         .unwrap();
 
-    let hooks_file = output_dir.path().join("hooks/hooks.json");
-    let content = fs::read_to_string(&hooks_file).unwrap();
+    let settings_file = output_dir.path().join(".claude/settings.json");
+    let content = fs::read_to_string(&settings_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-    // Verify structure
-    let pre_tool_use = json["PreToolUse"].as_array().unwrap();
+    // Verify structure - hooks are nested under "hooks" key
+    let hooks_config = json.get("hooks").expect("settings should have 'hooks' key");
+    let pre_tool_use = hooks_config["PreToolUse"].as_array().unwrap();
     let hook_entry = &pre_tool_use[0];
 
     assert!(hook_entry.get("matcher").is_some());
@@ -431,10 +436,11 @@ fn test_hooks_json_structure() {
 
     let hook = &hooks[0];
     assert_eq!(hook["type"], "command");
+    // Atomic architecture uses handlers, not individual wrappers
     assert!(hook["command"]
         .as_str()
         .unwrap()
-        .contains("bash-validator.sh"));
+        .contains("pre-tool-use.py"));
 }
 
 #[test]
@@ -457,4 +463,24 @@ fn test_mcp_json_structure() {
 
     assert!(server_config.get("command").is_some());
     assert!(server_config["command"].is_string());
+}
+
+#[test]
+fn test_generate_hooks_settings() {
+    let transformer = ClaudeTransformer::new();
+
+    // Test that generate_hooks_settings produces valid structure
+    let settings = transformer.generate_hooks_settings().unwrap();
+
+    // Verify structure
+    assert!(settings.get("hooks").is_some());
+    let hooks = settings.get("hooks").unwrap();
+    assert!(hooks.get("PreToolUse").is_some());
+    assert!(hooks.get("PostToolUse").is_some());
+    assert!(hooks.get("UserPromptSubmit").is_some());
+
+    // Verify handler paths
+    let pre_tool_use = hooks["PreToolUse"].as_array().unwrap();
+    let command = pre_tool_use[0]["hooks"][0]["command"].as_str().unwrap();
+    assert!(command.contains("handlers/pre-tool-use.py"));
 }

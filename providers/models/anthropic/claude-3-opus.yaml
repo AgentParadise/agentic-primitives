@@ -1,0 +1,42 @@
+id: claude-3-opus
+full_name: "Claude 3 Opus"
+api_name: "claude-3-opus-20240229"
+version: "3.0"
+provider: anthropic
+status: "legacy"
+
+capabilities:
+  max_tokens: 4096
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+
+performance:
+  speed: "moderate"
+  quality: "high"
+  reliability: "high"
+
+pricing:
+  input_per_1m_tokens: 15.00
+  output_per_1m_tokens: 75.00
+  currency: "USD"
+
+strengths:
+  - "Strong reasoning"
+  - "Complex analysis"
+  - "High quality output"
+
+recommended_for:
+  - "agents"
+  - "meta-prompts"
+  - "complex reasoning"
+
+knowledge_cutoff: "2023-08-31"
+training_cutoff: "2023-08-31"
+last_updated: "2025-11-24"
+
+notes: "Legacy model. Recommend migrating to Claude Opus 4.1 for significantly superior specialized reasoning. Released February 29, 2024. No extended thinking support."
+

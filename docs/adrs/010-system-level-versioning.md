@@ -147,16 +147,16 @@ paths:
 
 ```bash
 # Default to v1
-agentic validate primitives/v1/prompts/agents/python/python-pro
+agentic-p validate primitives/v1/prompts/agents/python/python-pro
 
 # Explicit version
-agentic validate --spec-version v1 ...
+agentic-p validate --spec-version v1 ...
 
 # Experimental
-agentic validate --spec-version experimental primitives/experimental/my-test
+agentic-p validate --spec-version experimental primitives/experimental/my-test
 
 # Future: v2
-agentic validate --spec-version v2 primitives/v2/commands/...
+agentic-p validate --spec-version v2 primitives/v2/commands/...
 ```
 
 ### Experimental Workflow
@@ -246,7 +246,7 @@ When v2 is ready:
 
 Optional:
 ```bash
-agentic migrate spec v1 v2 primitives/v1/prompts/agents/python/python-pro
+agentic-p migrate spec v1 v2 primitives/v1/prompts/agents/python/python-pro
 ```
 
 ## Related
