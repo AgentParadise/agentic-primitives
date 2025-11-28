@@ -76,14 +76,14 @@ def run_validators(prompt: str, context: dict) -> dict:
 
 def extract_audit_context(event: dict[str, Any]) -> dict[str, Any]:
     """Extract audit trail fields from Claude Code event."""
-    audit = {}
+    audit: dict[str, Any] = {}
     if event.get("transcript_path"):
         audit["transcript_path"] = event["transcript_path"]
     if event.get("cwd"):
         audit["cwd"] = event["cwd"]
     if event.get("permission_mode"):
         audit["permission_mode"] = event["permission_mode"]
-    return audit if audit else None
+    return audit
 
 
 def main() -> None:

@@ -2,9 +2,6 @@
 
 import json
 import logging
-from typing import Any, Dict
-
-import pytest
 
 from agentic_logging.formatters import HumanFormatter, JSONFormatter
 

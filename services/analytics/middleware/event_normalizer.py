@@ -17,21 +17,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from analytics.models.hook_input import HookInput
-from analytics.models.config import AnalyticsConfig
 
 # TODO(Agent A): Import EventNormalizer when implemented
 try:
     from analytics.normalizer import EventNormalizer
 except ImportError:
     # Placeholder until Agent A implements normalizer
+    from analytics.models.events import NormalizedEvent
+
     class EventNormalizer:  # type: ignore
-        def __init__(self, provider: str):
+        def __init__(self, provider: str = "") -> None:
             self.provider = provider
 
-        def normalize(self, hook_input: HookInput):
+        def normalize(self, hook_input: HookInput) -> NormalizedEvent:  # type: ignore
             # FIXME: This is a stub - Agent A needs to implement the actual normalizer
-            from analytics.models.events import NormalizedEvent
-
             return NormalizedEvent(
                 event_id=f"evt_{hook_input.hook_id}",
                 timestamp=hook_input.timestamp,

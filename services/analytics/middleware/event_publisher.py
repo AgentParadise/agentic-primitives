@@ -16,17 +16,17 @@ from pathlib import Path
 # Add parent directory to path to import analytics module
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from analytics.models.events import NormalizedEvent
 from analytics.models.config import AnalyticsConfig
+from analytics.models.events import NormalizedEvent
 
 # TODO(Agent A): Import publishers when implemented
 try:
-    from analytics.publishers.file import FilePublisher
     from analytics.publishers.api import APIPublisher
+    from analytics.publishers.file import FilePublisher
 except ImportError:
     # Placeholder until Agent A implements publishers
     class FilePublisher:  # type: ignore
-        def __init__(self, output_path: Path):
+        def __init__(self, output_path: Path) -> None:
             self.output_path = output_path
 
         async def publish(self, event: NormalizedEvent) -> None:
@@ -37,7 +37,7 @@ except ImportError:
             pass
 
     class APIPublisher:  # type: ignore
-        def __init__(self, endpoint: str, timeout: int = 30, retry_attempts: int = 3):
+        def __init__(self, endpoint: str, timeout: int = 30, retry_attempts: int = 3) -> None:
             self.endpoint = endpoint
             self.timeout = timeout
             self.retry_attempts = retry_attempts

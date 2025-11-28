@@ -8,13 +8,12 @@ import logging
 import sys
 from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
-from typing import Optional
 
 from agentic_logging.config import LogConfig
 from agentic_logging.formatters import HumanFormatter, JSONFormatter
 
 # Context variable for session tracking across async boundaries
-_session_context: ContextVar[Optional[str]] = ContextVar("session_id", default=None)
+_session_context: ContextVar[str | None] = ContextVar("session_id", default=None)
 
 # Track if logging has been set up globally
 _setup_complete = False
@@ -23,7 +22,7 @@ _setup_complete = False
 class SessionFilter(logging.Filter):
     """Filter that adds session_id to all log records."""
 
-    def __init__(self, session_id: Optional[str] = None) -> None:
+    def __init__(self, session_id: str | None = None) -> None:
         """Initialize filter with optional session ID.
 
         Args:
@@ -48,7 +47,7 @@ class SessionFilter(logging.Filter):
         return True
 
 
-def setup_logging(config: Optional[LogConfig] = None) -> None:
+def setup_logging(config: LogConfig | None = None) -> None:
     """Set up global logging configuration.
 
     This should be called once at application startup. It configures the root
@@ -118,8 +117,8 @@ def setup_logging(config: Optional[LogConfig] = None) -> None:
 
 def get_logger(
     name: str,
-    session_id: Optional[str] = None,
-    config: Optional[LogConfig] = None,
+    session_id: str | None = None,
+    config: LogConfig | None = None,
 ) -> logging.Logger:
     """Get or create a logger with the specified name.
 

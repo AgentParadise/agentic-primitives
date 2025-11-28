@@ -1,12 +1,11 @@
 """Tests for logger factory and setup."""
 
 import logging
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import pytest
 
-from agentic_logging.config import LogConfig
 from agentic_logging.logger import (
     SessionFilter,
     clear_session_context,
@@ -177,7 +176,7 @@ class TestGetLogger:
         log_file = tmp_path / "logs" / "test.jsonl"
         monkeypatch.setenv("LOG_FILE", str(log_file))
 
-        logger = get_logger("test.module")
+        _logger = get_logger("test.module")  # noqa: F841
 
         # Setup should have been called
         root_logger = logging.getLogger()

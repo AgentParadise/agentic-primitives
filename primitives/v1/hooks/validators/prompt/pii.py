@@ -96,7 +96,7 @@ def validate(
     if not prompt:
         return {"safe": True}
 
-    detected_pii: list[dict[str, str]] = []
+    detected_pii: list[dict[str, str | int]] = []
     highest_risk = "none"
     risk_order = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
@@ -122,7 +122,7 @@ def validate(
 
     # Determine action based on risk level
     if highest_risk == "high":
-        pii_types = [p["type"] for p in detected_pii if p["risk"] == "high"]
+        pii_types = [str(p["type"]) for p in detected_pii if p["risk"] == "high"]
         return {
             "safe": False,
             "reason": f"High-risk PII detected: {', '.join(pii_types)}",

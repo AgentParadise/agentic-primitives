@@ -42,7 +42,8 @@ def extract_output_preview(tool_result: Any, max_length: int = 200) -> str:
         output = tool_result
     elif isinstance(tool_result, dict):
         # Try common output fields
-        output = tool_result.get("output", tool_result.get("stdout", str(tool_result)))
+        result = tool_result.get("output") or tool_result.get("stdout") or str(tool_result)
+        output = str(result)
     else:
         output = str(tool_result)
 
@@ -53,14 +54,14 @@ def extract_output_preview(tool_result: Any, max_length: int = 200) -> str:
 
 def extract_audit_context(event: dict[str, Any]) -> dict[str, Any]:
     """Extract audit trail fields from Claude Code event."""
-    audit = {}
+    audit: dict[str, Any] = {}
     if event.get("transcript_path"):
         audit["transcript_path"] = event["transcript_path"]
     if event.get("cwd"):
         audit["cwd"] = event["cwd"]
     if event.get("permission_mode"):
         audit["permission_mode"] = event["permission_mode"]
-    return audit if audit else None
+    return audit
 
 
 def main() -> None:

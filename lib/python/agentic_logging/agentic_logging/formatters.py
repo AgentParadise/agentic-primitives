@@ -5,8 +5,9 @@ Provides both JSON (for AI agents and file storage) and human-readable
 """
 
 import logging
+import os
 import sys
-from typing import Any, Dict
+from typing import Any
 
 from pythonjsonlogger import jsonlogger
 
@@ -25,9 +26,9 @@ class JSONFormatter(jsonlogger.JsonFormatter):
 
     def add_fields(
         self,
-        log_record: Dict[str, Any],
+        log_record: dict[str, Any],
         record: logging.LogRecord,
-        message_dict: Dict[str, Any],
+        message_dict: dict[str, Any],
     ) -> None:
         """Add standard fields to the JSON log record.
 
@@ -183,7 +184,3 @@ class HumanFormatter(logging.Formatter):
                 lines.append(f"  {line}")
 
         return "\n".join(lines)
-
-
-# Import os for Windows color check
-import os

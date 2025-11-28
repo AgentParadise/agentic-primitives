@@ -7,7 +7,6 @@ for the logging system. It supports both system-wide and per-component log level
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -71,7 +70,7 @@ class LogConfig:
         )
 
     @staticmethod
-    def get_component_level(component_name: str) -> Optional[str]:
+    def get_component_level(component_name: str) -> str | None:
         """Get the log level for a specific component.
 
         Checks for environment variable LOG_LEVEL_{COMPONENT} where component
