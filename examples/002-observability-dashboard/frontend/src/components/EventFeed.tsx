@@ -127,6 +127,15 @@ function getEventStyle(event: EventResponse): {
     }
   }
 
+  // Agent interaction (LLM response)
+  if (event.event_type === 'agent_interaction') {
+    return {
+      icon: <MessageSquare size={18} />,
+      color: 'text-signal-violet',
+      label: 'LLM Response',
+    }
+  }
+
   // Session events
   if (event.event_type === 'agent_session_start') {
     return {
@@ -138,7 +147,7 @@ function getEventStyle(event: EventResponse): {
   if (event.event_type === 'agent_session_end') {
     return {
       icon: <CheckCircle size={18} />,
-      color: 'text-gray-400',
+      color: 'text-signal-emerald',
       label: 'Session Ended',
     }
   }

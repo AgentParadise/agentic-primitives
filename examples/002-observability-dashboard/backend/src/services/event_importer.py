@@ -165,6 +165,14 @@ class EventImporter:
                 tokens = data.get("total_tokens", 0)
                 cost = data.get("total_cost_usd", 0)
                 input_preview = f"tokens: {tokens:,} | cost: ${cost:.4f}"
+            elif event_type == "agent_interaction":
+                # Show prompt and response preview for interactions
+                prompt = data.get("prompt_preview", "")[:50]
+                response = data.get("response_preview", "")[:50]
+                if prompt and response:
+                    input_preview = f'"{prompt}..." → "{response}..."'
+                elif prompt:
+                    input_preview = f'prompt: "{prompt}..."'
 
             # Extract tokens and cost from nested data (agent_session_end, agent_interaction)
             estimated_tokens = (
