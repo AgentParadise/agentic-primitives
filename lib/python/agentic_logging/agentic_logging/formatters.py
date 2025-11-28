@@ -9,10 +9,10 @@ import os
 import sys
 from typing import Any
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import jsonlogger  # type: ignore[import-untyped]
 
 
-class JSONFormatter(jsonlogger.JsonFormatter):
+class JSONFormatter(jsonlogger.JsonFormatter):  # type: ignore[name-defined, misc]
     """JSON formatter for structured logging.
 
     Extends python-json-logger to include standard fields:
