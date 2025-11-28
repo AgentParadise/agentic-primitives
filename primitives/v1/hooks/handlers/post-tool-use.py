@@ -42,7 +42,9 @@ def extract_output_preview(tool_result: Any, max_length: int = 200) -> str:
         output = tool_result
     elif isinstance(tool_result, dict):
         # Try common output fields
-        result = tool_result.get("output") or tool_result.get("stdout") or str(tool_result)
+        result = (
+            tool_result.get("output") or tool_result.get("stdout") or str(tool_result)
+        )
         output = str(result)
     else:
         output = str(tool_result)
