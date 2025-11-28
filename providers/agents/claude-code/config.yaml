@@ -1,0 +1,55 @@
+id: claude-code
+name: "Claude Code"
+type: agent
+vendor: Anthropic
+
+description: |
+  Claude Code is Anthropic's AI coding assistant that provides intelligent
+  code generation, analysis, and modification capabilities with deep
+  workspace understanding.
+
+default_model_provider: anthropic
+default_model: claude-3-sonnet
+
+hooks:
+  format: claude_hooks_json
+  config_location: ".claude/hooks/hooks.json"
+  supports_plugin_hooks: true
+  supports_prompt_hooks: true
+  event_delivery: stdin_json
+
+tools:
+  format: mcp_protocol
+  supports_custom_tools: true
+  tool_discovery: automatic
+
+execution:
+  context_window_management: auto_compact
+  permission_modes:
+    - default         # Ask for dangerous operations
+    - plan            # Plan before executing
+    - acceptEdits     # Auto-accept file edits
+    - bypassPermissions  # Skip all permissions
+  
+  features:
+    - multi_file_editing
+    - terminal_access
+    - web_search
+    - image_understanding
+    - subagent_support
+
+workspace:
+  config_directory: ".claude"
+  settings_file: ".claude/settings.json"
+  hooks_directory: ".claude/hooks"
+  cache_directory: ".claude/cache"
+
+documentation: "https://code.claude.com/docs"
+repository: "https://github.com/anthropics/claude-code"
+support: "https://support.anthropic.com"
+
+version: "1.0"
+status: active
+
+
+

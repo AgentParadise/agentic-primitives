@@ -1,0 +1,38 @@
+{
+  "description": "Example Claude Code settings.json configuration",
+  "model": {
+    "provider": "anthropic",
+    "name": "claude-3-sonnet",
+    "temperature": 0.7,
+    "max_tokens": 4096
+  },
+  "permissions": {
+    "mode": "default",
+    "auto_approve_read": false,
+    "auto_approve_write": false,
+    "dangerous_operations_require_approval": true
+  },
+  "hooks": {
+    "enabled": true,
+    "config_path": ".claude/hooks/hooks.json",
+    "timeout_default": 30
+  },
+  "tools": {
+    "mcp_servers": [],
+    "custom_tools_enabled": true
+  },
+  "workspace": {
+    "ignore_patterns": [
+      "node_modules/",
+      ".git/",
+      "*.log",
+      "dist/",
+      "build/"
+    ],
+    "max_file_size_mb": 10
+  },
+  "analytics": {
+    "enabled": false,
+    "backend_url": null
+  }
+}

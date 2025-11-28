@@ -312,14 +312,16 @@ fn move_to_experimental(primitive_path: &Path, _config: &PrimitivesConfig) -> Re
     // Pattern: .../primitives/v1/{type}/{category}/{name}
     // Target: .../primitives/experimental/{type}/{category}/{name}
 
-    // Find the position of /primitives/ in the path
+    // Find the position of /primitives/ in the path (handle both Unix and Windows separators)
     let path_str = primitive_path.to_string_lossy();
-    let primitives_idx = path_str
+    // Normalize to forward slashes for consistent parsing
+    let normalized_path = path_str.replace('\\', "/");
+    let primitives_idx = normalized_path
         .rfind("/primitives/")
         .context("Path does not contain /primitives/")?;
 
-    let before_primitives = &path_str[..primitives_idx];
-    let after_primitives = &path_str[primitives_idx + "/primitives/".len()..];
+    let before_primitives = &normalized_path[..primitives_idx];
+    let after_primitives = &normalized_path[primitives_idx + "/primitives/".len()..];
 
     // Skip the version part (v1, v2, etc.) and get the rest
     let after_version = after_primitives

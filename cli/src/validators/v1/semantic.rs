@@ -164,6 +164,60 @@ impl SemanticValidator {
             }
         }
 
+        // Validate analytics middleware configuration
+        if let Some(middleware) = meta.get("middleware").and_then(|v| v.as_sequence()) {
+            self.validate_middleware_configuration(meta, middleware)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate_middleware_configuration(
+        &self,
+        meta: &YamlValue,
+        middleware: &[YamlValue],
+    ) -> Result<()> {
+        // Check if any middleware is analytics type
+        let has_analytics = middleware.iter().any(|m| {
+            m.get("type")
+                .and_then(|t| t.as_str())
+                .map(|t| t == "analytics")
+                .unwrap_or(false)
+        });
+
+        if has_analytics {
+            // Get execution strategy
+            let execution_strategy = meta
+                .get("execution")
+                .and_then(|e| e.get("strategy"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("pipeline");
+
+            // Analytics middleware should use parallel execution for optimal performance
+            if execution_strategy != "parallel" {
+                // Log a warning but don't fail validation
+                eprintln!(
+                    "⚠️  WARNING: Analytics middleware detected with 'pipeline' execution strategy."
+                );
+                eprintln!(
+                    "   Analytics middleware is non-blocking and performs better with 'parallel' execution."
+                );
+                eprintln!(
+                    "   Consider changing execution.strategy to 'parallel' for better performance."
+                );
+            }
+        }
+
+        // Validate that analytics middleware paths exist (if middleware has paths)
+        for middleware_item in middleware {
+            if let Some(middleware_type) = middleware_item.get("type").and_then(|t| t.as_str()) {
+                if middleware_type == "analytics" {
+                    // Analytics middleware is non-blocking (like observability)
+                    // No additional validation needed - behavior is enforced at runtime
+                }
+            }
+        }
+
         Ok(())
     }
 

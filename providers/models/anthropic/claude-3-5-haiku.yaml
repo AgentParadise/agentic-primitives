@@ -1,0 +1,43 @@
+id: claude-3-5-haiku
+full_name: "Claude Haiku 3.5"
+api_name: "claude-3-5-haiku-20241022"
+alias: "claude-3-5-haiku-latest"
+prefer_alias: false
+version: "3.5"
+provider: anthropic
+status: "legacy"
+
+capabilities:
+  max_tokens: 8000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+
+performance:
+  speed: "fastest"
+  quality: "medium"
+  reliability: "high"
+
+pricing:
+  input_per_1m_tokens: 0.80
+  output_per_1m_tokens: 4.00
+  currency: "USD"
+
+strengths:
+  - "Very fast responses"
+  - "Cost-effective"
+  - "High throughput"
+
+recommended_for:
+  - "skills"
+  - "simple commands"
+  - "high-volume tasks"
+
+knowledge_cutoff: "2024-07-31"
+last_updated: "2025-11-24"
+
+notes: "Legacy model. Recommend migrating to Claude Haiku 4.5 for significantly improved intelligence with similar speed. Released October 22, 2024. No extended thinking support."
+

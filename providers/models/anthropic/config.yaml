@@ -1,0 +1,44 @@
+id: anthropic
+name: Anthropic
+type: model_provider
+
+description: "Anthropic is an AI safety company that builds reliable, interpretable, and steerable AI systems."
+
+api:
+  base_url: "https://api.anthropic.com/v1"
+  docs_url: "https://docs.anthropic.com"
+  authentication: api_key
+  env_var: ANTHROPIC_API_KEY
+
+model_families:
+  - claude-4-5
+  - claude-4-1
+  - claude-4
+  - claude-3-7
+  - claude-3-5
+  - claude-3
+
+# Current recommended models by type
+current_models:
+  sonnet: claude-4-5-sonnet
+  haiku: claude-4-5-haiku
+  opus: claude-4-1-opus
+
+# Migration paths for legacy families
+# Any model not in current_models should be considered legacy
+# and users should migrate to the current model of the same type
+legacy_status:
+  - claude-4      # Superseded by claude-4-5
+  - claude-3-7    # Superseded by claude-4-5
+  - claude-3-5    # Superseded by claude-4-5
+  - claude-3      # Superseded by claude-4-5 or claude-4-1
+
+rate_limits:
+  requests_per_minute: 50
+  tokens_per_minute: 100000
+
+support:
+  website: "https://anthropic.com"
+  documentation: "https://docs.anthropic.com"
+  support_email: "support@anthropic.com"
+

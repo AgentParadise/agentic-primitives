@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentic-primitives.dev/schemas/agent-config.json",
+  "title": "Agent Configuration",
+  "description": "Schema for agent provider configuration files",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "type",
+    "vendor",
+    "hooks"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Agent identifier"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable agent name"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "agent"
+      ],
+      "description": "Must be 'agent'"
+    },
+    "vendor": {
+      "type": "string",
+      "description": "Agent vendor/creator"
+    },
+    "description": {
+      "type": "string",
+      "description": "Agent description"
+    },
+    "default_model_provider": {
+      "type": "string",
+      "description": "Default model provider to use"
+    },
+    "default_model": {
+      "type": "string",
+      "description": "Default model to use"
+    },
+    "hooks": {
+      "type": "object",
+      "required": [
+        "format",
+        "config_location"
+      ],
+      "description": "Hooks configuration",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Hooks format identifier (e.g., claude_hooks_json)"
+        },
+        "config_location": {
+          "type": "string",
+          "description": "Path to hooks config file"
+        },
+        "supports_plugin_hooks": {
+          "type": "boolean",
+          "description": "Supports plugin-based hooks"
+        },
+        "supports_prompt_hooks": {
+          "type": "boolean",
+          "description": "Supports prompt-based hooks"
+        },
+        "event_delivery": {
+          "type": "string",
+          "enum": [
+            "stdin_json",
+            "http",
+            "grpc"
+          ],
+          "description": "How events are delivered to hooks"
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "description": "Tool configuration",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Tool protocol format"
+        },
+        "supports_custom_tools": {
+          "type": "boolean",
+          "description": "Supports custom tools"
+        },
+        "tool_discovery": {
+          "type": "string",
+          "enum": [
+            "automatic",
+            "manual",
+            "config"
+          ],
+          "description": "How tools are discovered"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "description": "Execution configuration",
+      "properties": {
+        "context_window_management": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "auto_compact",
+            "sliding_window"
+          ],
+          "description": "Context window management strategy"
+        },
+        "permission_modes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Available permission modes"
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Supported features"
+        }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "description": "Workspace configuration",
+      "properties": {
+        "config_directory": {
+          "type": "string",
+          "description": "Configuration directory path"
+        },
+        "settings_file": {
+          "type": "string",
+          "description": "Settings file path"
+        },
+        "hooks_directory": {
+          "type": "string",
+          "description": "Hooks directory path"
+        },
+        "cache_directory": {
+          "type": "string",
+          "description": "Cache directory path"
+        }
+      }
+    },
+    "documentation": {
+      "type": "string",
+      "format": "uri",
+      "description": "Documentation URL"
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "Repository URL"
+    },
+    "support": {
+      "type": "string",
+      "format": "uri",
+      "description": "Support URL"
+    },
+    "version": {
+      "type": "string",
+      "description": "Agent version"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "deprecated",
+        "beta"
+      ],
+      "description": "Agent status"
+    }
+  }
+}

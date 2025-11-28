@@ -57,7 +57,7 @@ We will **generate provider-specific outputs on demand** and **not commit them**
 
 2. **Build Command Generates**
    ```bash
-   agentic build --provider claude
+   agentic-p build --provider claude
    # Output: build/claude/.claude/
    ```
    - Transforms primitives to provider format
@@ -67,7 +67,7 @@ We will **generate provider-specific outputs on demand** and **not commit them**
 
 3. **Install Command Deploys**
    ```bash
-   agentic install --provider claude --global
+   agentic-p install --provider claude --global
    # Copies: build/claude/.claude/ → ~/.claude/
    ```
    - Installs generated files to target
@@ -139,7 +139,7 @@ We will **generate provider-specific outputs on demand** and **not commit them**
 
 ### Negative
 
-⚠️ **Build Step Required**: Must run `agentic build` before installing
+⚠️ **Build Step Required**: Must run `agentic-p build` before installing
 
 ⚠️ **Invisible Outputs**: Generated files not visible in repo
 
@@ -155,7 +155,7 @@ We will **generate provider-specific outputs on demand** and **not commit them**
 
 3. **CI/CD**: Automate build + install in deployment pipelines
 
-4. **Preview**: `agentic build --dry-run` shows what would be generated
+4. **Preview**: `agentic-p build --dry-run` shows what would be generated
 
 5. **Validation**: Validate generated files before installing
 
@@ -168,7 +168,7 @@ We will **generate provider-specific outputs on demand** and **not commit them**
 ```
 Primitives (source)
         ↓
-[agentic build --provider claude]
+[agentic-p build --provider claude]
         ↓
 Load primitives + metadata
         ↓
@@ -183,7 +183,7 @@ Apply Handlebars templates
         ↓
 Write to build/claude/.claude/
         ↓
-[agentic install --provider claude]
+[agentic-p install --provider claude]
         ↓
 Copy build/claude/.claude/ → ~/.claude/
 ```
@@ -326,7 +326,7 @@ build/
 Generated outputs are successful when:
 
 1. ✅ Primitives are the only committed source
-2. ✅ `agentic build` generates valid provider files
+2. ✅ `agentic-p build` generates valid provider files
 3. ✅ Generated files match provider specifications
 4. ✅ Build is fast (<5s for 100 primitives)
 5. ✅ Install correctly deploys generated files
@@ -361,9 +361,9 @@ We use `build` because:
 
 **Preview Before Install**:
 ```bash
-agentic build --provider claude --output ./preview
+agentic-p build --provider claude --output ./preview
 # Review generated files in ./preview
-agentic install --provider claude --source ./preview
+agentic-p install --provider claude --source ./preview
 ```
 
 **Testing Transformers**:

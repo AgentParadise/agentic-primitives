@@ -1,6 +1,7 @@
-use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
 use std::fs;
+use std::process::Command;
 use tempfile::TempDir;
 
 #[test]
@@ -12,7 +13,7 @@ fn test_install_to_project() {
     fs::write(build_dir.join("mcp.json"), "{}").unwrap();
     fs::write(build_dir.join("test.txt"), "test content").unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("install")
         .arg("--provider")
@@ -47,7 +48,7 @@ fn test_install_with_backup() {
     fs::write(build_dir.join("mcp.json"), "{}").unwrap();
     fs::write(build_dir.join("new.txt"), "new content").unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("install")
         .arg("--provider")
@@ -80,7 +81,7 @@ fn test_install_dry_run() {
     fs::write(build_dir.join("mcp.json"), "{}").unwrap();
     fs::write(build_dir.join("test.txt"), "test content").unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("install")
         .arg("--provider")
@@ -102,7 +103,7 @@ fn test_install_dry_run() {
 fn test_install_without_build() {
     let temp_dir = TempDir::new().unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("install")
         .arg("--provider")
@@ -120,7 +121,7 @@ fn test_install_empty_build_dir() {
     fs::create_dir(&build_dir).unwrap();
     // Create empty build directory - no files
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("install")
         .arg("--provider")
@@ -144,7 +145,7 @@ fn test_install_preserves_structure() {
     fs::write(build_dir.join("subdir/file2.txt"), "content2").unwrap();
     fs::write(build_dir.join("subdir/nested/file3.txt"), "content3").unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("install")
         .arg("--provider")
@@ -170,7 +171,7 @@ fn test_install_verbose() {
     fs::write(build_dir.join("mcp.json"), "{}").unwrap();
     fs::write(build_dir.join("test.txt"), "test content").unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(temp_dir.path())
         .arg("install")
         .arg("--provider")

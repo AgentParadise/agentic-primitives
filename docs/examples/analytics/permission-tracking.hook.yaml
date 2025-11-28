@@ -1,0 +1,57 @@
+# Permission Request Tracking
+# Tracks when agents request permissions to understand permission patterns
+#
+# Use cases:
+# - Permission audit trail
+# - Identify tools that frequently need permission
+# - Security compliance
+# - Permission model effectiveness
+
+version: 1
+id: permission-tracking
+name: "Permission Request Tracker"
+description: "Track permission requests for analytics and auditing"
+
+# Capture permission-related events
+events:
+  - PermissionRequest
+
+# Two-stage analytics pipeline
+middleware:
+  # Stage 1: Normalize events
+  - name: "analytics-normalizer"
+    type: analytics
+    impl: python
+    path: "../../../services/analytics/middleware/event_normalizer.py"
+    env:
+      ANALYTICS_PROVIDER: "claude"
+  
+  # Stage 2: Publish events
+  - name: "analytics-publisher"
+    type: analytics
+    impl: python
+    path: "../../../services/analytics/middleware/event_publisher.py"
+    env:
+      ANALYTICS_PUBLISHER_BACKEND: "file"
+      ANALYTICS_OUTPUT_PATH: "./analytics/permissions.jsonl"
+
+execution: pipeline
+
+# Output event: permission_requested
+#
+# Includes:
+# - tool_name: Which tool required permission
+# - tool_input: What the tool was trying to do
+# - permission_mode: Current permission mode (default, plan, etc.)
+# - session_id: Links permission to session
+# - timestamp: When permission was requested
+#
+# Use cases:
+# - Audit trail: Review what permissions were requested
+# - Security analysis: Identify suspicious permission patterns
+# - UX improvement: Find tools that frequently need permission
+# - Compliance: Demonstrate permission controls are working
+#
+# Example: Find most common tools requiring permission
+# cat permissions.jsonl | jq -r '.context.tool_name' | sort | uniq -c | sort -rn
+

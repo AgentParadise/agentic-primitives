@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hook Configuration",
+  "description": "Agent-specific configuration for a hook primitive",
+  "type": "object",
+  "required": [
+    "agent",
+    "hook_id",
+    "primitive"
+  ],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Agent provider ID (must match agent directory name)"
+    },
+    "hook_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Hook identifier (must match primitive ID)"
+    },
+    "primitive": {
+      "type": "object",
+      "required": [
+        "id",
+        "path",
+        "impl_file"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Primitive identifier"
+        },
+        "path": {
+          "type": "string",
+          "description": "Relative path from this config to the primitive directory"
+        },
+        "impl_file": {
+          "type": "string",
+          "description": "Python implementation filename (e.g., impl.python.py)"
+        }
+      }
+    },
+    "middleware": {
+      "type": "array",
+      "description": "Middleware pipeline configuration",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "enabled"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$",
+            "description": "Unique middleware identifier"
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative path to middleware implementation"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "analytics",
+              "safety",
+              "observability",
+              "custom"
+            ],
+            "description": "Middleware category"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this middleware is active"
+          },
+          "events": {
+            "type": "array",
+            "description": "Which events trigger this middleware (* for all)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Execution priority (lower runs first)"
+          },
+          "config": {
+            "type": "object",
+            "description": "Middleware-specific configuration",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "description": "Execution configuration overrides",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "parallel",
+            "sequential"
+          ],
+          "description": "How to execute middleware"
+        },
+        "timeout_sec": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300,
+          "description": "Maximum execution time in seconds"
+        },
+        "fail_on_error": {
+          "type": "boolean",
+          "description": "Whether to block on middleware errors"
+        }
+      }
+    },
+    "default_decision": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "deny"
+      ],
+      "description": "Default decision when middleware succeeds"
+    }
+  }
+}

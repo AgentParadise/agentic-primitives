@@ -34,10 +34,10 @@ Primitives are validated against these schemas using the CLI:
 
 ```bash
 # Validate all v1 primitives
-agentic validate --spec-version v1
+agentic-p validate --spec-version v1
 
 # Validate specific primitive
-agentic validate primitives/v1/prompts/agents/python/python-pro
+agentic-p validate primitives/v1/prompts/agents/python/python-pro
 ```
 
 ## Future Evolution

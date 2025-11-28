@@ -37,8 +37,36 @@
     },
     "provider": {
       "type": "string",
-      "enum": ["claude", "openai", "cursor", "gemini"],
+      "enum": ["anthropic", "claude", "openai", "cursor", "gemini", "google"],
       "description": "Provider that offers this model"
+    },
+    "alias": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "description": "API alias that auto-updates to latest snapshot (e.g., claude-sonnet-4-5)",
+      "examples": ["claude-sonnet-4-5", "gpt-4-turbo"]
+    },
+    "prefer_alias": {
+      "type": "boolean",
+      "description": "Whether to use alias over api_name for API calls. Default false for production stability.",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "enum": ["current", "legacy", "deprecated"],
+      "description": "Model lifecycle status",
+      "default": "current"
+    },
+    "knowledge_cutoff": {
+      "type": "string",
+      "format": "date",
+      "description": "Date through which model's knowledge is most extensive and reliable (YYYY-MM-DD)"
+    },
+    "training_cutoff": {
+      "type": "string",
+      "format": "date",
+      "description": "Broader date range of training data used (YYYY-MM-DD)"
     },
     "capabilities": {
       "type": "object",
@@ -205,13 +233,18 @@
   },
   "examples": [
     {
-      "id": "sonnet",
-      "full_name": "Claude 3.5 Sonnet",
-      "api_name": "claude-3-5-sonnet-20241022",
-      "version": "20241022",
-      "provider": "claude",
+      "id": "claude-4-5-sonnet",
+      "full_name": "Claude Sonnet 4.5",
+      "api_name": "claude-sonnet-4-5-20250929",
+      "alias": "claude-sonnet-4-5",
+      "prefer_alias": false,
+      "version": "4.5",
+      "provider": "anthropic",
+      "status": "current",
+      "knowledge_cutoff": "2025-01-31",
+      "training_cutoff": "2025-07-31",
       "capabilities": {
-        "max_tokens": 200000,
+        "max_tokens": 64000,
         "context_window": 200000,
         "supports_vision": true,
         "supports_function_calling": true,
@@ -294,11 +327,12 @@
       "last_updated": "2024-11-13"
     },
     {
-      "id": "haiku",
+      "id": "claude-3-haiku",
       "full_name": "Claude 3 Haiku",
       "api_name": "claude-3-haiku-20240307",
-      "version": "20240307",
-      "provider": "claude",
+      "version": "3.0",
+      "provider": "anthropic",
+      "status": "legacy",
       "capabilities": {
         "max_tokens": 200000,
         "context_window": 200000,
@@ -333,8 +367,8 @@
         "Lower quality on complex tasks",
         "Less capable reasoning"
       ],
-      "notes": "Best for simple, high-volume tasks where speed and cost matter more than sophistication.",
-      "last_updated": "2024-11-13"
+      "notes": "Legacy model. Recommend migrating to Claude Haiku 4.5 for improved performance and capabilities.",
+      "last_updated": "2025-11-24"
     }
   ]
 }

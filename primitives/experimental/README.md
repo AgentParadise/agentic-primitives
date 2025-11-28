@@ -34,7 +34,7 @@ This directory is a sandbox for testing architectural ideas for future spec vers
 
 ```bash
 # Create in experimental directory
-agentic new agent experimental my-experimental-agent --experimental
+agentic-p new agent experimental my-experimental-agent --experimental
 
 # Or manually create structure here
 mkdir -p experimental/v2-commands/
@@ -44,10 +44,10 @@ mkdir -p experimental/v2-commands/
 
 ```bash
 # Validate experimental primitive (more lenient validation)
-agentic validate --spec-version experimental experimental/my-primitive
+agentic-p validate --spec-version experimental experimental/my-primitive
 
 # Build experimental primitive (if compatible)
-agentic build --provider claude --spec-version experimental experimental/my-primitive
+agentic-p build --provider claude --spec-version experimental experimental/my-primitive
 ```
 
 ### 3. Iterate Freely
@@ -84,7 +84,7 @@ experimental/v2-claude-native/
 
 Test it:
 ```bash
-agentic validate --spec-version experimental experimental/v2-claude-native
+agentic-p validate --spec-version experimental experimental/v2-claude-native
 ```
 
 If it works well, promote to v2!

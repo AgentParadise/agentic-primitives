@@ -1,8 +1,9 @@
 //! Integration tests for migrate command
 
-use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
 use std::fs;
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Helper to setup a test primitive with specific spec version
@@ -76,7 +77,7 @@ fn test_migrate_dry_run() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -110,7 +111,7 @@ fn test_migrate_v1_to_v2() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -141,7 +142,7 @@ fn test_migrate_v1_to_v2_auto_fix() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -169,7 +170,7 @@ fn test_migrate_to_experimental() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -204,7 +205,7 @@ fn test_migrate_directory() {
 
     let primitives_dir = tmp_dir.path().join("primitives/v1/prompts/agents");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitives_dir)
@@ -236,7 +237,7 @@ fn test_migrate_same_version_no_changes() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -258,7 +259,7 @@ fn test_migrate_invalid_spec() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -275,7 +276,7 @@ fn test_migrate_nonexistent_path() {
     let tmp_dir = TempDir::new().unwrap();
     setup_config(&tmp_dir).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg("nonexistent/path")
@@ -310,7 +311,7 @@ context_usage:
     fs::write(primitive_dir.join("meta.yaml"), meta_yaml).unwrap();
     fs::write(primitive_dir.join("test-agent.prompt.md"), "# Test").unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_dir)
@@ -337,7 +338,7 @@ fn test_migrate_shows_summary() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -363,7 +364,7 @@ fn test_migrate_dry_run_shows_planned_changes() {
         .path()
         .join("primitives/v1/prompts/agents/test-agent");
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)
@@ -388,7 +389,7 @@ fn test_migrate_missing_meta_yaml() {
     let primitive_dir = tmp_dir.path().join("primitives/v1/prompts/agents/invalid");
     fs::create_dir_all(&primitive_dir).unwrap();
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_dir)
@@ -416,7 +417,7 @@ fn test_migrate_v1_to_v2_field_rename() {
     let original_content = fs::read_to_string(&meta_path).unwrap();
     assert!(original_content.contains("preferred_models"));
 
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
     cmd.current_dir(tmp_dir.path())
         .arg("migrate")
         .arg(&primitive_path)

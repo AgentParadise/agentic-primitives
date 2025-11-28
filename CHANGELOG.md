@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2025-11-26
+
+### 🔄 Self-Logging Hooks Architecture
+
+Major refactoring of the analytics architecture from centralized hooks-collector to self-logging hooks.
+
+### Added
+
+- **agentic-analytics library**: New Python client library for hook decision logging
+  - `AnalyticsClient` for logging to JSONL files and/or API endpoints
+  - `HookDecision` dataclass for standardized decision tracking
+  - Validation utilities for E2E testing of analytics events
+  - DI-friendly configuration via environment variables or constructor
+
+- **Provider configurations**: Added missing `config.yaml` files for Google and OpenAI model providers
+
+### Changed
+
+- **Security hooks now self-log**: `bash-validator`, `file-security`, and `prompt-filter` hooks now log decisions directly via `AnalyticsClient`
+- **Rust CLI ModelConfig**: Updated to match actual YAML file format used in model definitions
+- **Hook scaffold template**: Fixed YAML indentation in generated hook files
+- **Claude transformer tests**: Updated to use new `.claude/settings.json` structure
+
+### Removed
+
+- **hooks-collector**: Removed centralized hooks-collector infrastructure (superseded by self-logging pattern)
+- **Middleware pipeline**: Simplified architecture removes complex middleware orchestration
+
+### Architecture
+
+- ADR-013 (Hybrid Hook Architecture) marked as superseded
+- Each hook now directly logs its decisions, eliminating middleware complexity
+- Enables easier dependency injection of analytics backends
+
+---
+
 ## [1.0.0] - 2025-11-15
 
 ### 🎉 Initial Release - Production Ready

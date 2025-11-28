@@ -1,6 +1,7 @@
-use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Test helper: Setup test repository with primitives.config.yaml
@@ -68,7 +69,7 @@ naming:
 
 /// Test helper: Run CLI command
 pub fn run_cli_command(args: &[&str], working_dir: Option<&Path>) -> assert_cmd::assert::Assert {
-    let mut cmd = Command::cargo_bin("agentic-p").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agentic-p"));
 
     if let Some(dir) = working_dir {
         cmd.current_dir(dir);
@@ -78,6 +79,7 @@ pub fn run_cli_command(args: &[&str], working_dir: Option<&Path>) -> assert_cmd:
 }
 
 /// Test helper: Assert primitive exists with correct structure
+#[allow(dead_code)]
 pub fn assert_primitive_exists(
     repo_path: &Path,
     prim_type: &str,
@@ -114,6 +116,7 @@ pub fn assert_primitive_exists(
 }
 
 /// Test helper: Assert build output exists
+#[allow(dead_code)]
 pub fn assert_build_output(repo_path: &Path, provider: &str) -> PathBuf {
     let build_path = repo_path.join("build").join(provider);
     assert!(
@@ -125,6 +128,7 @@ pub fn assert_build_output(repo_path: &Path, provider: &str) -> PathBuf {
 }
 
 /// Test helper: Create test primitive manually
+#[allow(dead_code)]
 pub fn create_test_primitive(
     repo_path: &Path,
     prim_type: &str,

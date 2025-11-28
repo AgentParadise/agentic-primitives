@@ -60,7 +60,7 @@ make build-release
 cargo install --path cli
 
 # Verify installation
-agentic --version
+agentic-p --version
 ```
 
 ### Quick Setup with Make
@@ -96,10 +96,10 @@ mkdir my-primitives
 cd my-primitives
 
 # Initialize the repository
-agentic init
+agentic-p init
 
 # Or initialize in a different directory
-agentic init --path ./my-other-primitives
+agentic-p init --path ./my-other-primitives
 ```
 
 This creates the following structure:
@@ -128,7 +128,7 @@ Agents are personas or roles for AI systems. Let's create a Python expert agent:
 ### Step 1: Scaffold the Agent
 
 ```bash
-agentic new prompt agent python/python-pro
+agentic-p new prompt agent python/python-pro
 ```
 
 This creates:
@@ -226,10 +226,10 @@ default_version: 1
 ### Step 4: Validate
 
 ```bash
-agentic validate primitives/v1/prompts/agents/python/python-pro
+agentic-p validate primitives/v1/prompts/agents/python/python-pro
 
 # Or validate everything
-agentic validate
+agentic-p validate
 ```
 
 ---
@@ -241,7 +241,7 @@ Commands are discrete tasks or workflows. Let's create a code review command:
 ### Scaffold and Fill
 
 ```bash
-agentic new prompt command review/code-review
+agentic-p new prompt command review/code-review
 ```
 
 Edit `primitives/v1/prompts/commands/review/code-review/prompt.v1.md`:
@@ -282,7 +282,7 @@ Skills are reusable knowledge patterns. Let's create a pytest patterns skill:
 ### Scaffold and Fill
 
 ```bash
-agentic new prompt skill testing/pytest-patterns
+agentic-p new prompt skill testing/pytest-patterns
 ```
 
 Edit `primitives/v1/prompts/skills/testing/pytest-patterns/prompt.v1.md`:
@@ -352,7 +352,7 @@ Tools define capabilities. Let's create a test runner tool:
 ### Scaffold
 
 ```bash
-agentic new tool shell/run-tests
+agentic-p new tool shell/run-tests
 ```
 
 ### Configure Tool
@@ -413,7 +413,7 @@ Hooks handle lifecycle events. Let's create a safety hook:
 ### Scaffold
 
 ```bash
-agentic new hook lifecycle/pre-tool-use
+agentic-p new hook lifecycle/pre-tool-use
 ```
 
 This creates a complete hook structure with middleware examples.
@@ -461,13 +461,13 @@ Validate your primitives to ensure they're correct:
 
 ```bash
 # Validate everything
-agentic validate
+agentic-p validate
 
 # Validate specific primitive
-agentic validate primitives/v1/prompts/agents/python/python-pro
+agentic-p validate primitives/v1/prompts/agents/python/python-pro
 
 # Get JSON output for scripting
-agentic validate --json
+agentic-p validate --json
 ```
 
 The validator checks:
@@ -483,7 +483,7 @@ Generate provider-specific outputs (e.g., for Claude Agent SDK):
 
 ```bash
 # Build for Claude
-agentic build --provider claude
+agentic-p build --provider claude
 
 # Output goes to: build/claude/.claude/
 ```
@@ -499,7 +499,7 @@ This transforms:
 
 ```bash
 # Build to custom directory
-agentic build --provider claude --output ./preview
+agentic-p build --provider claude --output ./preview
 
 # Inspect generated files
 ls -R ./preview
@@ -517,7 +517,7 @@ Install to your home directory:
 
 ```bash
 # Install to ~/.claude/
-agentic install --provider claude --global
+agentic-p install --provider claude --global
 ```
 
 ### Project Installation
@@ -526,15 +526,15 @@ Install to current project:
 
 ```bash
 # Install to ./.claude/
-agentic install --provider claude --project
+agentic-p install --provider claude --project
 ```
 
 ### Custom Installation
 
 ```bash
 # Build and install to custom location
-agentic build --provider claude --output ./my-output
-agentic install --provider claude --source ./my-output --target ./my-project/.claude/
+agentic-p build --provider claude --output ./my-output
+agentic-p install --provider claude --source ./my-output --target ./my-project/.claude/
 ```
 
 ---
@@ -600,19 +600,19 @@ For complete details, see `docs/versioning-guide.md`.
 
 - **Version Management**: Create and manage primitive versions
   ```bash
-  agentic version bump python/python-pro --notes "Added async expertise"
-  agentic version list python/python-pro
+  agentic-p version bump python/python-pro --notes "Added async expertise"
+  agentic-p version list python/python-pro
   ```
 
 - **Inspect Primitives**: View detailed information
   ```bash
-  agentic inspect python/python-pro
-  agentic list prompts --kind agent
+  agentic-p inspect python/python-pro
+  agentic-p list prompts --kind agent
   ```
 
 - **Test Hooks Locally**: Test before deploying
   ```bash
-  agentic test-hook lifecycle/pre-tool-use --input test-event.json
+  agentic-p test-hook lifecycle/pre-tool-use --input test-event.json
   ```
 
 ### Build Your Library
@@ -639,10 +639,10 @@ For complete details, see `docs/versioning-guide.md`.
 **Validation Fails**:
 ```bash
 # See detailed errors
-agentic validate --verbose
+agentic-p validate --verbose
 
 # Check specific layer
-agentic validate --layer structural
+agentic-p validate --layer structural
 ```
 
 **Build Fails**:
@@ -651,13 +651,13 @@ agentic validate --layer structural
 cat providers/claude/README.md
 
 # Validate before building
-agentic validate
+agentic-p validate
 ```
 
 **Hooks Don't Execute**:
 ```bash
 # Test hook locally
-agentic test-hook lifecycle/pre-tool-use --input test.json
+agentic-p test-hook lifecycle/pre-tool-use --input test.json
 
 # Check Claude settings.json
 cat ~/.claude/settings.json

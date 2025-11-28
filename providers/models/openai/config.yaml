@@ -1,0 +1,31 @@
+id: openai
+name: OpenAI
+type: model_provider
+
+description: "OpenAI develops and deploys advanced AI models including GPT and o1 series."
+
+api:
+  base_url: "https://api.openai.com/v1"
+  docs_url: "https://platform.openai.com/docs"
+  authentication: api_key
+  env_var: OPENAI_API_KEY
+
+model_families:
+  - gpt-5
+  - gpt-4
+  - o1
+
+current_models:
+  gpt: gpt-5.1
+  mini: gpt-5-mini
+  codex: gpt-codex
+  reasoning: o1
+
+rate_limits:
+  requests_per_minute: 500
+  tokens_per_minute: 200000
+
+support:
+  website: "https://openai.com"
+  documentation: "https://platform.openai.com/docs"
+

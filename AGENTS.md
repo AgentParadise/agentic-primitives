@@ -82,6 +82,23 @@ DIRECT EXECUTE MODE or DEM // Used to bypass the plan and go straight to execute
 - **Required:** Flag ANY deviation with `:warning: DEVIATION DETECTED: [description]`
 - **Output:** `[MODE: REVIEW]` + comparison and verdict
 
+## Python Tooling
+
+**ALWAYS use `uv` for Python package management. NEVER use `pip` directly.**
+
+```bash
+# Installing packages
+uv pip install <package>
+uv pip install -e .  # editable install
+
+# Running Python in project context
+uv run python script.py
+uv run pytest
+
+# Syncing dependencies
+uv sync
+```
+
 ## QA Checkpoint Process
 
 After each milestone in EXECUTE mode:

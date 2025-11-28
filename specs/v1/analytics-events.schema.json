@@ -1,0 +1,353 @@
+{
+  "$defs": {
+    "CompactContext": {
+      "description": "Context for context compaction events",
+      "properties": {
+        "trigger": {
+          "description": "Trigger type (manual or auto)",
+          "title": "Trigger",
+          "type": "string"
+        },
+        "custom_instructions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Custom instructions if manual",
+          "title": "Custom Instructions"
+        }
+      },
+      "required": [
+        "trigger"
+      ],
+      "title": "CompactContext",
+      "type": "object"
+    },
+    "EventMetadata": {
+      "description": "Metadata about the event and its source",
+      "properties": {
+        "hook_event_name": {
+          "description": "Original hook event name from provider",
+          "title": "Hook Event Name",
+          "type": "string"
+        },
+        "transcript_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to conversation transcript",
+          "title": "Transcript Path"
+        },
+        "permission_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Permission mode at event time",
+          "title": "Permission Mode"
+        },
+        "raw_event": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw event data from provider",
+          "title": "Raw Event"
+        }
+      },
+      "required": [
+        "hook_event_name"
+      ],
+      "title": "EventMetadata",
+      "type": "object"
+    },
+    "NotificationContext": {
+      "description": "Context for system notifications",
+      "properties": {
+        "notification_type": {
+          "description": "Type of notification",
+          "title": "Notification Type",
+          "type": "string"
+        },
+        "message": {
+          "description": "Notification message",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "notification_type",
+        "message"
+      ],
+      "title": "NotificationContext",
+      "type": "object"
+    },
+    "SessionContext": {
+      "description": "Context for session start/end events",
+      "properties": {
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Session start source (startup, resume, etc.)",
+          "title": "Source"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Session end reason (exit, error, etc.)",
+          "title": "Reason"
+        }
+      },
+      "title": "SessionContext",
+      "type": "object"
+    },
+    "StopContext": {
+      "description": "Context for agent/subagent stop events",
+      "properties": {
+        "stop_hook_active": {
+          "description": "Whether stop hook was active",
+          "title": "Stop Hook Active",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "stop_hook_active"
+      ],
+      "title": "StopContext",
+      "type": "object"
+    },
+    "ToolExecutionContext": {
+      "description": "Context for tool execution events (started/completed)",
+      "properties": {
+        "tool_name": {
+          "description": "Name of the tool",
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "tool_input": {
+          "additionalProperties": true,
+          "description": "Input parameters",
+          "title": "Tool Input",
+          "type": "object"
+        },
+        "tool_response": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Response (only for completed events)",
+          "title": "Tool Response"
+        },
+        "tool_use_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tool use identifier",
+          "title": "Tool Use Id"
+        }
+      },
+      "required": [
+        "tool_name",
+        "tool_input"
+      ],
+      "title": "ToolExecutionContext",
+      "type": "object"
+    },
+    "UserPromptContext": {
+      "description": "Context for user prompt submission events",
+      "properties": {
+        "prompt": {
+          "description": "The prompt text",
+          "title": "Prompt",
+          "type": "string"
+        },
+        "prompt_length": {
+          "description": "Length of prompt in characters",
+          "title": "Prompt Length",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "prompt",
+        "prompt_length"
+      ],
+      "title": "UserPromptContext",
+      "type": "object"
+    }
+  },
+  "description": "Normalized analytics event structure for agentic-primitives hook system. This schema is provider-agnostic and represents events after normalization from provider-specific hook formats (Claude, OpenAI, Cursor, etc.).",
+  "examples": [
+    {
+      "context": {
+        "tool_input": {
+          "contents": "print('Hello')",
+          "file_path": "src/main.py"
+        },
+        "tool_name": "Write",
+        "tool_use_id": "toolu_01ABC123"
+      },
+      "cwd": "/Users/dev/project",
+      "event_type": "tool_execution_started",
+      "metadata": {
+        "hook_event_name": "PreToolUse",
+        "permission_mode": "default",
+        "transcript_path": "/path/to/transcript.jsonl"
+      },
+      "provider": "claude",
+      "session_id": "abc123-def456",
+      "timestamp": "2025-11-19T12:34:56.789Z"
+    },
+    {
+      "context": {
+        "source": "startup"
+      },
+      "event_type": "session_started",
+      "metadata": {
+        "hook_event_name": "SessionStart",
+        "transcript_path": "/path/to/transcript.jsonl"
+      },
+      "provider": "claude",
+      "session_id": "abc123-def456",
+      "timestamp": "2025-11-19T12:00:00.000Z"
+    }
+  ],
+  "properties": {
+    "event_type": {
+      "description": "Type of analytics event",
+      "enum": [
+        "session_started",
+        "session_completed",
+        "user_prompt_submitted",
+        "tool_execution_started",
+        "tool_execution_completed",
+        "permission_requested",
+        "agent_stopped",
+        "subagent_stopped",
+        "system_notification",
+        "context_compacted"
+      ],
+      "title": "Event Type",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "When the event occurred (ISO 8601)",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "session_id": {
+      "description": "Session identifier",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "provider": {
+      "description": "Source provider (claude, openai, etc.)",
+      "title": "Provider",
+      "type": "string"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolExecutionContext"
+        },
+        {
+          "$ref": "#/$defs/UserPromptContext"
+        },
+        {
+          "$ref": "#/$defs/SessionContext"
+        },
+        {
+          "$ref": "#/$defs/NotificationContext"
+        },
+        {
+          "$ref": "#/$defs/CompactContext"
+        },
+        {
+          "$ref": "#/$defs/StopContext"
+        },
+        {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      ],
+      "description": "Event-specific context data",
+      "title": "Context"
+    },
+    "metadata": {
+      "$ref": "#/$defs/EventMetadata",
+      "description": "Event metadata and provenance"
+    },
+    "cwd": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Current working directory",
+      "title": "Cwd"
+    }
+  },
+  "required": [
+    "event_type",
+    "timestamp",
+    "session_id",
+    "provider",
+    "context",
+    "metadata"
+  ],
+  "title": "Analytics Event Schema",
+  "type": "object",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
