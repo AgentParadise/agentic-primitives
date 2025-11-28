@@ -197,7 +197,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --all-extras
         working-directory: ./services/analytics
 
       - name: Check formatting (ruff)
@@ -246,7 +246,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --all-extras
         working-directory: ./lib/python/agentic_logging
 
       - name: Check formatting (ruff)
@@ -320,7 +320,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --all-extras
         working-directory: ./tests/unit/claude/hooks
 
       - name: Run unit tests
