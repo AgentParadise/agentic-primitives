@@ -370,7 +370,7 @@ jobs:
         working-directory: ./cli
 
       - name: Validate primitives repository
-        run: ../cli/target/release/agentic-p validate
+        run: ../cli/target/release/agentic-p validate .
         working-directory: ./primitives
 
       - name: List primitives (smoke test)
