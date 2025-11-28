@@ -1,15 +1,24 @@
 """API response schemas."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class EventResponse(BaseModel):
     """Single event in API response."""
 
+    model_config = ConfigDict(ser_json_timedelta="iso8601")
+
     id: str
     timestamp: datetime
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, dt: datetime) -> str:
+        """Serialize timestamp with UTC timezone for JS compatibility."""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
     event_type: str
     handler: str
     hook_event: str | None = None

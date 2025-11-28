@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Play, Loader2, CheckCircle, XCircle, Terminal, FileText, Zap } from 'lucide-react'
 import { api } from '../api/client'
 import type { EventResponse } from '../api/types'
@@ -19,7 +19,6 @@ export default function AgentRunner() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [events, setEvents] = useState<EventResponse[]>([])
   const [error, setError] = useState<string | null>(null)
-  const eventsEndRef = useRef<HTMLDivElement>(null)
 
   // Load available models
   useEffect(() => {
@@ -42,7 +41,7 @@ export default function AgentRunner() {
     const pollEvents = async () => {
       try {
         const sessionEvents = await api.getSessionEvents(sessionId)
-        setEvents(sessionEvents.reverse()) // Show newest at bottom
+        setEvents(sessionEvents) // Newest at top (descending order from backend)
 
         // Check if session completed
         const statusRes = await fetch(`/api/agent/status/${sessionId}`)
@@ -65,10 +64,7 @@ export default function AgentRunner() {
     return () => clearInterval(interval)
   }, [status, sessionId])
 
-  // Auto-scroll to bottom when new events arrive
-  useEffect(() => {
-    eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [events])
+  // No auto-scroll needed - newest events appear at top
 
   const handleRun = async () => {
     if (!prompt.trim()) return
@@ -249,8 +245,6 @@ export default function AgentRunner() {
             {events.map((event) => (
               <EventItem key={event.id} event={event} />
             ))}
-
-            <div ref={eventsEndRef} />
           </div>
 
           {/* Summary */}

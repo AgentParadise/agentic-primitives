@@ -83,7 +83,8 @@ export default function SessionDetail() {
       {/* Event Timeline */}
       <div className="panel p-6">
         <h3 className="text-sm font-medium text-gray-400 mb-4">Event Timeline</h3>
-        <EventFeed events={session.events} loading={false} />
+        {/* Reverse events for chronological order (oldest first) */}
+        <EventFeed events={[...session.events].reverse()} loading={false} />
       </div>
     </div>
   )
