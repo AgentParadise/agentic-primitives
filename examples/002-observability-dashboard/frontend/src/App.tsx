@@ -1,8 +1,9 @@
 import { Routes, Route } from 'react-router-dom'
-import { Activity, LayoutDashboard, List } from 'lucide-react'
+import { LayoutDashboard, List, Zap } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import Sessions from './pages/Sessions'
 import SessionDetail from './pages/SessionDetail'
+import AgentRunner from './pages/AgentRunner'
 import { useHealth } from './hooks/useApi'
 
 function Sidebar() {
@@ -18,6 +19,7 @@ function Sidebar() {
       <nav className="flex-1 p-4 space-y-1">
         <NavLink href="/" icon={<LayoutDashboard size={18} />} label="Dashboard" />
         <NavLink href="/sessions" icon={<List size={18} />} label="Sessions" />
+        <NavLink href="/run" icon={<Zap size={18} />} label="Run Agent" />
       </nav>
 
       {/* Status */}
@@ -72,6 +74,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/sessions/:sessionId" element={<SessionDetail />} />
+          <Route path="/run" element={<AgentRunner />} />
         </Routes>
       </main>
     </div>

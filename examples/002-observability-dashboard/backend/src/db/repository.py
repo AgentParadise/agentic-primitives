@@ -113,7 +113,7 @@ class SQLiteEventRepository:
 
         # Update aggregates
         session.total_events += 1
-        if event.event_type == "tool_execution":
+        if event.event_type in ("tool_call", "tool_execution", "PreToolUse", "PostToolUse"):
             session.tool_calls += 1
         if getattr(event, "decision", None) == "block":
             session.blocked_calls += 1
@@ -154,6 +154,7 @@ class SQLiteEventRepository:
                 success=e.success,
                 estimated_tokens=e.estimated_tokens,
                 estimated_cost_usd=e.estimated_cost_usd,
+                input_preview=e.input_preview,
             )
             for e in events
         ]
@@ -230,7 +231,9 @@ class SQLiteEventRepository:
 
         # Tool calls and blocks
         total_tool_calls = await self.session.scalar(
-            select(func.count(Event.id)).where(Event.event_type == "tool_execution")
+            select(func.count(Event.id)).where(
+                Event.event_type.in_(["tool_call", "tool_execution", "PreToolUse", "PostToolUse"])
+            )
         )
         total_blocked = await self.session.scalar(
             select(func.count(Event.id)).where(Event.decision == "block")

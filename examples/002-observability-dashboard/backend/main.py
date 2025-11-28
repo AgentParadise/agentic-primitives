@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import events_router, metrics_router, sessions_router
+from src.api import agent_router, events_router, metrics_router, sessions_router
 from src.config import settings
 from src.db.database import init_db
 from src.services import EventImporter
@@ -56,6 +56,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(agent_router)
 app.include_router(events_router)
 app.include_router(sessions_router)
 app.include_router(metrics_router)

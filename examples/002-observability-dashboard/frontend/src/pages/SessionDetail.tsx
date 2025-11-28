@@ -59,7 +59,7 @@ export default function SessionDetail() {
         <StatCard
           icon={<DollarSign size={18} />}
           label="Cost"
-          value={`$${session.total_cost_usd.toFixed(4)}`}
+          value={formatCost(session.total_cost_usd)}
         />
       </div>
 
@@ -105,5 +105,11 @@ function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ${Math.round(seconds % 60)}s`
   return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`
+}
+
+function formatCost(cost: number): string {
+  if (cost === 0) return '$0.00'
+  if (cost > 0 && cost < 0.01) return '<$0.01'
+  return `$${cost.toFixed(4)}`
 }
 

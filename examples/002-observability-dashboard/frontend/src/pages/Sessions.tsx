@@ -83,7 +83,7 @@ function SessionRow({ session }: { session: SessionSummary }) {
       </td>
       <td className="p-4 font-mono text-sm">{session.total_tokens.toLocaleString()}</td>
       <td className="p-4 font-mono text-sm text-signal-amber">
-        ${session.total_cost_usd.toFixed(4)}
+        {formatCost(session.total_cost_usd)}
       </td>
     </tr>
   )
@@ -93,5 +93,11 @@ function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`
   return `${(seconds / 3600).toFixed(1)}h`
+}
+
+function formatCost(cost: number): string {
+  if (cost === 0) return '$0.00'
+  if (cost > 0 && cost < 0.01) return '<$0.01'
+  return `$${cost.toFixed(4)}`
 }
 

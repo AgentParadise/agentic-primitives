@@ -26,6 +26,10 @@ export const api = {
     return fetchJSON<EventResponse[]>(`/events${query ? `?${query}` : ''}`)
   },
 
+  getSessionEvents: (sessionId: string) => {
+    return fetchJSON<EventResponse[]>(`/events?session_id=${sessionId}`)
+  },
+
   // Sessions
   getSessions: (limit?: number) => {
     const query = limit ? `?limit=${limit}` : ''

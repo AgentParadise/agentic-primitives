@@ -52,6 +52,12 @@ function EventRow({ event }: { event: EventResponse }) {
             </code>
           )}
         </div>
+        {/* Show input preview (file path, command, etc.) */}
+        {event.input_preview && (
+          <p className="text-xs text-signal-cyan/80 mt-1 truncate font-mono">
+            {event.input_preview}
+          </p>
+        )}
         {event.reason && (
           <p className="text-xs text-gray-500 mt-1 truncate">{event.reason}</p>
         )}
@@ -75,8 +81,9 @@ function getEventStyle(event: EventResponse): {
     }
   }
 
-  // Tool execution
-  if (event.event_type === 'tool_execution') {
+  // Tool execution / PostToolUse
+  if (event.event_type === 'tool_execution' || event.event_type === 'PostToolUse') {
+    const toolIcon = getToolIcon(event.tool_name)
     if (event.success === false) {
       return {
         icon: <AlertTriangle size={18} />,
@@ -85,14 +92,14 @@ function getEventStyle(event: EventResponse): {
       }
     }
     return {
-      icon: <CheckCircle size={18} />,
+      icon: toolIcon,
       color: 'text-signal-emerald',
       label: 'Tool Executed',
     }
   }
 
-  // Hook decision (allow)
-  if (event.event_type === 'hook_decision') {
+  // Hook decision / PreToolUse (allow)
+  if (event.event_type === 'hook_decision' || event.event_type === 'PreToolUse') {
     const toolIcon = getToolIcon(event.tool_name)
     return {
       icon: toolIcon,
@@ -101,8 +108,18 @@ function getEventStyle(event: EventResponse): {
     }
   }
 
+  // Tool call (from Claude Agent SDK)
+  if (event.event_type === 'tool_call') {
+    const toolIcon = getToolIcon(event.tool_name)
+    return {
+      icon: toolIcon,
+      color: 'text-signal-cyan',
+      label: 'Tool Call',
+    }
+  }
+
   // User prompt
-  if (event.handler === 'user-prompt') {
+  if (event.handler === 'user-prompt' || event.event_type === 'UserPromptSubmit') {
     return {
       icon: <MessageSquare size={18} />,
       color: 'text-signal-violet',
@@ -110,11 +127,27 @@ function getEventStyle(event: EventResponse): {
     }
   }
 
-  // Default
+  // Session events
+  if (event.event_type === 'agent_session_start') {
+    return {
+      icon: <CheckCircle size={18} />,
+      color: 'text-signal-emerald',
+      label: 'Session Started',
+    }
+  }
+  if (event.event_type === 'agent_session_end') {
+    return {
+      icon: <CheckCircle size={18} />,
+      color: 'text-gray-400',
+      label: 'Session Ended',
+    }
+  }
+
+  // Default - show the actual event type for debugging
   return {
     icon: <CheckCircle size={18} />,
     color: 'text-gray-500',
-    label: event.event_type,
+    label: event.event_type || 'Unknown',
   }
 }
 

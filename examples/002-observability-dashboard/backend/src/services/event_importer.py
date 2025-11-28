@@ -98,6 +98,40 @@ class EventImporter:
             if imported_count > 0:
                 logger.info(f"Imported {imported_count} events")
 
+    def _extract_input_preview(self, data: dict) -> str | None:
+        """Extract meaningful preview from tool input data."""
+        if not data:
+            return None
+
+        # For Write/Read tools - show file path
+        if "file_path" in data:
+            return f"file: {data['file_path']}"
+        if "path" in data:
+            return f"path: {data['path']}"
+
+        # For Bash - show command
+        if "command" in data:
+            cmd = data["command"]
+            return f"$ {cmd[:100]}..." if len(cmd) > 100 else f"$ {cmd}"
+
+        # For search tools
+        if "query" in data:
+            return f"query: {data['query'][:50]}"
+
+        # For any tool_input dict
+        if "tool_input" in data:
+            tool_input = data["tool_input"]
+            if isinstance(tool_input, dict):
+                if "command" in tool_input:
+                    cmd = tool_input["command"]
+                    return f"$ {cmd[:100]}..." if len(cmd) > 100 else f"$ {cmd}"
+                if "file_path" in tool_input:
+                    return f"file: {tool_input['file_path']}"
+                if "path" in tool_input:
+                    return f"path: {tool_input['path']}"
+
+        return None
+
     def _parse_event(self, raw: dict) -> AgentEvent | None:
         """Parse raw JSON into AgentEvent."""
         try:
@@ -113,18 +147,46 @@ class EventImporter:
             elif timestamp is None:
                 timestamp = datetime.now()
 
+            # Extract nested data fields (from Claude Agent SDK events)
+            data = raw.get("data", {})
+            event_type = raw.get("event_type") or raw.get("hook_event") or "unknown"
+
+            # Extract tool_name from either top-level or nested data
+            tool_name = raw.get("tool_name") or data.get("tool_name")
+
+            # Extract tool input preview (file path, command, etc.)
+            input_preview = self._extract_input_preview(data)
+
+            # For session events, show model info as input_preview
+            if event_type == "agent_session_start" and data.get("model"):
+                model_name = data.get("model_display_name") or data.get("model")
+                input_preview = f"model: {model_name}"
+            elif event_type == "agent_session_end" and data.get("total_tokens"):
+                tokens = data.get("total_tokens", 0)
+                cost = data.get("total_cost_usd", 0)
+                input_preview = f"tokens: {tokens:,} | cost: ${cost:.4f}"
+
+            # Extract tokens and cost from nested data (agent_session_end, agent_interaction)
+            estimated_tokens = (
+                raw.get("estimated_tokens")
+                or data.get("total_tokens")
+                or data.get("input_tokens", 0) + data.get("output_tokens", 0)
+                or None
+            )
+            estimated_cost_usd = raw.get("estimated_cost_usd") or data.get("total_cost_usd")
+
             return AgentEvent(
                 timestamp=timestamp,
-                event_type=raw.get("event_type", "unknown"),
+                event_type=event_type,
                 handler=raw.get("handler", "unknown"),
                 hook_event=raw.get("hook_event"),
-                tool_name=raw.get("tool_name"),
+                tool_name=tool_name,
                 session_id=raw.get("session_id"),
                 tool_use_id=raw.get("tool_use_id"),
                 audit=audit,
-                # TODO: Add token/cost estimation based on model pricing
-                estimated_tokens=raw.get("estimated_tokens"),
-                estimated_cost_usd=raw.get("estimated_cost_usd"),
+                estimated_tokens=estimated_tokens if estimated_tokens else None,
+                estimated_cost_usd=estimated_cost_usd,
+                input_preview=input_preview,
             )
         except Exception as e:
             logger.warning(f"Failed to parse event: {e}")

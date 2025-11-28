@@ -45,9 +45,9 @@ export default function Dashboard() {
         />
         <MetricCard
           label="Total Cost"
-          value={`$${(metrics?.total_cost_usd ?? 0).toFixed(2)}`}
+          value={formatCost(metrics?.total_cost_usd ?? 0)}
           icon={<DollarSign className="text-signal-violet" size={20} />}
-          trend={`$${(metrics?.cost_last_24h ?? 0).toFixed(2)} last 24h`}
+          trend={`${formatCost(metrics?.cost_last_24h ?? 0)} last 24h`}
           glowColor="violet"
           loading={metricsLoading}
         />
@@ -81,5 +81,11 @@ function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return n.toString()
+}
+
+function formatCost(cost: number): string {
+  if (cost === 0) return '$0.00'
+  if (cost > 0 && cost < 0.01) return '<$0.01'
+  return `$${cost.toFixed(2)}`
 }
 

@@ -30,6 +30,7 @@ class AgentEvent(BaseModel):
     id: str | None = None  # Generated UUID
     estimated_tokens: int | None = None
     estimated_cost_usd: float | None = None
+    input_preview: str | None = None  # Tool input details (file path, command, etc.)
 
 
 class HookDecisionEvent(AgentEvent):

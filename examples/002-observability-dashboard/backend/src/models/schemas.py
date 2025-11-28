@@ -20,6 +20,7 @@ class EventResponse(BaseModel):
     success: bool | None = None
     estimated_tokens: int | None = None
     estimated_cost_usd: float | None = None
+    input_preview: str | None = None  # File path, command, etc.
 
 
 class SessionSummary(BaseModel):

@@ -31,8 +31,16 @@ PII_PATTERNS: list[tuple[str, str, str]] = [
     # IP addresses
     (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "IP address", "low"),
     # Dates of birth (various formats)
-    (r"\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:19|20)\d{2}\b", "date (MM/DD/YYYY)", "low"),
-    (r"\b(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])\b", "date (YYYY-MM-DD)", "low"),
+    (
+        r"\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:19|20)\d{2}\b",
+        "date (MM/DD/YYYY)",
+        "low",
+    ),
+    (
+        r"\b(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])\b",
+        "date (YYYY-MM-DD)",
+        "low",
+    ),
     # Passport numbers (basic patterns)
     (r"\b[A-Z]{1,2}\d{6,9}\b", "potential passport number", "medium"),
     # Driver's license (very generic, state-dependent)
@@ -50,9 +58,7 @@ CONTEXT_PATTERNS: list[tuple[str, str]] = [
 ]
 
 
-def validate(
-    tool_input: dict[str, Any], context: dict[str, Any] | None = None
-) -> dict[str, Any]:
+def validate(tool_input: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Validate a prompt for PII patterns.
 
@@ -140,4 +146,3 @@ if __name__ == "__main__":
         print(json.dumps(result))
     else:
         print(json.dumps({"safe": True, "message": "No input provided"}))
-

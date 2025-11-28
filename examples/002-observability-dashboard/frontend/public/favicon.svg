@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00D9FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7B61FF;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Outer ring -->
+  <circle cx="50" cy="50" r="45" fill="none" stroke="url(#grad)" stroke-width="4"/>
+  <!-- Inner eye/observatory -->
+  <circle cx="50" cy="50" r="20" fill="url(#grad)" opacity="0.9"/>
+  <!-- Pupil -->
+  <circle cx="50" cy="50" r="8" fill="#0A0A0F"/>
+  <!-- Highlight -->
+  <circle cx="44" cy="44" r="4" fill="#fff" opacity="0.6"/>
+  <!-- Orbit dots -->
+  <circle cx="50" cy="12" r="4" fill="#00D9FF"/>
+  <circle cx="88" cy="50" r="4" fill="#7B61FF"/>
+  <circle cx="50" cy="88" r="4" fill="#00D9FF"/>
+  <circle cx="12" cy="50" r="4" fill="#7B61FF"/>
+</svg>
+

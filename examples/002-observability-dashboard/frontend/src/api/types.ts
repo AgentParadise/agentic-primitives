@@ -13,6 +13,7 @@ export interface EventResponse {
   success: boolean | null
   estimated_tokens: number | null
   estimated_cost_usd: number | null
+  input_preview: string | null  // File path, command, etc.
 }
 
 export interface SessionSummary {
