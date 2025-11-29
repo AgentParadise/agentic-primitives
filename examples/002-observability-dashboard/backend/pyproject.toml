@@ -13,7 +13,11 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.0",
     "watchfiles>=1.0.0",
     "pyyaml>=6.0.0",
+    "agentic-analytics",
 ]
+
+[tool.uv.sources]
+agentic-analytics = { path = "../../../lib/python/agentic_analytics" }
 
 [project.optional-dependencies]
 dev = [

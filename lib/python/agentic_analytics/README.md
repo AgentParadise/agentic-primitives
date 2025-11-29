@@ -1,10 +1,14 @@
 # Agentic Analytics
 
-Simple, DI-friendly analytics client for agentic hooks.
+Canonical event schemas and emission utilities for AI agent observability.
 
 ## Overview
 
-This package provides a lightweight client that hooks use to log their decisions to a central audit trail. Every hook logs its own decision, creating a complete audit log of all hook activity.
+This package provides:
+- **Canonical Event Schemas**: `SessionStarted`, `TokensUsed`, `ToolCalled`, `SessionEnded`
+- **Event Emitter**: Unified interface for writing events to JSONL files
+- **Hook Decision Logging**: For safety/observability hooks
+- **Validation Utilities**: For analyzing event streams
 
 ## Installation
 
@@ -16,7 +20,38 @@ uv add agentic-analytics
 pip install agentic-analytics
 ```
 
-## Quick Start
+## Quick Start - Session Metrics
+
+```python
+from agentic_analytics import EventEmitter, SessionContext
+
+# Create emitter (uses default file backend)
+emitter = EventEmitter()
+
+# Use context manager for automatic session start/end
+with emitter.session(
+    model="claude-sonnet-4-5-20250929",
+    provider="anthropic",
+    model_display_name="Claude Sonnet",
+) as session:
+    # Record token usage
+    session.tokens_used(
+        input_tokens=100,
+        output_tokens=50,
+        duration_ms=500,
+    )
+    
+    # Record tool calls
+    session.tool_called(
+        tool_name="Write",
+        tool_input={"file_path": "app.py"},
+        duration_ms=10,
+    )
+
+# Events are automatically written to .agentic/analytics/events.jsonl
+```
+
+## Quick Start - Hook Decisions
 
 ```python
 from agentic_analytics import AnalyticsClient, HookDecision
@@ -36,95 +71,134 @@ analytics.log(HookDecision(
 ))
 ```
 
+## Canonical Event Schemas
+
+### SessionStarted
+
+Emitted when an agent session begins.
+
+```python
+from agentic_analytics import SessionStarted
+
+event = SessionStarted(
+    session_id="sess-123",
+    model="claude-sonnet-4-5-20250929",
+    provider="anthropic",
+    model_display_name="Claude Sonnet",  # Optional
+    pricing={                             # Optional
+        "input_per_1m_tokens": 3.0,
+        "output_per_1m_tokens": 15.0,
+    },
+)
+```
+
+### TokensUsed
+
+Emitted when tokens are consumed in an interaction.
+
+```python
+from agentic_analytics import TokensUsed
+
+event = TokensUsed(
+    session_id="sess-123",
+    input_tokens=100,
+    output_tokens=50,
+    duration_ms=500,
+    prompt_preview="Write a hello world...",
+    response_preview="Here's the code...",
+)
+```
+
+### ToolCalled
+
+Emitted when a tool is invoked.
+
+```python
+from agentic_analytics import ToolCalled
+
+event = ToolCalled(
+    session_id="sess-123",
+    tool_name="Write",
+    tool_input={"file_path": "app.py", "content": "..."},
+    tool_use_id="toolu_01ABC123",  # Correlation key
+    duration_ms=10,
+    blocked=False,
+)
+```
+
+### SessionEnded
+
+Emitted when a session completes.
+
+```python
+from agentic_analytics import SessionEnded
+
+event = SessionEnded(
+    session_id="sess-123",
+    start_time=datetime(2025, 11, 28, 12, 0),
+    total_input_tokens=1000,
+    total_output_tokens=500,
+    total_cost_usd=0.0525,
+    interaction_count=5,
+    tool_call_count=10,
+    tool_calls_blocked=1,
+    total_duration_ms=30000,
+    model="claude-sonnet-4-5-20250929",
+    exit_reason="completed",  # or "interrupted", "error"
+)
+```
+
 ## Configuration
 
 ### File Backend (Default)
 
 ```python
 from pathlib import Path
-from agentic_analytics import AnalyticsClient
+from agentic_analytics import EventEmitter
 
 # Default path: .agentic/analytics/events.jsonl
-analytics = AnalyticsClient()
+emitter = EventEmitter()
 
 # Custom path
-analytics = AnalyticsClient(output_path=Path("./logs/events.jsonl"))
-```
-
-### API Backend (Production)
-
-```python
-from agentic_analytics import AnalyticsClient
-
-analytics = AnalyticsClient(
-    api_endpoint="https://analytics.company.com/events",
-    api_key="your-api-key",
-)
+emitter = EventEmitter(output_path=Path("./logs/events.jsonl"))
 ```
 
 ### Environment Variables
 
 ```bash
-export ANALYTICS_OUTPUT_PATH="./logs/events.jsonl"
-export ANALYTICS_API_ENDPOINT="https://analytics.company.com/events"
-export ANALYTICS_API_KEY="your-api-key"
-```
-
-```python
-from agentic_analytics import AnalyticsClient
-
-# Load from environment
-analytics = AnalyticsClient.from_env()
-```
-
-## HookDecision Model
-
-```python
-from agentic_analytics import HookDecision
-
-decision = HookDecision(
-    # Required
-    hook_id="bash-validator",       # Unique hook identifier
-    event_type="PreToolUse",        # Hook event type
-    decision="block",               # "allow", "block", or "warn"
-    session_id="sess-123",          # Session ID from agent
-    
-    # Optional
-    provider="claude",              # Agent provider (default: "claude")
-    tool_name="Bash",               # Tool being used
-    reason="Dangerous command",     # Reason for decision
-    metadata={"key": "value"},      # Additional context
-)
+# Customize output path (default: .agentic/analytics/events.jsonl)
+export AGENTIC_EVENTS_PATH="./logs/events.jsonl"
 ```
 
 ## Output Format
 
-Events are written as JSON Lines (one JSON object per line):
+Events are written as JSON Lines (one JSON object per line). Event data is nested in a `data` field:
 
 ```json
-{"timestamp": "2025-11-26T10:30:00.000000+00:00", "hook_id": "bash-validator", "event_type": "PreToolUse", "decision": "block", "session_id": "sess-123", "provider": "claude", "tool_name": "Bash", "reason": "Dangerous command", "metadata": {"command": "rm -rf /"}}
-```
+{"timestamp": "2025-11-28T12:00:00+00:00", "event_type": "session.started", "session_id": "sess-123", "data": {"model": "claude-sonnet-4-5-20250929", "provider": "anthropic"}}
+{"timestamp": "2025-11-28T12:00:01+00:00", "event_type": "tokens.used", "session_id": "sess-123", "data": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150}}
+{"timestamp": "2025-11-28T12:00:02+00:00", "event_type": "tool.called", "session_id": "sess-123", "data": {"tool_name": "Write", "tool_input": {"file_path": "app.py"}}}
+{"timestamp": "2025-11-28T12:00:03+00:00", "event_type": "session.ended", "session_id": "sess-123", "data": {"total_cost_usd": 0.0525}}
 
 ## Design Principles
 
-1. **Simple**: One class, one model, zero config needed
-2. **Fast**: Synchronous file writes are <1ms
-3. **Fail-safe**: Never blocks hook execution on errors
-4. **DI-friendly**: Easy to inject different backends for testing
+1. **Canonical**: Single source of truth for event schemas
+2. **Simple**: Dataclasses for events, context manager for sessions
+3. **Fast**: Synchronous file writes are <1ms
+4. **Fail-safe**: Never blocks agent execution on errors
+5. **Provider-agnostic**: Works with any AI agent provider
 
 ## Multi-Provider Support
 
-The client is provider-agnostic. Use with any agent:
-
 ```python
-# Claude Code
-analytics.log(HookDecision(provider="claude", ...))
+# Anthropic Claude
+emitter.emit(SessionStarted(provider="anthropic", model="claude-sonnet-4-5-20250929", ...))
 
-# OpenAI (future)
-analytics.log(HookDecision(provider="openai", ...))
+# OpenAI GPT
+emitter.emit(SessionStarted(provider="openai", model="gpt-4o", ...))
 
-# Cursor (future)
-analytics.log(HookDecision(provider="cursor", ...))
+# Google Gemini
+emitter.emit(SessionStarted(provider="google", model="gemini-2.0-flash", ...))
 ```
 
 ## Development
@@ -148,4 +222,3 @@ uv run ruff check agentic_analytics/
 ## License
 
 MIT
-

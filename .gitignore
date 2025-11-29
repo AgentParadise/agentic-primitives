@@ -40,7 +40,8 @@ yarn-error.log*
 .pnp.*
 
 # IDEs and editors
-# .vscode/
+# NOTE: .vscode/ is TRACKED (branding/shared settings for contributors)
+# NOTE: .claude/ is TRACKED (local agent commands and configuration)
 .idea/
 *.swp
 *.swo
@@ -95,6 +96,7 @@ secrets/
 # Cache directories
 .cache/
 .parcel-cache/
+.vite/
 
 # Lock files for examples/tests (keep root lock files)
 cli/Cargo.lock

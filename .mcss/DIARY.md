@@ -2,6 +2,77 @@
 
 ---
 
+## 2025-11-28 — Strategic Planning Session
+
+### Objectives
+1. Define canonical event schemas in `agentic_analytics` library
+2. Plan the `agentic-engineering-system` repo architecture
+
+### Context
+User's 2026 vision: **IDE-less agentic engineering system** where AI agents perform all coding work. This enables:
+- 100% observability (all actions are agent actions)
+- Explicit rework detection (no hidden human edits)
+- DORA metrics + Agent KPIs tracking
+
+### Research Findings
+Events are currently scattered across:
+| Location | Events Defined |
+|----------|----------------|
+| `examples/001/src/metrics.py` | `ToolCallMetric`, `InteractionMetrics`, `SessionMetrics` |
+| `examples/002/backend/src/models/events.py` | `AgentEvent`, `HookDecisionEvent`, `ToolExecutionEvent`, `SessionEvent` |
+| `services/analytics/src/models/events.py` | `NormalizedEvent`, various context models |
+| `lib/python/agentic_analytics/models.py` | `HookDecision` only |
+
+### Problem
+- No canonical event schemas in the library
+- Examples define their own events → duplication
+- New consumers must copy definitions
+- Schema drift between examples
+
+### Solution: Two Project Plans
+
+#### Plan 1: Event Schema Consolidation (agentic-primitives)
+`PROJECT-PLAN_20251128_event-schema-consolidation.md`
+- Define `SessionStarted`, `TokensUsed`, `ToolCalled`, `SessionEnded` in library
+- Extend `HookDecision` with `AuditContext`
+- Refactor Examples 001 and 002 to use library
+- 4 milestones, ~5-8 hours total
+
+#### Plan 2: Agentic Engineering System (new repo)
+`PROJECT-PLAN_20251128_agentic-engineering-system.md`
+
+**Architecture:**
+- Uses `event-sourcing-platform` (Rust event store + TypeScript SDK)
+- Uses `agentic-primitives` (canonical event schemas)
+
+**Domain Aggregates:**
+- `AgentSessionAggregate` - Tracks agent sessions
+- `MilestoneAggregate` - Tracks logical work units
+- `WorkflowAggregate` - Tracks entire projects
+
+**Event Collectors:**
+- Agent events (from `.agentic/analytics/events.jsonl`)
+- Git events (from git hooks)
+- CI events (from GitHub Actions webhooks)
+
+**Projections:**
+- DORA metrics (Deployment Frequency, Lead Time, Change Failure Rate, MTTR)
+- Agent KPIs (Cognitive Efficiency, Semantic Durability, Rework Token Ratio, etc.)
+- Milestone performance (Token Estimation Accuracy, Completion Time)
+
+**Timeline:** 6-week phased implementation
+
+### Pre-Execution Steps
+Before starting the local refactor:
+1. Merge `feat/examples-002-observability` to `main`
+2. Create new branch `feat/event-schema-consolidation`
+3. Enter EXECUTE mode
+
+### Next Action
+Approve merge and branch creation, then execute Plan 1.
+
+---
+
 ## 2025-11-27 (Evening) — Full Build System ✅ COMPLETE
 
 ### Objective
@@ -74,11 +145,6 @@ Added fields to all handler analytics:
 - ✅ 9 E2E hook tests passing
 - ✅ All analytics events include new fields
 
-### Ready To Commit
-```
-feat(hooks): add audit trail and security scenarios
-```
-
 ---
 
 ## 2025-11-27 (Morning) — Atomic Hook Architecture ✅ COMPLETE
@@ -105,48 +171,11 @@ Hooks weren't writing to `.agentic/analytics/events.jsonl` due to Python import 
 - `security/file.py` - Blocks writes to sensitive files
 - `prompt/pii.py` - Detects SSN, credit cards, etc.
 
-### Milestones Completed
-1. ✅ Updated ADR-014 with new architecture
-2. ✅ Created handler templates
-3. ✅ Created atomic validators
-4. ✅ Updated Rust build system (removed wrapper generation)
-5. ✅ Restructured primitives/v1/hooks/
-6. ✅ Updated examples 000 and 001
-7. ✅ Updated documentation
-8. ✅ Fixed failing tests
-9. ✅ Validated end-to-end
-
-### Key Changes
-- **Deleted**: Old security/, analytics/, test/, core/ directories
-- **Deleted**: hook_wrapper.py.template, hook_wrapper_with_config.py.template
-- **Created**: primitives/v1/hooks/handlers/ and primitives/v1/hooks/validators/
-- **Updated**: cli/src/providers/claude.rs (simplified, removed wrapper generation)
-- **Updated**: docs/architecture/hooks-system-overview.md
-- **Updated**: docs/hooks/README.md
-- **Fixed**: cli/tests/test_claude_transformer.rs
-
-### Test Results
-All hooks working correctly:
-- ✅ `ls -la` → allow
-- ✅ `rm -rf /` → block (dangerous command)
-- ✅ `/etc/passwd` → block (sensitive file)
-- ✅ `.env` → block (environment file)
-- ✅ SSN in prompt → block (high-risk PII)
-- ✅ Analytics logged to `.agentic/analytics/events.jsonl`
-
-### Ready To Commit
-Changes are ready for commit with message:
-```
-feat(hooks): implement atomic hook architecture
-
-Replace wrapper+impl pattern with handlers + validators:
-- 3 handlers: pre-tool-use, post-tool-use, user-prompt
-- 3 validators: bash, file, pii
-- Inline analytics (no package dependencies)
-- Updated build system, docs, tests
-
-BREAKING CHANGE: Hook structure changed from wrapper+impl to handlers+validators
-```
+### Key Principles
+- **No external package dependencies** - stdlib only
+- **Inline analytics** - 6 lines per handler, not a package import
+- **Pure validators** - input → validation → output, nothing else
+- **Composable** - handlers mix-and-match validators via TOOL_VALIDATORS map
 
 ---
 
