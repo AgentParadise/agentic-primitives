@@ -361,6 +361,37 @@ agentic-p version deprecate <primitive-path> <version>
 agentic-p validate <primitive-path>  # Checks hashes
 ```
 
+### Per-Project Configuration
+
+Consumer projects can pin specific versions using `agentic.yaml`:
+
+```bash
+# Generate config template (all options commented like tsconfig)
+agentic-p config init
+
+# Show current configuration
+agentic-p config show
+
+# List available primitives for pinning
+agentic-p config list
+```
+
+Example `agentic.yaml` (only specify overrides):
+
+```yaml
+version: "1.0"
+
+# Override versions like npm resolutions
+primitives:
+  qa/review: 1              # Pin to v1
+  qa/pre-commit-qa: latest  # Always use default_version
+  core/prompt-generator:
+    enabled: false          # Exclude from build
+
+exclude:
+  - meta-prompts/*          # Exclude entire category
+```
+
 ### Migration Commands (Future)
 
 ```bash

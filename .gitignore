@@ -115,3 +115,9 @@ flamegraph.svg
 perf.data
 perf.data.old
 
+
+# Reference materials (not for commit)
+docs/_reference/agentic-prompts/
+docs/_reference/agentic-tools/
+docs/_reference/tac-12_multi-agent-orchestration/
+docs/_reference/*.md

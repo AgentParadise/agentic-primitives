@@ -1,0 +1,27 @@
+id: create-doc-sync
+kind: meta-prompt
+category: core
+domain: documentation
+summary: "Generates a repo-specific doc-sync command that reviews commits and updates documentation"
+tags:
+  - documentation
+  - meta-prompt
+  - automation
+  - maintenance
+defaults:
+  preferred_models:
+    - sonnet
+context_usage:
+  as_user: true
+tools:
+  - Read
+  - Grep
+  - Glob
+versions:
+  - version: 1
+    file: create-doc-sync.prompt.v1.md
+    hash: "blake3:49a00021d31245f5deb3244692d414215576bce2d8b06880a2e7f2ae511b2340"
+    status: active
+    created: "2025-11-29"
+    notes: "Initial version - generates doc-sync commands for new repos"
+default_version: 1

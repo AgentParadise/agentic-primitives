@@ -1,0 +1,137 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://agentic-primitives.dev/schemas/v1/project-config.schema.json",
+    "title": "Agentic Project Configuration",
+    "description": "Per-project configuration for agentic-primitives, allowing version overrides and customization",
+    "type": "object",
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "JSON Schema reference for IDE support"
+        },
+        "version": {
+            "type": "string",
+            "description": "Config file format version",
+            "default": "1.0"
+        },
+        "provider": {
+            "type": "string",
+            "description": "Default provider for build/install operations",
+            "enum": [
+                "claude",
+                "openai",
+                "cursor"
+            ],
+            "default": "claude"
+        },
+        "primitives": {
+            "type": "object",
+            "description": "Version overrides for specific primitives (only add what you want to override)",
+            "additionalProperties": {
+                "oneOf": [
+                    {
+                        "type": "integer",
+                        "description": "Pin to specific version number",
+                        "minimum": 1
+                    },
+                    {
+                        "type": "string",
+                        "description": "Version specifier",
+                        "enum": [
+                            "latest",
+                            "active"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "version": {
+                                "oneOf": [
+                                    {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    {
+                                        "type": "string",
+                                        "enum": [
+                                            "latest",
+                                            "active"
+                                        ]
+                                    }
+                                ]
+                            },
+                            "enabled": {
+                                "type": "boolean",
+                                "description": "Whether to include this primitive in build",
+                                "default": true
+                            }
+                        }
+                    }
+                ]
+            },
+            "examples": [
+                {
+                    "qa/review": 1,
+                    "qa/pre-commit-qa": "latest",
+                    "core/create-prime": {
+                        "version": 2,
+                        "enabled": true
+                    }
+                }
+            ]
+        },
+        "exclude": {
+            "type": "array",
+            "description": "Primitives to exclude from build",
+            "items": {
+                "type": "string"
+            },
+            "examples": [
+                [
+                    "meta-prompts/*",
+                    "qa/deprecated-check"
+                ]
+            ]
+        },
+        "include": {
+            "type": "array",
+            "description": "Only include these primitives (overrides default inclusion)",
+            "items": {
+                "type": "string"
+            }
+        },
+        "hooks": {
+            "type": "object",
+            "description": "Hook configuration overrides",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Enable/disable all hooks",
+                    "default": true
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Default hook timeout in seconds",
+                    "default": 60
+                }
+            }
+        },
+        "output": {
+            "type": "object",
+            "description": "Build output configuration",
+            "properties": {
+                "dir": {
+                    "type": "string",
+                    "description": "Custom build output directory",
+                    "default": "./build"
+                },
+                "clean": {
+                    "type": "boolean",
+                    "description": "Clean output before build",
+                    "default": true
+                }
+            }
+        }
+    },
+    "additionalProperties": false
+}

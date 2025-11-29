@@ -1,12 +1,14 @@
 //! Build command - transforms primitives into provider-specific outputs
 
 use anyhow::{bail, Context, Result};
+use chrono::Utc;
 use colored::Colorize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::config::PrimitivesConfig;
+use crate::manifest::{AgenticManifest, ManifestPrimitive, MANIFEST_FILENAME};
 use crate::providers::{ClaudeTransformer, OpenAITransformer, ProviderTransformer};
 
 /// Arguments for the build command
@@ -29,6 +31,7 @@ pub struct BuildResult {
     pub primitives_built: usize,
     pub files_generated: Vec<PathBuf>,
     pub errors: Vec<String>,
+    pub manifest: AgenticManifest,
 }
 
 /// Get a transformer for the specified provider
@@ -165,9 +168,14 @@ fn transform_primitives(
     transformer: &dyn ProviderTransformer,
     output_dir: &Path,
     verbose: bool,
-) -> Result<(Vec<PathBuf>, Vec<String>)> {
+) -> Result<(Vec<PathBuf>, Vec<String>, Vec<ManifestPrimitive>)> {
+    // Canonicalize output_dir for consistent path comparison
+    let output_dir_canonical = output_dir
+        .canonicalize()
+        .unwrap_or_else(|_| output_dir.to_path_buf());
     let mut generated_files = Vec::new();
     let mut errors = Vec::new();
+    let mut manifest_primitives = Vec::new();
 
     for (idx, primitive_path) in primitives.iter().enumerate() {
         if verbose {
@@ -183,11 +191,19 @@ fn transform_primitives(
         match transformer.transform_primitive(primitive_path, output_dir) {
             Ok(result) => {
                 // Convert output files from Strings to PathBufs
-                let files: Vec<PathBuf> =
-                    result.output_files.into_iter().map(PathBuf::from).collect();
+                let files: Vec<PathBuf> = result.output_files.iter().map(PathBuf::from).collect();
 
                 if verbose {
                     println!("  {} Generated {} files", "✓".green(), files.len());
+                }
+
+                // Create manifest entry for this primitive
+                if let Some(manifest_prim) = create_manifest_primitive(
+                    primitive_path,
+                    &result.output_files,
+                    &output_dir_canonical,
+                ) {
+                    manifest_primitives.push(manifest_prim);
                 }
 
                 generated_files.extend(files);
@@ -200,7 +216,129 @@ fn transform_primitives(
         }
     }
 
-    Ok((generated_files, errors))
+    Ok((generated_files, errors, manifest_primitives))
+}
+
+/// Create a manifest primitive entry from a primitive path and its generated files
+fn create_manifest_primitive(
+    primitive_path: &Path,
+    output_files: &[String],
+    output_dir: &Path,
+) -> Option<ManifestPrimitive> {
+    // Extract primitive ID from path (e.g., "qa/review" from ".../commands/qa/review/")
+    let components: Vec<_> = primitive_path.components().collect();
+
+    // Find the index of "prompts", "tools", or "hooks"
+    let type_idx = components.iter().position(|c| {
+        let name = c.as_os_str().to_string_lossy();
+        name == "prompts" || name == "tools" || name == "hooks"
+    })?;
+
+    // Extract kind and category/id
+    let kind = if type_idx + 1 < components.len() {
+        components[type_idx + 1]
+            .as_os_str()
+            .to_string_lossy()
+            .to_string()
+    } else {
+        return None;
+    };
+
+    // Build the ID from remaining path components (category/id)
+    let id_parts: Vec<String> = components[type_idx + 2..]
+        .iter()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect();
+
+    if id_parts.is_empty() {
+        return None;
+    }
+
+    let id = id_parts.join("/");
+
+    // Try to read metadata for version and hash
+    let dir_name = primitive_path.file_name()?.to_str()?;
+    let meta_path = primitive_path.join(format!("{dir_name}.yaml"));
+
+    let (version, hash) = if meta_path.exists() {
+        if let Ok(content) = fs::read_to_string(&meta_path) {
+            if let Ok(yaml) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                let default_version = yaml
+                    .get("default_version")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1) as u32;
+
+                // Get hash for the default version
+                let hash = yaml
+                    .get("versions")
+                    .and_then(|v| v.as_sequence())
+                    .and_then(|versions| {
+                        versions.iter().find(|v| {
+                            v.get("version")
+                                .and_then(|ver| ver.as_u64())
+                                .map(|ver| ver as u32 == default_version)
+                                .unwrap_or(false)
+                        })
+                    })
+                    .and_then(|v| v.get("hash"))
+                    .and_then(|h| h.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                (default_version, hash)
+            } else {
+                (1, "unknown".to_string())
+            }
+        } else {
+            (1, "unknown".to_string())
+        }
+    } else {
+        (1, "unknown".to_string())
+    };
+
+    // Convert paths to relative paths within output_dir
+    let output_dir_str = output_dir.to_string_lossy().to_string();
+    let relative_files: Vec<String> = output_files
+        .iter()
+        .map(|f| {
+            let path = Path::new(f);
+            // Try strip_prefix first (for canonical paths)
+            if let Ok(relative) = path.strip_prefix(output_dir) {
+                return relative.to_string_lossy().to_string();
+            }
+            // Try string manipulation for relative paths like ./build/claude/commands/...
+            let f_clean = f.trim_start_matches("./");
+            let output_clean = output_dir_str
+                .trim_start_matches("./")
+                .trim_end_matches('/');
+            if let Some(relative) = f_clean.strip_prefix(output_clean) {
+                return relative.trim_start_matches('/').to_string();
+            }
+            // Check if f already contains subdirectory structure
+            if f.contains('/') {
+                // Extract the path after output_dir pattern (e.g., "commands/review.md")
+                if let Some(idx) = f.rfind("commands/") {
+                    return f[idx..].to_string();
+                }
+                if let Some(idx) = f.rfind("custom_prompts/") {
+                    return f[idx..].to_string();
+                }
+                if let Some(idx) = f.rfind("hooks/") {
+                    return f[idx..].to_string();
+                }
+            }
+            // Fall back to original
+            f.clone()
+        })
+        .collect();
+
+    Some(ManifestPrimitive {
+        id,
+        kind,
+        version,
+        hash,
+        files: relative_files,
+    })
 }
 
 /// Print a summary of the build result
@@ -252,23 +390,39 @@ pub fn execute(args: &BuildArgs, config: &PrimitivesConfig) -> Result<()> {
     }
 
     // 4. Transform primitives
-    let (files_generated, errors) = transform_primitives(
+    let (files_generated, errors, manifest_primitives) = transform_primitives(
         primitives.clone(),
         transformer.as_ref(),
         &output_dir,
         args.verbose,
     )?;
 
-    // 5. Build result
+    // 5. Create and save manifest
+    let mut manifest = AgenticManifest::new(&args.provider);
+    manifest.source = Some("agentic-primitives".to_string());
+    manifest.updated_at = Utc::now();
+    for prim in manifest_primitives {
+        manifest.upsert_primitive(prim);
+    }
+
+    // Save manifest to output directory
+    if let Err(e) = manifest.save(&output_dir) {
+        eprintln!("  {} Failed to save manifest: {}", "⚠".yellow(), e);
+    } else if args.verbose {
+        println!("  {} Saved {}", "✓".green(), MANIFEST_FILENAME);
+    }
+
+    // 6. Build result
     let result = BuildResult {
         provider: args.provider.clone(),
         output_dir,
         primitives_built: primitives.len(),
         files_generated,
         errors,
+        manifest,
     };
 
-    // 6. Print summary
+    // 7. Print summary
     print_build_summary(&result);
 
     // Return error if there were any errors

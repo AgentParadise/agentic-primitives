@@ -107,8 +107,8 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-        "description": "Tool ID (must exist in tools/ directory)"
+        "pattern": "^([a-z0-9]+(-[a-z0-9]+)*|[A-Z][a-zA-Z]*)$",
+        "description": "Tool ID: kebab-case for custom tools, PascalCase for native (Read, Write, Bash, Glob, Grep)"
       },
       "uniqueItems": true,
       "description": "List of tool IDs this primitive can use"

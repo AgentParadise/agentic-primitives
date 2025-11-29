@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod manifest;
 pub mod models;
 pub mod primitives;
 pub mod providers;

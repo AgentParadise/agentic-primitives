@@ -1,0 +1,63 @@
+# Agentic Primitives Project Configuration
+# =========================================
+# This file configures how agentic-primitives are built and installed for this project.
+# Only uncomment/add options you want to customize - everything has sensible defaults.
+#
+# Usage:
+#   agentic-p build --provider claude    # Uses this config automatically
+#   agentic-p install --provider claude  # Installs to .claude/
+#
+# Docs: https://github.com/agentic-primitives/docs/project-config
+
+# Config version (don't change unless migrating)
+version: "1.0"
+# Default provider for build/install commands
+# provider: claude  # claude | openai | cursor
+
+# ============================================================================
+# PRIMITIVE VERSION OVERRIDES (like npm resolutions)
+# ============================================================================
+# Only add primitives you want to override. Format:
+#   <category>/<id>: <version-number>     # Pin to specific version
+#   <category>/<id>: latest               # Always use default_version
+#   <category>/<id>: active               # Use newest active (non-draft) version
+#
+# primitives:
+#   # Pin QA commands to v1 for stability
+#   qa/review: 1
+#   qa/pre-commit-qa: 1
+#
+#   # Always use latest prompt generator
+#   core/prompt-generator: latest
+#
+#   # Disable a primitive entirely
+#   qa/deprecated-check:
+#     enabled: false
+
+# ============================================================================
+# INCLUDE/EXCLUDE PATTERNS
+# ============================================================================
+# By default, all primitives are included. Use these to filter.
+#
+# exclude:
+#   - meta-prompts/*        # Exclude all meta-prompts
+#   - qa/deprecated-*       # Exclude deprecated QA commands
+#
+# include:
+#   - qa/*                  # Only include QA commands
+#   - core/prime            # And the prime command
+
+# ============================================================================
+# HOOKS CONFIGURATION
+# ============================================================================
+# hooks:
+#   enabled: true           # Set to false to disable all hooks
+#   timeout: 60             # Default timeout in seconds
+
+# ============================================================================
+# BUILD OUTPUT
+# ============================================================================
+# output:
+#   dir: ./build            # Custom output directory
+#   clean: true             # Clean before build
+

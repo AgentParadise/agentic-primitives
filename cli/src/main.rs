@@ -1,4 +1,5 @@
 use agentic_primitives::commands;
+use agentic_primitives::commands::config_cmd::ConfigCommand;
 use agentic_primitives::commands::inspect::{InspectArgs, OutputFormat as InspectFormat};
 use agentic_primitives::commands::list::{ListArgs, OutputFormat as ListFormat};
 use agentic_primitives::commands::migrate::MigrateArgs;
@@ -200,6 +201,12 @@ enum Commands {
         /// Verbose output (show stdout/stderr)
         #[arg(short, long)]
         verbose: bool,
+    },
+
+    /// Manage per-project configuration (version overrides, etc.)
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
     },
 }
 
@@ -436,6 +443,8 @@ fn main() {
             };
             commands::test_hook::execute(&args, &config).map(|_| ())
         }
+
+        Commands::Config { command } => commands::config_cmd::execute(&command, &config),
     };
 
     // Handle result

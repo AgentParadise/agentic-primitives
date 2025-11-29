@@ -177,8 +177,8 @@
           "properties": {
             "impl_file": {
               "type": "string",
-              "pattern": "^impl\\.local\\.(rs|py|ts|js)$",
-              "description": "Local implementation file"
+              "pattern": "^[a-z][a-z0-9_.-]*\\.(rs|py|ts|js)$",
+              "description": "Local implementation file (ideally matches directory name, e.g., my-tool/ -> my_tool.py)"
             },
             "runtime": {
               "type": "string",

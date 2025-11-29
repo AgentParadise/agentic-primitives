@@ -88,6 +88,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.37.0'
+      
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:

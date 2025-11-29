@@ -27,8 +27,8 @@ cargo clippy
 # Run tests
 cargo test
 
-# Run all QA checks
-cd .. && make qa
+# Run all QA checks (from repo root)
+cd .. && just qa
 ```
 
 ## Installation
@@ -50,11 +50,12 @@ agentic --help
 - `inspect` - Inspect a specific primitive
 - `version` - Manage primitive versions
 - `migrate` - Migrate primitives to latest format
-- `build` - Build provider-specific outputs
-- `install` - Install to provider directory
+- `build` - Build provider-specific outputs (generates `.agentic-manifest.yaml`)
+- `install` - Smart sync to provider directory (preserves local files)
 - `test-hook` - Test a hook locally
+- `config` - Manage per-project configuration (version overrides)
 
-For detailed usage, run `agentic <command> --help`.
+For detailed usage, run `agentic-p <command> --help`.
 
 ## Architecture
 

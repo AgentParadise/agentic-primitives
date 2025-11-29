@@ -774,9 +774,10 @@ uv run ruff format src tests
 
 ```bash
 # From project root
-make python-check       # Type check + lint
-make python-test        # Run tests
-make python-test-coverage  # Tests with coverage report
+just python-typecheck   # Type check
+just python-lint        # Lint
+just python-test        # Run tests
+just python-test-coverage  # Tests with coverage report
 
 # Or from services/analytics
 cd services/analytics

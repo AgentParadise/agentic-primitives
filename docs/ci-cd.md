@@ -76,21 +76,21 @@ Handles versioned releases of the Rust CLI:
 
 ## Running QA Locally
 
-Use the Makefile for local QA checks that mirror CI:
+Use Just for local QA checks that mirror CI (cross-platform):
 
 ```bash
 # Run full QA suite (format check, lint, typecheck, test)
-make qa
+just qa
 
 # Run with auto-fixes applied
-make qa-fix
+just qa-fix
 
 # Run individual checks
-make rust-fmt rust-lint rust-test
-make python-fmt python-lint python-typecheck python-test
+just rust-fmt rust-lint rust-test
+just python-fmt python-lint python-typecheck python-test
 
 # Simulate CI pipeline
-make ci
+just ci
 ```
 
 ### Python Checks with UV
