@@ -142,16 +142,16 @@ def scrape_url(
     client = FirecrawlApp(api_key=api_key)
 
     logger.info(f"Scraping URL: {url}")
-    result = client.scrape_url(url, params={"formats": formats})
+    result = client.scrape(url, formats=formats)
 
-    # Extract content
-    content = result.get("markdown", "")
-    if not content:
-        content = result.get("content", "")
+    # Extract content (SDK v2 returns Pydantic Document model)
+    content = result.markdown or ""
+    if not content and hasattr(result, "html"):
+        content = result.html or ""
 
     # Extract title from metadata or content
-    metadata = result.get("metadata", {})
-    title = metadata.get("title", "")
+    metadata = result.metadata_dict if hasattr(result, "metadata_dict") else {}
+    title = metadata.get("title", "") if metadata else ""
     if not title:
         # Try to extract from first heading
         for line in content.split("\n"):

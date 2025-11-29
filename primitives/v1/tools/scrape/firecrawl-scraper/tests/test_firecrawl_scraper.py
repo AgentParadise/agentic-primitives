@@ -37,10 +37,11 @@ def mock_firecrawl():
     with patch("firecrawl.FirecrawlApp") as mock:
         mock_instance = MagicMock()
         mock.return_value = mock_instance
-        mock_instance.scrape_url.return_value = {
-            "markdown": "# Test Page\n\nThis is test content.",
-            "metadata": {"title": "Test Page Title"},
-        }
+        # SDK v2 returns Pydantic Document model
+        mock_result = MagicMock()
+        mock_result.markdown = "# Test Page\n\nThis is test content."
+        mock_result.metadata_dict = {"title": "Test Page Title"}
+        mock_instance.scrape.return_value = mock_result
         yield mock_instance
 
 
@@ -216,24 +217,24 @@ class TestScrapeUrl:
 
         assert "# Test Page" in content
         assert title == "Test Page Title"
-        mock_firecrawl.scrape_url.assert_called_once()
+        mock_firecrawl.scrape.assert_called_once()
 
     def test_scrape_extracts_title_from_content(self, mock_firecrawl):
         """Test title extraction from first heading if not in metadata."""
-        mock_firecrawl.scrape_url.return_value = {
-            "markdown": "# Heading Title\n\nContent here.",
-            "metadata": {},
-        }
+        mock_result = MagicMock()
+        mock_result.markdown = "# Heading Title\n\nContent here."
+        mock_result.metadata_dict = {}
+        mock_firecrawl.scrape.return_value = mock_result
 
         content, title = scrape_url("https://example.com", "fc-test-key")
         assert title == "Heading Title"
 
     def test_scrape_default_title(self, mock_firecrawl):
         """Test default title when none found."""
-        mock_firecrawl.scrape_url.return_value = {
-            "markdown": "No heading here, just content.",
-            "metadata": {},
-        }
+        mock_result = MagicMock()
+        mock_result.markdown = "No heading here, just content."
+        mock_result.metadata_dict = {}
+        mock_firecrawl.scrape.return_value = mock_result
 
         content, title = scrape_url("https://example.com", "fc-test-key")
         assert title == "Untitled Document"
@@ -242,9 +243,9 @@ class TestScrapeUrl:
         """Test that default formats is markdown."""
         scrape_url("https://example.com", "fc-test-key")
 
-        mock_firecrawl.scrape_url.assert_called_with(
+        mock_firecrawl.scrape.assert_called_with(
             "https://example.com",
-            params={"formats": ["markdown"]},
+            formats=["markdown"],
         )
 
 
@@ -433,10 +434,10 @@ class TestEndToEnd:
         """Test complete scrape workflow from CLI to file."""
         output_file = tmp_path / "docs" / "scraped.md"
 
-        mock_firecrawl.scrape_url.return_value = {
-            "markdown": "# API Reference\n\n## Endpoints\n\nGET /users",
-            "metadata": {"title": "API Docs"},
-        }
+        mock_result = MagicMock()
+        mock_result.markdown = "# API Reference\n\n## Endpoints\n\nGET /users"
+        mock_result.metadata_dict = {"title": "API Docs"}
+        mock_firecrawl.scrape.return_value = mock_result
 
         with patch.dict(os.environ, {"FIRECRAWL_API_KEY": "fc-prod-key"}):
             result = runner.invoke(
