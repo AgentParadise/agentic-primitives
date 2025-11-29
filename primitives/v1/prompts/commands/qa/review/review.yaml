@@ -21,8 +21,8 @@ tools:
 versions:
   - version: 1
     file: review.prompt.v1.md
+    hash: "blake3:d3a73d520e65ce718e2b92086d688de1fb8e37d4a9a1ff9a84500ee5dbf80c41"
     status: active
     created: "2025-11-29"
     notes: "Initial version with plan-vs-implementation review workflow"
 default_version: 1
-

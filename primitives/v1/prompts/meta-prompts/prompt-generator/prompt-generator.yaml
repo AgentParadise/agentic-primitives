@@ -18,8 +18,8 @@ tools:
 versions:
   - version: 1
     file: prompt-generator.prompt.v1.md
+    hash: "blake3:52075fba9bec948c8675a75a7e69d6776c80d3ede1292b864a32b798ec9e45c5"
     status: active
     created: "2025-11-29"
     notes: "Initial version - 7-level agentic prompt generator"
 default_version: 1
-

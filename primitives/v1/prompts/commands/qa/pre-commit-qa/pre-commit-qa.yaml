@@ -22,8 +22,8 @@ tools:
 versions:
   - version: 1
     file: pre-commit-qa.prompt.v1.md
+    hash: "blake3:218154a6476cccb8fd33dbce249a65eb410ab289e16662bbc701d1f7b06be981"
     status: active
     created: "2025-11-29"
     notes: "Initial version with full QA pipeline: types, build, lint, format, tests"
 default_version: 1
-

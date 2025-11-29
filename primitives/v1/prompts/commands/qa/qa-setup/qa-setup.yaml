@@ -21,8 +21,8 @@ tools:
 versions:
   - version: 1
     file: qa-setup.prompt.v1.md
+    hash: "blake3:57200f81fafa21caeb2a515904d6f78bbc4833db68807881df8cffab7135c639"
     status: active
     created: "2025-11-29"
     notes: "Initial version - standardized command verification/creation"
 default_version: 1
-
