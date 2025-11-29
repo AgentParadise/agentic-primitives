@@ -197,7 +197,6 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     needs: [create-release]
-    if: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
     
     steps:
       - uses: actions/checkout@v4
@@ -206,7 +205,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       
       - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        # Will skip gracefully if CARGO_REGISTRY_TOKEN is not configured
+        run: |
+          if [ -n "$CARGO_REGISTRY_TOKEN" ]; then
+            cargo publish --token "$CARGO_REGISTRY_TOKEN"
+          else
+            echo "⏭️ Skipping crates.io publish - CARGO_REGISTRY_TOKEN not configured"
+          fi
         working-directory: ./cli
         continue-on-error: true
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

@@ -64,6 +64,7 @@ class InstrumentedAgent:
         allowed_tools: Optional[list[str]] = None,
         permission_mode: str = "bypassPermissions",
         setting_sources: Optional[list[str]] = None,
+        session_id: Optional[str] = None,
     ):
         """Initialize the instrumented agent.
 
@@ -74,10 +75,12 @@ class InstrumentedAgent:
             allowed_tools: List of allowed tools (default: all built-in tools)
             permission_mode: Permission mode (default: bypassPermissions for automation)
             setting_sources: Where to load settings from (default: ["project"])
+            session_id: Optional session ID for tracking (generates UUID if not provided)
         """
         self.model_name = model
         self.model_config = load_model_config(model)
         self.collector = MetricsCollector(output_path=output_path)
+        self.session_id = session_id
         self.cwd = Path(cwd) if cwd else Path.cwd() / ".workspace"
         self.allowed_tools = allowed_tools or [
             "Read",
@@ -113,7 +116,7 @@ class InstrumentedAgent:
         Returns:
             AgentResult with response text and metrics
         """
-        session = self.collector.start_session(model=self.model_config)
+        session = self.collector.start_session(model=self.model_config, session_id=self.session_id)
         start_time = time.time()
         tool_calls: list[dict[str, Any]] = []
 
