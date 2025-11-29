@@ -1,7 +1,9 @@
 use crate::config::PrimitivesConfig;
+use crate::manifest::{AgenticManifest, ManifestDiff, MANIFEST_FILENAME};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Local;
 use colored::Colorize;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -285,55 +287,307 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
     // 3. Validate build directory
     validate_build_dir(&build_dir, &args.provider)?;
 
-    // 4. Backup existing files (if not dry-run and backup enabled)
-    let backup_location = if !args.dry_run {
-        backup_existing_files(&install_location, !args.backup)?
+    // 4. Load manifests for smart sync
+    let source_manifest =
+        AgenticManifest::load(&build_dir).context("Failed to load build manifest")?;
+    let target_manifest =
+        AgenticManifest::load(&install_location).context("Failed to load existing manifest")?;
+
+    // 5. Calculate diff and show what will change
+    if let Some(ref source) = source_manifest {
+        let diff = ManifestDiff::compare(source, target_manifest.as_ref());
+
+        if args.verbose || args.dry_run {
+            print_sync_preview(&diff, &target_manifest);
+        }
+
+        // 6. Smart sync - only install managed files
+        let files_to_install = diff.files_to_install();
+        let managed_files: HashSet<String> = source.managed_files().into_iter().collect();
+
+        // Backup only managed files that will be overwritten
+        let backup_location = if !args.dry_run && args.backup && !diff.updated.is_empty() {
+            backup_managed_files(&install_location, &diff, args.verbose)?
+        } else {
+            None
+        };
+
+        let files_backed_up = backup_location
+            .as_ref()
+            .map(|b| count_files(b))
+            .unwrap_or(0);
+
+        // Install only the files that changed
+        let installed_files = install_managed_files(
+            &build_dir,
+            &install_location,
+            &files_to_install,
+            args.dry_run,
+            args.verbose,
+        )?;
+
+        // Copy manifest to install location
+        if !args.dry_run {
+            source
+                .save(&install_location)
+                .context("Failed to save manifest to install location")?;
+        }
+
+        // Show preserved local files
+        if args.verbose {
+            show_preserved_files(&install_location, &managed_files)?;
+        }
+
+        // Build result
+        let result = InstallResult {
+            provider: args.provider.clone(),
+            install_location,
+            files_installed: installed_files.len(),
+            files_backed_up,
+            backup_location,
+            errors: Vec::new(),
+        };
+
+        if !args.dry_run {
+            print_install_summary(&result);
+        } else {
+            println!(
+                "\n{} Dry-run complete. No files were installed.",
+                "ℹ".cyan()
+            );
+        }
     } else {
-        None
-    };
-
-    let files_backed_up = if let Some(ref backup) = backup_location {
-        // Count files in backup directory
-        WalkDir::new(backup)
-            .into_iter()
-            .filter(|e| e.as_ref().map(|e| e.path().is_file()).unwrap_or(false))
-            .count()
-    } else {
-        0
-    };
-
-    // 5. Install files
-    let installed_files = install_files(&build_dir, &install_location, args.dry_run, args.verbose)?;
-
-    // 6. Build result
-    let result = InstallResult {
-        provider: args.provider.clone(),
-        install_location,
-        files_installed: installed_files.len(),
-        files_backed_up,
-        backup_location,
-        errors: Vec::new(),
-    };
-
-    // 7. Print summary (skip if dry-run)
-    if !args.dry_run {
-        print_install_summary(&result);
-    } else {
+        // No manifest in build - fall back to legacy install (all files)
         println!(
-            "\n{} Dry-run complete. No files were installed.",
-            "ℹ".cyan()
+            "{} No manifest found in build directory. Using legacy install (all files).",
+            "⚠".yellow()
         );
-    }
 
-    // Return error if there were errors
-    if !result.errors.is_empty() {
-        bail!(
-            "Installation completed with {} error(s)",
-            result.errors.len()
-        );
+        let backup_location = if !args.dry_run {
+            backup_existing_files(&install_location, !args.backup)?
+        } else {
+            None
+        };
+
+        let files_backed_up = backup_location
+            .as_ref()
+            .map(|b| count_files(b))
+            .unwrap_or(0);
+
+        let installed_files =
+            install_files(&build_dir, &install_location, args.dry_run, args.verbose)?;
+
+        let result = InstallResult {
+            provider: args.provider.clone(),
+            install_location,
+            files_installed: installed_files.len(),
+            files_backed_up,
+            backup_location,
+            errors: Vec::new(),
+        };
+
+        if !args.dry_run {
+            print_install_summary(&result);
+        } else {
+            println!(
+                "\n{} Dry-run complete. No files were installed.",
+                "ℹ".cyan()
+            );
+        }
     }
 
     Ok(())
+}
+
+/// Print a preview of what will be synced
+fn print_sync_preview(diff: &ManifestDiff, existing: &Option<AgenticManifest>) {
+    println!("\n{}", "Sync Preview".bold().cyan());
+    println!("{}", "─".repeat(40));
+
+    if !diff.added.is_empty() {
+        println!("  {} New primitives:", "+".green().bold());
+        for prim in &diff.added {
+            println!("    {} {} (v{})", "+".green(), prim.id, prim.version);
+        }
+    }
+
+    if !diff.updated.is_empty() {
+        println!("  {} Updated primitives:", "↑".yellow().bold());
+        for (old, new) in &diff.updated {
+            println!(
+                "    {} {} (v{} → v{})",
+                "↑".yellow(),
+                new.id,
+                old.version,
+                new.version
+            );
+        }
+    }
+
+    if !diff.removed.is_empty() {
+        println!("  {} Removed primitives:", "-".red().bold());
+        for prim in &diff.removed {
+            println!("    {} {} (v{})", "-".red(), prim.id, prim.version);
+        }
+    }
+
+    if !diff.unchanged.is_empty() {
+        println!(
+            "  {} {} unchanged primitives",
+            "•".dimmed(),
+            diff.unchanged.len()
+        );
+    }
+
+    // Show local files that will be preserved
+    if existing.is_some() {
+        println!("\n  {} Local files will be preserved", "✓".green());
+    }
+
+    println!();
+}
+
+/// Backup only managed files that will be overwritten
+fn backup_managed_files(
+    install_location: &Path,
+    diff: &ManifestDiff,
+    verbose: bool,
+) -> Result<Option<PathBuf>> {
+    let files_to_backup: Vec<String> = diff
+        .updated
+        .iter()
+        .flat_map(|(old, _)| old.files.iter().cloned())
+        .collect();
+
+    if files_to_backup.is_empty() {
+        return Ok(None);
+    }
+
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let backup_dir = PathBuf::from(format!(
+        "{}.backup.{}",
+        install_location.display(),
+        timestamp
+    ));
+
+    fs::create_dir_all(&backup_dir)?;
+
+    let mut backed_up = 0;
+    for file in &files_to_backup {
+        let src = install_location.join(file);
+        if src.exists() {
+            let dest = backup_dir.join(file);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&src, &dest)?;
+            backed_up += 1;
+        }
+    }
+
+    if verbose && backed_up > 0 {
+        println!(
+            "  {} Backed up {} managed files to {}",
+            "ℹ".cyan(),
+            backed_up,
+            backup_dir.display()
+        );
+    }
+
+    Ok(Some(backup_dir))
+}
+
+/// Install only specific managed files
+fn install_managed_files(
+    build_dir: &Path,
+    install_location: &Path,
+    files_to_install: &[String],
+    dry_run: bool,
+    verbose: bool,
+) -> Result<Vec<PathBuf>> {
+    let mut installed = Vec::new();
+
+    if !dry_run {
+        fs::create_dir_all(install_location)?;
+    }
+
+    for file in files_to_install {
+        let src = build_dir.join(file);
+        let dest = install_location.join(file);
+
+        if !src.exists() {
+            if verbose {
+                eprintln!("  {} Source file not found: {}", "⚠".yellow(), file);
+            }
+            continue;
+        }
+
+        if verbose || dry_run {
+            let action = if dry_run {
+                "Would install"
+            } else {
+                "Installing"
+            };
+            println!("  {} {}", action.cyan(), file);
+        }
+
+        if !dry_run {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&src, &dest)?;
+            installed.push(dest);
+        }
+    }
+
+    Ok(installed)
+}
+
+/// Show local files that are preserved (not managed)
+fn show_preserved_files(install_location: &Path, managed_files: &HashSet<String>) -> Result<()> {
+    let mut local_files = Vec::new();
+
+    if install_location.exists() {
+        for entry in WalkDir::new(install_location)
+            .min_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if path.is_file() {
+                let relative = path
+                    .strip_prefix(install_location)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                // Skip manifest file
+                if relative == MANIFEST_FILENAME {
+                    continue;
+                }
+
+                if !managed_files.contains(&relative) {
+                    local_files.push(relative);
+                }
+            }
+        }
+    }
+
+    if !local_files.is_empty() {
+        println!("\n  {} Preserved local files:", "✓".green());
+        for file in &local_files {
+            println!("    {} {}", "•".dimmed(), file);
+        }
+    }
+
+    Ok(())
+}
+
+/// Count files in a directory
+fn count_files(dir: &Path) -> usize {
+    WalkDir::new(dir)
+        .into_iter()
+        .filter(|e| e.as_ref().map(|e| e.path().is_file()).unwrap_or(false))
+        .count()
 }
 
 #[cfg(test)]

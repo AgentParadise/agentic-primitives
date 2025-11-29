@@ -66,10 +66,7 @@ fn init_config(output: Option<&str>, force: bool, with_examples: bool) -> Result
 
     // Check if file exists
     if path.exists() && !force {
-        anyhow::bail!(
-            "Config file already exists: {}\nUse --force to overwrite",
-            output_path
-        );
+        anyhow::bail!("Config file already exists: {output_path}\nUse --force to overwrite");
     }
 
     // Generate content
@@ -91,7 +88,10 @@ fn init_config(output: Option<&str>, force: bool, with_examples: bool) -> Result
     println!("{}:", "Next steps".bold());
     println!("  1. Edit the file to customize your configuration");
     println!("  2. Uncomment any options you want to change");
-    println!("  3. Run {} to build with your config", "agentic-p build".cyan());
+    println!(
+        "  3. Run {} to build with your config",
+        "agentic-p build".cyan()
+    );
     println!();
     println!(
         "{}",
@@ -177,11 +177,7 @@ fn show_config(json_output: bool, config: &PrimitivesConfig) -> Result<()> {
         println!();
 
         if has_project_config {
-            println!(
-                "  {} {}",
-                "Project config:".bold(),
-                "agentic.yaml".green()
-            );
+            println!("  {} {}", "Project config:".bold(), "agentic.yaml".green());
 
             // Parse and show overrides
             let content = fs::read_to_string(project_config_path)?;
@@ -220,7 +216,10 @@ fn show_config(json_output: bool, config: &PrimitivesConfig) -> Result<()> {
 
         println!();
         println!("  {}:", "Primitives directory".bold());
-        println!("    {}", config.paths.primitives.display().to_string().cyan());
+        println!(
+            "    {}",
+            config.paths.primitives.display().to_string().cyan()
+        );
 
         println!();
         println!("  {}:", "Available providers".bold());
@@ -291,7 +290,11 @@ fn list_primitives(kind_filter: Option<&str>, config: &PrimitivesConfig) -> Resu
                 format!("{filter}s")
             };
             let filter_hyphen = filter.replace('_', "-");
-            if kind != filter && kind != filter_plural && kind != filter_hyphen && kind != format!("{filter_hyphen}s") {
+            if kind != filter
+                && kind != filter_plural
+                && kind != filter_hyphen
+                && kind != format!("{filter_hyphen}s")
+            {
                 continue;
             }
         }
@@ -411,4 +414,3 @@ mod tests {
         assert!(content.contains("enabled: true"));
     }
 }
-
