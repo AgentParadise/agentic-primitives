@@ -4,44 +4,63 @@ Captures comprehensive metrics including:
 - Token usage (input/output) per interaction
 - Tool calls with timing
 - Session aggregates with cost estimation
-- JSONL output compatible with agentic_analytics
+- JSONL output using agentic_analytics canonical events
 
 Metrics Reference:
 - Cognitive Efficiency: Committed Tokens / Total Tokens
 - Cost Efficiency: Cost / Committed Tokens
 - Token Velocity: Quality Tokens / Hour
+
+This module uses the canonical event schemas from agentic_analytics:
+- SessionStarted -> session.started
+- TokensUsed -> tokens.used
+- ToolCalled -> tool.called
+- SessionEnded -> session.ended
 """
 
 from __future__ import annotations
 
-import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
+
+from agentic_analytics import (
+    EventEmitter,
+    SessionEnded,
+    SessionStarted,
+    TokensUsed,
+    ToolCalled,
+)
 
 from src.models import ModelConfig
 
 
 @dataclass
 class ToolCallMetric:
-    """Metrics for a single tool call."""
+    """Metrics for a single tool call.
+
+    Note: This is a local convenience class that wraps the canonical
+    ToolCalled event for building session summaries.
+    """
 
     tool_name: str
     tool_input: dict[str, Any]
-    tool_output: Optional[str] = None
+    tool_output: str | None = None
+    tool_use_id: str | None = None
     duration_ms: float = 0.0
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     blocked: bool = False
-    block_reason: Optional[str] = None
+    block_reason: str | None = None
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSONL output."""
+        """Convert to dictionary for summary output."""
         return {
             "tool_name": self.tool_name,
             "tool_input": self.tool_input,
             "tool_output": self.tool_output,
+            "tool_use_id": self.tool_use_id,
             "duration_ms": self.duration_ms,
             "timestamp": self.timestamp.isoformat(),
             "blocked": self.blocked,
@@ -51,15 +70,19 @@ class ToolCallMetric:
 
 @dataclass
 class InteractionMetrics:
-    """Metrics for a single agent interaction (prompt/response cycle)."""
+    """Metrics for a single agent interaction (prompt/response cycle).
+
+    Note: This is a local convenience class that wraps the canonical
+    TokensUsed event for building session summaries.
+    """
 
     input_tokens: int
     output_tokens: int
     duration_ms: float
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     tool_calls: list[ToolCallMetric] = field(default_factory=list)
-    prompt_preview: Optional[str] = None  # First 100 chars of prompt
-    response_preview: Optional[str] = None  # First 100 chars of response
+    prompt_preview: str | None = None
+    response_preview: str | None = None
 
     @property
     def total_tokens(self) -> int:
@@ -67,7 +90,7 @@ class InteractionMetrics:
         return self.input_tokens + self.output_tokens
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSONL output."""
+        """Convert to dictionary for summary output."""
         return {
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
@@ -139,6 +162,9 @@ class SessionMetrics:
 class SessionContext:
     """Context manager for tracking a session's metrics.
 
+    Emits canonical events from agentic_analytics while building
+    local summary objects for the session.
+
     Usage:
         collector = MetricsCollector()
         session = collector.start_session(model_config)
@@ -151,14 +177,15 @@ class SessionContext:
         self,
         session_id: str,
         model_config: ModelConfig,
-        collector: "MetricsCollector",
+        emitter: EventEmitter,
     ):
         self.session_id = session_id
         self.model_config = model_config
-        self.collector = collector
-        self.start_time = datetime.now(timezone.utc)
+        self.emitter = emitter
+        self.start_time = datetime.now(UTC)
         self.interactions: list[InteractionMetrics] = []
-        self._current_interaction: Optional[InteractionMetrics] = None
+        self._current_interaction: InteractionMetrics | None = None
+        self._interaction_index = 0
         self._ended = False
 
     def record_interaction(
@@ -166,10 +193,12 @@ class SessionContext:
         input_tokens: int,
         output_tokens: int,
         duration_ms: float,
-        prompt_preview: Optional[str] = None,
-        response_preview: Optional[str] = None,
+        prompt_preview: str | None = None,
+        response_preview: str | None = None,
     ) -> InteractionMetrics:
         """Record an interaction (prompt/response cycle).
+
+        Emits a TokensUsed event to the analytics stream.
 
         Args:
             input_tokens: Tokens in the prompt
@@ -191,12 +220,19 @@ class SessionContext:
         self.interactions.append(interaction)
         self._current_interaction = interaction
 
-        # Write event to JSONL
-        self.collector._write_event(
-            event_type="agent_interaction",
-            session_id=self.session_id,
-            data=interaction.to_dict(),
+        # Emit canonical TokensUsed event
+        self.emitter.emit(
+            TokensUsed(
+                session_id=self.session_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                duration_ms=duration_ms,
+                prompt_preview=prompt_preview[:100] if prompt_preview else None,
+                response_preview=response_preview[:100] if response_preview else None,
+                interaction_index=self._interaction_index,
+            )
         )
+        self._interaction_index += 1
 
         return interaction
 
@@ -205,27 +241,35 @@ class SessionContext:
         tool_name: str,
         tool_input: dict[str, Any],
         duration_ms: float = 0.0,
-        tool_output: Optional[str] = None,
+        tool_output: str | None = None,
+        tool_use_id: str | None = None,
         blocked: bool = False,
-        block_reason: Optional[str] = None,
+        block_reason: str | None = None,
     ) -> ToolCallMetric:
         """Record a tool call.
+
+        Emits a ToolCalled event to the analytics stream.
 
         Args:
             tool_name: Name of the tool (e.g., "Write", "Bash", "Read")
             tool_input: Input parameters for the tool
             duration_ms: Time taken for the tool call
             tool_output: Optional output from the tool
+            tool_use_id: Unique ID for correlation (generates if not provided)
             blocked: Whether the tool call was blocked by a hook
             block_reason: Reason for blocking if blocked
 
         Returns:
             The recorded ToolCallMetric
         """
+        # Generate tool_use_id if not provided
+        tool_use_id = tool_use_id or f"toolu_{uuid.uuid4().hex[:12]}"
+
         tool_metric = ToolCallMetric(
             tool_name=tool_name,
             tool_input=tool_input,
             tool_output=tool_output,
+            tool_use_id=tool_use_id,
             duration_ms=duration_ms,
             blocked=blocked,
             block_reason=block_reason,
@@ -235,17 +279,26 @@ class SessionContext:
         if self._current_interaction:
             self._current_interaction.tool_calls.append(tool_metric)
 
-        # Write event to JSONL
-        self.collector._write_event(
-            event_type="tool_call",
-            session_id=self.session_id,
-            data=tool_metric.to_dict(),
+        # Emit canonical ToolCalled event
+        self.emitter.emit(
+            ToolCalled(
+                session_id=self.session_id,
+                tool_name=tool_name,
+                tool_input=tool_input,
+                tool_use_id=tool_use_id,
+                tool_output=tool_output,
+                duration_ms=duration_ms,
+                blocked=blocked,
+                block_reason=block_reason,
+            )
         )
 
         return tool_metric
 
     def end(self) -> SessionMetrics:
         """End the session and return aggregate metrics.
+
+        Emits a SessionEnded event to the analytics stream.
 
         Returns:
             SessionMetrics with aggregate data
@@ -254,7 +307,7 @@ class SessionContext:
             raise RuntimeError("Session already ended")
 
         self._ended = True
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
 
         # Calculate aggregates
         total_input = sum(i.input_tokens for i in self.interactions)
@@ -281,20 +334,31 @@ class SessionContext:
             interactions=self.interactions,
         )
 
-        # Write session end event
-        self.collector._write_event(
-            event_type="agent_session_end",
-            session_id=self.session_id,
-            data=metrics.to_dict(),
+        # Emit canonical SessionEnded event
+        self.emitter.emit(
+            SessionEnded(
+                session_id=self.session_id,
+                start_time=self.start_time,
+                total_input_tokens=total_input,
+                total_output_tokens=total_output,
+                total_cost_usd=cost,
+                interaction_count=len(self.interactions),
+                tool_call_count=tool_calls,
+                tool_calls_blocked=blocked_calls,
+                total_duration_ms=total_duration,
+                model=self.model_config.api_name,
+                exit_reason="completed",
+            )
         )
 
         return metrics
 
 
 class MetricsCollector:
-    """Collects and persists metrics to JSONL.
+    """Collects and persists metrics using agentic_analytics EventEmitter.
 
-    Writes events to a JSONL file in the format compatible with agentic_analytics.
+    Writes canonical events to a JSONL file compatible with the
+    observability dashboard and analytics services.
 
     Usage:
         collector = MetricsCollector(output_path=".agentic/analytics/events.jsonl")
@@ -311,14 +375,12 @@ class MetricsCollector:
         output_path: str | Path = ".agentic/analytics/events.jsonl",
     ):
         self.output_path = Path(output_path)
-        self._ensure_output_dir()
-
-    def _ensure_output_dir(self) -> None:
-        """Ensure the output directory exists."""
-        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.emitter = EventEmitter(output_path=self.output_path)
 
     def start_session(self, model: ModelConfig, session_id: str | None = None) -> SessionContext:
         """Start a new metrics session.
+
+        Emits a SessionStarted event to the analytics stream.
 
         Args:
             model: Model configuration for cost calculation
@@ -329,49 +391,25 @@ class MetricsCollector:
         """
         session_id = session_id or str(uuid.uuid4())
 
-        # Write session start event
-        self._write_event(
-            event_type="agent_session_start",
-            session_id=session_id,
-            data={
-                "model": model.api_name,
-                "model_display_name": model.display_name,
-                "provider": model.provider,
-                "pricing": {
+        # Emit canonical SessionStarted event
+        self.emitter.emit(
+            SessionStarted(
+                session_id=session_id,
+                model=model.api_name,
+                provider=model.provider,
+                model_display_name=model.display_name,
+                pricing={
                     "input_per_1m_tokens": model.input_per_1m_tokens,
                     "output_per_1m_tokens": model.output_per_1m_tokens,
                 },
-            },
+            )
         )
 
         return SessionContext(
             session_id=session_id,
             model_config=model,
-            collector=self,
+            emitter=self.emitter,
         )
-
-    def _write_event(
-        self,
-        event_type: str,
-        session_id: str,
-        data: dict[str, Any],
-    ) -> None:
-        """Write an event to the JSONL file.
-
-        Args:
-            event_type: Type of event (e.g., "agent_session_start", "tool_call")
-            session_id: Session identifier
-            data: Event-specific data
-        """
-        event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event_type": event_type,
-            "session_id": session_id,
-            "data": data,
-        }
-
-        with open(self.output_path, "a") as f:
-            f.write(json.dumps(event) + "\n")
 
     def read_events(self) -> list[dict]:
         """Read all events from the JSONL file.
@@ -387,6 +425,8 @@ class MetricsCollector:
             for line in f:
                 line = line.strip()
                 if line:
+                    import json
+
                     events.append(json.loads(line))
         return events
 

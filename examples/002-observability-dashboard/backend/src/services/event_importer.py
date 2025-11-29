@@ -133,12 +133,19 @@ class EventImporter:
         return None
 
     def _parse_event(self, raw: dict) -> AgentEvent | None:
-        """Parse raw JSON into AgentEvent."""
+        """Parse raw JSON into AgentEvent.
+
+        Handles both canonical events from agentic_analytics and legacy formats:
+        - Canonical: session.started, tokens.used, tool.called, session.ended
+        - Legacy: agent_session_start, agent_session_end, agent_interaction
+        """
         try:
             # Parse audit context if present
             audit = None
-            if "audit" in raw:
-                audit = AuditContext(**raw["audit"])
+            if "audit" in raw or "audit_context" in raw:
+                audit_data = raw.get("audit") or raw.get("audit_context")
+                if audit_data:
+                    audit = AuditContext(**audit_data)
 
             # Parse timestamp
             timestamp = raw.get("timestamp")
@@ -151,22 +158,69 @@ class EventImporter:
             data = raw.get("data", {})
             event_type = raw.get("event_type") or raw.get("hook_event") or "unknown"
 
+            # Map canonical event types to display-friendly versions
+            event_type_map = {
+                "session.started": "session_start",
+                "session.ended": "session_end",
+                "tokens.used": "tokens_used",
+                "tool.called": "tool_called",
+                "hook_decision": "hook_decision",
+            }
+            display_event_type = event_type_map.get(event_type, event_type)
+
             # Extract tool_name from either top-level or nested data
             tool_name = raw.get("tool_name") or data.get("tool_name")
 
             # Extract tool input preview (file path, command, etc.)
-            input_preview = self._extract_input_preview(data)
+            input_preview = self._extract_input_preview(raw) or self._extract_input_preview(data)
 
-            # For session events, show model info as input_preview
-            if event_type == "agent_session_start" and data.get("model"):
+            # Handle canonical session.started events
+            if event_type == "session.started":
+                model_name = raw.get("model_display_name") or raw.get("model")
+                input_preview = f"model: {model_name}" if model_name else None
+
+            # Handle canonical session.ended events
+            elif event_type == "session.ended":
+                total_input = raw.get("total_input_tokens", 0)
+                total_output = raw.get("total_output_tokens", 0)
+                tokens = total_input + total_output
+                cost = raw.get("total_cost_usd", 0)
+                input_preview = f"tokens: {tokens:,} | cost: ${cost:.4f}"
+
+            # Handle canonical tokens.used events
+            elif event_type == "tokens.used":
+                input_tokens = raw.get("input_tokens", 0)
+                output_tokens = raw.get("output_tokens", 0)
+                prompt = raw.get("prompt_preview", "")
+                response = raw.get("response_preview", "")
+                if prompt and response:
+                    input_preview = f'"{prompt[:50]}..." → "{response[:50]}..."'
+                elif prompt:
+                    input_preview = f'prompt: "{prompt[:50]}..."'
+                else:
+                    input_preview = f"in: {input_tokens} | out: {output_tokens}"
+
+            # Handle canonical tool.called events
+            elif event_type == "tool.called":
+                tool_name = raw.get("tool_name")
+                tool_input = raw.get("tool_input", {})
+                input_preview = self._extract_input_preview({"tool_input": tool_input})
+                if raw.get("blocked"):
+                    input_preview = f"[BLOCKED] {input_preview or ''}"
+
+            # Legacy: agent_session_start
+            elif event_type == "agent_session_start" and data.get("model"):
                 model_name = data.get("model_display_name") or data.get("model")
                 input_preview = f"model: {model_name}"
+
+            # Legacy: agent_session_end
             elif event_type == "agent_session_end" and data.get("total_tokens"):
                 tokens = data.get("total_tokens", 0)
                 cost = data.get("total_cost_usd", 0)
                 input_preview = f"tokens: {tokens:,} | cost: ${cost:.4f}"
+
+            # Legacy: agent_interaction
             elif event_type == "agent_interaction":
-                # Show prompt and response preview for interactions
                 prompt = data.get("prompt_preview", "")[:50]
                 response = data.get("response_preview", "")[:50]
                 if prompt and response:
@@ -174,19 +228,29 @@ class EventImporter:
                 elif prompt:
                     input_preview = f'prompt: "{prompt}..."'
 
-            # Extract tokens and cost from nested data (agent_session_end, agent_interaction)
+            # Extract tokens and cost from canonical or legacy formats
             estimated_tokens = (
-                raw.get("estimated_tokens")
+                raw.get("total_tokens")
+                or raw.get("estimated_tokens")
+                or (raw.get("input_tokens", 0) + raw.get("output_tokens", 0))
                 or data.get("total_tokens")
-                or data.get("input_tokens", 0) + data.get("output_tokens", 0)
+                or (data.get("input_tokens", 0) + data.get("output_tokens", 0))
                 or None
             )
-            estimated_cost_usd = raw.get("estimated_cost_usd") or data.get("total_cost_usd")
+            if estimated_tokens == 0:
+                estimated_tokens = None
+
+            estimated_cost_usd = (
+                raw.get("total_cost_usd")
+                or raw.get("cost_usd")
+                or raw.get("estimated_cost_usd")
+                or data.get("total_cost_usd")
+            )
 
             return AgentEvent(
                 timestamp=timestamp,
-                event_type=event_type,
-                handler=raw.get("handler", "unknown"),
+                event_type=display_event_type,
+                handler=raw.get("handler", raw.get("provider", "agentic")),
                 hook_event=raw.get("hook_event"),
                 tool_name=tool_name,
                 session_id=raw.get("session_id"),
