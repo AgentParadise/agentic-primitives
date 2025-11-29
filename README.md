@@ -137,16 +137,16 @@ primitives:
 ### Build for Your Provider
 
 ```bash
-# Build for Claude Code
+# Build for Claude Code (generates .agentic-manifest.yaml)
 agentic-p build --provider claude
 
-# View the generated output
-ls -R build/claude/hooks
+# Smart install - only updates changed primitives, preserves local files
+agentic-p install --provider claude
 
-# Install to project .claude/ directory
-cp -r build/claude/.claude /path/to/your/project/
+# Or preview what would change with dry-run
+agentic-p install --provider claude --dry-run --verbose
 
-# Result: All hooks installed and ready to use!
+# Result: Primitives installed, local commands (like /doc-sync) preserved!
 ```
 
 **Build Output** (organized by category):
