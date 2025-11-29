@@ -130,6 +130,7 @@ class EventEmitter:
             with open(self.output_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(event) + "\n")
         except Exception:
+            # Fail-safe: never block agent execution due to logging failures
             pass
 
     @contextmanager

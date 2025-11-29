@@ -174,25 +174,25 @@ class EventImporter:
             # Extract tool input preview (file path, command, etc.)
             input_preview = self._extract_input_preview(raw) or self._extract_input_preview(data)
 
-            # Handle canonical session.started events
+            # Handle canonical session.started events (fields nested in data)
             if event_type == "session.started":
-                model_name = raw.get("model_display_name") or raw.get("model")
+                model_name = data.get("model_display_name") or data.get("model")
                 input_preview = f"model: {model_name}" if model_name else None
 
-            # Handle canonical session.ended events
+            # Handle canonical session.ended events (fields nested in data)
             elif event_type == "session.ended":
-                total_input = raw.get("total_input_tokens", 0)
-                total_output = raw.get("total_output_tokens", 0)
+                total_input = data.get("total_input_tokens", 0)
+                total_output = data.get("total_output_tokens", 0)
                 tokens = total_input + total_output
-                cost = raw.get("total_cost_usd", 0)
+                cost = data.get("total_cost_usd", 0)
                 input_preview = f"tokens: {tokens:,} | cost: ${cost:.4f}"
 
-            # Handle canonical tokens.used events
+            # Handle canonical tokens.used events (fields nested in data)
             elif event_type == "tokens.used":
-                input_tokens = raw.get("input_tokens", 0)
-                output_tokens = raw.get("output_tokens", 0)
-                prompt = raw.get("prompt_preview", "")
-                response = raw.get("response_preview", "")
+                input_tokens = data.get("input_tokens", 0)
+                output_tokens = data.get("output_tokens", 0)
+                prompt = data.get("prompt_preview", "")
+                response = data.get("response_preview", "")
                 if prompt and response:
                     input_preview = f'"{prompt[:50]}..." → "{response[:50]}..."'
                 elif prompt:
@@ -200,12 +200,12 @@ class EventImporter:
                 else:
                     input_preview = f"in: {input_tokens} | out: {output_tokens}"
 
-            # Handle canonical tool.called events
+            # Handle canonical tool.called events (fields nested in data)
             elif event_type == "tool.called":
-                tool_name = raw.get("tool_name")
-                tool_input = raw.get("tool_input", {})
+                tool_name = data.get("tool_name")
+                tool_input = data.get("tool_input", {})
                 input_preview = self._extract_input_preview({"tool_input": tool_input})
-                if raw.get("blocked"):
+                if data.get("blocked"):
                     input_preview = f"[BLOCKED] {input_preview or ''}"
 
             # Legacy: agent_session_start
@@ -228,13 +228,13 @@ class EventImporter:
                 elif prompt:
                     input_preview = f'prompt: "{prompt}..."'
 
-            # Extract tokens and cost from canonical or legacy formats
+            # Extract tokens and cost from canonical (data nested) or legacy formats
             estimated_tokens = (
-                raw.get("total_tokens")
+                data.get("total_tokens")  # Canonical: tokens nested in data
+                or (data.get("input_tokens", 0) + data.get("output_tokens", 0))
+                or raw.get("total_tokens")  # Legacy: tokens at top level
                 or raw.get("estimated_tokens")
                 or (raw.get("input_tokens", 0) + raw.get("output_tokens", 0))
-                or data.get("total_tokens")
-                or (data.get("input_tokens", 0) + data.get("output_tokens", 0))
                 or None
             )
             if estimated_tokens == 0:

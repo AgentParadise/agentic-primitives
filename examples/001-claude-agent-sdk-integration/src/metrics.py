@@ -20,6 +20,7 @@ This module uses the canonical event schemas from agentic_analytics:
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -425,8 +426,6 @@ class MetricsCollector:
             for line in f:
                 line = line.strip()
                 if line:
-                    import json
-
                     events.append(json.loads(line))
         return events
 

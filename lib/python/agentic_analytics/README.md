@@ -89,8 +89,6 @@ event = SessionStarted(
         "input_per_1m_tokens": 3.0,
         "output_per_1m_tokens": 15.0,
     },
-    milestone_id="M1",                    # Optional
-    workflow_id="wf-456",                 # Optional
 )
 ```
 
@@ -165,35 +163,22 @@ emitter = EventEmitter()
 emitter = EventEmitter(output_path=Path("./logs/events.jsonl"))
 ```
 
-### API Backend (Production)
-
-```python
-from agentic_analytics import EventEmitter
-
-emitter = EventEmitter(
-    api_endpoint="https://analytics.company.com/events",
-    api_key="your-api-key",
-)
-```
-
 ### Environment Variables
 
 ```bash
+# Customize output path (default: .agentic/analytics/events.jsonl)
 export AGENTIC_EVENTS_PATH="./logs/events.jsonl"
-export ANALYTICS_API_ENDPOINT="https://analytics.company.com/events"
-export ANALYTICS_API_KEY="your-api-key"
 ```
 
 ## Output Format
 
-Events are written as JSON Lines (one JSON object per line):
+Events are written as JSON Lines (one JSON object per line). Event data is nested in a `data` field:
 
 ```json
-{"timestamp": "2025-11-28T12:00:00+00:00", "event_type": "session.started", "session_id": "sess-123", "model": "claude-sonnet-4-5-20250929", "provider": "anthropic"}
-{"timestamp": "2025-11-28T12:00:01+00:00", "event_type": "tokens.used", "session_id": "sess-123", "input_tokens": 100, "output_tokens": 50, "total_tokens": 150}
-{"timestamp": "2025-11-28T12:00:02+00:00", "event_type": "tool.called", "session_id": "sess-123", "tool_name": "Write", "tool_input": {"file_path": "app.py"}}
-{"timestamp": "2025-11-28T12:00:03+00:00", "event_type": "session.ended", "session_id": "sess-123", "total_cost_usd": 0.0525}
-```
+{"timestamp": "2025-11-28T12:00:00+00:00", "event_type": "session.started", "session_id": "sess-123", "data": {"model": "claude-sonnet-4-5-20250929", "provider": "anthropic"}}
+{"timestamp": "2025-11-28T12:00:01+00:00", "event_type": "tokens.used", "session_id": "sess-123", "data": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150}}
+{"timestamp": "2025-11-28T12:00:02+00:00", "event_type": "tool.called", "session_id": "sess-123", "data": {"tool_name": "Write", "tool_input": {"file_path": "app.py"}}}
+{"timestamp": "2025-11-28T12:00:03+00:00", "event_type": "session.ended", "session_id": "sess-123", "data": {"total_cost_usd": 0.0525}}
 
 ## Design Principles
 
