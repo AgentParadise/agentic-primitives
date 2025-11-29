@@ -76,61 +76,61 @@ clean:
 [group('rust')]
 rust-fmt:
     @echo '{{ YELLOW }}Formatting Rust code...{{ NORMAL }}'
-    cd cli && cargo fmt --all
+    cargo fmt --all --manifest-path cli/Cargo.toml
     @echo '{{ GREEN }}✓ Rust formatting complete{{ NORMAL }}'
 
 # Check Rust formatting
 [group('rust')]
 rust-fmt-check:
     @echo '{{ YELLOW }}Checking Rust formatting...{{ NORMAL }}'
-    cd cli && cargo fmt --all -- --check
+    cargo fmt --all --manifest-path cli/Cargo.toml -- --check
 
 # Lint Rust code with clippy
 [group('rust')]
 rust-lint:
     @echo '{{ YELLOW }}Linting Rust code...{{ NORMAL }}'
-    cd cli && cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --all-targets --all-features --manifest-path cli/Cargo.toml -- -D warnings
     @echo '{{ GREEN }}✓ Rust linting complete{{ NORMAL }}'
 
 # Run Rust tests
 [group('rust')]
 rust-test:
     @echo '{{ YELLOW }}Running Rust tests...{{ NORMAL }}'
-    cd cli && cargo test --all-features
+    cargo test --all-features --manifest-path cli/Cargo.toml
     @echo '{{ GREEN }}✓ Rust tests passed{{ NORMAL }}'
 
 # Run Rust tests with coverage
 [group('rust')]
 rust-test-coverage:
     @echo '{{ YELLOW }}Running Rust tests with coverage...{{ NORMAL }}'
-    cd cli && cargo tarpaulin --out Html --output-dir coverage
+    cargo tarpaulin --out Html --output-dir coverage --manifest-path cli/Cargo.toml
     @echo '{{ GREEN }}✓ Coverage report: cli/coverage/index.html{{ NORMAL }}'
 
 # Build Rust CLI (debug)
 [group('rust')]
 rust-build:
     @echo '{{ YELLOW }}Building Rust CLI (debug)...{{ NORMAL }}'
-    cd cli && cargo build
+    cargo build --manifest-path cli/Cargo.toml
     @echo '{{ GREEN }}✓ Build complete: cli/target/debug/agentic-p{{ NORMAL }}'
 
 # Build Rust CLI (release)
 [group('rust')]
 rust-build-release:
     @echo '{{ YELLOW }}Building Rust CLI (release)...{{ NORMAL }}'
-    cd cli && cargo build --release
+    cargo build --release --manifest-path cli/Cargo.toml
     @echo '{{ GREEN }}✓ Release build: cli/target/release/agentic-p{{ NORMAL }}'
 
 # Check Rust code compiles
 [group('rust')]
 rust-check:
     @echo '{{ YELLOW }}Checking Rust code...{{ NORMAL }}'
-    cd cli && cargo check --all-features
+    cargo check --all-features --manifest-path cli/Cargo.toml
 
 # Generate Rust documentation
 [group('rust')]
 rust-doc:
     @echo '{{ YELLOW }}Generating Rust documentation...{{ NORMAL }}'
-    cd cli && cargo doc --no-deps --open
+    cargo doc --no-deps --open --manifest-path cli/Cargo.toml
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PYTHON (Services & Libraries)
