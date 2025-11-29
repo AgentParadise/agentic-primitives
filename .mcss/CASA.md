@@ -2,95 +2,53 @@
 Project: Agentic Primitives
 
 ## Where I Left Off
-**✅ Full Build System - COMPLETE**
+**🚧 PLANNING COMPLETE - TWO PROJECT PLANS READY**
 
-Build system now auto-discovers handlers/ directory and generates settings.json for all 9 Claude Code events.
+Created comprehensive plans for both the local refactor and the new repo:
 
-### What Was Accomplished
-1. ✅ **Build Discovery** - Detects `handlers/` directory without needing YAML files
-2. ✅ **9 Event Handlers** - All Claude Code hook events covered
-3. ✅ **settings.json Generation** - Correct paths for all handlers
-4. ✅ **No .impl Files** - Clean build output
-5. ✅ **QA Passed** - All Rust + Python tests pass
+### Plan 1: Event Schema Consolidation (agentic-primitives)
+`PROJECT-PLAN_20251128_event-schema-consolidation.md`
+- Consolidate event schemas into `agentic_analytics` library
+- Refactor Examples 001 and 002 to use library events
+- 4 milestones, ~5-8 hours total
 
-### Previous Milestones
-- ✅ **Audit Trail Enhancement** - Full audit fields + security scenarios
-- ✅ **Atomic Hook Architecture** - Handlers + validators pattern
+### Plan 2: Agentic Engineering System (new repo)
+`PROJECT-PLAN_20251128_agentic-engineering-system.md`
+- IDE-less agentic engineering with event sourcing
+- Uses `event-sourcing-platform` + `agentic-primitives`
+- Aggregates: AgentSession, Milestone, Workflow
+- Projections: DORA metrics, Agent KPIs
+- 6-week phased implementation
 
-### Architecture: All 9 Claude Code Events
-```
-.claude/hooks/
-  handlers/                    # ALL 9 Claude Code events
-    pre-tool-use.py           # PreToolUse → security validators
-    post-tool-use.py          # PostToolUse (tool completion logging)
-    user-prompt.py            # UserPromptSubmit → PII validator
-    stop.py                   # Stop (conversation end)
-    subagent-stop.py          # SubagentStop (subagent completion)
-    session-start.py          # SessionStart (session lifecycle)
-    session-end.py            # SessionEnd (session lifecycle)
-    pre-compact.py            # PreCompact (context compaction)
-    notification.py           # Notification (alerts, errors)
-  
-  validators/                  # Atomic, pure functions
-    security/
-      bash.py                 # Validates shell commands
-      file.py                 # Validates file operations
-    prompt/
-      pii.py                  # Detects PII patterns
-```
+## What I Was About To Do
+**Pre-Execution Steps** (before any coding):
 
-### Key Principles Implemented
-- **No external package dependencies** - stdlib only
-- **Inline analytics** - 6 lines per handler, not a package import
-- **Pure validators** - input → validation → output, nothing else
-- **Composable** - handlers mix-and-match validators via TOOL_VALIDATORS map
+### Shovel-Ready Next Actions
+1. **Merge current branch** - `feat/examples-002-observability` → `main`
+2. **Create new branch** - `feat/event-schema-consolidation`
+3. **Enter EXECUTE mode** - Start Milestone 1.1 (create `events.py`)
 
-### Analytics Event Structure (Full Audit Trail)
-```json
-{
-  "timestamp": "2025-11-27T18:23:42Z",
-  "event_type": "hook_decision",
-  "handler": "pre-tool-use",
-  "hook_event": "PreToolUse",           // ← Claude hook event
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\": \"rm -rf /\"}",
-  "decision": "block",
-  "reason": "Dangerous command blocked",
-  "session_id": "abc123",
-  "tool_use_id": "toolu_001",           // ← Correlation key
-  "validators_run": ["security.bash"],
-  "audit": {
-    "transcript_path": "~/.claude/projects/.../session.jsonl",  // ← FULL CONVERSATION
-    "cwd": "/Users/project",
-    "permission_mode": "default"
-  }
-}
-```
+## Why This Matters
+The `agentic-engineering-system` repo needs to import canonical event schemas. Currently, anyone building on `agentic-primitives` would have to copy event definitions from examples. By consolidating in the library, we enable:
+- **Import not copy**: `from agentic_analytics import SessionStarted, ToolCalled`
+- **Single source of truth**: Schema changes propagate to all consumers
+- **Type safety**: IDE autocomplete and validation
+- **New repo ready**: `agentic-engineering-system` can start building immediately
 
-### Security Test Scenarios
-| Scenario | Validator | Result |
-|----------|-----------|--------|
-| `.env` file write | file.py | 🛡️ BLOCK |
-| `/etc/passwd` read | file.py | 🛡️ BLOCK |
-| `git add -A` | bash.py | 🛡️ BLOCK |
-| PII in prompt (SSN) | pii.py | 🛡️ BLOCK |
+## Open Loops
+1. **Pydantic vs dataclass**: Dashboard uses Pydantic, library uses dataclasses. Decision: Keep dataclasses in library, create thin Pydantic wrappers in dashboard if needed.
+2. **services/analytics**: Has its own `NormalizedEvent`. Leave for now, mark as deprecated later.
+3. **ADR needed?**: Probably ADR-017 for event schema consolidation if significant.
 
-## Build Output
-```
-build/claude/
-  .claude/
-    settings.json             # All 9 event handlers configured
-    hooks/
-      handlers/               # 9 Python scripts
-      validators/             # 5 Python files (security + prompt)
-```
-
-**15 files generated, 0 .impl files** ✅
+## Dependencies
+- **Merge first**: Must merge `feat/examples-002-observability` before starting new work
+- User approval to proceed
 
 ## Context
-- **Git branch**: `feat/hooks-v0`
-- **Commits ahead**: 3 (atomic refactor, session state, build fix)
-- **QA Status**: All passing
+- **Git branch**: `feat/examples-002-observability` (needs merge)
+- **Next branch**: `feat/event-schema-consolidation`
+- **Mode**: PLAN (ready for merge → branch → EXECUTE)
+- **Estimated time**: 5-8 hours (local refactor), 6 weeks (new repo)
 
 ---
-Updated: 2025-11-27
+Updated: 2025-11-28
