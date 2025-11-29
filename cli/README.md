@@ -53,8 +53,9 @@ agentic --help
 - `build` - Build provider-specific outputs
 - `install` - Install to provider directory
 - `test-hook` - Test a hook locally
+- `config` - Manage per-project configuration (version overrides)
 
-For detailed usage, run `agentic <command> --help`.
+For detailed usage, run `agentic-p <command> --help`.
 
 ## Architecture
 

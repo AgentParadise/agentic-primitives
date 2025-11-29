@@ -115,6 +115,25 @@ agentic-p validate
 agentic-p inspect python/python-pro
 ```
 
+### Configure Per-Project (Optional)
+
+```bash
+# Generate agentic.yaml with all options commented (tsconfig-style)
+agentic-p config init
+
+# List available primitives for version pinning
+agentic-p config list
+```
+
+Pin specific versions like npm resolutions—only override what you need:
+
+```yaml
+# agentic.yaml
+primitives:
+  qa/review: 1          # Pin to v1
+  qa/pre-commit-qa: latest
+```
+
 ### Build for Your Provider
 
 ```bash
