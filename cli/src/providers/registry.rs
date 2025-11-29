@@ -346,9 +346,9 @@ impl ModelProvider {
         // Load config.yaml
         let config_path = provider_dir.join("config.yaml");
         let config_content = fs::read_to_string(&config_path)
-            .with_context(|| format!("Failed to read config.yaml for {}", provider_name))?;
+            .with_context(|| format!("Failed to read config.yaml for {provider_name}"))?;
         let metadata: ProviderMetadata = serde_yaml::from_str(&config_content)
-            .with_context(|| format!("Failed to parse config.yaml for {}", provider_name))?;
+            .with_context(|| format!("Failed to parse config.yaml for {provider_name}"))?;
 
         // Load all model YAML files
         let mut models = Vec::new();
@@ -406,16 +406,16 @@ impl AgentProvider {
         // Load config.yaml
         let config_path = agent_dir.join("config.yaml");
         let config_content = fs::read_to_string(&config_path)
-            .with_context(|| format!("Failed to read config.yaml for {}", agent_name))?;
+            .with_context(|| format!("Failed to read config.yaml for {agent_name}"))?;
         let metadata: AgentMetadata = serde_yaml::from_str(&config_content)
-            .with_context(|| format!("Failed to parse config.yaml for {}", agent_name))?;
+            .with_context(|| format!("Failed to parse config.yaml for {agent_name}"))?;
 
         // Load hooks-supported.yaml
         let hooks_supported_path = agent_dir.join("hooks-supported.yaml");
         let hooks_content = fs::read_to_string(&hooks_supported_path)
-            .with_context(|| format!("Failed to read hooks-supported.yaml for {}", agent_name))?;
+            .with_context(|| format!("Failed to read hooks-supported.yaml for {agent_name}"))?;
         let hooks_config: HooksSupportedConfig = serde_yaml::from_str(&hooks_content)
-            .with_context(|| format!("Failed to parse hooks-supported.yaml for {}", agent_name))?;
+            .with_context(|| format!("Failed to parse hooks-supported.yaml for {agent_name}"))?;
 
         // Get hooks format from hooks-format.yaml or use default
         let hooks_format_path = agent_dir.join("hooks-format.yaml");
@@ -453,7 +453,7 @@ impl AgentProvider {
 
     /// Get event configuration for a specific event
     pub fn get_event_config(&self, event: &HookEvent) -> Option<&EventConfig> {
-        let event_str = format!("{:?}", event);
+        let event_str = format!("{event:?}");
         self.event_config.get(&event_str)
     }
 
@@ -465,7 +465,7 @@ impl AgentProvider {
             .context("Failed to get agent directory")?;
 
         let hooks_config_dir = agent_dir.join("hooks-config");
-        let hook_config_path = hooks_config_dir.join(format!("{}.yaml", hook_id));
+        let hook_config_path = hooks_config_dir.join(format!("{hook_id}.yaml"));
 
         if !hook_config_path.exists() {
             anyhow::bail!(

@@ -26,16 +26,11 @@ PROMPT_VALIDATORS: list[str] = [
 def log_analytics(event: dict[str, Any]) -> None:
     """Log to analytics file. Fail-safe - never blocks."""
     try:
-        path = Path(
-            os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl")
-        )
+        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a") as f:
             f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
+                json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), **event}) + "\n"
             )
     except Exception:
         pass  # Never block on analytics failure
@@ -146,4 +141,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

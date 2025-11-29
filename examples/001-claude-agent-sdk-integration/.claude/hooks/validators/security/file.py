@@ -119,9 +119,7 @@ def check_content_sensitive(content: str | None) -> tuple[bool, str | None, str 
     return False, None, None
 
 
-def validate(
-    tool_input: dict[str, Any], context: dict[str, Any] | None = None
-) -> dict[str, Any]:
+def validate(tool_input: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Validate a file operation for security issues.
 
@@ -181,9 +179,7 @@ def validate(
 
     # Check content for sensitive data (for write operations)
     if content:
-        is_sensitive_content, content_reason, content_hash = check_content_sensitive(
-            content
-        )
+        is_sensitive_content, content_reason, content_hash = check_content_sensitive(content)
         if is_sensitive_content:
             return {
                 "safe": False,
@@ -219,4 +215,3 @@ if __name__ == "__main__":
         print(json.dumps(result))
     else:
         print(json.dumps({"safe": True, "message": "No input provided"}))
-

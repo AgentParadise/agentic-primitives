@@ -317,16 +317,17 @@ class MetricsCollector:
         """Ensure the output directory exists."""
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def start_session(self, model: ModelConfig) -> SessionContext:
+    def start_session(self, model: ModelConfig, session_id: str | None = None) -> SessionContext:
         """Start a new metrics session.
 
         Args:
             model: Model configuration for cost calculation
+            session_id: Optional session ID (generates UUID if not provided)
 
         Returns:
             SessionContext for recording metrics
         """
-        session_id = str(uuid.uuid4())
+        session_id = session_id or str(uuid.uuid4())
 
         # Write session start event
         self._write_event(

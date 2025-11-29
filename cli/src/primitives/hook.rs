@@ -53,8 +53,7 @@ impl FromStr for MiddlewareType {
             "observability" => Ok(MiddlewareType::Observability),
             "analytics" => Ok(MiddlewareType::Analytics),
             _ => Err(Error::InvalidFormat(format!(
-                "Invalid middleware type: '{}'. Expected: safety, observability, or analytics",
-                s
+                "Invalid middleware type: '{s}'. Expected: safety, observability, or analytics"
             ))),
         }
     }

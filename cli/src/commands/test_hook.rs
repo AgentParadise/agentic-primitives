@@ -380,7 +380,7 @@ pub fn execute(args: &TestHookArgs, _config: &PrimitivesConfig) -> anyhow::Resul
         if events.is_empty() {
             eprintln!("Events: Universal (all agent events)");
         } else {
-            eprintln!("Events: {:?}", events);
+            eprintln!("Events: {events:?}");
         }
         eprintln!("Implementation: {}", impl_path.display());
         eprintln!("Executing...\n");
@@ -395,7 +395,7 @@ pub fn execute(args: &TestHookArgs, _config: &PrimitivesConfig) -> anyhow::Resul
     result.event = if events.is_empty() {
         "Universal".to_string()
     } else {
-        format!("{:?}", events)
+        format!("{events:?}")
     };
 
     // 5. Output results

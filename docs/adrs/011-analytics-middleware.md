@@ -516,5 +516,9 @@ All can be added through new adapters or configuration without changing core arc
 
 ---
 
-**Status**: Accepted  
-**Last Updated**: 2025-11-19
+**Status**: Rejected  
+**Last Updated**: 2025-11-28
+
+> **Note**: This ADR was rejected in favor of a simpler "self-logging" architecture where 
+> each hook logs directly to `.agentic/analytics/events.jsonl`. See the hook handlers in 
+> `primitives/v1/hooks/handlers/` for the current implementation.
