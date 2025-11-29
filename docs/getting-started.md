@@ -27,7 +27,7 @@ Before you begin, ensure you have the following installed:
 - **Rust** 1.75 or later ([install](https://www.rust-lang.org/tools/install))
 - **Python** 3.11 or later (for hooks)
 - **uv** ([install](https://github.com/astral-sh/uv#installation))
-- **Make** (usually pre-installed on Unix systems)
+- **Just** (cross-platform task runner)
 - **Git** (for version control)
 
 Verify your installations:
@@ -36,7 +36,22 @@ Verify your installations:
 rust --version   # Should be 1.75 or later
 python --version # Should be 3.11 or later
 uv --version     # Should be installed
-make --version   # Should be installed
+just --version   # Should be 1.37.0 or later
+```
+
+### Installing Just
+
+```bash
+# macOS
+brew install just
+
+# Windows
+winget install Casey.Just
+
+# Linux (via cargo)
+cargo install just
+
+# Or see https://github.com/casey/just#installation
 ```
 
 ---
@@ -51,37 +66,37 @@ git clone https://github.com/yourusername/agentic-primitives.git
 cd agentic-primitives
 
 # Build the CLI
-make build
+just build
 
 # Or build release version (optimized)
-make build-release
+just build-release
 
 # Install the CLI to your PATH
-cargo install --path cli
+just install
 
 # Verify installation
 agentic-p --version
 ```
 
-### Quick Setup with Make
+### Quick Setup with Just
 
-The repository includes a `Makefile` with all common operations:
+The repository uses **[Just](https://github.com/casey/just)** for cross-platform task running:
 
 ```bash
 # See all available commands
-make help
+just
 
 # Run full QA suite (format, lint, test)
-make qa
+just qa
 
 # Auto-fix issues and run QA
-make qa-fix
+just qa-fix
 
 # Build debug version
-make build
+just build
 
 # Build release version
-make build-release
+just build-release
 ```
 
 ---

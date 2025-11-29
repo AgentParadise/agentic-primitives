@@ -69,11 +69,11 @@ uv --version
 git clone https://github.com/yourusername/agentic-primitives.git
 cd agentic-primitives
 
-# Build the CLI
-make build
+# Build the CLI (requires Just: brew install just / winget install Casey.Just)
+just build
 
 # Install the CLI to your PATH
-cargo install --path cli
+just install
 
 # Verify installation
 agentic-p --version
@@ -321,45 +321,50 @@ Each agent provider includes:
 
 ## 🛠️ Development Workflow
 
-All development operations use the **Makefile** for consistency:
+All development operations use **[Just](https://github.com/casey/just)** for cross-platform consistency:
 
 ```bash
+# Install Just (if not already installed)
+# macOS: brew install just
+# Windows: winget install Casey.Just
+# Linux: cargo install just
+
 # Show all available commands
-make help
+just
 
 # Format code (Rust + Python)
-make fmt
+just fmt
 
 # Lint code
-make lint
+just lint
 
 # Type check Python
-make typecheck
+just typecheck
 
 # Run all tests
-make test
+just test
 
 # Full QA suite (format check, lint, typecheck, test)
-make qa
+just qa
 
 # Auto-fix issues and run QA
-make qa-fix
+just qa-fix
 
 # Build debug version
-make build
+just build
 
 # Build release version
-make build-release
+just build-release
 
 # Clean, check, and build everything
-make verify
+just verify
 ```
 
 ### Install Git Hooks (Optional)
 
 ```bash
 # Auto-run QA checks before commits
-make git-hooks-install
+just git-hooks-install
 ```
 
 ---
@@ -577,7 +582,7 @@ Inspired by:
 
 ---
 
-**Ready to build better AI systems?** Start with `make help` and `agentic-p init`.
+**Ready to build better AI systems?** Start with `just` and `agentic-p init`.
 
 For questions, issues, or discussions, visit our [GitHub repository](https://github.com/yourusername/agentic-primitives).
 

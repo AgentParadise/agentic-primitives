@@ -27,8 +27,8 @@ cargo clippy
 # Run tests
 cargo test
 
-# Run all QA checks
-cd .. && make qa
+# Run all QA checks (from repo root)
+cd .. && just qa
 ```
 
 ## Installation

@@ -621,8 +621,7 @@ mod tests {
         for local_file in &local_files {
             assert!(
                 !files_to_install.contains(&local_file.to_string()),
-                "Local file {} should not be in files to install",
-                local_file
+                "Local file {local_file} should not be in files to install"
             );
         }
     }
