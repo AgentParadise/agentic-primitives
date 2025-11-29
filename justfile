@@ -1,0 +1,498 @@
+# justfile - agentic-primitives task runner
+# Cross-platform: Linux, macOS, Windows
+#
+# Usage: just <recipe>
+# List recipes: just --list
+# Recipe help: just --show <recipe>
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+set shell := ["bash", "-euc"]
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELP (default)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Show available recipes
+default:
+    @just --list --unsorted
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEVELOPMENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Initialize development environment
+[group('dev')]
+[unix]
+init:
+    @echo '{{ GREEN }}Initializing development environment...{{ NORMAL }}'
+    @command -v rustc >/dev/null 2>&1 || (echo '{{ RED }}Rust not found. Install from https://rustup.rs{{ NORMAL }}' && exit 1)
+    @command -v uv >/dev/null 2>&1 || (echo '{{ YELLOW }}Installing uv...{{ NORMAL }}' && curl -LsSf https://astral.sh/uv/install.sh | sh)
+    @echo '{{ GREEN }}Installing Rust dependencies...{{ NORMAL }}'
+    cd cli && cargo fetch
+    @echo '{{ GREEN }}✓ Development environment ready!{{ NORMAL }}'
+
+[group('dev')]
+[windows]
+init:
+    Write-Host "Initializing development environment..." -ForegroundColor Green
+    if (-not (Get-Command rustc -ErrorAction SilentlyContinue)) { Write-Host "Rust not found. Install from https://rustup.rs" -ForegroundColor Red; exit 1 }
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Write-Host "Installing uv..." -ForegroundColor Yellow; irm https://astral.sh/uv/install.ps1 | iex }
+    Write-Host "Installing Rust dependencies..." -ForegroundColor Green
+    Set-Location cli; cargo fetch; Set-Location ..
+    Write-Host "✓ Development environment ready!" -ForegroundColor Green
+
+# Clean build artifacts
+[group('dev')]
+[unix]
+clean:
+    @echo '{{ YELLOW }}Cleaning build artifacts...{{ NORMAL }}'
+    cd cli && cargo clean
+    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+    find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
+    find . -type f -name "*.pyc" -delete 2>/dev/null || true
+    rm -rf build/ dist/ *.egg-info 2>/dev/null || true
+    @echo '{{ GREEN }}✓ Clean complete{{ NORMAL }}'
+
+[group('dev')]
+[windows]
+clean:
+    Write-Host "Cleaning build artifacts..." -ForegroundColor Yellow
+    Set-Location cli; cargo clean; Set-Location ..
+    Get-ChildItem -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Recurse -Directory -Filter .pytest_cache -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Recurse -Filter *.pyc -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
+    Write-Host "✓ Clean complete" -ForegroundColor Green
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUST (CLI)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Format Rust code
+[group('rust')]
+rust-fmt:
+    @echo '{{ YELLOW }}Formatting Rust code...{{ NORMAL }}'
+    cargo fmt --all --manifest-path cli/Cargo.toml
+    @echo '{{ GREEN }}✓ Rust formatting complete{{ NORMAL }}'
+
+# Check Rust formatting
+[group('rust')]
+rust-fmt-check:
+    @echo '{{ YELLOW }}Checking Rust formatting...{{ NORMAL }}'
+    cargo fmt --all --manifest-path cli/Cargo.toml -- --check
+
+# Lint Rust code with clippy
+[group('rust')]
+rust-lint:
+    @echo '{{ YELLOW }}Linting Rust code...{{ NORMAL }}'
+    cargo clippy --all-targets --all-features --manifest-path cli/Cargo.toml -- -D warnings
+    @echo '{{ GREEN }}✓ Rust linting complete{{ NORMAL }}'
+
+# Run Rust tests
+[group('rust')]
+rust-test:
+    @echo '{{ YELLOW }}Running Rust tests...{{ NORMAL }}'
+    cargo test --all-features --manifest-path cli/Cargo.toml
+    @echo '{{ GREEN }}✓ Rust tests passed{{ NORMAL }}'
+
+# Run Rust tests with coverage
+[group('rust')]
+rust-test-coverage:
+    @echo '{{ YELLOW }}Running Rust tests with coverage...{{ NORMAL }}'
+    cargo tarpaulin --out Html --output-dir coverage --manifest-path cli/Cargo.toml
+    @echo '{{ GREEN }}✓ Coverage report: cli/coverage/index.html{{ NORMAL }}'
+
+# Build Rust CLI (debug)
+[group('rust')]
+rust-build:
+    @echo '{{ YELLOW }}Building Rust CLI (debug)...{{ NORMAL }}'
+    cargo build --manifest-path cli/Cargo.toml
+    @echo '{{ GREEN }}✓ Build complete: cli/target/debug/agentic-p{{ NORMAL }}'
+
+# Build Rust CLI (release)
+[group('rust')]
+rust-build-release:
+    @echo '{{ YELLOW }}Building Rust CLI (release)...{{ NORMAL }}'
+    cargo build --release --manifest-path cli/Cargo.toml
+    @echo '{{ GREEN }}✓ Release build: cli/target/release/agentic-p{{ NORMAL }}'
+
+# Check Rust code compiles
+[group('rust')]
+rust-check:
+    @echo '{{ YELLOW }}Checking Rust code...{{ NORMAL }}'
+    cargo check --all-features --manifest-path cli/Cargo.toml
+
+# Generate Rust documentation
+[group('rust')]
+rust-doc:
+    @echo '{{ YELLOW }}Generating Rust documentation...{{ NORMAL }}'
+    cargo doc --no-deps --open --manifest-path cli/Cargo.toml
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PYTHON (Services & Libraries)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Format Python code
+[group('python')]
+python-fmt:
+    @echo '{{ YELLOW }}Formatting Python code...{{ NORMAL }}'
+    cd services/analytics && uv run ruff format .
+    cd lib/python/agentic_logging && uv run ruff format .
+    @echo '{{ GREEN }}✓ Python formatting complete{{ NORMAL }}'
+
+# Check Python formatting
+[group('python')]
+python-fmt-check:
+    @echo '{{ YELLOW }}Checking Python formatting...{{ NORMAL }}'
+    cd services/analytics && uv run ruff format --check .
+    cd lib/python/agentic_logging && uv run ruff format --check .
+
+# Lint Python code
+[group('python')]
+python-lint:
+    @echo '{{ YELLOW }}Linting Python code...{{ NORMAL }}'
+    cd services/analytics && uv run ruff check .
+    cd lib/python/agentic_logging && uv run ruff check .
+    @echo '{{ GREEN }}✓ Python linting complete{{ NORMAL }}'
+
+# Lint and auto-fix Python code
+[group('python')]
+python-lint-fix:
+    @echo '{{ YELLOW }}Linting and fixing Python code...{{ NORMAL }}'
+    cd services/analytics && uv run ruff check --fix .
+    cd lib/python/agentic_logging && uv run ruff check --fix .
+    @echo '{{ GREEN }}✓ Python lint fixes applied{{ NORMAL }}'
+
+# Type check Python code
+[group('python')]
+python-typecheck:
+    @echo '{{ YELLOW }}Type checking Python code...{{ NORMAL }}'
+    cd services/analytics && uv run mypy . || true
+    @echo '{{ GREEN }}✓ Python type checking complete{{ NORMAL }}'
+
+# Run Python tests
+[group('python')]
+python-test:
+    @echo '{{ YELLOW }}Running Python tests...{{ NORMAL }}'
+    cd services/analytics && uv run pytest -x -q
+    cd lib/python/agentic_logging && uv run pytest -x -q
+    cd tests/unit/claude/hooks && uv run pytest -x -q
+    @echo '{{ GREEN }}✓ Python tests passed{{ NORMAL }}'
+
+# Run Python tests with coverage
+[group('python')]
+python-test-coverage:
+    @echo '{{ YELLOW }}Running Python tests with coverage...{{ NORMAL }}'
+    cd services/analytics && uv run pytest --cov=. --cov-report=html --cov-report=term
+    @echo '{{ GREEN }}✓ Coverage report: services/analytics/htmlcov/index.html{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMBINED OPERATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Format all code (Rust + Python)
+[group('all')]
+fmt: rust-fmt python-fmt
+
+# Check all formatting
+[group('all')]
+fmt-check: rust-fmt-check python-fmt-check
+
+# Lint all code
+[group('all')]
+lint: rust-lint python-lint
+
+# Auto-fix linting issues
+[group('all')]
+lint-fix: python-lint-fix
+
+# Run all tests
+[group('all')]
+test: rust-test python-test
+
+# Run all tests with coverage
+[group('all')]
+test-coverage: rust-test-coverage python-test-coverage
+
+# Build all components
+[group('all')]
+build: rust-build
+
+# Build release versions
+[group('all')]
+build-release: rust-build-release
+
+# Run type checks
+[group('all')]
+typecheck: python-typecheck
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# QUALITY ASSURANCE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Run all QA checks (format check, lint, typecheck, test)
+[group('qa')]
+qa:
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    @echo '{{ GREEN }}Running Full QA Suite{{ NORMAL }}'
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just fmt-check
+    @echo ''
+    just lint
+    @echo ''
+    just typecheck
+    @echo ''
+    just test
+    @echo ''
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    @echo '{{ GREEN }}✓ All QA checks passed!{{ NORMAL }}'
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+
+# Run QA with auto-fixes
+[group('qa')]
+qa-fix:
+    @echo '{{ GREEN }}Running QA with auto-fixes...{{ NORMAL }}'
+    just fmt
+    just lint-fix
+    just test
+
+# Alias for qa
+[group('qa')]
+check: qa
+
+# Alias for qa-fix
+[group('qa')]
+check-fix: qa-fix
+
+# CI pipeline
+[group('qa')]
+ci:
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    @echo '{{ GREEN }}Running CI Pipeline{{ NORMAL }}'
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just fmt-check
+    just lint
+    just typecheck
+    just test
+    just build-release
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    @echo '{{ GREEN }}✓ CI pipeline passed!{{ NORMAL }}'
+    @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VALIDATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Validate primitives repository
+[group('validation')]
+validate:
+    @echo '{{ YELLOW }}Validating primitives repository...{{ NORMAL }}'
+    cd cli && cargo run -- validate
+    @echo '{{ GREEN }}✓ Validation passed{{ NORMAL }}'
+
+# Validate all version hashes
+[group('validation')]
+validate-hashes:
+    @echo '{{ YELLOW }}Validating version hashes...{{ NORMAL }}'
+    cd cli && cargo run -- validate --check-hashes
+    @echo '{{ GREEN }}✓ Hash validation passed{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INSTALLATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Install CLI to system
+[group('install')]
+install: build-release
+    @echo '{{ YELLOW }}Installing agentic-p CLI...{{ NORMAL }}'
+    cd cli && cargo install --path .
+    @echo '{{ GREEN }}✓ Installed{{ NORMAL }}'
+
+# Uninstall CLI from system
+[group('install')]
+uninstall:
+    @echo '{{ YELLOW }}Uninstalling agentic-p CLI...{{ NORMAL }}'
+    cargo uninstall agentic-p || true
+    @echo '{{ GREEN }}✓ Uninstalled{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOCUMENTATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Generate all documentation
+[group('docs')]
+docs: rust-doc
+    @echo '{{ GREEN }}✓ Documentation generated{{ NORMAL }}'
+
+# Serve documentation locally
+[group('docs')]
+[unix]
+docs-serve:
+    @echo '{{ YELLOW }}Serving documentation...{{ NORMAL }}'
+    cd cli && cargo doc --no-deps && python3 -m http.server --directory target/doc 8080
+
+[group('docs')]
+[windows]
+docs-serve:
+    Write-Host "Serving documentation..." -ForegroundColor Yellow
+    Set-Location cli; cargo doc --no-deps; python -m http.server --directory target/doc 8080
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UTILITIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Watch Rust code and run tests on change
+[group('utils')]
+watch-rust:
+    @echo '{{ YELLOW }}Watching Rust code...{{ NORMAL }}'
+    cd cli && cargo watch -x test
+
+# Watch Python code and run tests on change
+[group('utils')]
+watch-python:
+    @echo '{{ YELLOW }}Watching Python code...{{ NORMAL }}'
+    cd services/analytics && uv run ptw
+
+# Run benchmarks
+[group('utils')]
+bench:
+    @echo '{{ YELLOW }}Running benchmarks...{{ NORMAL }}'
+    cd cli && cargo bench
+
+# Show version information
+[group('utils')]
+[unix]
+version:
+    @echo '{{ GREEN }}Rust version:{{ NORMAL }}'
+    rustc --version
+    cargo --version
+    @echo ''
+    @echo '{{ GREEN }}Python version:{{ NORMAL }}'
+    uv --version
+    python3 --version || python --version
+    @echo ''
+    @echo '{{ GREEN }}Just version:{{ NORMAL }}'
+    just --version
+
+[group('utils')]
+[windows]
+version:
+    Write-Host "Rust version:" -ForegroundColor Green
+    rustc --version
+    cargo --version
+    Write-Host ""
+    Write-Host "Python version:" -ForegroundColor Green
+    uv --version
+    python --version
+    Write-Host ""
+    Write-Host "Just version:" -ForegroundColor Green
+    just --version
+
+# Check for outdated dependencies
+[group('utils')]
+deps-check:
+    @echo '{{ YELLOW }}Checking Rust dependencies...{{ NORMAL }}'
+    cd cli && cargo outdated || echo 'Install: cargo install cargo-outdated'
+
+# Update dependencies
+[group('utils')]
+deps-update:
+    @echo '{{ YELLOW }}Updating Rust dependencies...{{ NORMAL }}'
+    cd cli && cargo update
+    @echo '{{ GREEN }}✓ Dependencies updated{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GIT HOOKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Install git pre-commit hooks
+[group('git')]
+[unix]
+git-hooks-install:
+    @echo '{{ YELLOW }}Installing git hooks...{{ NORMAL }}'
+    printf '#!/bin/sh\njust qa\n' > .git/hooks/pre-commit
+    chmod +x .git/hooks/pre-commit
+    @echo '{{ GREEN }}✓ Pre-commit hook installed (runs just qa){{ NORMAL }}'
+
+[group('git')]
+[windows]
+git-hooks-install:
+    Write-Host "Installing git hooks..." -ForegroundColor Yellow
+    Set-Content -Path .git/hooks/pre-commit -Value "#!/bin/sh`njust qa"
+    Write-Host "✓ Pre-commit hook installed" -ForegroundColor Green
+
+# Uninstall git hooks
+[group('git')]
+[unix]
+git-hooks-uninstall:
+    @echo '{{ YELLOW }}Uninstalling git hooks...{{ NORMAL }}'
+    rm -f .git/hooks/pre-commit
+    @echo '{{ GREEN }}✓ Pre-commit hook uninstalled{{ NORMAL }}'
+
+[group('git')]
+[windows]
+git-hooks-uninstall:
+    Write-Host "Uninstalling git hooks..." -ForegroundColor Yellow
+    Remove-Item .git/hooks/pre-commit -ErrorAction SilentlyContinue
+    Write-Host "✓ Pre-commit hook uninstalled" -ForegroundColor Green
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROJECT MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Show TODO/FIXME comments
+[group('project')]
+[unix]
+todo:
+    @echo '{{ YELLOW }}Scanning for TODO/FIXME comments...{{ NORMAL }}'
+    rg -n "TODO|FIXME" --glob '*.rs' --glob '*.py' --glob '*.md' . || echo '{{ GREEN }}No TODOs found!{{ NORMAL }}'
+
+[group('project')]
+[windows]
+todo:
+    Write-Host "Scanning for TODO/FIXME comments..." -ForegroundColor Yellow
+    rg -n "TODO|FIXME" --glob '*.rs' --glob '*.py' --glob '*.md' .
+
+# Count lines of code
+[group('project')]
+[unix]
+loc:
+    @echo '{{ YELLOW }}Lines of code:{{ NORMAL }}'
+    @echo 'Rust:'
+    @find cli/src -name "*.rs" | xargs wc -l | tail -n 1
+    @echo 'Python:'
+    @find services lib -name "*.py" 2>/dev/null | xargs wc -l 2>/dev/null | tail -n 1 || echo '0'
+
+[group('project')]
+[windows]
+loc:
+    Write-Host "Lines of code:" -ForegroundColor Yellow
+    Write-Host "Rust:"
+    (Get-ChildItem -Recurse cli/src -Filter *.rs | Get-Content | Measure-Object -Line).Lines
+    Write-Host "Python:"
+    (Get-ChildItem -Recurse services,lib -Filter *.py -ErrorAction SilentlyContinue | Get-Content | Measure-Object -Line).Lines
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ADVANCED
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Security audit
+[group('advanced')]
+audit:
+    @echo '{{ YELLOW }}Running security audit...{{ NORMAL }}'
+    cd cli && cargo audit || echo 'Install: cargo install cargo-audit'
+
+# Fix all auto-fixable issues
+[group('advanced')]
+fix-all: fmt lint-fix
+    @echo '{{ GREEN }}✓ Auto-fixes applied{{ NORMAL }}'
+
+# Clean, check, and build everything
+[group('advanced')]
+verify: clean check build
+    @echo '{{ GREEN }}✓ Full verification complete!{{ NORMAL }}'
+

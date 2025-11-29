@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 🎯 Agentic Prompts & Smart Sync
+
+Major additions for prompt primitives and improved install workflow.
+
+### Added
+
+- **Prompt primitives**: New prompt types with full taxonomy
+  - `commands/` - Task execution prompts (e.g., `/review`, `/pre-commit-qa`, `/qa-setup`)
+  - `meta-prompts/` - Prompt generators (e.g., `/create-prime`, `/create-doc-sync`, `/prompt-generator`)
+  - `agents/` and `skills/` - Directory structure for future expansion
+
+- **Manifest-based smart sync**: `build` and `install` commands now track managed files
+  - `.agentic-manifest.yaml` generated during build with primitive metadata
+  - Install shows sync preview (new/updated/unchanged primitives)
+  - **Local files preserved** - files not in manifest (e.g., generated `/doc-sync`) are not overwritten
+
+- **Per-project configuration**: `agentic.yaml` for version overrides
+  - `agentic-p config init` - Generate config template (tsconfig-style with commented options)
+  - `agentic-p config show` - Display current configuration
+  - `agentic-p config list` - List available primitives
+
+- **agentic_settings package**: Centralized configuration management
+  - Pydantic-settings based API key management
+  - Auto-discovery of `.env` files
+  - Type-safe settings with validation
+
+### Changed
+
+- Build command now outputs manifest for tracking installed primitives
+- Install command uses manifest diff to only update changed files
+- Prompt frontmatter uses model aliases (e.g., `sonnet`) instead of explicit versions
+
+---
+
 ## [1.2.0] - 2025-11-26
 
 ### 🔄 Self-Logging Hooks Architecture

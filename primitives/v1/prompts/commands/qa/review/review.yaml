@@ -1,0 +1,28 @@
+id: review
+kind: command
+category: qa
+domain: quality-assurance
+summary: "Review implementation against project plan and verify all tasks are complete"
+tags:
+  - review
+  - plan
+  - validation
+  - qa
+defaults:
+  preferred_models:
+    - claude/sonnet
+context_usage:
+  as_user: true
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+versions:
+  - version: 1
+    file: review.prompt.v1.md
+    hash: "blake3:d3a73d520e65ce718e2b92086d688de1fb8e37d4a9a1ff9a84500ee5dbf80c41"
+    status: active
+    created: "2025-11-29"
+    notes: "Initial version with plan-vs-implementation review workflow"
+default_version: 1

@@ -26,6 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.37.0'
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -38,22 +43,24 @@ jobs:
           cache-on-failure: true
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
-        working-directory: ./cli
+        run: just rust-fmt-check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-        working-directory: ./cli
+        run: just rust-lint
 
       - name: Run cargo check
-        run: cargo check --workspace --all-features
-        working-directory: ./cli
+        run: just rust-check
 
   rust-test:
     name: Rust Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.37.0'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -65,8 +72,7 @@ jobs:
           cache-on-failure: true
 
       - name: Run tests
-        run: cargo test --workspace
-        working-directory: ./cli
+        run: just rust-test
 
   # Windows/macOS tests - only on PRs to main or manual trigger
   rust-test-platforms:
@@ -80,6 +86,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.37.0'
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -90,8 +101,7 @@ jobs:
           cache-on-failure: true
 
       - name: Run tests
-        run: cargo test --workspace
-        working-directory: ./cli
+        run: just rust-test
 
   #############################################################################
   # PYTHON JOBS - All run in parallel
@@ -102,6 +112,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.37.0'
 
       - name: Setup UV
         uses: astral-sh/setup-uv@v3

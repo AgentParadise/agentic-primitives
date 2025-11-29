@@ -113,5 +113,6 @@ fn test_full_primitive_lifecycle() {
         Some(repo_path),
     )
     .success()
-    .stdout(predicate::str::contains("Would install"));
+    .stdout(predicate::str::contains("Sync Preview"))
+    .stdout(predicate::str::contains("New primitives:"));
 }

@@ -108,14 +108,20 @@ After each milestone in EXECUTE mode:
 4. Review changes with git MCP server
 5. Commit changes with conventional commit messages before moving to next milestone
 
-**python** for python, you can run all of the checks together with `poetry run poe check-fix`
+**Use Just for all QA operations (cross-platform):**
 
 ```bash
-# Run all checks and auto-format code
-python scripts/qa_checkpoint.py
+# Run all checks with auto-fix
+just qa-fix
 
-# Run checks and commit using conventional commit format
-python scripts/qa_checkpoint.py --commit "Complete Milestone X" --conventional-commit
+# Run full QA suite (no auto-fix)
+just qa
+
+# Individual checks
+just fmt         # Format code
+just lint        # Run linters
+just typecheck   # Type check Python
+just test        # Run all tests
 ```
 
 ## Git MCP Server for Clean Commits
