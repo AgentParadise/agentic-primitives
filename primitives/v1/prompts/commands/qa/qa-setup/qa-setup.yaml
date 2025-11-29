@@ -1,0 +1,28 @@
+id: qa-setup
+kind: command
+category: qa
+domain: quality-assurance
+summary: "Verify or create standardized QA commands for a polyglot project"
+tags:
+  - qa
+  - setup
+  - polyglot
+  - just
+  - scripts
+defaults:
+  preferred_models:
+    - claude/sonnet
+context_usage:
+  as_user: true
+tools:
+  - Read
+  - Write
+  - Bash
+versions:
+  - version: 1
+    file: qa-setup.prompt.v1.md
+    status: active
+    created: "2025-11-29"
+    notes: "Initial version - standardized command verification/creation"
+default_version: 1
+

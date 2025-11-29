@@ -1,0 +1,29 @@
+id: pre-commit-qa
+kind: command
+category: qa
+domain: quality-assurance
+summary: "Run standardized QA checks before committing: types, build, lint, format, tests"
+tags:
+  - qa
+  - pre-commit
+  - ci
+  - validation
+  - lint
+  - test
+defaults:
+  preferred_models:
+    - claude/sonnet
+context_usage:
+  as_user: true
+tools:
+  - Read
+  - Bash
+  - Grep
+versions:
+  - version: 1
+    file: pre-commit-qa.prompt.v1.md
+    status: active
+    created: "2025-11-29"
+    notes: "Initial version with full QA pipeline: types, build, lint, format, tests"
+default_version: 1
+
