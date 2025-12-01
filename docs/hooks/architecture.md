@@ -25,19 +25,19 @@ graph TB
         Agent[<span style='color:black'>AI Agent</span>]
         Tools[<span style='color:black'>Tool Execution</span>]
     end
-    
+
     subgraph "Hook System"
         HookManager[<span style='color:black'>Hook Manager</span>]
         HookPrimitives[<span style='color:black'>Hook Primitives</span>]
         Middleware[<span style='color:black'>Middleware Pipeline</span>]
     end
-    
+
     subgraph "Analytics Service"
         Normalizer[<span style='color:black'>Event Normalizer</span>]
         Publisher[<span style='color:black'>Event Publisher</span>]
         Storage[<span style='color:black'>Storage Backend</span>]
     end
-    
+
     Agent -->|<span style='color:black'>executes</span>| Tools
     Tools -->|<span style='color:black'>triggers</span>| HookManager
     HookManager -->|<span style='color:black'>dispatches</span>| HookPrimitives
@@ -45,7 +45,7 @@ graph TB
     Middleware -->|<span style='color:black'>normalizes</span>| Normalizer
     Normalizer -->|<span style='color:black'>publishes</span>| Publisher
     Publisher -->|<span style='color:black'>stores</span>| Storage
-    
+
     style Agent fill:#e1f5ff,stroke:#333,color:#000
     style Tools fill:#e1f5ff,stroke:#333,color:#000
     style HookManager fill:#fff4e1,stroke:#333,color:#000
@@ -69,7 +69,7 @@ sequenceDiagram
     participant HookMgr as <span style='color:black'>Hook Manager</span>
     participant Primitive as <span style='color:black'>Hook Primitive</span>
     participant Middleware as <span style='color:black'>Middleware</span>
-    
+
     Agent->>Runtime: Execute Tool
     Runtime->>HookMgr: Trigger PreToolUse
     HookMgr->>Primitive: Load Hook Config
@@ -83,7 +83,7 @@ sequenceDiagram
     Primitive->>Middleware: Execute Pipeline
     Middleware-->>Primitive: Return Result
     Primitive-->>HookMgr: Hook Complete
-    
+
     Note over Agent,Middleware: <span style='color:black'>Hooks never block agent execution</span>
 ```
 
@@ -96,19 +96,19 @@ graph LR
         Impl[<span style='color:black'>Implementation<br/>(Python/Shell)</span>]
         Config[<span style='color:black'>Configuration<br/>(Env Vars)</span>]
     end
-    
+
     subgraph "Middleware Pipeline"
         M1[<span style='color:black'>Middleware 1</span>]
         M2[<span style='color:black'>Middleware 2</span>]
         M3[<span style='color:black'>Middleware N</span>]
     end
-    
+
     Meta -->|<span style='color:black'>defines</span>| Impl
     Config -->|<span style='color:black'>configures</span>| Impl
     Impl -->|<span style='color:black'>orchestrates</span>| M1
     M1 -->|<span style='color:black'>pipes to</span>| M2
     M2 -->|<span style='color:black'>pipes to</span>| M3
-    
+
     style Meta fill:#fff4e1,stroke:#333,color:#000
     style Impl fill:#fff4e1,stroke:#333,color:#000
     style Config fill:#fff4e1,stroke:#333,color:#000
@@ -130,47 +130,47 @@ graph TB
         OpenAIHook[<span style='color:black'>OpenAI Hook Event</span>]
         CustomHook[<span style='color:black'>Custom Hook Event</span>]
     end
-    
+
     subgraph "Normalization Layer"
         HookInput[<span style='color:black'>HookInput Model</span>]
         Normalizer[<span style='color:black'>Event Normalizer</span>]
-        
+
         subgraph "Adapters"
             ClaudeAdapter[<span style='color:black'>Claude Adapter</span>]
             OpenAIAdapter[<span style='color:black'>OpenAI Adapter</span>]
             CustomAdapter[<span style='color:black'>Custom Adapter</span>]
         end
     end
-    
+
     subgraph "Output Layer"
         NormalizedEvent[<span style='color:black'>Normalized Event</span>]
         Publisher[<span style='color:black'>Event Publisher</span>]
-        
+
         subgraph "Backends"
             FileBackend[<span style='color:black'>File Backend<br/>(JSONL)</span>]
             APIBackend[<span style='color:black'>API Backend<br/>(HTTP POST)</span>]
         end
     end
-    
+
     ClaudeHook -->|<span style='color:black'>wraps</span>| HookInput
     OpenAIHook -->|<span style='color:black'>wraps</span>| HookInput
     CustomHook -->|<span style='color:black'>wraps</span>| HookInput
-    
+
     HookInput -->|<span style='color:black'>routes to</span>| Normalizer
-    
+
     Normalizer -->|<span style='color:black'>uses</span>| ClaudeAdapter
     Normalizer -->|<span style='color:black'>uses</span>| OpenAIAdapter
     Normalizer -->|<span style='color:black'>uses</span>| CustomAdapter
-    
+
     ClaudeAdapter -->|<span style='color:black'>produces</span>| NormalizedEvent
     OpenAIAdapter -->|<span style='color:black'>produces</span>| NormalizedEvent
     CustomAdapter -->|<span style='color:black'>produces</span>| NormalizedEvent
-    
+
     NormalizedEvent -->|<span style='color:black'>sends to</span>| Publisher
-    
+
     Publisher -->|<span style='color:black'>writes to</span>| FileBackend
     Publisher -->|<span style='color:black'>posts to</span>| APIBackend
-    
+
     style ClaudeHook fill:#e1f5ff,stroke:#333,color:#000
     style OpenAIHook fill:#e1f5ff,stroke:#333,color:#000
     style CustomHook fill:#e1f5ff,stroke:#333,color:#000
@@ -192,18 +192,18 @@ graph LR
     subgraph "Provider-Specific Event"
         PSE[<span style='color:black'>PreToolUse<br/>tool_name: Write<br/>tool_input: {...}<br/>session_id: abc123<br/>permission_mode: default</span>]
     end
-    
+
     subgraph "Normalized Event"
         NE[<span style='color:black'>tool_execution_started<br/>provider: claude<br/>session_id: abc123<br/>timestamp: 2025-11-19T12:00:00Z<br/>context: ToolExecutionContext<br/>metadata: EventMetadata</span>]
     end
-    
+
     subgraph "Storage Format"
         SF[<span style='color:black'>JSONL Line:<br/>{event_type, timestamp,<br/>session_id, provider,<br/>context, metadata}</span>]
     end
-    
+
     PSE -->|<span style='color:black'>Adapter</span>| NE
     NE -->|<span style='color:black'>Publisher</span>| SF
-    
+
     style PSE fill:#e1f5ff,stroke:#333,color:#000
     style NE fill:#fff4e1,stroke:#333,color:#000
     style SF fill:#e8f5e9,stroke:#333,color:#000
@@ -220,35 +220,35 @@ graph TB
     subgraph "Source"
         Primitives[<span style='color:black'>Hook Primitives<br/>(primitives/v1/hooks/)</span>]
     end
-    
+
     subgraph "CLI Build System"
         BuildCmd[<span style='color:black'>agentic-p build</span>]
         Transformer[<span style='color:black'>Provider Transformer</span>]
-        
+
         subgraph "Transformers"
             ClaudeT[<span style='color:black'>Claude Transformer</span>]
             OpenAIT[<span style='color:black'>OpenAI Transformer</span>]
             CursorT[<span style='color:black'>Cursor Transformer</span>]
         end
     end
-    
+
     subgraph "Output"
         ClaudeOut[<span style='color:black'>.claude/hooks/<br/>hooks.json<br/>scripts/*.sh</span>]
         OpenAIOut[<span style='color:black'>.openai/hooks/<br/>config.yaml</span>]
         CursorOut[<span style='color:black'>.cursor/hooks/<br/>hooks.json</span>]
     end
-    
+
     Primitives -->|<span style='color:black'>reads</span>| BuildCmd
     BuildCmd -->|<span style='color:black'>selects</span>| Transformer
-    
+
     Transformer -->|<span style='color:black'>claude</span>| ClaudeT
     Transformer -->|<span style='color:black'>openai</span>| OpenAIT
     Transformer -->|<span style='color:black'>cursor</span>| CursorT
-    
+
     ClaudeT -->|<span style='color:black'>generates</span>| ClaudeOut
     OpenAIT -->|<span style='color:black'>generates</span>| OpenAIOut
     CursorT -->|<span style='color:black'>generates</span>| CursorOut
-    
+
     style Primitives fill:#e1f5ff,stroke:#333,color:#000
     style BuildCmd fill:#fff4e1,stroke:#333,color:#000
     style Transformer fill:#fff4e1,stroke:#333,color:#000
@@ -270,26 +270,26 @@ graph TB
         Cursor[<span style='color:black'>Cursor IDE</span>]
         Gemini[<span style='color:black'>Gemini Code</span>]
     end
-    
+
     subgraph "Abstraction Layer"
         HookPrimitive[<span style='color:black'>Hook Primitive<br/>(Provider-Agnostic)</span>]
         StandardEvents[<span style='color:black'>Standard Event Schema</span>]
     end
-    
+
     subgraph "Analytics Layer"
         Analytics[<span style='color:black'>Analytics Service<br/>(Provider-Agnostic)</span>]
         Storage[<span style='color:black'>Unified Storage</span>]
     end
-    
+
     Claude -->|<span style='color:black'>provider: claude</span>| HookPrimitive
     OpenAI -->|<span style='color:black'>provider: openai</span>| HookPrimitive
     Cursor -->|<span style='color:black'>provider: cursor</span>| HookPrimitive
     Gemini -->|<span style='color:black'>provider: gemini</span>| HookPrimitive
-    
+
     HookPrimitive -->|<span style='color:black'>normalizes to</span>| StandardEvents
     StandardEvents -->|<span style='color:black'>processes</span>| Analytics
     Analytics -->|<span style='color:black'>stores</span>| Storage
-    
+
     style Claude fill:#e1f5ff,stroke:#333,color:#000
     style OpenAI fill:#e1f5ff,stroke:#333,color:#000
     style Cursor fill:#e1f5ff,stroke:#333,color:#000
@@ -317,10 +317,10 @@ flowchart TB
     PostTool[<span style='color:black'>PostToolUse Hook</span>]
     SessionEnd[<span style='color:black'>SessionEnd Hook</span>]
     End([<span style='color:black'>Agent Ends Session</span>])
-    
+
     Analytics[<span style='color:black'>Analytics Pipeline</span>]
     Storage[<span style='color:black'>Event Storage</span>]
-    
+
     Start --> SessionStart
     SessionStart --> UserPrompt
     UserPrompt --> PromptHook
@@ -330,15 +330,15 @@ flowchart TB
     PostTool --> UserPrompt
     UserPrompt --> SessionEnd
     SessionEnd --> End
-    
+
     SessionStart -.->|<span style='color:black'>session_started</span>| Analytics
     PromptHook -.->|<span style='color:black'>user_prompt_submitted</span>| Analytics
     PreTool -.->|<span style='color:black'>tool_execution_started</span>| Analytics
     PostTool -.->|<span style='color:black'>tool_execution_completed</span>| Analytics
     SessionEnd -.->|<span style='color:black'>session_completed</span>| Analytics
-    
+
     Analytics -.->|<span style='color:black'>stores</span>| Storage
-    
+
     style Start fill:#e1f5ff,stroke:#333,color:#000
     style End fill:#e1f5ff,stroke:#333,color:#000
     style SessionStart fill:#fff4e1,stroke:#333,color:#000
@@ -366,7 +366,7 @@ graph LR
         CE7[<span style='color:black'>Stop</span>]
         CE8[<span style='color:black'>PreCompact</span>]
     end
-    
+
     subgraph "Normalized Events"
         NE1[<span style='color:black'>session_started</span>]
         NE2[<span style='color:black'>session_completed</span>]
@@ -377,7 +377,7 @@ graph LR
         NE7[<span style='color:black'>agent_stopped</span>]
         NE8[<span style='color:black'>context_compacted</span>]
     end
-    
+
     CE1 -->|<span style='color:black'>maps to</span>| NE1
     CE2 -->|<span style='color:black'>maps to</span>| NE2
     CE3 -->|<span style='color:black'>maps to</span>| NE3
@@ -386,7 +386,7 @@ graph LR
     CE6 -->|<span style='color:black'>maps to</span>| NE6
     CE7 -->|<span style='color:black'>maps to</span>| NE7
     CE8 -->|<span style='color:black'>maps to</span>| NE8
-    
+
     style CE1 fill:#e1f5ff,stroke:#333,color:#000
     style CE2 fill:#e1f5ff,stroke:#333,color:#000
     style CE3 fill:#e1f5ff,stroke:#333,color:#000
@@ -418,14 +418,14 @@ sequenceDiagram
     participant Validator as <span style='color:black'>Validator</span>
     participant Transformer as <span style='color:black'>Transformer</span>
     participant FileSystem as <span style='color:black'>File System</span>
-    
+
     User->>CLI: agentic-p build --provider claude
     CLI->>Validator: Validate Hook Primitive
     Validator->>FileSystem: Read YAML Metadata
     FileSystem-->>Validator: Metadata
     Validator->>Validator: Validate Schema
     Validator-->>CLI: Validation Result
-    
+
     CLI->>Transformer: Transform for Claude
     Transformer->>FileSystem: Read Implementation Files
     FileSystem-->>Transformer: Shell Script + Python
@@ -434,7 +434,7 @@ sequenceDiagram
     FileSystem-->>Transformer: Write Complete
     Transformer-->>CLI: Build Complete
     CLI-->>User: Success: 3 files generated
-    
+
     Note over User,FileSystem: <span style='color:black'>Build output: hooks.json, scripts/*.sh, scripts/*.py</span>
 ```
 
@@ -448,7 +448,7 @@ sequenceDiagram
     participant Normalizer as <span style='color:black'>Event Normalizer</span>
     participant Publisher as <span style='color:black'>Event Publisher</span>
     participant Storage as <span style='color:black'>Storage</span>
-    
+
     Agent->>Hook: Execute PreToolUse
     Hook->>Orchestrator: Run impl.python.py
     Orchestrator->>Orchestrator: Read Hook Event (stdin)
@@ -461,7 +461,7 @@ sequenceDiagram
     Publisher-->>Orchestrator: Publish Complete
     Orchestrator-->>Hook: Success
     Hook-->>Agent: Continue Execution
-    
+
     Note over Agent,Storage: <span style='color:black'>Total time: < 100ms (non-blocking)</span>
 ```
 
@@ -475,14 +475,14 @@ flowchart TB
     LogError[<span style='color:black'>Log Error</span>]
     Continue[<span style='color:black'>Continue Agent</span>]
     End([<span style='color:black'>Hook Complete</span>])
-    
+
     Start --> Execute
     Execute --> Success
     Success -->|<span style='color:black'>Yes</span>| End
     Success -->|<span style='color:black'>No</span>| LogError
     LogError --> Continue
     Continue --> End
-    
+
     style Start fill:#e1f5ff,stroke:#333,color:#000
     style Execute fill:#fff4e1,stroke:#333,color:#000
     style Success fill:#fff4e1,stroke:#333,color:#000
@@ -503,28 +503,28 @@ graph TB
         Agent[<span style='color:black'>AI Agent</span>]
         Hooks[<span style='color:black'>Installed Hooks</span>]
     end
-    
+
     subgraph "Analytics Service"
         Normalizer[<span style='color:black'>Event Normalizer</span>]
         Publisher[<span style='color:black'>Event Publisher</span>]
     end
-    
+
     subgraph "Storage Layer"
         LocalFS[<span style='color:black'>Local File System<br/>(JSONL)</span>]
         S3[<span style='color:black'>S3 Bucket<br/>(via API)</span>]
         Database[<span style='color:black'>Database<br/>(via API)</span>]
         Analytics[<span style='color:black'>Analytics Platform<br/>(via API)</span>]
     end
-    
+
     Agent -->|<span style='color:black'>triggers</span>| Hooks
     Hooks -->|<span style='color:black'>executes</span>| Normalizer
     Normalizer -->|<span style='color:black'>publishes</span>| Publisher
-    
+
     Publisher -->|<span style='color:black'>file backend</span>| LocalFS
     Publisher -->|<span style='color:black'>api backend</span>| S3
     Publisher -->|<span style='color:black'>api backend</span>| Database
     Publisher -->|<span style='color:black'>api backend</span>| Analytics
-    
+
     style Agent fill:#e1f5ff,stroke:#333,color:#000
     style Hooks fill:#e1f5ff,stroke:#333,color:#000
     style Normalizer fill:#fff4e1,stroke:#333,color:#000
@@ -554,10 +554,99 @@ graph TB
 
 ---
 
+## High-Performance Architecture (Agent Swarms)
+
+For deployments with 1000+ concurrent agents, we provide an alternative client-server architecture that replaces subprocess hooks with batched HTTP events.
+
+### Client-Server Architecture
+
+```mermaid
+graph TB
+    subgraph "Agent Processes (1000+)"
+        Agent1[<span style='color:black'>Agent 1<br/>HookClient</span>]
+        Agent2[<span style='color:black'>Agent 2<br/>HookClient</span>]
+        AgentN[<span style='color:black'>Agent N<br/>HookClient</span>]
+    end
+
+    subgraph "Hook Backend Service"
+        LB[<span style='color:black'>Load Balancer</span>]
+        Backend1[<span style='color:black'>Backend<br/>Instance 1</span>]
+        Backend2[<span style='color:black'>Backend<br/>Instance 2</span>]
+        BackendN[<span style='color:black'>Backend<br/>Instance N</span>]
+    end
+
+    subgraph "Storage"
+        PG[<span style='color:black'>PostgreSQL<br/>(Partitioned)</span>]
+    end
+
+    Agent1 -->|<span style='color:black'>HTTP Batch</span>| LB
+    Agent2 -->|<span style='color:black'>HTTP Batch</span>| LB
+    AgentN -->|<span style='color:black'>HTTP Batch</span>| LB
+
+    LB --> Backend1
+    LB --> Backend2
+    LB --> BackendN
+
+    Backend1 -->|<span style='color:black'>Bulk Insert</span>| PG
+    Backend2 -->|<span style='color:black'>Bulk Insert</span>| PG
+    BackendN -->|<span style='color:black'>Bulk Insert</span>| PG
+
+    style Agent1 fill:#e1f5ff,stroke:#333,color:#000
+    style Agent2 fill:#e1f5ff,stroke:#333,color:#000
+    style AgentN fill:#e1f5ff,stroke:#333,color:#000
+    style LB fill:#fff4e1,stroke:#333,color:#000
+    style Backend1 fill:#fff4e1,stroke:#333,color:#000
+    style Backend2 fill:#fff4e1,stroke:#333,color:#000
+    style BackendN fill:#fff4e1,stroke:#333,color:#000
+    style PG fill:#e8f5e9,stroke:#333,color:#000
+```
+
+### Event Batching Flow
+
+```mermaid
+sequenceDiagram
+    participant Agent as <span style='color:black'>Agent Process</span>
+    participant Client as <span style='color:black'>HookClient</span>
+    participant Buffer as <span style='color:black'>EventBuffer</span>
+    participant Backend as <span style='color:black'>Hook Backend</span>
+    participant Storage as <span style='color:black'>PostgreSQL</span>
+
+    Agent->>Client: emit(event)
+    Client->>Buffer: add(event)
+    Note over Buffer: Buffering...
+
+    Agent->>Client: emit(event)
+    Client->>Buffer: add(event)
+    Note over Buffer: batch_size reached OR flush_interval elapsed
+
+    Buffer->>Backend: POST /events/batch
+    Backend->>Storage: Bulk INSERT (COPY)
+    Storage-->>Backend: Success
+    Backend-->>Buffer: 202 Accepted
+
+    Note over Agent,Storage: <span style='color:black'>Latency: < 5ms p99</span>
+```
+
+### Performance Comparison
+
+| Metric | Subprocess Approach | Client Library |
+|--------|---------------------|----------------|
+| p99 Latency | ~50ms | **0.02ms** |
+| Throughput | ~100 events/sec | **143,000+ events/sec** |
+| Concurrent Agents | ~10 | **1000+** |
+| Memory per Agent | ~50MB (Python process) | **~200KB (client)** |
+
+### Documentation
+
+- [Client Library Guide](client-library.md) - Using `agentic-hooks` client
+- [Backend Service Guide](backend-service.md) - Deploying the backend
+- [ADR-017: Hook Client Library](../adrs/017-hook-client-library.md) - Architecture decision
+
+---
+
 ## Additional Resources
 
 - [Analytics Service Architecture](../../services/analytics/ARCHITECTURE.md)
 - [Hook Primitives Specification](../../specs/v1/hook-meta.schema.json)
 - [Analytics Events Schema](../../specs/v1/analytics-events.schema.json)
 - [Security Audit](../../services/analytics/SECURITY.md)
-
