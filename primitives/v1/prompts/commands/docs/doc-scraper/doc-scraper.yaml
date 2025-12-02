@@ -21,9 +21,8 @@ tools:
 versions:
   - version: 1
     file: doc-scraper.prompt.v1.md
-    hash: "blake3:2536313cdbfd59df32a97790f3dac6dd69dcbf03d6cfe2aa186d523240c9a574"
+    hash: "blake3:e27d8a500d8c22fca5e28577e85b2fb6bfa48b9d535f6f06a34fd2559faba76e"
     status: active
     created: "2025-11-29"
     notes: "Initial version - Level 3 doc scraper with semver support"
 default_version: 1
-

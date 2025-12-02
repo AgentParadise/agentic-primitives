@@ -1,0 +1,100 @@
+# Claude Code Built-in Tools
+# These tools are provided by Claude Code runtime and don't need to be defined in primitives
+
+agent: claude-code
+version: "1.0"
+
+description: |
+  Built-in tools available in Claude Code. These are core tools that
+  Claude Code provides out of the box for file operations, code analysis,
+  web access, and task management.
+
+# Core file operations
+file_tools:
+  - id: Read
+    description: Read file contents from the filesystem
+    category: file
+
+  - id: Write
+    description: Write or create files
+    category: file
+
+  - id: Edit
+    description: Make targeted edits to existing files
+    category: file
+
+  - id: MultiEdit
+    description: Make multiple edits to a file in one operation
+    category: file
+
+# Filesystem navigation
+filesystem_tools:
+  - id: LS
+    description: List directory contents
+    category: filesystem
+
+  - id: Glob
+    description: Find files matching patterns
+    category: filesystem
+
+  - id: Grep
+    description: Search file contents with regex
+    category: filesystem
+
+# Terminal access
+terminal_tools:
+  - id: Bash
+    description: Execute shell commands
+    category: terminal
+
+# Web access
+web_tools:
+  - id: WebFetch
+    description: Fetch content from URLs
+    category: web
+
+  - id: WebSearch
+    description: Search the web
+    category: web
+
+# Task management
+task_tools:
+  - id: Task
+    description: Create and manage subagent tasks
+    category: task
+
+  - id: TodoRead
+    description: Read todo items
+    category: task
+
+  - id: TodoWrite
+    description: Create/update todo items
+    category: task
+
+# Notebook support
+notebook_tools:
+  - id: NotebookRead
+    description: Read Jupyter notebook cells
+    category: notebook
+
+  - id: NotebookEdit
+    description: Edit Jupyter notebook cells
+    category: notebook
+
+# All tool IDs for easy reference
+all_tool_ids:
+  - Read
+  - Write
+  - Edit
+  - MultiEdit
+  - LS
+  - Glob
+  - Grep
+  - Bash
+  - WebFetch
+  - WebSearch
+  - Task
+  - TodoRead
+  - TodoWrite
+  - NotebookRead
+  - NotebookEdit

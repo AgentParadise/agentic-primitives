@@ -193,6 +193,33 @@ jobs:
           uv run pytest -x -q
 
   #############################################################################
+  # VALIDATION JOB - Validates primitives repository
+  #############################################################################
+
+  validate-primitives:
+    name: Validate Primitives
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.37.0'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli -> target
+          cache-on-failure: true
+
+      - name: Validate primitives
+        run: just validate
+
+  #############################################################################
   # SUMMARY JOB - Required status check for PRs
   #############################################################################
 
@@ -205,6 +232,7 @@ jobs:
       - python-analytics
       - python-logging
       - python-hooks
+      - validate-primitives
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs
@@ -214,7 +242,8 @@ jobs:
              [[ "${{ needs.rust-test.result }}" == "failure" ]] || \
              [[ "${{ needs.python-analytics.result }}" == "failure" ]] || \
              [[ "${{ needs.python-logging.result }}" == "failure" ]] || \
-             [[ "${{ needs.python-hooks.result }}" == "failure" ]]; then
+             [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-primitives.result }}" == "failure" ]]; then
             echo "❌ QA checks failed"
             exit 1
           fi
@@ -224,7 +253,8 @@ jobs:
              [[ "${{ needs.rust-test.result }}" == "cancelled" ]] || \
              [[ "${{ needs.python-analytics.result }}" == "cancelled" ]] || \
              [[ "${{ needs.python-logging.result }}" == "cancelled" ]] || \
-             [[ "${{ needs.python-hooks.result }}" == "cancelled" ]]; then
+             [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.validate-primitives.result }}" == "cancelled" ]]; then
             echo "⚠️ QA checks were cancelled"
             exit 1
           fi
@@ -242,3 +272,4 @@ jobs:
           echo "| Python Analytics | ${{ needs.python-analytics.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Logging | ${{ needs.python-logging.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate Primitives | ${{ needs.validate-primitives.result }} |" >> $GITHUB_STEP_SUMMARY
