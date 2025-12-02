@@ -1,6 +1,6 @@
 ---
 provider: Anthropic
-last_updated: 2025-11-24
+last_updated: 2025-12-02
 model_card: https://platform.claude.com/docs/en/about-claude/models/overview
 ---
 
@@ -12,25 +12,35 @@ Anthropic provides the Claude family of large language models, designed with a f
 
 **Official Documentation:** [Claude Models Overview](https://platform.claude.com/docs/en/about-claude/models/overview)
 
-Last Updated: November 24, 2025
+Last Updated: December 2, 2025
+
+## Model Registry Architecture
+
+See [ADR-018: Model Registry Architecture](../../docs/adrs/018-model-registry-architecture.md) for the complete design.
+
+**Key Concepts:**
+- **Simple Aliases** (`sonnet`, `claude-sonnet`): Version-agnostic, auto-upgrade with new releases
+- **Model IDs** (`claude-4-5-sonnet`): Family reference, defined in YAML files
+- **API Names** (`claude-sonnet-4-5-20250929`): Immutable, pricing tied here
 
 ## Available Models
 
-### Current Generation (Claude 4.5 / 4.1)
+### Current Generation (Claude 4.5)
 
-| Model | API Name | Alias | Input | Output | Best For |
-|-------|----------|-------|-------|--------|----------|
-| **Claude Sonnet 4.5** | `claude-sonnet-4-5-20250929` | `claude-sonnet-4-5` | $3/M | $15/M | Complex agents & coding |
-| **Claude Haiku 4.5** | `claude-haiku-4-5-20251001` | `claude-haiku-4-5` | $1/M | $5/M | Speed & efficiency |
-| **Claude Opus 4.1** | `claude-opus-4-1-20250805` | `claude-opus-4-1` | $15/M | $75/M | Specialized reasoning |
+| Model | API Name | Simple Aliases | Input | Output | Best For |
+|-------|----------|----------------|-------|--------|----------|
+| **Claude Sonnet 4.5** | `claude-sonnet-4-5-20250929` | `sonnet`, `claude-sonnet` | $3/M | $15/M | Complex agents & coding |
+| **Claude Haiku 4.5** | `claude-haiku-4-5-20251001` | `haiku`, `claude-haiku` | $1/M | $5/M | Speed & efficiency |
+| **Claude Opus 4.5** | `claude-opus-4-5-20251101` | `opus`, `claude-opus` | $5/M | $25/M | Maximum intelligence |
 
 ### Legacy Models
 
 | Model | Status | Model Type | Notes |
 |-------|--------|------------|-------|
+| Claude Opus 4.1 | Legacy | Opus | Superseded by 4.5 |
 | Claude Sonnet 4 | Legacy | Sonnet | Superseded by 4.5 |
 | Claude Sonnet 3.7 | Legacy | Sonnet | Superseded by 4.5 |
-| Claude Opus 4 | Legacy | Opus | Superseded by 4.1 |
+| Claude Opus 4 | Legacy | Opus | Superseded by 4.5 |
 | Claude Haiku 3.5 | Legacy | Haiku | Superseded by 4.5 |
 | Claude 3 Opus | Legacy | Opus | Significantly outdated |
 | Claude 3 Sonnet | Legacy | Sonnet | Significantly outdated |
@@ -51,13 +61,13 @@ All current Claude models support:
 
 ## Model Selection Guide
 
-- **For Agents**: Use `claude-4-5-sonnet` (recommended) or `claude-4-1-opus` (specialized)
-- **For Commands**: Use `claude-4-5-sonnet` for complex, `claude-4-5-haiku` for simple
-- **For Skills**: Use `claude-4-5-haiku` for cost-effective real-time processing
-- **For Meta-prompts**: Use `claude-4-5-sonnet` or `claude-4-1-opus` for maximum reasoning
-- **For High-Volume**: Use `claude-4-5-haiku` for best throughput and cost
+- **For Agents**: Use `sonnet` (recommended) or `opus` (maximum quality)
+- **For Commands**: Use `sonnet` for complex, `haiku` for simple
+- **For Skills**: Use `haiku` for cost-effective real-time processing
+- **For Meta-prompts**: Use `sonnet` or `opus` for maximum reasoning
+- **For High-Volume**: Use `haiku` for best throughput and cost
 
-**Note**: Current recommended models are defined in `config.yaml` under `current_models`. This ensures a single source of truth for migration paths.
+**Note**: Use simple aliases (`sonnet`, `opus`, `haiku`) in your code. When new model versions are released, they auto-upgrade. Current mappings are defined in `config.yaml` → `current_models`.
 
 ## API Aliases vs Snapshots
 
@@ -77,14 +87,24 @@ See [Anthropic's Transparency Hub](https://www.anthropic.com/transparency) for d
 
 ## Usage in Primitives
 
-Reference models using the format: `anthropic/model-id`
+**Recommended: Use simple aliases** (version-agnostic, auto-upgrade):
 
 ```yaml
 defaults:
   preferred_models:
-    - anthropic/claude-4-5-sonnet   # Recommended default
-    - anthropic/claude-4-5-haiku    # For cost efficiency
-    - anthropic/claude-4-1-opus     # For maximum quality
+    - sonnet        # Recommended default (currently Claude Sonnet 4.5)
+    - haiku         # For cost efficiency (currently Claude Haiku 4.5)
+    - opus          # For maximum quality (currently Claude Opus 4.5)
+```
+
+**Alternative: Use explicit model IDs** (if you need to pin):
+
+```yaml
+defaults:
+  preferred_models:
+    - anthropic/claude-4-5-sonnet   # Pinned to 4.5 family
+    - anthropic/claude-4-5-haiku
+    - anthropic/claude-4-5-opus
 ```
 
 ## Authentication

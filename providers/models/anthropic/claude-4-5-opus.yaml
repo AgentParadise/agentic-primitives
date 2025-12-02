@@ -1,0 +1,49 @@
+id: claude-4-5-opus
+full_name: "Claude Opus 4.5"
+api_name: "claude-opus-4-5-20251101"
+alias: "claude-opus-4-5"
+prefer_alias: false
+version: "4.5"
+provider: anthropic
+status: "current"
+
+capabilities:
+  max_tokens: 64000
+  context_window: 200000
+  supports_vision: true
+  supports_function_calling: true
+  supports_streaming: true
+  supports_json_mode: true
+  supports_system_messages: true
+  supports_extended_thinking: true
+
+performance:
+  speed: "moderate"
+  quality: "highest"
+  reliability: "very-high"
+
+pricing:
+  input_per_1m_tokens: 5.00
+  output_per_1m_tokens: 25.00
+  currency: "USD"
+  notes: "Premium pricing for maximum intelligence. Extended thinking has additional costs."
+
+strengths:
+  - "Maximum intelligence and reasoning capability"
+  - "Premium model for complex analysis"
+  - "Best for tasks requiring highest accuracy"
+  - "Extended thinking support for deep reasoning"
+  - "Superior at nuanced, multi-step problems"
+
+recommended_for:
+  - "complex research and analysis"
+  - "critical decision support"
+  - "advanced scientific reasoning"
+  - "high-stakes document review"
+  - "tasks where accuracy trumps speed"
+
+knowledge_cutoff: "2025-05-31"
+training_cutoff: "2025-08-31"
+last_updated: "2025-12-02"
+
+notes: "Claude Opus 4.5 is the premium model combining maximum intelligence with practical performance. Released November 1, 2025. Best for complex tasks where quality is paramount over speed/cost."
