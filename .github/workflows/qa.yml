@@ -149,7 +149,6 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: "lib/python/agentic_logging/uv.lock"
 
       - name: Set up Python
         uses: actions/setup-python@v5
