@@ -19,19 +19,22 @@ model_families:
   - claude-3
 
 # Current recommended models by type
+# These map simple aliases (sonnet, opus, haiku) to the latest model in each family.
+# When new model versions are released, update these pointers - aliases auto-resolve.
 current_models:
   sonnet: claude-4-5-sonnet
   haiku: claude-4-5-haiku
-  opus: claude-4-1-opus
+  opus: claude-4-5-opus
 
 # Migration paths for legacy families
 # Any model not in current_models should be considered legacy
 # and users should migrate to the current model of the same type
 legacy_status:
+  - claude-4-1    # Superseded by claude-4-5
   - claude-4      # Superseded by claude-4-5
   - claude-3-7    # Superseded by claude-4-5
   - claude-3-5    # Superseded by claude-4-5
-  - claude-3      # Superseded by claude-4-5 or claude-4-1
+  - claude-3      # Superseded by claude-4-5
 
 rate_limits:
   requests_per_minute: 50
@@ -41,4 +44,3 @@ support:
   website: "https://anthropic.com"
   documentation: "https://docs.anthropic.com"
   support_email: "support@anthropic.com"
-
