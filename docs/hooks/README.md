@@ -8,14 +8,31 @@ Welcome to the documentation for the Agentic Primitives hooks system.
 
 ### Core Documentation
 
-- **[Architecture Overview](../architecture/hooks-system-overview.md)** - System design and data flow
+- **[Architecture Overview](architecture.md)** - System design and data flow
 - **[ADR-014: Atomic Hook Architecture](../adrs/014-wrapper-impl-pattern.md)** - Architecture decisions
 - **[ADR-016: Hook Event Correlation](../adrs/016-hook-event-correlation.md)** - Event correlation design
+- **[ADR-017: Hook Client Library](../adrs/017-hook-client-library.md)** - High-performance client for agent swarms
+
+### High-Performance Hooks (Agent Swarms)
+
+- **[Client Library Guide](client-library.md)** - Using `agentic-hooks` for 1000+ concurrent agents
+- **[Backend Service Guide](backend-service.md)** - Deploying the hook backend service
 
 ### Specifications
 
 - **[Hook Metadata Schema](../../specs/v1/hook-meta.schema.json)** - Hook primitive specification
 - **[Analytics Events Schema](../../specs/v1/analytics-events.schema.json)** - Event schema specification
+
+---
+
+## 🚀 Choosing the Right Approach
+
+| Use Case | Approach | Documentation |
+|----------|----------|---------------|
+| Single agent (Claude Desktop, Cursor) | Subprocess hooks | This page |
+| Agent swarms (1000+ concurrent) | Client library + Backend | [Client Library](client-library.md) |
+| Local development | JSONL file storage | Both approaches |
+| Production at scale | PostgreSQL backend | [Backend Service](backend-service.md) |
 
 ---
 
@@ -63,7 +80,7 @@ Three handlers serve as entry points for Claude's hook events:
 ```
 .claude/hooks/handlers/
 ├── pre-tool-use.py      # Validates tools before execution
-├── post-tool-use.py     # Logs tool execution results  
+├── post-tool-use.py     # Logs tool execution results
 └── user-prompt.py       # Validates user prompts
 ```
 
@@ -115,7 +132,7 @@ def validate(tool_input: dict, context: dict | None = None) -> dict:
     Args:
         tool_input: The tool_input from the hook event
         context: Optional context (session_id, tool_name, etc.)
-    
+
     Returns:
         {
             "safe": bool,
@@ -165,14 +182,14 @@ def log_analytics(event: dict) -> None:
 # primitives/v1/hooks/validators/security/my_validator.py
 def validate(tool_input: dict, context: dict | None = None) -> dict:
     command = tool_input.get("command", "")
-    
+
     if "dangerous_pattern" in command:
         return {
             "safe": False,
             "reason": "Dangerous pattern detected",
             "metadata": {"pattern": "dangerous_pattern"}
         }
-    
+
     return {"safe": True}
 ```
 
@@ -320,6 +337,75 @@ cat .agentic/analytics/events.jsonl | jq .
      python3 .claude/hooks/handlers/pre-tool-use.py
    cat .agentic/analytics/events.jsonl
    ```
+
+---
+
+## 🚀 High-Performance Hooks for Agent Swarms
+
+For scenarios with 1000+ concurrent agents, the subprocess-per-hook approach creates significant overhead. We provide a **client-server architecture** for high-performance event emission:
+
+### Quick Start (Agent Swarms)
+
+```python
+from agentic_hooks import HookClient, HookEvent, EventType
+
+# 3 lines of code for high-performance event emission
+async with HookClient(backend_url="http://hooks:8080") as client:
+    await client.emit(HookEvent(
+        event_type=EventType.TOOL_EXECUTION_STARTED,
+        session_id="session-123",
+        data={"tool_name": "Write"},
+    ))
+```
+
+### Performance
+
+| Metric | Subprocess Approach | Client Library |
+|--------|---------------------|----------------|
+| p99 Latency | ~50ms | **0.02ms** |
+| Throughput | ~100 events/sec | **143,000+ events/sec** |
+| Concurrent Agents | ~10 | **1000+** |
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Agent Process (1 of 1000)                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  from agentic_hooks import HookClient, HookEvent                     │   │
+│  │  client = HookClient(backend_url="http://hooks:8080")               │   │
+│  │  await client.emit(event)  # Buffered, batched, async               │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                              │ HTTP POST (batched)
+                                              ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Hook Backend Service                            │
+│  POST /events/batch    - Receive batched events                             │
+│  POST /events          - Receive single event                               │
+│  GET  /health          - Health check                                       │
+│  Storage: PostgreSQL (production) or JSONL (development)                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Installation
+
+```bash
+# Client library (zero runtime deps)
+pip install agentic-hooks
+
+# With HTTP backend support
+pip install agentic-hooks[http]
+
+# Backend service via Docker
+cd services/hooks && docker compose up -d
+```
+
+### Learn More
+
+- **[Client Library Guide](client-library.md)** - Full API documentation
+- **[Backend Service Guide](backend-service.md)** - Deployment and operations
+- **[ADR-017: Hook Client Library](../adrs/017-hook-client-library.md)** - Architecture decision
 
 ---
 
