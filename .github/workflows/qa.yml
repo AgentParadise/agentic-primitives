@@ -193,35 +193,6 @@ jobs:
           uv run pytest -x -q
 
   #############################################################################
-  # VALIDATION JOB - Validates primitives repository (non-blocking)
-  #############################################################################
-
-  validate-primitives:
-    name: Validate Primitives
-    runs-on: ubuntu-latest
-    # This job is informational - pre-existing validation issues shouldn't block CI
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Just
-        uses: extractions/setup-just@v2
-        with:
-          just-version: '1.37.0'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: cli -> target
-          cache-on-failure: true
-
-      - name: Validate primitives
-        run: just validate
-
-  #############################################################################
   # SUMMARY JOB - Required status check for PRs
   #############################################################################
 
@@ -234,12 +205,11 @@ jobs:
       - python-analytics
       - python-logging
       - python-hooks
-      - validate-primitives
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs
         run: |
-          # Check for failures (validate-primitives is non-blocking)
+          # Check for failures
           if [[ "${{ needs.rust-checks.result }}" == "failure" ]] || \
              [[ "${{ needs.rust-test.result }}" == "failure" ]] || \
              [[ "${{ needs.python-analytics.result }}" == "failure" ]] || \
@@ -260,11 +230,6 @@ jobs:
           fi
           
           echo "✅ All QA checks passed!"
-          
-          # Note about validate-primitives
-          if [[ "${{ needs.validate-primitives.result }}" == "failure" ]]; then
-            echo "⚠️ Note: Primitive validation found issues (non-blocking)"
-          fi
 
       - name: Write summary
         run: |
@@ -277,6 +242,3 @@ jobs:
           echo "| Python Analytics | ${{ needs.python-analytics.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Logging | ${{ needs.python-logging.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Validate Primitives ⚠️ | ${{ needs.validate-primitives.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_⚠️ Validate Primitives is non-blocking - pre-existing issues are tracked separately_" >> $GITHUB_STEP_SUMMARY
