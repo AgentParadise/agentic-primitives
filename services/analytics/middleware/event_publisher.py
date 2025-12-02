@@ -18,36 +18,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from analytics.models.config import AnalyticsConfig
 from analytics.models.events import NormalizedEvent
-
-# TODO(Agent A): Import publishers when implemented
-try:
-    from analytics.publishers.api import APIPublisher
-    from analytics.publishers.file import FilePublisher
-except ImportError:
-    # Placeholder until Agent A implements publishers
-    class FilePublisher:  # type: ignore
-        def __init__(self, output_path: Path) -> None:
-            self.output_path = output_path
-
-        async def publish(self, event: NormalizedEvent) -> None:
-            # FIXME: This is a stub - Agent A needs to implement the actual file publisher
-            pass
-
-        async def close(self) -> None:
-            pass
-
-    class APIPublisher:  # type: ignore
-        def __init__(self, endpoint: str, timeout: int = 30, retry_attempts: int = 3) -> None:
-            self.endpoint = endpoint
-            self.timeout = timeout
-            self.retry_attempts = retry_attempts
-
-        async def publish(self, event: NormalizedEvent) -> None:
-            # FIXME: This is a stub - Agent A needs to implement the actual API publisher
-            pass
-
-        async def close(self) -> None:
-            pass
+from analytics.publishers.api import APIPublisher
+from analytics.publishers.base import BasePublisher
+from analytics.publishers.file import FilePublisher
 
 
 async def main() -> None:
@@ -69,6 +42,7 @@ async def main() -> None:
         config = AnalyticsConfig()
 
         # Select publisher backend
+        publisher: BasePublisher
         if config.publisher_backend == "file":
             if not config.output_path:
                 raise ValueError("output_path required for file backend")

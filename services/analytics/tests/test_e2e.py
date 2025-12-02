@@ -7,6 +7,7 @@ These tests validate the full analytics pipeline from hook input to event output
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -246,7 +247,7 @@ class TestMiddlewareScripts:
             input=json.dumps(normalized_event_data),
             capture_output=True,
             text=True,
-            env={**subprocess.os.environ, **env},
+            env={**os.environ, **env},
             timeout=5,
         )
 
@@ -299,7 +300,7 @@ class TestMiddlewareScripts:
             input=normalized_json,
             capture_output=True,
             text=True,
-            env={**subprocess.os.environ, **env},
+            env={**os.environ, **env},
             timeout=5,
         )
 
