@@ -35,7 +35,7 @@ walkdir = "2.5"
 dirs = "5.0"
 
 # Terminal output
-colored = "2.1"
+colored = "3.0"
 comfy-table = "7.1"
 
 # Templating
