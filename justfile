@@ -291,14 +291,14 @@ ci:
 [group('validation')]
 validate:
     @echo '{{ YELLOW }}Validating primitives repository...{{ NORMAL }}'
-    cd cli && cargo run -- validate
+    cd cli && cargo run -- validate ../primitives
     @echo '{{ GREEN }}✓ Validation passed{{ NORMAL }}'
 
 # Validate all version hashes
 [group('validation')]
 validate-hashes:
     @echo '{{ YELLOW }}Validating version hashes...{{ NORMAL }}'
-    cd cli && cargo run -- validate --check-hashes
+    cd cli && cargo run -- validate ../primitives --check-hashes
     @echo '{{ GREEN }}✓ Hash validation passed{{ NORMAL }}'
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -495,4 +495,3 @@ fix-all: fmt lint-fix
 [group('advanced')]
 verify: clean check build
     @echo '{{ GREEN }}✓ Full verification complete!{{ NORMAL }}'
-
