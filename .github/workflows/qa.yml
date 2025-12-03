@@ -17,7 +17,7 @@ env:
 
 jobs:
   #############################################################################
-  # RUST JOBS - Optimized for speed
+  # RUST JOBS - Optimized for speed with sccache
   #############################################################################
 
   rust-checks:
@@ -41,6 +41,9 @@ jobs:
         with:
           workspaces: cli -> target
           cache-on-failure: true
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Check formatting
         run: just rust-fmt-check
@@ -70,6 +73,9 @@ jobs:
         with:
           workspaces: cli -> target
           cache-on-failure: true
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Run tests
         run: just rust-test
@@ -104,11 +110,94 @@ jobs:
         run: just rust-test
 
   #############################################################################
-  # PYTHON JOBS - All run in parallel
+  # PYTHON JOBS - All run in parallel with full QA checks
   #############################################################################
 
-  python-checks:
-    name: Python Checks
+  python-analytics:
+    name: Python Analytics Service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "services/analytics/uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install & Check
+        working-directory: ./services/analytics
+        run: |
+          uv sync --all-extras
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run mypy .
+          uv run pytest -x -q --cov-fail-under=80
+
+  python-logging:
+    name: Python Logging Library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install & Check
+        working-directory: ./lib/python/agentic_logging
+        run: |
+          uv sync --all-extras
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run mypy .
+          uv run pytest -x -q --cov-fail-under=90
+
+  python-hooks:
+    name: Python Hooks & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check Hook Files
+        run: |
+          uv tool install ruff
+          uv tool run ruff format --check primitives/v1/hooks/**/*.py || true
+          uv tool run ruff check primitives/v1/hooks/**/*.py || true
+
+      - name: Run Unit Tests
+        working-directory: ./tests/unit/claude/hooks
+        run: |
+          uv sync --all-extras
+          uv run pytest -x -q
+
+  #############################################################################
+  # VALIDATION JOB - Validates primitives repository
+  #############################################################################
+
+  validate-primitives:
+    name: Validate Primitives
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,47 +207,17 @@ jobs:
         with:
           just-version: '1.37.0'
 
-      - name: Setup UV
-        uses: astral-sh/setup-uv@v3
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
         with:
-          enable-cache: true
+          workspaces: cli -> target
+          cache-on-failure: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      # Analytics Service
-      - name: Analytics - Install & Check
-        working-directory: ./services/analytics
-        run: |
-          uv sync --all-extras
-          uv run ruff format --check .
-          uv run ruff check .
-          uv run pytest -x -q
-
-      # Logging Library
-      - name: Logging - Install & Check
-        working-directory: ./lib/python/agentic_logging
-        run: |
-          uv sync --all-extras
-          uv run ruff format --check .
-          uv run ruff check .
-          uv run pytest -x -q
-
-      # Hooks Validation
-      - name: Hooks - Check
-        run: |
-          uv tool install ruff
-          uv tool run ruff format --check primitives/v1/hooks/**/*.py
-          uv tool run ruff check primitives/v1/hooks/**/*.py
-
-      # Unit Tests
-      - name: Unit Tests
-        working-directory: ./tests/unit/claude/hooks
-        run: |
-          uv sync --all-extras
-          uv run pytest -x -q
+      - name: Validate primitives
+        run: just validate
 
   #############################################################################
   # SUMMARY JOB - Required status check for PRs
@@ -170,28 +229,47 @@ jobs:
     needs:
       - rust-checks
       - rust-test
-      - python-checks
+      - python-analytics
+      - python-logging
+      - python-hooks
+      - validate-primitives
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs
         run: |
+          # Check for failures
           if [[ "${{ needs.rust-checks.result }}" == "failure" ]] || \
              [[ "${{ needs.rust-test.result }}" == "failure" ]] || \
-             [[ "${{ needs.python-checks.result }}" == "failure" ]]; then
+             [[ "${{ needs.python-analytics.result }}" == "failure" ]] || \
+             [[ "${{ needs.python-logging.result }}" == "failure" ]] || \
+             [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-primitives.result }}" == "failure" ]]; then
             echo "❌ QA checks failed"
             exit 1
           fi
           
+          # Check for cancellations
           if [[ "${{ needs.rust-checks.result }}" == "cancelled" ]] || \
              [[ "${{ needs.rust-test.result }}" == "cancelled" ]] || \
-             [[ "${{ needs.python-checks.result }}" == "cancelled" ]]; then
+             [[ "${{ needs.python-analytics.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.python-logging.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.validate-primitives.result }}" == "cancelled" ]]; then
             echo "⚠️ QA checks were cancelled"
             exit 1
           fi
           
           echo "✅ All QA checks passed!"
-          echo ""
+
+      - name: Write summary
+        run: |
           echo "## QA Results" >> $GITHUB_STEP_SUMMARY
-          echo "- Rust Checks: ${{ needs.rust-checks.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Rust Tests: ${{ needs.rust-test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Python Checks: ${{ needs.python-checks.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Rust Checks | ${{ needs.rust-checks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rust Tests | ${{ needs.rust-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python Analytics | ${{ needs.python-analytics.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python Logging | ${{ needs.python-logging.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate Primitives | ${{ needs.validate-primitives.result }} |" >> $GITHUB_STEP_SUMMARY

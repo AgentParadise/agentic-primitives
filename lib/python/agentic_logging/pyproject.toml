@@ -23,6 +23,18 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["agentic_logging"]
 
+[tool.hatch.build.targets.wheel.sources]
+"agentic_logging" = "agentic_logging"
+
+# Include py.typed marker for PEP 561 compliance
+[tool.hatch.build.targets.wheel.shared-data]
+
+[tool.hatch.build]
+include = [
+    "agentic_logging/**/*.py",
+    "agentic_logging/py.typed",
+]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -72,4 +84,3 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]  # Allow assert in tests
-

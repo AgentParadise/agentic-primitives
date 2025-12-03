@@ -10,7 +10,7 @@ tags:
   - maintenance
 defaults:
   preferred_models:
-    - sonnet
+    - anthropic/claude-sonnet
 context_usage:
   as_user: true
 tools:
@@ -20,7 +20,7 @@ tools:
 versions:
   - version: 1
     file: create-doc-sync.prompt.v1.md
-    hash: "blake3:49a00021d31245f5deb3244692d414215576bce2d8b06880a2e7f2ae511b2340"
+    hash: "blake3:d37490a6124e739e58c971e99afbe837bb748f4623307a8ae237664a19a63e6a"
     status: active
     created: "2025-11-29"
     notes: "Initial version - generates doc-sync commands for new repos"

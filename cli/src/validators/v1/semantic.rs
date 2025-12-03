@@ -40,12 +40,16 @@ pub enum SemanticError {
 
 pub struct SemanticValidator {
     repo_root: Option<PathBuf>,
+    builtin_tools: HashSet<String>,
 }
 
 impl SemanticValidator {
     pub fn new() -> Self {
+        let repo_root = Self::find_repo_root();
+        let builtin_tools = Self::load_builtin_tools(&repo_root);
         Self {
-            repo_root: Self::find_repo_root(),
+            repo_root,
+            builtin_tools,
         }
     }
 
@@ -59,6 +63,41 @@ impl SemanticValidator {
             }
             search_dir = search_dir.parent()?;
         }
+    }
+
+    /// Load built-in tools from all agent provider configs (providers/agents/*/tools.yaml)
+    fn load_builtin_tools(repo_root: &Option<PathBuf>) -> HashSet<String> {
+        let mut tools = HashSet::new();
+
+        if let Some(ref root) = repo_root {
+            let agents_dir = root.join("providers/agents");
+            if agents_dir.exists() {
+                for entry in WalkDir::new(&agents_dir)
+                    .max_depth(2)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    if entry.file_name() == "tools.yaml" {
+                        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                            if let Ok(yaml) = serde_yaml::from_str::<YamlValue>(&content) {
+                                // Load from all_tool_ids array
+                                if let Some(tool_ids) =
+                                    yaml.get("all_tool_ids").and_then(|v| v.as_sequence())
+                                {
+                                    for tool_id in tool_ids {
+                                        if let Some(id) = tool_id.as_str() {
+                                            tools.insert(id.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        tools
     }
 
     pub fn validate(&self, primitive_path: &Path) -> Result<()> {
@@ -222,6 +261,16 @@ impl SemanticValidator {
     }
 
     fn validate_tool_reference(&self, tool_id: &str, primitive_path: &Path) -> Result<()> {
+        // Skip validation for built-in tools loaded from providers/agents/*/tools.yaml
+        if self.builtin_tools.contains(tool_id) {
+            return Ok(());
+        }
+
+        // Skip MCP tools (dynamically loaded, prefixed with mcp_)
+        if tool_id.starts_with("mcp_") {
+            return Ok(());
+        }
+
         if let Some(ref root) = self.repo_root {
             // Search for tool in primitives/v1/tools/**/<tool_id>/
             let tools_dir = root.join("primitives/v1/tools");
