@@ -64,7 +64,7 @@ print()
 for i, item in enumerate(items, 1):
     emoji = {'bug':'🐛','feature':'✨','ui_ux':'🎨','performance':'⚡','question':'❓','other':'📝'}
     priority_emoji = {'critical':'🔥','high':'🔴','medium':'🟡','low':'🟢'}
-    
+
     print(f'{i}. [{item[\"id\"][:8]}] {priority_emoji.get(item[\"priority\"],\"\")} {emoji.get(item[\"feedback_type\"],\"\")} {item[\"feedback_type\"].upper()}')
     print(f'   Route: {item[\"route\"]}')
     comment = item.get('comment','')[:100]
@@ -349,7 +349,7 @@ for item in open_tickets['items'][:5]:
 | `priority` | string | Filter by priority |
 | `app_name` | string | Filter by app |
 | `page` | int | Page number (default: 1) |
-| `page_size` | int | Items per page (default: 20) |
+| `limit` | int | Items per page (default: 20) |
 
 ---
 

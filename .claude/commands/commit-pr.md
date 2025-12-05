@@ -144,7 +144,7 @@ gh run view <run-id> --log-failed
 
 ```bash
 # List comments
-gh api repos/<owner>/<repo>/pulls/<pr-number>/comments
+gh pr view <pr-number> --json comments
 
 # Make fixes, commit, push
 git add .
@@ -219,7 +219,7 @@ Related to #456
 ## Checklist Before Creating PR
 
 - [ ] Branch is up to date with main
-- [ ] All tests pass locally (`just test` or `make qa`)
+- [ ] All tests pass locally (`/qa` command)
 - [ ] Code follows project style guidelines
 - [ ] Commit messages follow conventional format
 - [ ] PR description is complete
