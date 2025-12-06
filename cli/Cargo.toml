@@ -39,7 +39,7 @@ colored = "3.0"
 comfy-table = "7.1"
 
 # Templating
-handlebars = "5.1"
+handlebars = "6.3"
 
 # Hashing (for versioning)
 blake3 = "1.5"
