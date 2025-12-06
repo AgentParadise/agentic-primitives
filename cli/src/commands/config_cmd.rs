@@ -128,7 +128,7 @@ primitives:
   # Pin QA commands to v1 for stability
   qa/review: 1
   qa/pre-commit-qa: 1
-  
+
   # Always use the latest version of prompt generator
   # core/prompt-generator: latest
 
