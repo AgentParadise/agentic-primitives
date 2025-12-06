@@ -162,24 +162,39 @@ build/claude/hooks/
 
 ## 📚 Core Concepts
 
-### Prompt Primitives
+### Terminology (Claude Agent SDK)
 
-Organized by **kind** and **category** for router-like navigation:
+This framework uses [Claude Agent SDK](https://docs.anthropic.com/en/docs/claude-code) terminology:
+
+| Term | What it does | How to invoke |
+|------|--------------|---------------|
+| **Command** | Performs a specific task | `/command-name` |
+| **Skill** | Provides reusable expertise | Referenced in prompts |
+| **Agent** | Maintains a persistent persona | `@agent-name` |
+| **Tool** | Integrates external systems | Available to agents |
+| **Hook** | Handles lifecycle events | Automatic |
+| **Meta-prompt** | Generates other prompts | `/meta/prompt-name` |
+
+### Primitive Types
+
+Organized by **type** and **category** for router-like navigation (matching Claude Code `.claude/` conventions):
 
 ```
-primitives/v1/prompts/
-├── agents/<category>/<id>/          # Personas & roles
-├── commands/<category>/<id>/        # Discrete tasks
-├── skills/<category>/<id>/          # Knowledge overlays
-└── meta-prompts/<category>/<id>/    # Prompt generators
+primitives/v1/
+├── commands/<category>/<id>/        # User-invoked actions (/command-name)
+│   └── meta/<id>/                   # Meta-prompts (prompt generators)
+├── skills/<category>/<id>/          # Reusable capabilities (referenced)
+├── agents/<category>/<id>/          # Persistent personas (@agent-name)
+├── tools/<category>/<id>/           # MCP tool integrations
+└── hooks/<category>/<id>/           # Lifecycle event handlers
 ```
 
-**Example**: `primitives/v1/prompts/agents/python/python-pro/`
+**Example**: `primitives/v1/commands/qa/review/`
 
 Each primitive contains:
-- `python-pro.v1.md` - Versioned prompt content (filename matches ID)
-- `python-pro.v2.md` - Next version
-- `python-pro.yaml` - Metadata with version registry, model preferences, tool dependencies (filename matches directory name)
+- `review.meta.yaml` - Metadata with version registry, model preferences, tool dependencies
+- `review.prompt.v1.md` - Versioned prompt content
+- `review.prompt.v2.md` - Next version (when created)
 
 ### Tool Primitives
 
@@ -391,6 +406,9 @@ just git-hooks-install
 - [ADR-008: Test-Driven Development](docs/adrs/008-test-driven-development.md)
 - [ADR-009: Versioned Primitives](docs/adrs/009-versioned-primitives.md)
 - [ADR-010: System-Level Versioning](docs/adrs/010-system-level-versioning.md)
+- [ADR-019: File Naming Convention](docs/adrs/019-file-naming-convention.md)
+- [ADR-020: Agentic Prompt Taxonomy](docs/adrs/020-agentic-prompt-taxonomy.md)
+- [ADR-021: Primitives Directory Structure](docs/adrs/021-primitives-directory-structure.md)
 
 ---
 
@@ -430,15 +448,18 @@ agentic-primitives/
 │       └── provider-impl.schema.json
 │
 ├── primitives/                 # Versioned primitive storage
-│   ├── v1/                     # v1 primitives (active)
-│   │   ├── prompts/
-│   │   │   ├── agents/<category>/<id>/
-│   │   │   ├── commands/<category>/<id>/
-│   │   │   ├── skills/<category>/<id>/
-│   │   │   └── meta-prompts/<category>/<id>/
-│   │   ├── tools/<category>/<id>/
-│   │   └── hooks/<category>/<id>/
-│   └── experimental/           # Sandbox for v2+ testing
+│   └── v1/                     # v1 primitives (active)
+│       ├── commands/           # User-invoked commands (/command-name)
+│       │   ├── <category>/<id>/
+│       │   └── meta/<id>/      # Meta-prompts (prompt generators)
+│       ├── skills/             # Reusable capabilities (referenced)
+│       │   └── <category>/<id>/
+│       ├── agents/             # Persistent personas (@agent-name)
+│       │   └── <category>/<id>/
+│       ├── tools/              # MCP tool integrations
+│       │   └── <category>/<id>/
+│       └── hooks/              # Lifecycle event handlers
+│           └── <category>/<id>/
 │
 ├── providers/                  # Provider-specific adapters
 │   ├── claude/
@@ -450,7 +471,7 @@ agentic-primitives/
 └── docs/                       # Documentation
     ├── versioning-guide.md     # Complete versioning documentation
     └── adrs/                   # Architecture Decision Records
-        └── 010-system-level-versioning.md
+        └── 021-primitives-directory-structure.md
 ```
 
 ### Versioning
