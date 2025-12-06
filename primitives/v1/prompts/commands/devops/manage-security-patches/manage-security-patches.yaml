@@ -1,0 +1,40 @@
+id: manage-security-patches
+kind: command
+category: devops
+domain: security
+summary: "Manage security patches with 48-hour cooldown validation and safe rollback procedures"
+tags:
+  - security
+  - dependencies
+  - patches
+  - devops
+  - rollback
+  - supply-chain
+defaults:
+  preferred_models:
+    - claude/sonnet
+context_usage:
+  as_user: true
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+inputs:
+  required:
+    - name: action
+      type: string
+      description: "Action to perform: list, validate, apply, or rollback"
+  optional:
+    - name: package
+      type: string
+      description: "Package name for validate action, or commit SHA for rollback"
+      default: ""
+versions:
+  - version: 1
+    file: manage-security-patches.prompt.v1.md
+    status: active
+    hash: "blake3:13ea6f48a200a78eb1e8f56ae4a0dcb98cfe3332014a186b21b5e4fb13eb055d"
+    created: "2025-12-06"
+    notes: "Initial version with 48-hour cooldown, safe rollback using git revert"
+default_version: 1
