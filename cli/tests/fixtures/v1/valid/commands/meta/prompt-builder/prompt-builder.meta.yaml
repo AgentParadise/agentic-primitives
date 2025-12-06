@@ -1,6 +1,6 @@
 id: prompt-builder
 kind: meta-prompt
-category: generators
+category: meta
 domain: meta
 summary: Generate high-quality agentic prompts following best practices
 
