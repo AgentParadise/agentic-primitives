@@ -511,9 +511,24 @@ fn install_managed_files(
         fs::create_dir_all(install_location)?;
     }
 
+    // Get the provider directory name (e.g., ".claude")
+    let provider_prefix = install_location
+        .file_name()
+        .map(|n| format!("{}/", n.to_string_lossy()))
+        .unwrap_or_default();
+
     for file in files_to_install {
         let src = build_dir.join(file);
-        let dest = install_location.join(file);
+        
+        // Strip provider prefix from file path if present to avoid double-nesting
+        // e.g., ".claude/hooks/..." -> "hooks/..." when install_location is ".claude"
+        let relative_file = if file.starts_with(&provider_prefix) {
+            &file[provider_prefix.len()..]
+        } else {
+            file.as_str()
+        };
+        
+        let dest = install_location.join(relative_file);
 
         if !src.exists() {
             if verbose {

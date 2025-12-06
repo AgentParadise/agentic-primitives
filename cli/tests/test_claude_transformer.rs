@@ -32,8 +32,8 @@ fn test_transform_agent_to_custom_prompt() {
     assert_eq!(result.primitive_kind, "agent");
     assert!(!result.output_files.is_empty());
 
-    // Check that custom prompt file was created
-    let custom_prompt = output_dir.path().join("custom_prompts/python-pro.md");
+    // Check that custom prompt file was created (with category path)
+    let custom_prompt = output_dir.path().join("custom_prompts/python/python-pro.md");
     assert!(custom_prompt.exists());
 
     // Verify content
@@ -60,8 +60,8 @@ fn test_transform_command_to_command_file() {
     assert_eq!(result.primitive_id, "python-scaffold");
     assert_eq!(result.primitive_kind, "command");
 
-    // Check that command file was created
-    let command_file = output_dir.path().join("commands/python-scaffold.md");
+    // Check that command file was created (with category path)
+    let command_file = output_dir.path().join("commands/scaffolding/python-scaffold.md");
     assert!(command_file.exists());
 
     // Verify it's just the content (no frontmatter)
@@ -168,8 +168,8 @@ fn test_transform_versioned_primitive() {
 
     assert!(result.success);
 
-    // Verify version info in output
-    let custom_prompt = output_dir.path().join("custom_prompts/python-pro.md");
+    // Verify version info in output (with category path)
+    let custom_prompt = output_dir.path().join("custom_prompts/python/python-pro.md");
     let content = fs::read_to_string(&custom_prompt).unwrap();
 
     // Should include version 2 (the default_version)
@@ -199,14 +199,14 @@ fn test_transform_batch_multiple_primitives() {
     assert_eq!(results.len(), 3);
     assert!(results.iter().all(|r| r.success));
 
-    // Verify all files were created
+    // Verify all files were created (with category paths)
     assert!(output_dir
         .path()
-        .join("custom_prompts/python-pro.md")
+        .join("custom_prompts/python/python-pro.md")
         .exists());
     assert!(output_dir
         .path()
-        .join("commands/python-scaffold.md")
+        .join("commands/scaffolding/python-scaffold.md")
         .exists());
     assert!(output_dir.path().join("skills.json").exists());
 }
@@ -343,8 +343,8 @@ fn test_transform_meta_prompt() {
     assert_eq!(result.primitive_id, "prompt-builder");
     assert_eq!(result.primitive_kind, "meta-prompt");
 
-    // Meta-prompts are treated like commands
-    let command_file = output_dir.path().join("commands/prompt-builder.md");
+    // Meta-prompts go under commands/meta/
+    let command_file = output_dir.path().join("commands/meta/prompt-builder.md");
     assert!(command_file.exists());
 }
 

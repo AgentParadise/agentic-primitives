@@ -234,6 +234,42 @@ fn create_manifest_primitive(
         name == "prompts" || name == "tools" || name == "hooks"
     })?;
 
+    let type_name = components[type_idx]
+        .as_os_str()
+        .to_string_lossy()
+        .to_string();
+
+    // Special case: hooks directory itself is the primitive (atomic hooks)
+    if type_name == "hooks" && primitive_path.join("handlers").exists() {
+        // This is the atomic hooks directory - treat it as a single primitive
+        let relative_files: Vec<String> = output_files
+            .iter()
+            .map(|f| {
+                let path = Path::new(f);
+                if let Ok(relative) = path.strip_prefix(output_dir) {
+                    return relative.to_string_lossy().to_string();
+                }
+                // Handle .claude/ directory
+                if let Some(idx) = f.rfind(".claude/") {
+                    return f[idx..].to_string();
+                }
+                // Handle settings.json at root
+                if f.ends_with("settings.json") {
+                    return "settings.json".to_string();
+                }
+                f.clone()
+            })
+            .collect();
+
+        return Some(ManifestPrimitive {
+            id: "atomic-hooks".to_string(),
+            kind: "hooks".to_string(),
+            version: 1,
+            hash: "unknown".to_string(),
+            files: relative_files,
+        });
+    }
+
     // Extract kind and category/id
     let kind = if type_idx + 1 < components.len() {
         components[type_idx + 1]
@@ -316,19 +352,30 @@ fn create_manifest_primitive(
             }
             // Check if f already contains subdirectory structure
             if f.contains('/') {
-                // Extract the path after output_dir pattern (e.g., "commands/review.md")
+                // Extract the path after output_dir pattern (e.g., "commands/qa/review.md")
                 if let Some(idx) = f.rfind("commands/") {
                     return f[idx..].to_string();
                 }
                 if let Some(idx) = f.rfind("custom_prompts/") {
                     return f[idx..].to_string();
                 }
-                if let Some(idx) = f.rfind("hooks/") {
+                // Handle .claude/ directory (hooks, settings)
+                if let Some(idx) = f.rfind(".claude/") {
                     return f[idx..].to_string();
                 }
+                // Handle root-level files like mcp.json, settings.json
+                if let Some(file_name) = Path::new(f).file_name() {
+                    let name = file_name.to_string_lossy();
+                    if name == "mcp.json" || name == "settings.json" || name == "skills.json" {
+                        return name.to_string();
+                    }
+                }
             }
-            // Fall back to original
-            f.clone()
+            // Fall back to file name only for files at root
+            Path::new(f)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| f.clone())
         })
         .collect();
 

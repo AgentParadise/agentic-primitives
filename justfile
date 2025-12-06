@@ -477,6 +477,36 @@ loc:
     (Get-ChildItem -Recurse services,lib -Filter *.py -ErrorAction SilentlyContinue | Get-Content | Measure-Object -Line).Lines
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PRIMITIVES (Build & Install)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Build primitives for a provider (default: claude)
+[group('primitives')]
+primitives-build provider="claude":
+    @echo '{{ YELLOW }}Building primitives for {{ provider }}...{{ NORMAL }}'
+    cd cli && cargo run -- build --provider {{ provider }} --verbose
+    @echo '{{ GREEN }}✓ Build complete: ./build/{{ provider }}/{{ NORMAL }}'
+
+# Install built primitives to project (default: claude)
+[group('primitives')]
+primitives-install provider="claude":
+    @echo '{{ YELLOW }}Installing primitives for {{ provider }}...{{ NORMAL }}'
+    cd cli && cargo run -- install --provider {{ provider }} --verbose
+    @echo '{{ GREEN }}✓ Primitives installed to .{{ provider }}/{{ NORMAL }}'
+
+# Build and install primitives (default: claude)
+[group('primitives')]
+primitives-sync provider="claude": (primitives-build provider) (primitives-install provider)
+    @echo '{{ GREEN }}✓ Primitives synced for {{ provider }}{{ NORMAL }}'
+
+# Clean build directory
+[group('primitives')]
+primitives-clean:
+    @echo '{{ YELLOW }}Cleaning build directory...{{ NORMAL }}'
+    rm -rf build/
+    @echo '{{ GREEN }}✓ Build directory cleaned{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ADVANCED
 # ═══════════════════════════════════════════════════════════════════════════════
 

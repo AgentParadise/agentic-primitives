@@ -117,10 +117,16 @@ impl ClaudeTransformer {
     }
 
     /// Transform an agent primitive to Claude custom prompt
+    /// Preserves category structure: custom_prompts/{category}/{id}.md
     fn transform_agent(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let (meta, content) = self.load_prompt_primitive(path)?;
 
-        let custom_prompts_dir = output_dir.join("custom_prompts");
+        // Build path with category if available: custom_prompts/{category}/{id}.md
+        let custom_prompts_dir = if !meta.category.is_empty() {
+            output_dir.join("custom_prompts").join(&meta.category)
+        } else {
+            output_dir.join("custom_prompts")
+        };
         fs::create_dir_all(&custom_prompts_dir)?;
 
         let output_file = custom_prompts_dir.join(format!("{}.md", meta.id));
@@ -150,15 +156,38 @@ impl ClaudeTransformer {
     }
 
     /// Transform a command primitive to Claude command file
+    /// Preserves category structure: commands/{category}/{id}.md
     fn transform_command(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let (meta, content) = self.load_prompt_primitive(path)?;
 
-        let commands_dir = output_dir.join("commands");
+        // Build path with category if available: commands/{category}/{id}.md
+        let commands_dir = if !meta.category.is_empty() {
+            output_dir.join("commands").join(&meta.category)
+        } else {
+            output_dir.join("commands")
+        };
         fs::create_dir_all(&commands_dir)?;
 
         let output_file = commands_dir.join(format!("{}.md", meta.id));
 
         // For commands, we just write the content directly (no frontmatter needed)
+        fs::write(&output_file, &content)?;
+
+        Ok(vec![output_file.to_string_lossy().to_string()])
+    }
+
+    /// Transform a meta-prompt primitive to Claude command file
+    /// Meta-prompts are commands, so they go under commands/meta/{id}.md
+    fn transform_meta_prompt(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
+        let (meta, content) = self.load_prompt_primitive(path)?;
+
+        // Meta-prompts go under commands/meta/ (they're a special category of commands)
+        let commands_dir = output_dir.join("commands").join("meta");
+        fs::create_dir_all(&commands_dir)?;
+
+        let output_file = commands_dir.join(format!("{}.md", meta.id));
+
+        // For meta-prompts, write the content directly
         fs::write(&output_file, &content)?;
 
         Ok(vec![output_file.to_string_lossy().to_string()])
@@ -507,8 +536,8 @@ impl ProviderTransformer for ClaudeTransformer {
             PrimitiveKind::MetaPrompt => {
                 let (meta, _) = self.load_prompt_primitive(primitive_path)?;
                 let id = meta.id.clone();
-                // Meta-prompts are treated like commands
-                let files = self.transform_command(primitive_path, output_dir)?;
+                // Meta-prompts go to their own directory
+                let files = self.transform_meta_prompt(primitive_path, output_dir)?;
                 (id, "meta-prompt", files)
             }
             PrimitiveKind::Hook => {
