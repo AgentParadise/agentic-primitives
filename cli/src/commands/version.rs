@@ -458,26 +458,57 @@ fn calculate_hash(content: &str) -> String {
 
 /// Resolve primitive path from relative identifier
 fn resolve_primitive_path(primitive: &str, config: &PrimitivesConfig) -> Result<PathBuf> {
-    // Try different locations for prompts
+    use walkdir::WalkDir;
+
+    // Try different locations for prompts (ADR-021 structure)
     let primitives_dir = &config.paths.primitives;
     let experimental_dir = &config.paths.experimental;
 
-    let candidates = vec![
-        primitives_dir.join("prompts/agents").join(primitive),
-        primitives_dir.join("prompts/commands").join(primitive),
-        primitives_dir.join("prompts/skills").join(primitive),
-        primitives_dir.join("prompts/meta-prompts").join(primitive),
-        experimental_dir.join("prompts/agents").join(primitive),
-        experimental_dir.join("prompts/commands").join(primitive),
-        experimental_dir.join("prompts/skills").join(primitive),
-        experimental_dir
-            .join("prompts/meta-prompts")
-            .join(primitive),
+    // First, try direct paths (if primitive includes category like "category/id")
+    let direct_candidates = vec![
+        primitives_dir.join("agents").join(primitive),
+        primitives_dir.join("commands").join(primitive),
+        primitives_dir.join("commands/meta").join(primitive),
+        primitives_dir.join("skills").join(primitive),
+        experimental_dir.join("agents").join(primitive),
+        experimental_dir.join("commands").join(primitive),
+        experimental_dir.join("commands/meta").join(primitive),
+        experimental_dir.join("skills").join(primitive),
     ];
 
-    for candidate in candidates {
+    for candidate in direct_candidates {
         if candidate.exists() {
             return Ok(candidate);
+        }
+    }
+
+    // If not found, search recursively by ID under type directories
+    let type_dirs = vec![
+        primitives_dir.join("agents"),
+        primitives_dir.join("commands"),
+        primitives_dir.join("skills"),
+        experimental_dir.join("agents"),
+        experimental_dir.join("commands"),
+        experimental_dir.join("skills"),
+    ];
+
+    for type_dir in type_dirs {
+        if !type_dir.exists() {
+            continue;
+        }
+        for entry in WalkDir::new(&type_dir)
+            .min_depth(2)
+            .max_depth(3)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_dir() {
+                if let Some(dir_name) = entry.path().file_name().and_then(|n| n.to_str()) {
+                    if dir_name == primitive {
+                        return Ok(entry.path().to_path_buf());
+                    }
+                }
+            }
         }
     }
 

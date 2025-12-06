@@ -24,7 +24,6 @@ fn read_json(path: &std::path::Path) -> Value {
 fn test_transform_agent_to_system_message() {
     let transformer = OpenAITransformer::new();
     let agent_path = fixtures_dir()
-        .join("prompts")
         .join("agents")
         .join("python")
         .join("python-pro");
@@ -66,7 +65,6 @@ fn test_transform_agent_to_system_message() {
 fn test_transform_command_to_user_message() {
     let transformer = OpenAITransformer::new();
     let command_path = fixtures_dir()
-        .join("prompts")
         .join("commands")
         .join("scaffolding")
         .join("python-scaffold");
@@ -103,7 +101,6 @@ fn test_transform_command_to_user_message() {
 fn test_transform_skill_to_context_message() {
     let transformer = OpenAITransformer::new();
     let skill_path = fixtures_dir()
-        .join("prompts")
         .join("skills")
         .join("testing")
         .join("python-testing-patterns");
@@ -212,7 +209,6 @@ fn test_transform_hook_to_middleware() {
 fn test_transform_versioned_primitive() {
     let transformer = OpenAITransformer::new();
     let agent_path = fixtures_dir()
-        .join("prompts")
         .join("agents")
         .join("python")
         .join("python-pro");
@@ -237,17 +233,14 @@ fn test_transform_batch_multiple_primitives() {
     let transformer = OpenAITransformer::new();
 
     let agent_path = fixtures_dir()
-        .join("prompts")
         .join("agents")
         .join("python")
         .join("python-pro");
     let command_path = fixtures_dir()
-        .join("prompts")
         .join("commands")
         .join("scaffolding")
         .join("python-scaffold");
     let skill_path = fixtures_dir()
-        .join("prompts")
         .join("skills")
         .join("testing")
         .join("python-testing-patterns");
@@ -329,7 +322,6 @@ fn test_generate_manifest() {
     let transformer = OpenAITransformer::new();
 
     let agent_path = fixtures_dir()
-        .join("prompts")
         .join("agents")
         .join("python")
         .join("python-pro");
@@ -369,7 +361,6 @@ fn test_validate_output_structure() {
     let transformer = OpenAITransformer::new();
 
     let agent_path = fixtures_dir()
-        .join("prompts")
         .join("agents")
         .join("python")
         .join("python-pro");
@@ -423,7 +414,6 @@ fn test_batch_continues_on_error() {
     let transformer = OpenAITransformer::new();
 
     let valid_path = fixtures_dir()
-        .join("prompts")
         .join("agents")
         .join("python")
         .join("python-pro");
@@ -452,9 +442,8 @@ fn test_batch_continues_on_error() {
 fn test_meta_prompt_is_skipped() {
     let transformer = OpenAITransformer::new();
     let meta_prompt_path = fixtures_dir()
-        .join("prompts")
-        .join("meta-prompts")
-        .join("generators")
+        .join("commands")
+        .join("meta")
         .join("prompt-builder");
 
     let output_dir = TempDir::new().unwrap();

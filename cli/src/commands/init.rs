@@ -48,12 +48,12 @@ This repository contains reusable AI primitives for coding agents.
 
 ```
 ├── specs/v1/              # JSON schemas for v1 primitives
-├── primitives/v1/         # Versioned primitives
-│   ├── prompts/
-│   │   ├── agents/        # System-level prompts
-│   │   ├── commands/      # User-facing commands
-│   │   ├── skills/        # Overlay knowledge
-│   │   └── meta-prompts/  # Prompt generators
+├── primitives/v1/         # Versioned primitives (ADR-021)
+│   ├── commands/          # User-facing commands (/command-name)
+│   │   ├── {category}/
+│   │   └── meta/          # Meta-prompts (prompt generators)
+│   ├── skills/            # Overlay knowledge (referenced)
+│   ├── agents/            # System-level prompts (@agent-name)
 │   ├── tools/             # Executable capabilities
 │   └── hooks/             # Lifecycle middleware
 ├── primitives/experimental/  # Sandbox for v2+ ideas
@@ -71,10 +71,10 @@ This repository contains reusable AI primitives for coding agents.
 
 ```bash
 # Create an agent
-agentic-p new prompt agents <category> <id> --kind agent
+agentic-p new prompt <category> <id> --kind agent
 
 # Create a command
-agentic-p new prompt commands <category> <id> --kind command
+agentic-p new prompt <category> <id> --kind command
 
 # Create a tool
 agentic-p new tool <category> <id>
@@ -90,7 +90,7 @@ agentic-p new hook <category> <id>
 agentic-p validate primitives/v1/
 
 # Validate specific primitive
-agentic-p validate primitives/v1/prompts/agents/<category>/<id>
+agentic-p validate primitives/v1/commands/<category>/<id>
 
 # Validate with specific layer
 agentic-p validate --layer structural primitives/v1/
@@ -254,12 +254,13 @@ pub fn init(path: &Path) -> Result<()> {
 }
 
 fn create_directory_structure(base: &Path) -> Result<()> {
+    // New structure (ADR-021): types directly under v1/
     let dirs = vec![
         "specs/v1",
-        "primitives/v1/prompts/agents",
-        "primitives/v1/prompts/commands",
-        "primitives/v1/prompts/skills",
-        "primitives/v1/prompts/meta-prompts",
+        "primitives/v1/commands",
+        "primitives/v1/commands/meta",
+        "primitives/v1/skills",
+        "primitives/v1/agents",
         "primitives/v1/tools",
         "primitives/v1/hooks",
         "primitives/experimental",
@@ -359,12 +360,12 @@ mod tests {
         let result = init(path);
         assert!(result.is_ok(), "init should succeed");
 
-        // Check directories
+        // Check directories (ADR-021 structure)
         assert!(path.join("specs/v1").exists());
-        assert!(path.join("primitives/v1/prompts/agents").exists());
-        assert!(path.join("primitives/v1/prompts/commands").exists());
-        assert!(path.join("primitives/v1/prompts/skills").exists());
-        assert!(path.join("primitives/v1/prompts/meta-prompts").exists());
+        assert!(path.join("primitives/v1/commands").exists());
+        assert!(path.join("primitives/v1/commands/meta").exists());
+        assert!(path.join("primitives/v1/skills").exists());
+        assert!(path.join("primitives/v1/agents").exists());
         assert!(path.join("primitives/v1/tools").exists());
         assert!(path.join("primitives/v1/hooks").exists());
         assert!(path.join("primitives/experimental").exists());
