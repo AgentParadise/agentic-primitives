@@ -326,6 +326,24 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
             args.verbose,
         )?;
 
+        // Also install hooks (.claude/ subdirectory from build) if present
+        let hooks_count = install_hooks_if_present(
+            &build_dir,
+            &install_location,
+            args.dry_run,
+            args.verbose,
+        )?;
+
+        // Install mcp.json and skills.json if present (at root of build dir)
+        let extras_count = install_extra_files(
+            &build_dir,
+            &install_location,
+            args.dry_run,
+            args.verbose,
+        )?;
+
+        let total_files = installed_files.len() + hooks_count + extras_count;
+
         // Copy manifest to install location
         if !args.dry_run {
             source
@@ -342,7 +360,7 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
         let result = InstallResult {
             provider: args.provider.clone(),
             install_location,
-            files_installed: installed_files.len(),
+            files_installed: total_files,
             files_backed_up,
             backup_location,
             errors: Vec::new(),
@@ -541,6 +559,86 @@ fn install_managed_files(
     }
 
     Ok(installed)
+}
+
+/// Install hooks from .claude/ subdirectory in build dir if present
+fn install_hooks_if_present(
+    build_dir: &Path,
+    install_location: &Path,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<usize> {
+    let hooks_src = build_dir.join(".claude");
+    if !hooks_src.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+
+    for entry in WalkDir::new(&hooks_src).into_iter().filter_map(|e| e.ok()) {
+        let src_path = entry.path();
+        if src_path.is_file() {
+            let relative = src_path.strip_prefix(&hooks_src)?;
+            let dest_path = install_location.join(relative);
+
+            if verbose || dry_run {
+                let action = if dry_run {
+                    "Would install"
+                } else {
+                    "Installing"
+                };
+                println!("  {} {}", action.cyan(), relative.display());
+            }
+
+            if !dry_run {
+                if let Some(parent) = dest_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(src_path, &dest_path)?;
+                count += 1;
+            }
+        }
+    }
+
+    if count > 0 && verbose {
+        println!("  {} Installed {} hook files", "✓".green(), count);
+    }
+
+    Ok(count)
+}
+
+/// Install extra files (mcp.json, skills.json) from build root if not already managed
+fn install_extra_files(
+    build_dir: &Path,
+    install_location: &Path,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<usize> {
+    let extra_files = ["mcp.json", "skills.json"];
+    let mut count = 0;
+
+    for filename in &extra_files {
+        let src = build_dir.join(filename);
+        let dest = install_location.join(filename);
+
+        if src.exists() {
+            if verbose || dry_run {
+                let action = if dry_run {
+                    "Would install"
+                } else {
+                    "Installing"
+                };
+                println!("  {} {}", action.cyan(), filename);
+            }
+
+            if !dry_run {
+                fs::copy(&src, &dest)?;
+                count += 1;
+            }
+        }
+    }
+
+    Ok(count)
 }
 
 /// Show local files that are preserved (not managed)
