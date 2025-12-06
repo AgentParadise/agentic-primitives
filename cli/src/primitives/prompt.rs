@@ -127,10 +127,7 @@ impl PromptPrimitive {
                 ))
             })?;
 
-        let meta_path = if primitive_dir
-            .join(format!("{dir_name}.meta.yaml"))
-            .exists()
-        {
+        let meta_path = if primitive_dir.join(format!("{dir_name}.meta.yaml")).exists() {
             // New convention (ADR-019): {id}.meta.yaml
             primitive_dir.join(format!("{dir_name}.meta.yaml"))
         } else if primitive_dir.join(format!("{dir_name}.yaml")).exists() {

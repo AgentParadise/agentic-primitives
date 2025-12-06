@@ -259,7 +259,10 @@ fn create_manifest_primitive(
     // Try to read metadata for version and hash
     // Check for new convention first ({id}.meta.yaml), then legacy patterns
     let dir_name = primitive_path.file_name()?.to_str()?;
-    let meta_path = if primitive_path.join(format!("{dir_name}.meta.yaml")).exists() {
+    let meta_path = if primitive_path
+        .join(format!("{dir_name}.meta.yaml"))
+        .exists()
+    {
         primitive_path.join(format!("{dir_name}.meta.yaml"))
     } else if primitive_path.join(format!("{dir_name}.yaml")).exists() {
         primitive_path.join(format!("{dir_name}.yaml"))

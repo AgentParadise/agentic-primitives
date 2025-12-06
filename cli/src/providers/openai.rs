@@ -323,10 +323,9 @@ impl OpenAITransformer {
             bail!("Path does not exist: {}", path.display());
         }
 
-        let dir_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| anyhow::anyhow!("Could not determine primitive type for: {}", path.display()))?;
+        let dir_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+            anyhow::anyhow!("Could not determine primitive type for: {}", path.display())
+        })?;
 
         // Check for meta files - try new pattern first (ADR-019), then legacy
         if path.join(format!("{dir_name}.tool.yaml")).exists()

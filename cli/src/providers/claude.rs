@@ -40,10 +40,9 @@ impl ClaudeTransformer {
         }
 
         // Check for prompt meta files - try new convention first (ADR-019)
-        let dir_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| anyhow::anyhow!("Unable to determine primitive kind for: {}", path.display()))?;
+        let dir_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+            anyhow::anyhow!("Unable to determine primitive kind for: {}", path.display())
+        })?;
 
         let meta_file = if path.join(format!("{dir_name}.meta.yaml")).exists() {
             path.join(format!("{dir_name}.meta.yaml"))
@@ -460,7 +459,11 @@ impl ClaudeTransformer {
                     })
                     .unwrap_or_default();
 
-                McpServerConfig { command: command.to_string(), args, env }
+                McpServerConfig {
+                    command: command.to_string(),
+                    args,
+                    env,
+                }
             } else {
                 // No Claude provider in providers section
                 self.load_claude_impl_file(path, &meta)?
@@ -514,7 +517,10 @@ impl ClaudeTransformer {
             // Generate placeholder config
             Ok(McpServerConfig {
                 command: "echo".to_string(),
-                args: vec![format!("Tool '{}' has no Claude provider configured", meta.id)],
+                args: vec![format!(
+                    "Tool '{}' has no Claude provider configured",
+                    meta.id
+                )],
                 env: HashMap::new(),
             })
         }
