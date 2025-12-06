@@ -115,7 +115,12 @@ impl ClaudeTransformer {
     fn transform_agent(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let (meta, content) = self.load_prompt_primitive(path)?;
 
-        let custom_prompts_dir = output_dir.join("custom_prompts");
+        // Build output path with category structure: custom_prompts/{category}/{id}.md
+        let custom_prompts_dir = if !meta.category.is_empty() && meta.category != "core" {
+            output_dir.join("custom_prompts").join(&meta.category)
+        } else {
+            output_dir.join("custom_prompts")
+        };
         fs::create_dir_all(&custom_prompts_dir)?;
 
         let output_file = custom_prompts_dir.join(format!("{}.md", meta.id));
@@ -148,7 +153,12 @@ impl ClaudeTransformer {
     fn transform_command(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let (meta, content) = self.load_prompt_primitive(path)?;
 
-        let commands_dir = output_dir.join("commands");
+        // Build output path with category structure: commands/{category}/{id}.md
+        let commands_dir = if !meta.category.is_empty() && meta.category != "core" {
+            output_dir.join("commands").join(&meta.category)
+        } else {
+            output_dir.join("commands")
+        };
         fs::create_dir_all(&commands_dir)?;
 
         let output_file = commands_dir.join(format!("{}.md", meta.id));

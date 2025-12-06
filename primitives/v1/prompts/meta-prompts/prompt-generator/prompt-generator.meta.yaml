@@ -1,6 +1,6 @@
 id: prompt-generator
 kind: meta-prompt
-category: core
+category: meta
 domain: prompt-engineering
 summary: "Generate agentic prompts at any of the 7 levels with proper structure"
 tags:

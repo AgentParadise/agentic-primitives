@@ -1,6 +1,6 @@
 id: create-doc-sync
 kind: meta-prompt
-category: core
+category: meta
 domain: documentation
 summary: "Generates a repo-specific doc-sync command that reviews commits and updates documentation"
 tags:

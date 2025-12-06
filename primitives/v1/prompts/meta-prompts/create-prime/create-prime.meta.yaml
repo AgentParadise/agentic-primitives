@@ -1,6 +1,6 @@
 id: create-prime
 kind: meta-prompt
-category: core
+category: meta
 domain: discovery
 summary: "Generate a repo-specific prime command for onboarding agents to a codebase"
 tags:
