@@ -79,6 +79,8 @@ pub fn run_cli_command(args: &[&str], working_dir: Option<&Path>) -> assert_cmd:
 }
 
 /// Test helper: Assert primitive exists with correct structure
+/// prim_type: agents, commands, skills, tools, hooks
+/// category: the category subdirectory
 #[allow(dead_code)]
 pub fn assert_primitive_exists(
     repo_path: &Path,
@@ -86,6 +88,7 @@ pub fn assert_primitive_exists(
     category: &str,
     id: &str,
 ) -> PathBuf {
+    // New structure (ADR-021): types directly under v1/
     let prim_path = repo_path
         .join("primitives/v1")
         .join(prim_type)
@@ -98,9 +101,13 @@ pub fn assert_primitive_exists(
         prim_path.display()
     );
 
-    // Check for metadata file
+    // Check for metadata file (new convention: {id}.meta.yaml or {id}.yaml)
     let meta_patterns = match prim_type {
-        "prompts" => vec![format!("{}.yaml", id), "meta.yaml".to_string()],
+        "agents" | "commands" | "skills" => vec![
+            format!("{}.meta.yaml", id),
+            format!("{}.yaml", id),
+            "meta.yaml".to_string(),
+        ],
         "tools" => vec![format!("{}.tool.yaml", id), "tool.meta.yaml".to_string()],
         "hooks" => vec![format!("{}.hook.yaml", id), "hook.meta.yaml".to_string()],
         _ => vec![],

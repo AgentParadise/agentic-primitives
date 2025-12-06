@@ -59,12 +59,22 @@ impl PromptKind {
         }
     }
 
+    /// Returns the type directory for this kind (ADR-021 structure)
     pub fn subdir(&self) -> &str {
         match self {
             PromptKind::Agent => "agents",
             PromptKind::Command => "commands",
             PromptKind::Skill => "skills",
-            PromptKind::MetaPrompt => "meta-prompts",
+            // Meta-prompts are under commands/meta/
+            PromptKind::MetaPrompt => "commands",
+        }
+    }
+
+    /// Returns the category to use for meta-prompts (which go under commands/meta/)
+    pub fn category_override(&self) -> Option<&str> {
+        match self {
+            PromptKind::MetaPrompt => Some("meta"),
+            _ => None,
         }
     }
 }
@@ -175,13 +185,20 @@ fn resolve_output_path(args: &NewPrimitiveArgs) -> Result<PathBuf> {
         args.spec_version.resolve_primitives_path()
     };
 
+    // New structure (ADR-021): types are directly under v1/
+    // - commands/{category}/{id}/
+    // - commands/meta/{id}/ (for meta-prompts)
+    // - skills/{category}/{id}/
+    // - agents/{category}/{id}/
+    // - tools/{category}/{id}/
+    // - hooks/{category}/{id}/
     let path = match args.prim_type {
         PrimitiveType::Prompt => {
             let kind = args.kind.unwrap();
-            base.join("prompts")
-                .join(kind.subdir())
-                .join(&args.category)
-                .join(&args.id)
+            let type_dir = base.join(kind.subdir());
+            // For meta-prompts, use "meta" as category; otherwise use provided category
+            let category = kind.category_override().unwrap_or(&args.category);
+            type_dir.join(category).join(&args.id)
         }
         PrimitiveType::Tool => base.join("tools").join(&args.category).join(&args.id),
         PrimitiveType::Hook => base.join("hooks").join(&args.category).join(&args.id),
@@ -456,9 +473,10 @@ mod tests {
         };
 
         let path = resolve_output_path(&args).unwrap();
+        // New structure (ADR-021): agents directly under v1/
         assert_eq!(
             path,
-            PathBuf::from("primitives/v1/prompts/agents/python/python-pro")
+            PathBuf::from("primitives/v1/agents/python/python-pro")
         );
     }
 
@@ -607,9 +625,9 @@ mod tests {
     fn test_new_primitive_detects_conflict() {
         let temp_dir = TempDir::new().unwrap();
 
-        // Create the structure
+        // Create the structure (ADR-021 structure)
         let base = temp_dir.path();
-        fs::create_dir_all(base.join("primitives/v1/prompts/agents/test")).unwrap();
+        fs::create_dir_all(base.join("primitives/v1/agents/test")).unwrap();
 
         // Change to temp dir for relative path resolution
         let original_dir = std::env::current_dir().unwrap();

@@ -115,7 +115,12 @@ impl ClaudeTransformer {
     fn transform_agent(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let (meta, content) = self.load_prompt_primitive(path)?;
 
-        let custom_prompts_dir = output_dir.join("custom_prompts");
+        // Build output path with category structure: custom_prompts/{category}/{id}.md
+        let custom_prompts_dir = if !meta.category.is_empty() && meta.category != "core" {
+            output_dir.join("custom_prompts").join(&meta.category)
+        } else {
+            output_dir.join("custom_prompts")
+        };
         fs::create_dir_all(&custom_prompts_dir)?;
 
         let output_file = custom_prompts_dir.join(format!("{}.md", meta.id));
@@ -148,7 +153,12 @@ impl ClaudeTransformer {
     fn transform_command(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let (meta, content) = self.load_prompt_primitive(path)?;
 
-        let commands_dir = output_dir.join("commands");
+        // Build output path with category structure: commands/{category}/{id}.md
+        let commands_dir = if !meta.category.is_empty() && meta.category != "core" {
+            output_dir.join("commands").join(&meta.category)
+        } else {
+            output_dir.join("commands")
+        };
         fs::create_dir_all(&commands_dir)?;
 
         let output_file = commands_dir.join(format!("{}.md", meta.id));
@@ -394,9 +404,10 @@ impl ClaudeTransformer {
         Ok(settings)
     }
 
-    /// Transform a tool primitive to MCP config entry
+    /// Transform a tool primitive to MCP config entry and copy implementation files
     fn transform_tool(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let mcp_file = output_dir.join("mcp.json");
+        let mut output_files = vec![mcp_file.to_string_lossy().to_string()];
 
         let dir_name = path
             .file_name()
@@ -418,6 +429,10 @@ impl ClaudeTransformer {
             path.display()
         ))?;
         let meta: ToolMeta = serde_yaml::from_str(&meta_content)?;
+
+        // Copy tool implementation files to tools/{category}/{id}/
+        let tool_files = self.copy_tool_files(path, output_dir, &meta)?;
+        output_files.extend(tool_files);
 
         // Load existing MCP config or create new
         let mut mcp_config: McpConfig = if mcp_file.exists() {
@@ -482,7 +497,69 @@ impl ClaudeTransformer {
         let json = serde_json::to_string_pretty(&mcp_config)?;
         fs::write(&mcp_file, json)?;
 
-        Ok(vec![mcp_file.to_string_lossy().to_string()])
+        Ok(output_files)
+    }
+
+    /// Copy tool implementation files to tools/{category}/{id}/
+    fn copy_tool_files(
+        &self,
+        source_path: &Path,
+        output_dir: &Path,
+        meta: &ToolMeta,
+    ) -> Result<Vec<String>> {
+        let mut copied_files = Vec::new();
+
+        // Build output path: tools/{category}/{id}/
+        let tools_dir = output_dir.join("tools").join(&meta.category).join(&meta.id);
+        fs::create_dir_all(&tools_dir)?;
+
+        // Files to copy (implementation files, not dev artifacts)
+        let include_extensions = [
+            "py", "sh", "js", "ts", "rb", "txt", "yaml", "yml", "json", "md",
+        ];
+        let exclude_patterns = [
+            ".git",
+            ".venv",
+            "__pycache__",
+            ".ruff_cache",
+            "node_modules",
+            ".pytest_cache",
+            "uv.lock",
+            "poetry.lock",
+            ".gitignore",
+        ];
+
+        for entry in fs::read_dir(source_path)? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+
+            // Skip excluded patterns
+            if exclude_patterns
+                .iter()
+                .any(|p| file_name_str.contains(p) || file_name_str == *p)
+            {
+                continue;
+            }
+
+            let entry_path = entry.path();
+
+            // Skip directories (don't recurse into tests/, etc.)
+            if entry_path.is_dir() {
+                continue;
+            }
+
+            // Check if file has an included extension
+            if let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) {
+                if include_extensions.contains(&ext) {
+                    let dest_path = tools_dir.join(&file_name);
+                    fs::copy(&entry_path, &dest_path)?;
+                    copied_files.push(dest_path.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        Ok(copied_files)
     }
 
     /// Load Claude implementation from separate file or generate placeholder

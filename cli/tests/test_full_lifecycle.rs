@@ -15,8 +15,9 @@ fn test_full_primitive_lifecycle() {
     )
     .success();
 
-    let agent_path = assert_primitive_exists(repo_path, "prompts", "agents/testing", "test-agent");
-    assert!(agent_path.join("test-agent.yaml").exists());
+    // New structure (ADR-021): agents directly under v1/
+    let agent_path = assert_primitive_exists(repo_path, "agents", "testing", "test-agent");
+    assert!(agent_path.join("test-agent.yaml").exists()); // Legacy naming still supported
     assert!(agent_path.join("test-agent.prompt.v1.md").exists());
 
     // Step 2: Create command primitive
@@ -33,7 +34,7 @@ fn test_full_primitive_lifecycle() {
     )
     .success();
 
-    assert_primitive_exists(repo_path, "prompts", "commands/testing", "test-command");
+    assert_primitive_exists(repo_path, "commands", "testing", "test-command");
 
     // Step 3: Create skill primitive
     run_cli_command(
@@ -42,7 +43,7 @@ fn test_full_primitive_lifecycle() {
     )
     .success();
 
-    assert_primitive_exists(repo_path, "prompts", "skills/testing", "test-skill");
+    assert_primitive_exists(repo_path, "skills", "testing", "test-skill");
 
     // Step 4: Create tool primitive
     run_cli_command(&["new", "tool", "testing", "test-tool"], Some(repo_path)).success();
