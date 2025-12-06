@@ -2,7 +2,7 @@
 name = "agentic-primitives"
 version = "1.2.0"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.83"
 authors = ["Agentic Primitives Team <team@agentic-primitives.dev>"]
 description = "Atomic building blocks for AI coding systems"
 license = "Apache-2.0"
@@ -24,7 +24,7 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 
 # Validation
-jsonschema = "0.18"
+jsonschema = "0.37"
 
 # Error handling
 anyhow = "1.0"
@@ -67,4 +67,3 @@ harness = false
 opt-level = 3
 lto = true
 codegen-units = 1
-
