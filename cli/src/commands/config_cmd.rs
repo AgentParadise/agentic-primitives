@@ -242,10 +242,11 @@ fn list_primitives(kind_filter: Option<&str>, config: &PrimitivesConfig) -> Resu
     );
     println!();
 
-    let prompts_dir = config.paths.primitives.join("prompts");
+    // New structure (ADR-021): types directly under v1/
+    let primitives_dir = &config.paths.primitives;
 
     // Search for all primitives - walk directory and find ones with .yaml metadata
-    for entry in WalkDir::new(&prompts_dir)
+    for entry in WalkDir::new(primitives_dir)
         .min_depth(2)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -255,27 +256,30 @@ fn list_primitives(kind_filter: Option<&str>, config: &PrimitivesConfig) -> Resu
             continue;
         }
 
-        // Check if this directory has a primitive (contains {dir_name}.yaml)
+        // Check if this directory has a primitive (contains {dir_name}.yaml or {dir_name}.meta.yaml)
         let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-        let meta_file = path.join(format!("{id}.yaml"));
-        if !meta_file.exists() {
+        let meta_file = if path.join(format!("{id}.meta.yaml")).exists() {
+            path.join(format!("{id}.meta.yaml"))
+        } else if path.join(format!("{id}.yaml")).exists() {
+            path.join(format!("{id}.yaml"))
+        } else {
             continue;
-        }
+        };
 
         // Parse the path to extract kind and category
-        // Path format: prompts/<kind>/<category>/<id> OR prompts/<kind>/<id>
-        let relative_path = path.strip_prefix(&prompts_dir).unwrap_or(path);
+        // Path format (ADR-021): <type>/<category>/<id>
+        let relative_path = path.strip_prefix(primitives_dir).unwrap_or(path);
         let components: Vec<_> = relative_path.components().collect();
 
         let (kind, category) = match components.len() {
             3 => {
-                // prompts/<kind>/<category>/<id>
+                // <type>/<category>/<id>
                 let kind = components[0].as_os_str().to_str().unwrap_or("?");
                 let cat = components[1].as_os_str().to_str().unwrap_or("?");
                 (kind, cat)
             }
             2 => {
-                // prompts/<kind>/<id> (no category, e.g., meta-prompts/create-prime)
+                // <type>/<id> (no category, e.g., meta/create-prime)
                 let kind = components[0].as_os_str().to_str().unwrap_or("?");
                 (kind, "core") // Default category for uncategorized
             }
@@ -322,7 +326,7 @@ fn list_primitives(kind_filter: Option<&str>, config: &PrimitivesConfig) -> Resu
         // Format: [kind] category/id (version info)
         let kind_short = match kind {
             "commands" => "cmd",
-            "meta-prompts" => "meta",
+            "meta" => "meta",
             "agents" => "agent",
             "skills" => "skill",
             _ => kind,

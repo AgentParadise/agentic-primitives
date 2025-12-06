@@ -384,8 +384,9 @@ mod tests {
     use tempfile::TempDir;
 
     fn create_valid_prompt(base: &Path, category: &str, id: &str) -> PathBuf {
+        // New structure (ADR-021): agents directly under v1/
         let path = base
-            .join("primitives/v1/prompts/agents")
+            .join("primitives/v1/agents")
             .join(category)
             .join(id);
         fs::create_dir_all(&path).unwrap();
@@ -449,7 +450,8 @@ default_version: 1
 
     #[test]
     fn test_detect_spec_version() {
-        let v1_path = PathBuf::from("primitives/v1/prompts/agents/test/test-agent");
+        // New structure (ADR-021)
+        let v1_path = PathBuf::from("primitives/v1/agents/test/test-agent");
         assert_eq!(detect_spec_version(&v1_path).unwrap(), SpecVersion::V1);
 
         let exp_path = PathBuf::from("primitives/experimental/test/test-agent");

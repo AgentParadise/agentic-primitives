@@ -108,15 +108,17 @@ fn has_metadata_file(path: &Path) -> bool {
 /// Check if a primitive should be included based on filters
 fn should_include_primitive(path: &Path, args: &BuildArgs) -> Result<bool> {
     // Type filter (prompt, tool, hook)
+    // New structure (ADR-021): prompts are under commands/, skills/, agents/
     if let Some(ref type_filter) = args.type_filter {
         let has_component = path.components().any(|c| {
-            c.as_os_str().to_string_lossy()
-                == match type_filter.as_str() {
-                    "prompt" => "prompts",
-                    "tool" => "tools",
-                    "hook" => "hooks",
-                    _ => "",
-                }
+            let name = c.as_os_str().to_string_lossy();
+            match type_filter.as_str() {
+                // Prompts include commands, skills, agents (new structure)
+                "prompt" => name == "commands" || name == "skills" || name == "agents",
+                "tool" => name == "tools",
+                "hook" => name == "hooks",
+                _ => false,
+            }
         });
 
         if !has_component {
@@ -228,24 +230,21 @@ fn create_manifest_primitive(
     // Extract primitive ID from path (e.g., "qa/review" from ".../commands/qa/review/")
     let components: Vec<_> = primitive_path.components().collect();
 
-    // Find the index of "prompts", "tools", or "hooks"
+    // Find the index of type directory (commands, skills, agents, tools, hooks)
+    // New structure (ADR-021): types are directly under v1/
     let type_idx = components.iter().position(|c| {
         let name = c.as_os_str().to_string_lossy();
-        name == "prompts" || name == "tools" || name == "hooks"
+        name == "commands" || name == "skills" || name == "agents" || name == "tools" || name == "hooks"
     })?;
 
-    // Extract kind and category/id
-    let kind = if type_idx + 1 < components.len() {
-        components[type_idx + 1]
-            .as_os_str()
-            .to_string_lossy()
-            .to_string()
-    } else {
-        return None;
-    };
+    // Extract kind from the type directory name
+    let kind = components[type_idx]
+        .as_os_str()
+        .to_string_lossy()
+        .to_string();
 
     // Build the ID from remaining path components (category/id)
-    let id_parts: Vec<String> = components[type_idx + 2..]
+    let id_parts: Vec<String> = components[type_idx + 1..]
         .iter()
         .map(|c| c.as_os_str().to_string_lossy().to_string())
         .collect();
@@ -475,7 +474,7 @@ mod tests {
 
     #[test]
     fn test_should_include_primitive_no_filter() {
-        let path = Path::new("/primitives/prompts/agents/my-agent");
+        let path = Path::new("/primitives/agents/python/my-agent");
         let args = BuildArgs {
             provider: "claude".to_string(),
             output: None,
@@ -490,7 +489,7 @@ mod tests {
 
     #[test]
     fn test_should_include_primitive_type_filter_match() {
-        let path = Path::new("/primitives/prompts/agents/my-agent");
+        let path = Path::new("/primitives/agents/python/my-agent");
         let args = BuildArgs {
             provider: "claude".to_string(),
             output: None,
@@ -505,7 +504,7 @@ mod tests {
 
     #[test]
     fn test_should_include_primitive_type_filter_no_match() {
-        let path = Path::new("/primitives/prompts/agents/my-agent");
+        let path = Path::new("/primitives/agents/python/my-agent");
         let args = BuildArgs {
             provider: "claude".to_string(),
             output: None,
@@ -520,7 +519,7 @@ mod tests {
 
     #[test]
     fn test_should_include_primitive_kind_filter_match() {
-        let path = Path::new("/primitives/prompts/agents/my-agent");
+        let path = Path::new("/primitives/agents/python/my-agent");
         let args = BuildArgs {
             provider: "claude".to_string(),
             output: None,
@@ -535,7 +534,7 @@ mod tests {
 
     #[test]
     fn test_should_include_primitive_kind_filter_no_match() {
-        let path = Path::new("/primitives/prompts/agents/my-agent");
+        let path = Path::new("/primitives/agents/python/my-agent");
         let args = BuildArgs {
             provider: "claude".to_string(),
             output: None,
@@ -550,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_should_include_primitive_invalid_type_filter() {
-        let path = Path::new("/primitives/prompts/agents/my-agent");
+        let path = Path::new("/primitives/agents/python/my-agent");
         let args = BuildArgs {
             provider: "claude".to_string(),
             output: None,

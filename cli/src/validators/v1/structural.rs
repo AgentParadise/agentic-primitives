@@ -167,27 +167,33 @@ impl StructuralValidator {
         }
 
         // Get parent and grandparent to validate structure
+        // New structure (ADR-021): v1/{type}/{category}/{id}/
+        // Types are: commands, skills, agents, tools, hooks
+        // Special case: commands/meta/{id}/ for meta-prompts
         if let Some(parent) = primitive_path.parent() {
             // parent should be the category
             if let Some(category_name) = parent.file_name().and_then(|n| n.to_str()) {
                 self.validate_kebab_case(category_name, "category name")?;
             }
 
-            // grandparent should be the type (prompts, tools, hooks)
+            // grandparent should be the type (commands, skills, agents, tools, hooks)
             if let Some(grandparent) = parent.parent() {
                 if let Some(type_name) = grandparent.file_name().and_then(|n| n.to_str()) {
-                    // For prompts, we have an additional level (agents, commands, skills, meta-prompts)
-                    // So we need to check great-grandparent
                     match type_name {
-                        "agents" | "commands" | "skills" | "meta-prompts" => {
-                            // These should have "prompts" as great-grandparent
+                        // Valid type directories directly under v1/
+                        "commands" | "skills" | "agents" | "tools" | "hooks" => {
+                            // These are valid type directories
+                        }
+                        // Could be a category under commands/meta/ for meta-prompts
+                        "meta" => {
+                            // Check that meta is under commands
                             if let Some(great_grandparent) = grandparent.parent() {
-                                if let Some(gp_name) =
+                                if let Some(ggp_name) =
                                     great_grandparent.file_name().and_then(|n| n.to_str())
                                 {
-                                    if gp_name != "prompts" {
+                                    if ggp_name != "commands" {
                                         return Err(StructuralError::InvalidStructure {
-                                            expected: format!("primitives/v1/prompts/{type_name}/<category>/<id>/"),
+                                            expected: "primitives/v1/commands/meta/<id>/".to_string(),
                                             actual: path_str.to_string(),
                                         }
                                         .into());
@@ -195,11 +201,12 @@ impl StructuralValidator {
                                 }
                             }
                         }
-                        "tools" | "hooks" => {
-                            // These are directly under v1
-                        }
                         _ => {
-                            // Could be valid for experimental
+                            // Could be valid for experimental or legacy structure
+                            // Check if this might be a legacy prompts/ structure
+                            if type_name != "prompts" {
+                                // Not a known type, could be experimental
+                            }
                         }
                     }
                 }

@@ -12,7 +12,8 @@ fn setup_versioned_primitive(
     id: &str,
     versions: &[(u32, &str)],
 ) -> std::io::Result<()> {
-    let primitive_dir = tmp_dir.path().join("primitives/v1/prompts/agents").join(id);
+    // New structure (ADR-021): agents directly under v1/
+    let primitive_dir = tmp_dir.path().join("primitives/v1/agents/test").join(id);
     fs::create_dir_all(&primitive_dir)?;
 
     // Create meta.yaml
@@ -111,7 +112,7 @@ fn test_version_list_no_versions() {
     // Create primitive without versions
     let primitive_dir = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/no-versions");
+        .join("primitives/v1/agents/test/no-versions");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     let meta_yaml = r#"spec_version: v1
@@ -158,13 +159,13 @@ fn test_version_bump_creates_new_version() {
     // Verify v2 file was created
     let v2_file = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent/test-agent.prompt.v2.md");
+        .join("primitives/v1/agents/test/test-agent/test-agent.prompt.v2.md");
     assert!(v2_file.exists());
 
     // Verify meta.yaml was updated
     let meta_path = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent/meta.yaml");
+        .join("primitives/v1/agents/test/test-agent/meta.yaml");
     let meta_content = fs::read_to_string(meta_path).unwrap();
     assert!(meta_content.contains("version: 2"));
     assert!(meta_content.contains("Added new features"));
@@ -190,7 +191,7 @@ fn test_version_bump_with_set_default() {
     // Verify default_version was updated in meta.yaml
     let meta_path = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent/meta.yaml");
+        .join("primitives/v1/agents/test/test-agent/meta.yaml");
     let meta_content = fs::read_to_string(meta_path).unwrap();
     assert!(meta_content.contains("default_version: 2"));
 }
@@ -220,7 +221,7 @@ fn test_version_promote_changes_status() {
     // Verify status changed in meta.yaml
     let meta_path = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent/meta.yaml");
+        .join("primitives/v1/agents/test/test-agent/meta.yaml");
     let meta_content = fs::read_to_string(meta_path).unwrap();
 
     // Parse and check that version 2 has status: active
@@ -258,7 +259,7 @@ fn test_version_promote_with_set_default() {
 
     let meta_path = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent/meta.yaml");
+        .join("primitives/v1/agents/test/test-agent/meta.yaml");
     let meta_content = fs::read_to_string(meta_path).unwrap();
     assert!(meta_content.contains("default_version: 2"));
 }
@@ -300,7 +301,7 @@ fn test_version_deprecate() {
     // Verify status changed
     let meta_path = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent/meta.yaml");
+        .join("primitives/v1/agents/test/test-agent/meta.yaml");
     let meta_content = fs::read_to_string(meta_path).unwrap();
 
     let version_1_section = meta_content
@@ -325,7 +326,7 @@ fn test_version_check_valid_hashes() {
     // Create primitive with correct hash
     let primitive_dir = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent");
+        .join("primitives/v1/agents/test/test-agent");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     let content = "# Version 1\n\nTest content";
@@ -372,7 +373,7 @@ fn test_version_check_detects_mismatch() {
 
     let primitive_dir = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent");
+        .join("primitives/v1/agents/test/test-agent");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     // Write content
@@ -436,7 +437,7 @@ fn test_version_bump_from_unversioned() {
     // Create unversioned primitive
     let primitive_dir = tmp_dir
         .path()
-        .join("primitives/v1/prompts/agents/test-agent");
+        .join("primitives/v1/agents/test/test-agent");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     let meta_yaml = r#"spec_version: v1
