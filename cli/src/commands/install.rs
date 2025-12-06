@@ -607,7 +607,7 @@ fn install_hooks_if_present(
     Ok(count)
 }
 
-/// Install extra files (mcp.json, skills.json) from build root if not already managed
+/// Install extra files and directories (mcp.json, skills.json, tools/) from build
 fn install_extra_files(
     build_dir: &Path,
     install_location: &Path,
@@ -617,6 +617,7 @@ fn install_extra_files(
     let extra_files = ["mcp.json", "skills.json"];
     let mut count = 0;
 
+    // Copy individual files
     for filename in &extra_files {
         let src = build_dir.join(filename);
         let dest = install_location.join(filename);
@@ -635,6 +636,39 @@ fn install_extra_files(
                 fs::copy(&src, &dest)?;
                 count += 1;
             }
+        }
+    }
+
+    // Copy tools/ directory if present
+    let tools_src = build_dir.join("tools");
+    if tools_src.exists() && tools_src.is_dir() {
+        for entry in WalkDir::new(&tools_src).into_iter().filter_map(|e| e.ok()) {
+            let src_path = entry.path();
+            if src_path.is_file() {
+                let relative = src_path.strip_prefix(build_dir)?;
+                let dest_path = install_location.join(relative);
+
+                if verbose || dry_run {
+                    let action = if dry_run {
+                        "Would install"
+                    } else {
+                        "Installing"
+                    };
+                    println!("  {} {}", action.cyan(), relative.display());
+                }
+
+                if !dry_run {
+                    if let Some(parent) = dest_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::copy(src_path, &dest_path)?;
+                    count += 1;
+                }
+            }
+        }
+
+        if count > 0 && verbose {
+            println!("  {} Installed tool files", "✓".green());
         }
     }
 
