@@ -154,7 +154,7 @@ agentic-p install --provider claude --dry-run --verbose
 build/claude/hooks/
 ├── hooks.json          ← All 9 events configured
 ├── core/               ← Universal hooks
-├── security/           ← Security hooks  
+├── security/           ← Security hooks
 └── analytics/          ← Analytics hooks
 ```
 
@@ -606,4 +606,3 @@ Inspired by:
 **Ready to build better AI systems?** Start with `just` and `agentic-p init`.
 
 For questions, issues, or discussions, visit our [GitHub repository](https://github.com/yourusername/agentic-primitives).
-
