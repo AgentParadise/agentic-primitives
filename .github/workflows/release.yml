@@ -17,7 +17,7 @@ jobs:
       changelog: ${{ steps.changelog.outputs.content }}
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Extract version from tag
         id: extract
@@ -86,10 +86,10 @@ jobs:
             artifact: agentic-p-windows-x64.exe
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Install Just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v3
         with:
           just-version: '1.37.0'
       
@@ -99,13 +99,13 @@ jobs:
           targets: ${{ matrix.target }}
       
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
       
       - name: Cache target directory
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: cli/target
           key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}
@@ -138,13 +138,13 @@ jobs:
         shell: bash
       
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
       
       - name: Upload checksum artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact }}.sha256
           path: ${{ matrix.artifact }}.sha256
@@ -167,10 +167,10 @@ jobs:
     needs: [validate-release, build-binaries]
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v6
         with:
           path: ./artifacts
       
@@ -187,7 +187,7 @@ jobs:
           cat checksums.txt
       
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Release v${{ needs.validate-release.outputs.version }}
           body: ${{ needs.validate-release.outputs.changelog }}
@@ -204,7 +204,7 @@ jobs:
     needs: [create-release]
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
