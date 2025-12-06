@@ -116,32 +116,32 @@ impl PromptPrimitive {
             )));
         }
 
-        // Find meta.yaml file - try multiple patterns
-        let meta_path = if primitive_dir.join("meta.yaml").exists() {
-            // Standard meta.yaml
+        // Find meta file - try new convention first (ADR-019), then legacy patterns
+        let dir_name = primitive_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| {
+                Error::NotFound(format!(
+                    "Cannot determine meta file for {}",
+                    primitive_dir.display()
+                ))
+            })?;
+
+        let meta_path = if primitive_dir
+            .join(format!("{dir_name}.meta.yaml"))
+            .exists()
+        {
+            // New convention (ADR-019): {id}.meta.yaml
+            primitive_dir.join(format!("{dir_name}.meta.yaml"))
+        } else if primitive_dir.join(format!("{dir_name}.yaml")).exists() {
+            // Legacy: {id}.yaml
+            primitive_dir.join(format!("{dir_name}.yaml"))
+        } else if primitive_dir.join("meta.yaml").exists() {
+            // Legacy: meta.yaml
             primitive_dir.join("meta.yaml")
-        } else if let Some(dir_name) = primitive_dir.file_name().and_then(|n| n.to_str()) {
-            // Try {id}.yaml pattern (where id matches directory name)
-            let id_meta_path = primitive_dir.join(format!("{dir_name}.yaml"));
-            if id_meta_path.exists() {
-                id_meta_path
-            } else {
-                // Try legacy .meta.yaml pattern
-                std::fs::read_dir(primitive_dir)?
-                    .filter_map(|entry| entry.ok())
-                    .find(|entry| entry.file_name().to_string_lossy().ends_with(".meta.yaml"))
-                    .ok_or_else(|| {
-                        Error::NotFound(format!(
-                            "No meta.yaml, {}.yaml, or .meta.yaml file found in {}",
-                            dir_name,
-                            primitive_dir.display()
-                        ))
-                    })?
-                    .path()
-            }
         } else {
             return Err(Error::NotFound(format!(
-                "Cannot determine meta file for {}",
+                "No metadata file found in {}",
                 primitive_dir.display()
             )));
         };

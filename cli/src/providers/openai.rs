@@ -323,31 +323,34 @@ impl OpenAITransformer {
             bail!("Path does not exist: {}", path.display());
         }
 
-        // Check for meta files - try new pattern first, then legacy
-        if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-            if path.join(format!("{dir_name}.tool.yaml")).exists()
-                || path.join("tool.meta.yaml").exists()
-            {
-                return Ok("tool".to_string());
-            }
-            if path.join(format!("{dir_name}.hook.yaml")).exists()
-                || path.join("hook.meta.yaml").exists()
-            {
-                return Ok("hook".to_string());
-            }
+        let dir_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Could not determine primitive type for: {}", path.display()))?;
+
+        // Check for meta files - try new pattern first (ADR-019), then legacy
+        if path.join(format!("{dir_name}.tool.yaml")).exists()
+            || path.join("tool.meta.yaml").exists()
+        {
+            return Ok("tool".to_string());
+        }
+        if path.join(format!("{dir_name}.hook.yaml")).exists()
+            || path.join("hook.meta.yaml").exists()
+        {
+            return Ok("hook".to_string());
         }
 
-        // Check for prompt meta files (meta.yaml or {id}.yaml pattern)
-        if path.join("meta.yaml").exists() {
+        // Check for prompt meta files - new convention first (ADR-019)
+        if path.join(format!("{dir_name}.meta.yaml")).exists() {
             return Ok("prompt".to_string());
         }
 
-        // Check for {id}.yaml pattern (where id matches the directory name)
-        if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-            let id_meta_file = format!("{dir_name}.yaml");
-            if path.join(&id_meta_file).exists() {
-                return Ok("prompt".to_string());
-            }
+        // Legacy fallbacks
+        if path.join(format!("{dir_name}.yaml")).exists() {
+            return Ok("prompt".to_string());
+        }
+        if path.join("meta.yaml").exists() {
+            return Ok("prompt".to_string());
         }
 
         bail!("Could not determine primitive type for: {}", path.display())
