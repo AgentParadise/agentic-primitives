@@ -39,23 +39,20 @@ impl ClaudeTransformer {
             }
         }
 
-        // Check for prompt meta files - try multiple patterns
-        let meta_file = if path.join("meta.yaml").exists() {
+        // Check for prompt meta files - try new convention first (ADR-019)
+        let dir_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Unable to determine primitive kind for: {}", path.display()))?;
+
+        let meta_file = if path.join(format!("{dir_name}.meta.yaml")).exists() {
+            path.join(format!("{dir_name}.meta.yaml"))
+        } else if path.join(format!("{dir_name}.yaml")).exists() {
+            path.join(format!("{dir_name}.yaml"))
+        } else if path.join("meta.yaml").exists() {
             path.join("meta.yaml")
-        } else if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-            // Try {id}.yaml pattern (where id matches directory name)
-            let id_meta_file = path.join(format!("{dir_name}.yaml"));
-            if id_meta_file.exists() {
-                id_meta_file
-            } else {
-                bail!(
-                    "No meta.yaml or {}.yaml file found in {}",
-                    dir_name,
-                    path.display()
-                )
-            }
         } else {
-            bail!("Unable to determine primitive kind for: {}", path.display())
+            bail!("No metadata file found in {}", path.display())
         };
 
         let meta_content = fs::read_to_string(&meta_file)?;
@@ -70,22 +67,21 @@ impl ClaudeTransformer {
 
     /// Load prompt metadata and content from a primitive directory
     fn load_prompt_primitive(&self, path: &Path) -> Result<(PromptMeta, String)> {
-        // Find meta file - try multiple patterns
-        let meta_path = if path.join("meta.yaml").exists() {
+        let dir_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid primitive path"))?;
+
+        // Try new convention first (ADR-019): {id}.meta.yaml
+        let meta_path = if path.join(format!("{dir_name}.meta.yaml")).exists() {
+            path.join(format!("{dir_name}.meta.yaml"))
+        // Legacy fallbacks
+        } else if path.join(format!("{dir_name}.yaml")).exists() {
+            path.join(format!("{dir_name}.yaml"))
+        } else if path.join("meta.yaml").exists() {
             path.join("meta.yaml")
-        } else if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-            let id_meta_path = path.join(format!("{dir_name}.yaml"));
-            if id_meta_path.exists() {
-                id_meta_path
-            } else {
-                bail!(
-                    "No meta.yaml or {}.yaml file found in {}",
-                    dir_name,
-                    path.display()
-                )
-            }
         } else {
-            bail!("Cannot determine meta file for {}", path.display())
+            bail!("No metadata file found in {}", path.display())
         };
 
         let meta_content = fs::read_to_string(&meta_path).context(format!(
@@ -403,16 +399,19 @@ impl ClaudeTransformer {
     fn transform_tool(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
         let mcp_file = output_dir.join("mcp.json");
 
-        // Load tool metadata - try new pattern first
-        let meta_path = if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+        let dir_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+
+        // Load tool metadata - try new pattern first (ADR-019)
+        let meta_path = {
             let id_tool_path = path.join(format!("{dir_name}.tool.yaml"));
             if id_tool_path.exists() {
                 id_tool_path
             } else {
                 path.join("tool.meta.yaml")
             }
-        } else {
-            path.join("tool.meta.yaml")
         };
 
         let meta_content = fs::read_to_string(&meta_path).context(format!(
@@ -431,25 +430,44 @@ impl ClaudeTransformer {
             }
         };
 
-        // Check if there's a Claude-specific implementation
-        let impl_file = path.join("impl.claude.yaml");
+        // Try to get Claude config from providers section in tool.yaml (ADR-019)
+        let server_config = if let Some(ref providers) = meta.providers {
+            if let Some(claude) = providers.get("claude") {
+                // Read from providers.claude in tool.yaml
+                let command = claude
+                    .get("command")
+                    .or_else(|| claude.get("native_tool"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("echo");
 
-        let server_config = if impl_file.exists() {
-            // Load Claude-specific config
-            let impl_content = fs::read_to_string(&impl_file)?;
-            let impl_data: ClaudeToolImpl = serde_yaml::from_str(&impl_content)?;
-            McpServerConfig {
-                command: impl_data.command,
-                args: impl_data.args.unwrap_or_default(),
-                env: impl_data.env.unwrap_or_default(),
+                let args = claude
+                    .get("args")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let env = claude
+                    .get("env")
+                    .and_then(|v| v.as_object())
+                    .map(|obj| {
+                        obj.iter()
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                McpServerConfig { command: command.to_string(), args, env }
+            } else {
+                // No Claude provider in providers section
+                self.load_claude_impl_file(path, &meta)?
             }
         } else {
-            // Generate generic config from metadata
-            McpServerConfig {
-                command: "echo".to_string(),
-                args: vec![format!("Tool '{}' not implemented", meta.id)],
-                env: HashMap::new(),
-            }
+            // No providers section, try fallback files
+            self.load_claude_impl_file(path, &meta)?
         };
 
         // Add to MCP servers
@@ -462,6 +480,44 @@ impl ClaudeTransformer {
         fs::write(&mcp_file, json)?;
 
         Ok(vec![mcp_file.to_string_lossy().to_string()])
+    }
+
+    /// Load Claude implementation from separate file or generate placeholder
+    fn load_claude_impl_file(&self, path: &Path, meta: &ToolMeta) -> Result<McpServerConfig> {
+        let dir_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+
+        // Try new convention first: {id}.claude.yaml
+        let claude_file = path.join(format!("{dir_name}.claude.yaml"));
+        // Legacy fallback: impl.claude.yaml
+        let impl_file = path.join("impl.claude.yaml");
+
+        if claude_file.exists() {
+            let impl_content = fs::read_to_string(&claude_file)?;
+            let impl_data: ClaudeToolImpl = serde_yaml::from_str(&impl_content)?;
+            Ok(McpServerConfig {
+                command: impl_data.command,
+                args: impl_data.args.unwrap_or_default(),
+                env: impl_data.env.unwrap_or_default(),
+            })
+        } else if impl_file.exists() {
+            let impl_content = fs::read_to_string(&impl_file)?;
+            let impl_data: ClaudeToolImpl = serde_yaml::from_str(&impl_content)?;
+            Ok(McpServerConfig {
+                command: impl_data.command,
+                args: impl_data.args.unwrap_or_default(),
+                env: impl_data.env.unwrap_or_default(),
+            })
+        } else {
+            // Generate placeholder config
+            Ok(McpServerConfig {
+                command: "echo".to_string(),
+                args: vec![format!("Tool '{}' has no Claude provider configured", meta.id)],
+                env: HashMap::new(),
+            })
+        }
     }
 }
 

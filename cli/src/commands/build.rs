@@ -96,13 +96,13 @@ fn has_metadata_file(path: &Path) -> bool {
         return true;
     }
 
-    // Check for any metadata file format
-    path.join(format!("{dir_name}.yaml")).exists()
-        || path.join(format!("{dir_name}.tool.yaml")).exists()
-        || path.join(format!("{dir_name}.hook.yaml")).exists()
+    // New convention (ADR-019): {id}.{type}.yaml
+    path.join(format!("{dir_name}.meta.yaml")).exists()      // Prompts (new)
+        || path.join(format!("{dir_name}.tool.yaml")).exists() // Tools
+        || path.join(format!("{dir_name}.hook.yaml")).exists() // Hooks
+        // Legacy fallbacks (for backward compatibility)
+        || path.join(format!("{dir_name}.yaml")).exists()
         || path.join("meta.yaml").exists()
-        || path.join("tool.meta.yaml").exists()
-        || path.join("hook.meta.yaml").exists()
 }
 
 /// Check if a primitive should be included based on filters
@@ -257,8 +257,15 @@ fn create_manifest_primitive(
     let id = id_parts.join("/");
 
     // Try to read metadata for version and hash
+    // Check for new convention first ({id}.meta.yaml), then legacy patterns
     let dir_name = primitive_path.file_name()?.to_str()?;
-    let meta_path = primitive_path.join(format!("{dir_name}.yaml"));
+    let meta_path = if primitive_path.join(format!("{dir_name}.meta.yaml")).exists() {
+        primitive_path.join(format!("{dir_name}.meta.yaml"))
+    } else if primitive_path.join(format!("{dir_name}.yaml")).exists() {
+        primitive_path.join(format!("{dir_name}.yaml"))
+    } else {
+        primitive_path.join("meta.yaml")
+    };
 
     let (version, hash) = if meta_path.exists() {
         if let Ok(content) = fs::read_to_string(&meta_path) {
