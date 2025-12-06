@@ -28,11 +28,11 @@ jsonschema = "0.18"
 
 # Error handling
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # File system
 walkdir = "2.5"
-dirs = "5.0"
+dirs = "6.0"
 
 # Terminal output
 colored = "2.1"
