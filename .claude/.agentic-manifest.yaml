@@ -1,10 +1,10 @@
 version: '1.0'
-updated_at: 2025-12-06T19:51:00.016421Z
+updated_at: 2025-12-06T20:52:44.863001Z
 source: agentic-primitives
 provider: claude
 primitives:
-- id: firecrawl-scraper
-  kind: scrape
+- id: scrape/firecrawl-scraper
+  kind: tools
   version: 1
   hash: unknown
   files:
@@ -30,6 +30,24 @@ primitives:
   hash: blake3:2db9ee58413940f66bc2f7c82dd4c34890787db54f65f2d9145e6c89df153225
   files:
   - commands/devops/push.md
+- id: meta/create-doc-sync
+  kind: commands
+  version: 1
+  hash: blake3:d37490a6124e739e58c971e99afbe837bb748f4623307a8ae237664a19a63e6a
+  files:
+  - commands/meta/create-doc-sync.md
+- id: meta/create-prime
+  kind: commands
+  version: 1
+  hash: blake3:4c553b3ba4dec7b12e28cb50f78203615ecf64cb90af07b8b1dd97bf0bc65c66
+  files:
+  - commands/meta/create-prime.md
+- id: meta/prompt-generator
+  kind: commands
+  version: 1
+  hash: blake3:52075fba9bec948c8675a75a7e69d6776c80d3ede1292b864a32b798ec9e45c5
+  files:
+  - commands/meta/prompt-generator.md
 - id: qa/pre-commit-qa
   kind: commands
   version: 1
@@ -72,21 +90,3 @@ primitives:
   hash: blake3:722de9b69fd0843ae06b705eaa423359f8d9066a128aae1519c880e4ae6ae46f
   files:
   - ./build/claude/skills.json
-- id: create-doc-sync
-  kind: meta-prompts
-  version: 1
-  hash: blake3:d37490a6124e739e58c971e99afbe837bb748f4623307a8ae237664a19a63e6a
-  files:
-  - commands/meta/create-doc-sync.md
-- id: create-prime
-  kind: meta-prompts
-  version: 1
-  hash: blake3:4c553b3ba4dec7b12e28cb50f78203615ecf64cb90af07b8b1dd97bf0bc65c66
-  files:
-  - commands/meta/create-prime.md
-- id: prompt-generator
-  kind: meta-prompts
-  version: 1
-  hash: blake3:52075fba9bec948c8675a75a7e69d6776c80d3ede1292b864a32b798ec9e45c5
-  files:
-  - commands/meta/prompt-generator.md
