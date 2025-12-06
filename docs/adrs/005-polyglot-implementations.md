@@ -4,12 +4,14 @@
 ---
 status: accepted
 created: 2025-11-13
-updated: 2025-11-13
+updated: 2025-12-06
 deciders: System Architect
 consulted: Development Team
 informed: All Stakeholders
 ---
 ```
+
+> **Note**: File naming conventions updated per ADR-019. See [ADR-019: File Naming Convention](019-file-naming-convention.md).
 
 ## Context
 
@@ -56,13 +58,16 @@ Tools can have **multiple implementations**:
 
 ```
 tools/<category>/<id>/
-├── tool.meta.yaml          # Logical specification
-├── impl.claude.yaml        # Claude SDK binding
-├── impl.openai.json        # OpenAI function binding
-├── impl.local.rs           # Rust implementation
-├── impl.local.py           # Python implementation
-└── impl.local.ts           # TypeScript/Bun implementation
+├── {id}.tool.yaml          # Logical specification (required)
+├── {id}.claude.yaml        # Claude provider binding (optional)
+├── {id}.openai.json        # OpenAI function binding (optional)
+├── {id}.local.rs           # Rust implementation (optional)
+├── {id}.local.py           # Python implementation (optional)
+└── {id}.local.ts           # TypeScript/Bun implementation (optional)
 ```
+
+> **Naming**: `{id}` = directory name (e.g., `firecrawl-scraper.tool.yaml`)
+> **Inline providers**: Claude config can also be in `providers.claude` section of `{id}.tool.yaml`
 
 **Execution priority**:
 1. Provider-native (if building for that provider)
@@ -76,9 +81,9 @@ Hooks support **dual implementations**:
 
 ```
 hooks/<category>/<id>/
-├── hook.meta.yaml          # Configuration
-├── impl.python.py          # Python orchestrator (PRIMARY)
-├── impl.bun.ts             # Bun/TS orchestrator (ALTERNATIVE)
+├── {id}.hook.yaml          # Configuration (required)
+├── {id}.python.py          # Python orchestrator (PRIMARY)
+├── {id}.bun.ts             # Bun/TS orchestrator (ALTERNATIVE)
 └── middleware/
     ├── safety/             # Can mix languages
     │   ├── *.py
@@ -87,6 +92,8 @@ hooks/<category>/<id>/
         ├── *.py
         └── *.ts
 ```
+
+> **Naming**: `{id}` = directory name (e.g., `bash-validator.hook.yaml`)
 
 **Primary**: Python with `uv`
 - Best ecosystem for safety/observability
@@ -303,33 +310,35 @@ main();
 
 ```
 tools/shell/run-tests/
-├── tool.meta.yaml
+├── run-tests.tool.yaml      # Tool metadata with optional inline providers
+│   id: run-tests
+│   providers:
+│     claude:
+│       native_tool: bash
+│       command_template: "{{command}}"
 │
-├── impl.claude.yaml    # Use Claude's Bash tool
-│   tool: run-tests
-│   type: bash
-│   command_template: "{{command}}"
-│
-├── impl.openai.json    # OpenAI function calling
+├── run-tests.openai.json    # OpenAI function calling (optional)
 │   {
 │     "name": "run_tests",
 │     "parameters": { ... }
 │   }
 │
-├── impl.local.py       # Python subprocess
+├── run-tests.local.py       # Python subprocess (optional)
 │   #!/usr/bin/env python3
 │   import subprocess
 │   def run_tests(command="pytest"):
 │       result = subprocess.run(...)
 │       return result.stdout
 │
-└── impl.local.rs       # Rust std::process
+└── run-tests.local.rs       # Rust std::process (optional)
     use std::process::Command;
     pub fn run_tests(cmd: &str) -> Result<String> {
         let output = Command::new(cmd).output()?;
         Ok(String::from_utf8(output.stdout)?)
     }
 ```
+
+**Inline Provider Config**: The `providers` section in `{id}.tool.yaml` can include provider-specific bindings directly, eliminating the need for separate `{id}.claude.yaml` files in most cases.
 
 ## Success Criteria
 
@@ -346,6 +355,7 @@ Polyglot support is successful when:
 
 - **ADR-006: Middleware-Based Hooks** - Defines hook architecture
 - **ADR-008: Test-Driven Development** - Tests must cover all languages
+- **ADR-019: File Naming Convention** - Defines `{id}.{type}.{ext}` pattern
 
 ## References
 
@@ -373,6 +383,6 @@ For now, limiting to Python/TypeScript/Rust:
 
 ---
 
-**Status**: Accepted  
-**Last Updated**: 2025-11-13
+**Status**: Accepted
+**Last Updated**: 2025-12-06
 
