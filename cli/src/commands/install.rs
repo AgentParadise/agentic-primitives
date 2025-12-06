@@ -327,20 +327,12 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
         )?;
 
         // Also install hooks (.claude/ subdirectory from build) if present
-        let hooks_count = install_hooks_if_present(
-            &build_dir,
-            &install_location,
-            args.dry_run,
-            args.verbose,
-        )?;
+        let hooks_count =
+            install_hooks_if_present(&build_dir, &install_location, args.dry_run, args.verbose)?;
 
         // Install mcp.json and skills.json if present (at root of build dir)
-        let extras_count = install_extra_files(
-            &build_dir,
-            &install_location,
-            args.dry_run,
-            args.verbose,
-        )?;
+        let extras_count =
+            install_extra_files(&build_dir, &install_location, args.dry_run, args.verbose)?;
 
         let total_files = installed_files.len() + hooks_count + extras_count;
 

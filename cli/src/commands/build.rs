@@ -234,7 +234,11 @@ fn create_manifest_primitive(
     // New structure (ADR-021): types are directly under v1/
     let type_idx = components.iter().position(|c| {
         let name = c.as_os_str().to_string_lossy();
-        name == "commands" || name == "skills" || name == "agents" || name == "tools" || name == "hooks"
+        name == "commands"
+            || name == "skills"
+            || name == "agents"
+            || name == "tools"
+            || name == "hooks"
     })?;
 
     // Extract kind from the type directory name

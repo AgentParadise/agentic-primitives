@@ -514,7 +514,9 @@ impl ClaudeTransformer {
         fs::create_dir_all(&tools_dir)?;
 
         // Files to copy (implementation files, not dev artifacts)
-        let include_extensions = ["py", "sh", "js", "ts", "rb", "txt", "yaml", "yml", "json", "md"];
+        let include_extensions = [
+            "py", "sh", "js", "ts", "rb", "txt", "yaml", "yml", "json", "md",
+        ];
         let exclude_patterns = [
             ".git",
             ".venv",

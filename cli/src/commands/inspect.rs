@@ -547,10 +547,7 @@ mod tests {
 
     fn create_test_prompt(base: &Path, category: &str, id: &str) -> PathBuf {
         // New structure (ADR-021): agents directly under v1/
-        let path = base
-            .join("primitives/v1/agents")
-            .join(category)
-            .join(id);
+        let path = base.join("primitives/v1/agents").join(category).join(id);
         fs::create_dir_all(&path).unwrap();
 
         let meta = format!(

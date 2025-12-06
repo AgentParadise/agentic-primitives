@@ -193,7 +193,8 @@ impl StructuralValidator {
                                 {
                                     if ggp_name != "commands" {
                                         return Err(StructuralError::InvalidStructure {
-                                            expected: "primitives/v1/commands/meta/<id>/".to_string(),
+                                            expected: "primitives/v1/commands/meta/<id>/"
+                                                .to_string(),
                                             actual: path_str.to_string(),
                                         }
                                         .into());

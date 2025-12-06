@@ -350,9 +350,7 @@ fn test_transform_meta_prompt() {
     assert_eq!(result.primitive_kind, "meta-prompt");
 
     // Meta-prompts are treated like commands (with category subdirectory)
-    let command_file = output_dir
-        .path()
-        .join("commands/meta/prompt-builder.md");
+    let command_file = output_dir.path().join("commands/meta/prompt-builder.md");
     assert!(command_file.exists());
 }
 

@@ -110,9 +110,7 @@ fn test_version_list_no_versions() {
     setup_config(&tmp_dir).unwrap();
 
     // Create primitive without versions
-    let primitive_dir = tmp_dir
-        .path()
-        .join("primitives/v1/agents/test/no-versions");
+    let primitive_dir = tmp_dir.path().join("primitives/v1/agents/test/no-versions");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     let meta_yaml = r#"spec_version: v1
@@ -324,9 +322,7 @@ fn test_version_check_valid_hashes() {
     setup_config(&tmp_dir).unwrap();
 
     // Create primitive with correct hash
-    let primitive_dir = tmp_dir
-        .path()
-        .join("primitives/v1/agents/test/test-agent");
+    let primitive_dir = tmp_dir.path().join("primitives/v1/agents/test/test-agent");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     let content = "# Version 1\n\nTest content";
@@ -371,9 +367,7 @@ fn test_version_check_detects_mismatch() {
     let tmp_dir = TempDir::new().unwrap();
     setup_config(&tmp_dir).unwrap();
 
-    let primitive_dir = tmp_dir
-        .path()
-        .join("primitives/v1/agents/test/test-agent");
+    let primitive_dir = tmp_dir.path().join("primitives/v1/agents/test/test-agent");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     // Write content
@@ -435,9 +429,7 @@ fn test_version_bump_from_unversioned() {
     setup_config(&tmp_dir).unwrap();
 
     // Create unversioned primitive
-    let primitive_dir = tmp_dir
-        .path()
-        .join("primitives/v1/agents/test/test-agent");
+    let primitive_dir = tmp_dir.path().join("primitives/v1/agents/test/test-agent");
     fs::create_dir_all(&primitive_dir).unwrap();
 
     let meta_yaml = r#"spec_version: v1
