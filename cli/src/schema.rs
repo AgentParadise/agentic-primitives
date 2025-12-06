@@ -1,13 +1,13 @@
 use crate::error::{Error, Result};
 use crate::spec_version::SpecVersion;
-use jsonschema::JSONSchema;
+use jsonschema::{validator_for, Validator};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
 /// JSON Schema validator with cached compiled schemas
 pub struct SchemaValidator {
-    schemas: HashMap<String, JSONSchema>,
+    schemas: HashMap<String, Validator>,
     spec_version: SpecVersion,
 }
 
@@ -55,7 +55,7 @@ impl SchemaValidator {
             let content = std::fs::read_to_string(&schema_path)?;
             let schema_value: Value = serde_json::from_str(&content)?;
 
-            let compiled = JSONSchema::compile(&schema_value).map_err(|e| {
+            let compiled = validator_for(&schema_value).map_err(|e| {
                 Error::Validation(format!("Failed to compile schema {schema_file}: {e}"))
             })?;
 
@@ -107,19 +107,19 @@ impl SchemaValidator {
             .get(schema_key)
             .ok_or_else(|| Error::Validation(format!("Schema not found: {schema_key}")))?;
 
-        match schema.validate(data) {
-            Ok(_) => Ok(()),
-            Err(errors) => {
-                let error_messages: Vec<String> = errors
-                    .map(|e| format!("  - {}: {}", e.instance_path, e))
-                    .collect();
+        let errors: Vec<String> = schema
+            .iter_errors(data)
+            .map(|e| format!("  - {}: {}", e.instance_path(), e))
+            .collect();
 
-                Err(Error::Validation(format!(
-                    "Validation failed for {}:\n{}",
-                    schema_key,
-                    error_messages.join("\n")
-                )))
-            }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Validation(format!(
+                "Validation failed for {}:\n{}",
+                schema_key,
+                errors.join("\n")
+            )))
         }
     }
 }
