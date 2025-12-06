@@ -88,9 +88,23 @@ Adopt `{id}.{type}.{ext}` naming convention for all primitive files:
 
 **Command Primitive**:
 ```
-primitives/v1/prompts/commands/qa/review/
+primitives/v1/commands/qa/review/
 ├── review.meta.yaml         # Metadata
 └── review.prompt.v1.md      # Prompt content
+```
+
+**Meta-Prompt Primitive** (under commands/meta/):
+```
+primitives/v1/commands/meta/prompt-generator/
+├── prompt-generator.meta.yaml    # Metadata
+└── prompt-generator.prompt.v1.md # Prompt content
+```
+
+**Skill Primitive**:
+```
+primitives/v1/skills/review/prioritize/
+├── prioritize.meta.yaml     # Metadata
+└── prioritize.prompt.v1.md  # Prompt content
 ```
 
 **Tool Primitive**:
@@ -103,7 +117,7 @@ primitives/v1/tools/scrape/firecrawl-scraper/
 
 **Hook Primitive**:
 ```
-primitives/v1/hooks/safety/bash-validator/
+primitives/v1/hooks/validators/bash-validator/
 ├── bash-validator.hook.yaml      # Configuration
 ├── bash_validator.py             # Python orchestrator
 └── handlers/                     # Handler modules
@@ -116,9 +130,9 @@ primitives/v1/hooks/safety/bash-validator/
 The `{id}` **MUST** match the directory name:
 
 ```
-primitives/v1/prompts/commands/devops/manage-security-patches/
-                                      └─────────────┬─────────┘
-                                                    │
+primitives/v1/commands/devops/manage-security-patches/
+                              └─────────────┬─────────┘
+                                            │
 ├── manage-security-patches.meta.yaml    ← {id} = directory name
 └── manage-security-patches.prompt.v1.md
 ```

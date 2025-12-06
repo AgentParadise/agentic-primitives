@@ -170,16 +170,21 @@ Per ADR-019, primitives use the `{id}.{type}.{ext}` pattern:
 
 ### Directory Structure
 
+Per ADR-021, primitives use a flat type-based structure:
+
 ```
-primitives/v1/prompts/
-├── agents/           # Agent primitives (any level)
-├── commands/         # Command primitives
+primitives/v1/
+├── commands/         # Command primitives (/command-name)
 │   ├── devops/       # DevOps commands
+│   ├── docs/         # Documentation commands
+│   ├── meta/         # Level 6-7 meta-prompts
 │   ├── qa/           # QA commands
 │   ├── review/       # Review commands
 │   └── workflow/     # Workflow orchestrators
-├── meta-prompts/     # Level 6-7 meta-prompts
-└── skills/           # Skill primitives
+├── skills/           # Skill primitives (referenced)
+├── agents/           # Agent primitives (@agent-name)
+├── hooks/            # Lifecycle event handlers
+└── tools/            # MCP tool integrations
 ```
 
 ### Documenting Prompt Level
@@ -203,7 +208,8 @@ The CLI's `validate` command should eventually check:
 
 ## References
 
-- `primitives/v1/prompts/meta-prompts/prompt-generator/prompt-generator.prompt.v1.md` - Source of 7 levels
+- `primitives/v1/commands/meta/prompt-generator/prompt-generator.prompt.v1.md` - Source of 7 levels
 - ADR-019: File Naming Convention
+- ADR-021: Primitives Directory Structure
 - Claude Agent SDK documentation (commands, skills)
 - [TAC Engineering Course](https://tacengineering.com) - Original 7 levels framework
