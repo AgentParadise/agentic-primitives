@@ -2,7 +2,7 @@
 name = "agentic-primitives"
 version = "1.2.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.80"
 authors = ["Agentic Primitives Team <team@agentic-primitives.dev>"]
 description = "Atomic building blocks for AI coding systems"
 license = "Apache-2.0"
@@ -35,7 +35,7 @@ walkdir = "2.5"
 dirs = "6.0"
 
 # Terminal output
-colored = "2.1"
+colored = "3.0"
 comfy-table = "7.1"
 
 # Templating
