@@ -132,16 +132,18 @@ fn find_primitives(path: &Path) -> Result<Vec<PathBuf>> {
         {
             let file_name = entry.file_name().to_string_lossy();
 
-            // Check for metadata files in both new and legacy formats
+            // Check for metadata files in both new (ADR-019) and legacy formats
             let is_meta_file = file_name == "meta.yaml"
                 || file_name == "tool.meta.yaml"
                 || file_name == "hook.meta.yaml"
+                || file_name.ends_with(".meta.yaml") // ADR-019: {id}.meta.yaml
                 || (file_name.ends_with(".yaml")
                     && !file_name.starts_with('.')
                     && (file_name.ends_with(".tool.yaml")
                         || file_name.ends_with(".hook.yaml")
                         || (!file_name.contains(".tool.")
                             && !file_name.contains(".hook.")
+                            && !file_name.contains(".meta.")
                             && !file_name.contains(".v"))));
 
             if is_meta_file {
@@ -173,12 +175,31 @@ fn detect_spec_version(primitive_path: &Path) -> Result<SpecVersion> {
 
 fn detect_type(primitive_path: &Path) -> Result<String> {
     // Check for meta file to determine type
-    if primitive_path.join("meta.yaml").exists() {
-        // It's a prompt
+    // Get directory name for new naming convention (ADR-019)
+    let dir_name = primitive_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+
+    // Check for prompt metadata (new convention first, then legacy)
+    if primitive_path
+        .join(format!("{dir_name}.meta.yaml"))
+        .exists()
+        || primitive_path.join(format!("{dir_name}.yaml")).exists()
+        || primitive_path.join("meta.yaml").exists()
+    {
         Ok("prompt".to_string())
-    } else if primitive_path.join("tool.meta.yaml").exists() {
+    } else if primitive_path
+        .join(format!("{dir_name}.tool.yaml"))
+        .exists()
+        || primitive_path.join("tool.meta.yaml").exists()
+    {
         Ok("tool".to_string())
-    } else if primitive_path.join("hook.meta.yaml").exists() {
+    } else if primitive_path
+        .join(format!("{dir_name}.hook.yaml"))
+        .exists()
+        || primitive_path.join("hook.meta.yaml").exists()
+    {
         Ok("hook".to_string())
     } else {
         Ok("unknown".to_string())
@@ -186,17 +207,30 @@ fn detect_type(primitive_path: &Path) -> Result<String> {
 }
 
 fn detect_kind(primitive_path: &Path) -> Result<String> {
-    // For prompts, read meta.yaml to get kind
-    let meta_path = primitive_path.join("meta.yaml");
-    if meta_path.exists() {
-        let content = fs::read_to_string(&meta_path)
-            .with_context(|| format!("Failed to read meta.yaml: {meta_path:?}"))?;
-        let meta: serde_yaml::Value =
-            serde_yaml::from_str(&content).with_context(|| "Failed to parse meta.yaml")?;
+    // Get directory name for new naming convention (ADR-019)
+    let dir_name = primitive_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
 
-        if let Some(kind) = meta.get("kind") {
-            if let Some(kind_str) = kind.as_str() {
-                return Ok(kind_str.to_string());
+    // For prompts, read metadata to get kind - try new convention first
+    let meta_candidates = [
+        primitive_path.join(format!("{dir_name}.meta.yaml")), // ADR-019
+        primitive_path.join(format!("{dir_name}.yaml")),      // Legacy
+        primitive_path.join("meta.yaml"),                     // Legacy
+    ];
+
+    for meta_path in meta_candidates {
+        if meta_path.exists() {
+            let content = fs::read_to_string(&meta_path)
+                .with_context(|| format!("Failed to read metadata: {meta_path:?}"))?;
+            let meta: serde_yaml::Value =
+                serde_yaml::from_str(&content).with_context(|| "Failed to parse metadata")?;
+
+            if let Some(kind) = meta.get("kind") {
+                if let Some(kind_str) = kind.as_str() {
+                    return Ok(kind_str.to_string());
+                }
             }
         }
     }

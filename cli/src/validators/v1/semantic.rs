@@ -115,19 +115,20 @@ impl SemanticValidator {
             .and_then(|n| n.to_str())
             .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
 
-        // Try to find metadata file (prioritize new naming convention)
+        // Try to find metadata file (prioritize new naming convention per ADR-019)
         let meta_path = [
-            format!("{dir_name}.yaml"),      // Prompt: {id}.yaml
+            format!("{dir_name}.meta.yaml"), // Prompt: {id}.meta.yaml (ADR-019)
             format!("{dir_name}.tool.yaml"), // Tool: {id}.tool.yaml
             format!("{dir_name}.hook.yaml"), // Hook: {id}.hook.yaml
-            "meta.yaml".to_string(),           // Legacy prompt
-            "tool.meta.yaml".to_string(),      // Legacy tool
-            "hook.meta.yaml".to_string(),      // Legacy hook
+            format!("{dir_name}.yaml"),      // Legacy prompt: {id}.yaml
+            "meta.yaml".to_string(),         // Legacy prompt
+            "tool.meta.yaml".to_string(),    // Legacy tool
+            "hook.meta.yaml".to_string(),    // Legacy hook
         ]
         .iter()
         .map(|f| primitive_path.join(f))
         .find(|p| p.exists())
-        .ok_or_else(|| anyhow::anyhow!("Missing metadata file ({dir_name}.yaml, {dir_name}.tool.yaml, {dir_name}.hook.yaml, or meta.yaml)"))?;
+        .ok_or_else(|| anyhow::anyhow!("Missing metadata file ({dir_name}.meta.yaml, {dir_name}.tool.yaml, {dir_name}.hook.yaml, or meta.yaml)"))?;
 
         let meta_content = std::fs::read_to_string(&meta_path)
             .with_context(|| format!("Failed to read metadata from {}", meta_path.display()))?;
@@ -283,10 +284,11 @@ impl SemanticValidator {
                 {
                     if entry.file_type().is_dir() && entry.file_name().to_string_lossy() == tool_id
                     {
-                        // Check if it has tool.meta.yaml or meta.yaml
-                        let tool_meta = entry.path().join("tool.meta.yaml");
+                        // Check if it has tool metadata (new convention first, then legacy)
+                        let new_tool_meta = entry.path().join(format!("{tool_id}.tool.yaml"));
+                        let legacy_tool_meta = entry.path().join("tool.meta.yaml");
                         let meta = entry.path().join("meta.yaml");
-                        if tool_meta.exists() || meta.exists() {
+                        if new_tool_meta.exists() || legacy_tool_meta.exists() || meta.exists() {
                             found = true;
                             break;
                         }
