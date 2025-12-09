@@ -19,25 +19,34 @@ These hooks capture git operations and emit JSONL events to `.agentic/analytics/
 # Navigate to your repo
 cd /path/to/your/repo
 
-# Run the installer
-bash /path/to/primitives/v1/hooks/git/install.sh
+# Run the installer (Python 3.8+ required)
+python /path/to/primitives/v1/hooks/git/install.py
 ```
 
 ### Global (All Repositories)
 
 ```bash
 # Install globally
-bash /path/to/primitives/v1/hooks/git/install.sh --global
+python /path/to/primitives/v1/hooks/git/install.py --global
 ```
 
 ### Uninstall
 
 ```bash
 # Remove from current repo
-bash /path/to/primitives/v1/hooks/git/install.sh --uninstall
+python /path/to/primitives/v1/hooks/git/install.py --uninstall
 
 # Remove global hooks
-bash /path/to/primitives/v1/hooks/git/install.sh --global --uninstall
+python /path/to/primitives/v1/hooks/git/install.py --global --uninstall
+```
+
+### Windows
+
+The installer is cross-platform and works on Windows, macOS, and Linux:
+
+```powershell
+# PowerShell
+python C:\path\to\primitives\v1\hooks\git\install.py
 ```
 
 ## Hooks Included
