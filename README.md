@@ -238,6 +238,30 @@ Each hook logs its own decisions to a central analytics service:
 - ✅ **Fail-Safe**: Analytics errors never block hook execution
 - ✅ **DI-Friendly**: Configure file or API backend via environment variables
 
+### Git Observability Hooks
+
+Track git operations for developer analytics and token efficiency metrics:
+
+```bash
+# Install git hooks (cross-platform Python installer)
+python primitives/v1/hooks/git/install.py
+
+# Or install globally for all repos
+python primitives/v1/hooks/git/install.py --global
+```
+
+| Hook | Event Type | Tracks |
+|------|------------|--------|
+| `post-commit` | `git_commit` | Commits with token estimates |
+| `post-checkout` | `git_branch_created` / `git_branch_switched` | Branch operations |
+| `post-merge` | `git_merge_completed` | Merges to stable branches |
+| `post-rewrite` | `git_commits_rewritten` | Rebases and amends |
+| `pre-push` | `git_push_started` | Push operations |
+
+**Token Efficiency**: Calculates estimated tokens (chars/4) to measure "code committed / tokens used" ratio.
+
+See [ADR-022: Git Hook Observability](docs/adrs/022-git-hook-observability.md) for architecture details.
+
 **Agent-Centric Configuration**:
 
 Hooks are **generic implementations**, configured per-agent:
@@ -409,6 +433,7 @@ just git-hooks-install
 - [ADR-019: File Naming Convention](docs/adrs/019-file-naming-convention.md)
 - [ADR-020: Agentic Prompt Taxonomy](docs/adrs/020-agentic-prompt-taxonomy.md)
 - [ADR-021: Primitives Directory Structure](docs/adrs/021-primitives-directory-structure.md)
+- [ADR-022: Git Hook Observability](docs/adrs/022-git-hook-observability.md)
 
 ---
 
