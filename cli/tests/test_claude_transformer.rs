@@ -382,7 +382,7 @@ fn test_skills_manifest_accumulation() {
     let skill_path = fixture_path("skills/testing/python-testing-patterns");
     let output_dir = TempDir::new().unwrap();
 
-    // Transform skill twice
+    // Transform skill twice (should update, not duplicate)
     transformer
         .transform_primitive(&skill_path, output_dir.path())
         .unwrap();
@@ -390,14 +390,23 @@ fn test_skills_manifest_accumulation() {
         .transform_primitive(&skill_path, output_dir.path())
         .unwrap();
 
-    // Check that skills accumulated
+    // Check that skills.json exists and has exactly 1 entry (no duplicates)
     let skills_file = output_dir.path().join("skills.json");
     let content = fs::read_to_string(&skills_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
 
     let skills = json["skills"].as_array().unwrap();
-    // Should have 2 entries
-    assert_eq!(skills.len(), 2);
+    // Should have 1 entry (duplicates should be updated, not added)
+    assert_eq!(skills.len(), 1);
+
+    // Also verify the skill directory structure was created
+    let skill_dir = output_dir
+        .path()
+        .join("skills")
+        .join("testing")
+        .join("python-testing-patterns");
+    assert!(skill_dir.exists(), "Skill directory should exist");
+    assert!(skill_dir.join("SKILL.md").exists(), "SKILL.md should exist");
 }
 
 #[test]

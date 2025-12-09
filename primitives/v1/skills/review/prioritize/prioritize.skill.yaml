@@ -1,0 +1,47 @@
+id: prioritize
+kind: skill
+category: review
+domain: code-review
+summary: "Prioritize review comments by severity: security > logic > style"
+tags:
+  - review
+  - triage
+  - prioritization
+
+# Claude Code skill configuration
+claude:
+  name: prioritize
+  description: "Prioritize review comments by severity. Use when triaging code review feedback or PR comments."
+  allowed_tools:
+    - Read
+    - Grep
+
+# Resources bundled with this skill
+resources:
+  - path: resources/severity-guide.md
+    description: Guide for classifying comment severity
+
+# Tools referenced by this skill (simple references)
+tools:
+  - Read
+  - Grep
+
+# Default model preferences
+defaults:
+  preferred_models:
+    - claude/sonnet
+
+# Version history
+versions:
+  - version: 1
+    file: prioritize.skill.v1.md
+    hash: "blake3:722de9b69fd0843ae06b705eaa423359f8d9066a128aae1519c880e4ae6ae46f"
+    status: active
+    created: "2025-12-06"
+    notes: "Initial version with severity categories"
+
+default_version: 1
+
+# Build targets
+targets:
+  claude: true

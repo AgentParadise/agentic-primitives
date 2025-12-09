@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""
+{{id}} - {{description}}
+
+A tool primitive for {{category}} operations.
+"""
+
+import argparse
+import json
+import sys
+from typing import Any
+
+
+def run({{#each args}}{{name}}: {{type}}{{#unless @last}}, {{/unless}}{{/each}}) -> dict[str, Any]:
+    """
+    Execute the {{id}} tool.
+
+    {{#each args}}
+    Args:
+        {{name}}: {{description}}
+    {{/each}}
+
+    Returns:
+        dict with result data
+    """
+    # TODO: Implement tool logic
+    return {
+        "status": "success",
+        "message": "TODO: Implement {{id}}",
+    }
+
+
+def main() -> None:
+    """CLI entry point."""
+    parser = argparse.ArgumentParser(description="{{description}}")
+    {{#each args}}
+    parser.add_argument(
+        "--{{name}}",
+        type={{py_type}},
+        {{#if required}}required=True,{{/if}}
+        {{#if default}}default={{default}},{{/if}}
+        help="{{description}}"
+    )
+    {{/each}}
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON"
+    )
+
+    args = parser.parse_args()
+
+    result = run({{#each args}}{{name}}=args.{{name}}{{#unless @last}}, {{/unless}}{{/each}})
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(result.get("message", str(result)))
+
+
+if __name__ == "__main__":
+    main()

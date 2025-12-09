@@ -1,0 +1,22 @@
+"""Tests for {{id}} tool."""
+
+import pytest
+
+from {{id_snake}} import run
+
+
+class TestRun:
+    """Tests for the run function."""
+
+    def test_run_returns_success(self) -> None:
+        """Test that run returns a success status."""
+        result = run()
+        assert result["status"] == "success"
+
+    def test_run_returns_message(self) -> None:
+        """Test that run returns a message."""
+        result = run()
+        assert "message" in result
+        assert isinstance(result["message"], str)
+
+    # TODO: Add more specific tests for {{id}}

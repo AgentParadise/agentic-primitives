@@ -19,6 +19,14 @@ impl TemplateRenderer {
         handlebars.register_template_string("meta-prompt.meta", Templates::META_PROMPT_META)?;
         handlebars.register_template_string("prompt.content", Templates::PROMPT_CONTENT)?;
         handlebars.register_template_string("tool.meta", Templates::TOOL_META)?;
+        handlebars.register_template_string("tool.impl.py", Templates::TOOL_IMPL_PYTHON)?;
+        handlebars.register_template_string("tool.impl.ts", Templates::TOOL_IMPL_TYPESCRIPT)?;
+        handlebars.register_template_string("tool.pyproject", Templates::TOOL_PYPROJECT)?;
+        handlebars.register_template_string("tool.package-json", Templates::TOOL_PACKAGE_JSON)?;
+        handlebars.register_template_string("tool.tsconfig", Templates::TOOL_TSCONFIG)?;
+        handlebars.register_template_string("tool.test.py", Templates::TOOL_TEST_PYTHON)?;
+        handlebars.register_template_string("tool.test.ts", Templates::TOOL_TEST_TYPESCRIPT)?;
+        handlebars.register_template_string("tool.readme", Templates::TOOL_README)?;
         handlebars.register_template_string("hook.meta", Templates::HOOK_META)?;
         handlebars.register_template_string("middleware.py", Templates::MIDDLEWARE_PYTHON)?;
         handlebars.register_template_string("middleware.ts", Templates::MIDDLEWARE_TYPESCRIPT)?;
@@ -61,6 +69,46 @@ impl TemplateRenderer {
     /// Render tool.meta.yaml
     pub fn render_tool_meta(&self, data: &Value) -> Result<String> {
         self.render("tool.meta", data)
+    }
+
+    /// Render Python tool implementation
+    pub fn render_tool_impl_python(&self, data: &Value) -> Result<String> {
+        self.render("tool.impl.py", data)
+    }
+
+    /// Render TypeScript tool implementation
+    pub fn render_tool_impl_typescript(&self, data: &Value) -> Result<String> {
+        self.render("tool.impl.ts", data)
+    }
+
+    /// Render pyproject.toml for Python tools
+    pub fn render_tool_pyproject(&self, data: &Value) -> Result<String> {
+        self.render("tool.pyproject", data)
+    }
+
+    /// Render package.json for TypeScript tools
+    pub fn render_tool_package_json(&self, data: &Value) -> Result<String> {
+        self.render("tool.package-json", data)
+    }
+
+    /// Render tsconfig.json for TypeScript tools
+    pub fn render_tool_tsconfig(&self, data: &Value) -> Result<String> {
+        self.render("tool.tsconfig", data)
+    }
+
+    /// Render Python test file
+    pub fn render_tool_test_python(&self, data: &Value) -> Result<String> {
+        self.render("tool.test.py", data)
+    }
+
+    /// Render TypeScript test file
+    pub fn render_tool_test_typescript(&self, data: &Value) -> Result<String> {
+        self.render("tool.test.ts", data)
+    }
+
+    /// Render tool README
+    pub fn render_tool_readme(&self, data: &Value) -> Result<String> {
+        self.render("tool.readme", data)
     }
 
     /// Render hook.meta.yaml
@@ -180,9 +228,12 @@ mod tests {
         assert!(result.contains("id: pytest-patterns"));
         assert!(result.contains("kind: skill"));
         assert!(result.contains("category: testing"));
-        assert!(result.contains("as_system: false"));
-        assert!(result.contains("as_user: false"));
-        assert!(result.contains("as_overlay: true"));
+        // New skill schema fields
+        assert!(result.contains("claude:"));
+        assert!(result.contains("name: pytest-patterns"));
+        assert!(result.contains("allowed_tools:"));
+        assert!(result.contains("targets:"));
+        assert!(result.contains("claude: true"));
     }
 
     #[test]

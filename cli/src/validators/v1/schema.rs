@@ -91,13 +91,14 @@ impl SchemaValidator {
 
         // Try to find metadata file (prioritize new naming convention per ADR-019)
         let meta_path = [
-            format!("{dir_name}.meta.yaml"), // Prompt: {id}.meta.yaml (ADR-019)
-            format!("{dir_name}.tool.yaml"), // Tool: {id}.tool.yaml
-            format!("{dir_name}.hook.yaml"), // Hook: {id}.hook.yaml
-            format!("{dir_name}.yaml"),      // Legacy prompt: {id}.yaml
-            "meta.yaml".to_string(),         // Legacy prompt
-            "tool.meta.yaml".to_string(),    // Legacy tool
-            "hook.meta.yaml".to_string(),    // Legacy hook
+            format!("{dir_name}.skill.yaml"), // Skill: {id}.skill.yaml
+            format!("{dir_name}.meta.yaml"),  // Prompt: {id}.meta.yaml (ADR-019)
+            format!("{dir_name}.tool.yaml"),  // Tool: {id}.tool.yaml
+            format!("{dir_name}.hook.yaml"),  // Hook: {id}.hook.yaml
+            format!("{dir_name}.yaml"),       // Legacy prompt: {id}.yaml
+            "meta.yaml".to_string(),          // Legacy prompt
+            "tool.meta.yaml".to_string(),     // Legacy tool
+            "hook.meta.yaml".to_string(),     // Legacy hook
         ]
         .iter()
         .map(|f| primitive_path.join(f))
@@ -154,7 +155,8 @@ impl SchemaValidator {
 
         // Validate based on kind
         let result = match kind {
-            "agent" | "command" | "skill" | "meta-prompt" => validator.validate_prompt_meta(meta),
+            "agent" | "command" | "meta-prompt" => validator.validate_prompt_meta(meta),
+            "skill" => validator.validate_skill_meta(meta),
             "tool" => validator.validate_tool_meta(meta),
             "hook" => validator.validate_hook_meta(meta),
             _ => {

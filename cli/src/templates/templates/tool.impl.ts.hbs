@@ -1,0 +1,64 @@
+#!/usr/bin/env bun
+/**
+ * {{id}} - {{description}}
+ *
+ * A tool primitive for {{category}} operations.
+ */
+
+interface ToolArgs {
+{{#each args}}
+  {{name}}: {{ts_type}};
+{{/each}}
+}
+
+interface ToolResult {
+  status: "success" | "error";
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+/**
+ * Execute the {{id}} tool.
+ */
+export async function run(args: ToolArgs): Promise<ToolResult> {
+  // TODO: Implement tool logic
+  return {
+    status: "success",
+    message: "TODO: Implement {{id}}",
+    data: args,
+  };
+}
+
+/**
+ * CLI entry point
+ */
+async function main(): Promise<void> {
+  const args = parseArgs(Bun.argv.slice(2));
+
+  const result = await run(args);
+
+  if (process.env.JSON_OUTPUT || Bun.argv.includes("--json")) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(result.message);
+  }
+}
+
+function parseArgs(argv: string[]): ToolArgs {
+  const args: Record<string, unknown> = {};
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg.startsWith("--") && i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
+      const key = arg.slice(2).replace(/-/g, "_");
+      args[key] = argv[++i];
+    }
+  }
+
+  return args as ToolArgs;
+}
+
+// Run if executed directly
+if (import.meta.main) {
+  main().catch(console.error);
+}

@@ -1,7 +1,7 @@
 id: {{id}}
 kind: skill
 category: {{category}}
-domain: {{#if domain}}{{domain}}{{else}}general{{/if}}
+domain: {{#if domain}}{{domain}}{{else}}{{category}}{{/if}}
 summary: "{{summary}}"
 {{#if tags}}
 tags:
@@ -10,15 +10,18 @@ tags:
 {{/each}}
 {{/if}}
 
+# Claude Code skill configuration
+claude:
+  name: {{id}}
+  description: "{{summary}}"
+  allowed_tools:
+    - Read
+    - Grep
+
 defaults:
   preferred_models:
     - claude/sonnet
 
-context_usage:
-  as_system: false
-  as_user: false
-  as_overlay: true
-
-tools: []
-
-inputs: {}
+# Build targets
+targets:
+  claude: true

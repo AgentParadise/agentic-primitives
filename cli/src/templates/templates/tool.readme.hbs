@@ -1,0 +1,77 @@
+# {{id}}
+
+{{description}}
+
+## Installation
+
+{{#if runtime_python}}
+```bash
+# Using UV (recommended)
+uv pip install -e .
+
+# Or using pip
+pip install -e .
+```
+{{/if}}
+{{#if runtime_bun}}
+```bash
+# Using Bun
+bun install
+```
+{{/if}}
+
+## Usage
+
+{{#if runtime_python}}
+```bash
+# Run directly
+python {{id_snake}}.py --help
+
+# Or as installed command
+{{id}} --help
+```
+{{/if}}
+{{#if runtime_bun}}
+```bash
+# Run directly
+bun run {{id}}.ts --help
+
+# Or via npm script
+bun run dev --help
+```
+{{/if}}
+
+## Arguments
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+{{#each args}}
+| `{{name}}` | `{{type}}` | {{#if required}}Yes{{else}}No{{/if}} | {{description}} |
+{{/each}}
+
+## Development
+
+### Running Tests
+
+{{#if runtime_python}}
+```bash
+# Run tests
+uv run pytest
+
+# Run tests with coverage
+uv run pytest --cov={{id_snake}}
+```
+{{/if}}
+{{#if runtime_bun}}
+```bash
+# Run tests
+bun test
+
+# Run type checking
+bun run typecheck
+```
+{{/if}}
+
+## License
+
+MIT

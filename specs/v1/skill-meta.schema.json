@@ -1,0 +1,394 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentic-primitives.dev/specs/v1/skill-meta.schema.json",
+  "specVersion": "v1",
+  "title": "Skill Primitive Metadata Schema (v1)",
+  "description": "Schema for skill primitive metadata files (.skill.yaml)",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "category"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 64,
+      "description": "Unique identifier in kebab-case (must match folder name)",
+      "examples": [
+        "prioritize",
+        "code-review",
+        "async-patterns"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "const": "skill",
+      "description": "Type of primitive (must be 'skill')"
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 64,
+      "description": "Category for organizing skills (matches parent directory)",
+      "examples": [
+        "review",
+        "testing",
+        "refactor",
+        "generation"
+      ]
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 128,
+      "description": "Technical domain or expertise area",
+      "examples": [
+        "code-review",
+        "web-development",
+        "devops",
+        "security"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500,
+      "description": "Brief description of the skill's purpose and capabilities"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "uniqueItems": true,
+      "description": "Keywords for searching and filtering",
+      "examples": [
+        [
+          "review",
+          "triage",
+          "prioritization"
+        ]
+      ]
+    },
+    "claude": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Claude Code specific configuration for skill generation",
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Claude skill name (lowercase, hyphens allowed)",
+          "examples": [
+            "prioritize",
+            "code-review"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1024,
+          "description": "What the skill does and when to use it (shown in Claude UI)"
+        },
+        "allowed_tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9]+(-[a-z0-9]+)*|[A-Z][a-zA-Z]*)$",
+            "description": "Tool name: PascalCase for native (Read, Write, Bash), kebab-case for custom"
+          },
+          "uniqueItems": true,
+          "description": "Tools Claude can use when this skill is active (optional restriction)"
+        }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "description"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^resources/",
+            "description": "Path to resource file relative to skill directory"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 5,
+            "description": "What this resource contains"
+          }
+        }
+      },
+      "description": "Supporting documentation files Claude loads on-demand"
+    },
+    "tools": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9]+(-[a-z0-9]+)*|[A-Z][a-zA-Z]*)$",
+            "description": "Tool ID: kebab-case for custom tools, PascalCase for native"
+          },
+          "uniqueItems": true,
+          "description": "List of tool IDs this skill can use (simple format)"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^tools/",
+                "description": "Path to bundled tool directory"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 5,
+                "description": "What this tool does"
+              }
+            }
+          },
+          "description": "Bundled tools with full structure (advanced format)"
+        }
+      ]
+    },
+    "scripts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "description"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^scripts/",
+            "description": "Path to script file relative to skill directory"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 5,
+            "description": "What this script does"
+          }
+        }
+      },
+      "description": "Utility scripts bundled with the skill"
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Default configuration for skill execution",
+      "properties": {
+        "preferred_models": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+/[a-z0-9-]+$",
+            "description": "Model reference in format 'provider/model'"
+          },
+          "minItems": 1,
+          "description": "Ordered list of recommended models",
+          "examples": [
+            [
+              "claude/sonnet",
+              "openai/gpt-4"
+            ]
+          ]
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Default temperature for model sampling"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum tokens in response"
+        }
+      }
+    },
+    "versions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Version registry for this skill",
+      "items": {
+        "type": "object",
+        "required": [
+          "version",
+          "file",
+          "status",
+          "hash",
+          "created"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Sequential version number starting at 1"
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*\\.(skill|prompt)\\.v[0-9]+\\.md$",
+            "description": "Filename for this version (e.g., 'prioritize.skill.v1.md')"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "deprecated",
+              "archived"
+            ],
+            "description": "Current lifecycle status of this version"
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^blake3:[a-f0-9]{64}$",
+            "description": "BLAKE3 hash of file content (enforces immutability)"
+          },
+          "created": {
+            "type": "string",
+            "format": "date",
+            "description": "Date this version was created (YYYY-MM-DD)"
+          },
+          "deprecated": {
+            "type": "string",
+            "format": "date",
+            "description": "Date this version was deprecated (YYYY-MM-DD)"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Release notes or changes in this version"
+          }
+        }
+      }
+    },
+    "default_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Default version number to use"
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Build targets for this skill",
+      "properties": {
+        "claude": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate .claude/skills/ output"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "id": "prioritize",
+      "kind": "skill",
+      "category": "review",
+      "domain": "code-review",
+      "summary": "Prioritize review comments by severity: security > logic > style",
+      "tags": [
+        "review",
+        "triage",
+        "prioritization"
+      ],
+      "claude": {
+        "name": "prioritize",
+        "description": "Prioritize review comments by severity. Use when triaging code review feedback or PR comments.",
+        "allowed_tools": [
+          "Read",
+          "Grep"
+        ]
+      },
+      "resources": [
+        {
+          "path": "resources/severity-categories.md",
+          "description": "Detailed severity level definitions"
+        }
+      ],
+      "defaults": {
+        "preferred_models": [
+          "claude/sonnet"
+        ]
+      },
+      "versions": [
+        {
+          "version": 1,
+          "file": "prioritize.skill.v1.md",
+          "status": "active",
+          "hash": "blake3:722de9b69fd0843ae06b705eaa423359f8d9066a128aae1519c880e4ae6ae46f",
+          "created": "2025-12-09",
+          "notes": "Initial version with severity categories"
+        }
+      ],
+      "default_version": 1,
+      "targets": {
+        "claude": true
+      }
+    },
+    {
+      "id": "comment-parser",
+      "kind": "skill",
+      "category": "review",
+      "summary": "Parse and analyze code review comments from various platforms",
+      "claude": {
+        "name": "comment-parser",
+        "description": "Parse review comments from GitHub, GitLab, or PR diffs."
+      },
+      "tools": [
+        {
+          "path": "tools/comment-parser",
+          "description": "Tool for parsing review comments"
+        }
+      ],
+      "scripts": [
+        {
+          "path": "scripts/fetch-comments.sh",
+          "description": "Fetch comments from PR"
+        }
+      ],
+      "versions": [
+        {
+          "version": 1,
+          "file": "comment-parser.skill.v1.md",
+          "status": "active",
+          "hash": "blake3:abc123def456789012345678901234567890123456789012345678901234abcd",
+          "created": "2025-12-09"
+        }
+      ],
+      "default_version": 1,
+      "targets": {
+        "claude": true
+      }
+    }
+  ]
+}

@@ -169,15 +169,51 @@ impl ClaudeTransformer {
         Ok(vec![output_file.to_string_lossy().to_string()])
     }
 
-    /// Transform a skill primitive to manifest entry
+    /// Transform a skill primitive to Claude skill markdown + manifest entry
+    /// Output: .claude/skills/{category}/{name}/SKILL.md
     fn transform_skill(&self, path: &Path, output_dir: &Path) -> Result<Vec<String>> {
-        let (meta, _content) = self.load_prompt_primitive(path)?;
+        let (meta, content) = self.load_prompt_primitive(path)?;
 
-        let skills_file = output_dir.join("skills.json");
+        let mut generated_files = Vec::new();
 
-        // Load existing skills or create new
-        let mut skills: SkillsManifest = if skills_file.exists() {
-            let content = fs::read_to_string(&skills_file)?;
+        // 1. Generate .claude/skills/{category}/{name}/SKILL.md for Claude Code integration
+        let skill_dir = output_dir
+            .join("skills")
+            .join(&meta.category)
+            .join(&meta.id);
+        fs::create_dir_all(&skill_dir)?;
+
+        let skill_file = skill_dir.join("SKILL.md");
+
+        // Build frontmatter for Claude skill
+        let mut skill_content = String::new();
+        skill_content.push_str("---\n");
+        skill_content.push_str(&format!("name: {}\n", meta.id));
+        skill_content.push_str(&format!(
+            "description: {}\n",
+            meta.summary.replace('\n', " ")
+        ));
+
+        // Add allowed_tools - try to load from skill meta's claude config
+        // For now, we'll use defaults based on kind
+        skill_content.push_str("allowed_tools:\n");
+        skill_content.push_str("  - Read\n");
+        skill_content.push_str("  - Grep\n");
+        skill_content.push_str("  - Glob\n");
+
+        skill_content.push_str("---\n\n");
+
+        // Add the skill content (instructions)
+        skill_content.push_str(&content);
+
+        fs::write(&skill_file, skill_content)?;
+        generated_files.push(skill_file.to_string_lossy().to_string());
+
+        // 2. Update skills.json manifest for the orchestrator
+        let skills_manifest_file = output_dir.join("skills.json");
+
+        let mut skills: SkillsManifest = if skills_manifest_file.exists() {
+            let content = fs::read_to_string(&skills_manifest_file)?;
             serde_json::from_str(&content)?
         } else {
             SkillsManifest {
@@ -186,20 +222,27 @@ impl ClaudeTransformer {
             }
         };
 
-        // Add this skill
-        skills.skills.push(SkillEntry {
-            id: meta.id.clone(),
-            domain: meta.domain.clone(),
-            category: meta.category.clone(),
-            summary: meta.summary.clone(),
-            version: meta.default_version,
-        });
+        // Check if skill already exists and update, otherwise add
+        if let Some(existing) = skills.skills.iter_mut().find(|s| s.id == meta.id) {
+            existing.domain = meta.domain.clone();
+            existing.category = meta.category.clone();
+            existing.summary = meta.summary.clone();
+            existing.version = meta.default_version;
+        } else {
+            skills.skills.push(SkillEntry {
+                id: meta.id.clone(),
+                domain: meta.domain.clone(),
+                category: meta.category.clone(),
+                summary: meta.summary.clone(),
+                version: meta.default_version,
+            });
+        }
 
-        // Write updated manifest
         let json = serde_json::to_string_pretty(&skills)?;
-        fs::write(&skills_file, json)?;
+        fs::write(&skills_manifest_file, json)?;
+        generated_files.push(skills_manifest_file.to_string_lossy().to_string());
 
-        Ok(vec![skills_file.to_string_lossy().to_string()])
+        Ok(generated_files)
     }
 
     /// Transform hooks using atomic architecture (handlers + validators)

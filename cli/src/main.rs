@@ -3,7 +3,7 @@ use agentic_primitives::commands::config_cmd::ConfigCommand;
 use agentic_primitives::commands::inspect::{InspectArgs, OutputFormat as InspectFormat};
 use agentic_primitives::commands::list::{ListArgs, OutputFormat as ListFormat};
 use agentic_primitives::commands::migrate::MigrateArgs;
-use agentic_primitives::commands::new::{NewPrimitiveArgs, PrimitiveType, PromptKind};
+use agentic_primitives::commands::new::{NewPrimitiveArgs, PrimitiveType, PromptKind, ToolRuntime};
 use agentic_primitives::commands::validate::ValidateArgs;
 use agentic_primitives::commands::version::VersionCommand;
 use agentic_primitives::config::PrimitivesConfig;
@@ -50,6 +50,10 @@ enum Commands {
         /// Prompt kind (required for prompts: agent, command, skill, meta-prompt)
         #[arg(short, long, value_enum)]
         kind: Option<PrimKind>,
+
+        /// Tool runtime (for tools only: python, bun)
+        #[arg(short, long, value_enum, default_value = "python")]
+        runtime: ToolRuntimeArg,
 
         /// Output to experimental directory
         #[arg(long)]
@@ -246,6 +250,22 @@ impl From<PrimKind> for PromptKind {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Default)]
+enum ToolRuntimeArg {
+    #[default]
+    Python,
+    Bun,
+}
+
+impl From<ToolRuntimeArg> for ToolRuntime {
+    fn from(val: ToolRuntimeArg) -> Self {
+        match val {
+            ToolRuntimeArg::Python => ToolRuntime::Python,
+            ToolRuntimeArg::Bun => ToolRuntime::Bun,
+        }
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum ValidationLayer {
     All,
@@ -326,6 +346,7 @@ fn main() {
             category,
             id,
             kind,
+            runtime,
             experimental,
         } => {
             let args = NewPrimitiveArgs {
@@ -333,6 +354,7 @@ fn main() {
                 category,
                 id,
                 kind: kind.map(|k| k.into()),
+                runtime: runtime.into(),
                 spec_version,
                 experimental,
             };

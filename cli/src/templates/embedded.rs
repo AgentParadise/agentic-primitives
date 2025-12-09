@@ -12,6 +12,14 @@ impl Templates {
 
     // Tool templates
     pub const TOOL_META: &'static str = include_str!("./templates/tool.meta.yaml.hbs");
+    pub const TOOL_IMPL_PYTHON: &'static str = include_str!("./templates/tool.impl.py.hbs");
+    pub const TOOL_IMPL_TYPESCRIPT: &'static str = include_str!("./templates/tool.impl.ts.hbs");
+    pub const TOOL_PYPROJECT: &'static str = include_str!("./templates/tool.pyproject.hbs");
+    pub const TOOL_PACKAGE_JSON: &'static str = include_str!("./templates/tool.package-json.hbs");
+    pub const TOOL_TSCONFIG: &'static str = include_str!("./templates/tool.tsconfig.hbs");
+    pub const TOOL_TEST_PYTHON: &'static str = include_str!("./templates/tool.test.py.hbs");
+    pub const TOOL_TEST_TYPESCRIPT: &'static str = include_str!("./templates/tool.test.ts.hbs");
+    pub const TOOL_README: &'static str = include_str!("./templates/tool.readme.hbs");
 
     // Hook templates
     pub const HOOK_META: &'static str = include_str!("./templates/hook.meta.yaml.hbs");

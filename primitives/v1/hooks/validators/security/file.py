@@ -4,6 +4,8 @@ File Operations Validator
 
 Atomic validator that checks file operations for security issues.
 Pure function - no side effects, no analytics, no stdin/stdout handling.
+
+Patterns are loaded from patterns/file.patterns.yaml for easier maintenance.
 """
 
 import hashlib
@@ -11,62 +13,80 @@ import re
 from pathlib import Path
 from typing import Any
 
-# Paths that should never be written to
-# Include both symlink paths (Linux) and real paths (macOS /private/etc)
-BLOCKED_PATHS: list[str] = [
-    "/etc/passwd",
-    "/etc/shadow",
-    "/etc/sudoers",
-    "/etc/hosts",
-    "/private/etc/passwd",
-    "/private/etc/shadow",
-    "/private/etc/sudoers",
-    "/private/etc/hosts",
-    "/boot/",
-    "/proc/",
-    "/sys/",
-    "/dev/",
-]
+# Load patterns from YAML file
+PATTERNS_FILE = Path(__file__).parent / "patterns" / "file.patterns.yaml"
 
-# Paths that require extra scrutiny (warn but don't block)
-SENSITIVE_PATHS: list[str] = [
-    "/etc/",
-    "/var/log/",
-    "/tmp/",
-    "/usr/",
-    "/opt/",
-    "~/.ssh/",
-    "~/.gnupg/",
-    "~/.aws/",
-    "~/.config/",
-]
+# Try to load from YAML, fall back to hardcoded patterns
+try:
+    from ..pattern_loader import load_file_patterns
 
-# File patterns that should never be read/written by AI
-SENSITIVE_FILE_PATTERNS: list[tuple[str, str]] = [
-    (r"\.env(?:\.local|\.production|\.staging)?$", "environment file"),
-    (r"\.pem$", "PEM certificate/key"),
-    (r"\.key$", "private key"),
-    (r"id_rsa(?:\.pub)?$", "SSH key"),
-    (r"id_ed25519(?:\.pub)?$", "SSH key"),
-    (r"\.p12$", "PKCS12 certificate"),
-    (r"\.pfx$", "PFX certificate"),
-    (r"credentials(?:\.json)?$", "credentials file"),
-    (r"secrets\.ya?ml$", "secrets file"),
-    (r"\.htpasswd$", "htpasswd file"),
-    (r"\.netrc$", "netrc file"),
-    (r"\.npmrc$", "npm config (may contain tokens)"),
-    (r"\.pypirc$", "pypi config (may contain tokens)"),
-    (r"\.aws/", "AWS config directory"),
-]
+    _patterns = load_file_patterns(PATTERNS_FILE)
+    BLOCKED_PATHS: list[str] = _patterns["blocked_paths"]
+    SENSITIVE_PATHS: list[str] = _patterns["sensitive_paths"]
+    SENSITIVE_FILE_PATTERNS: list[tuple[re.Pattern[str], str]] = _patterns[
+        "sensitive_file_patterns"
+    ]
+    SENSITIVE_CONTENT_PATTERNS: list[tuple[re.Pattern[str], str]] = _patterns[
+        "sensitive_content_patterns"
+    ]
+except (ImportError, FileNotFoundError):
+    # Fallback to hardcoded patterns
+    BLOCKED_PATHS = [
+        "/etc/passwd",
+        "/etc/shadow",
+        "/etc/sudoers",
+        "/etc/hosts",
+        "/private/etc/passwd",
+        "/private/etc/shadow",
+        "/private/etc/sudoers",
+        "/private/etc/hosts",
+        "/boot/",
+        "/proc/",
+        "/sys/",
+        "/dev/",
+    ]
 
-# Content patterns that indicate sensitive data
-SENSITIVE_CONTENT_PATTERNS: list[tuple[str, str]] = [
-    (r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----", "private key"),
-    (r"AKIA[0-9A-Z]{16}", "AWS access key"),
-    (r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}", "GitHub token"),
-    (r"sk-[A-Za-z0-9]{48}", "OpenAI API key"),
-    (r"xox[baprs]-[0-9A-Za-z-]+", "Slack token"),
-]
+    SENSITIVE_PATHS = [
+        "/etc/",
+        "/var/log/",
+        "/tmp/",
+        "/usr/",
+        "/opt/",
+        "~/.ssh/",
+        "~/.gnupg/",
+        "~/.aws/",
+        "~/.config/",
+    ]
+
+    _SENSITIVE_FILE_RAW: list[tuple[str, str]] = [
+        (r"(?:^|/)\.env(?:\.local|\.production|\.staging)?$", "environment file"),
+        (r"\.pem$", "PEM certificate/key"),
+        (r"\.key$", "private key"),
+        (r"id_rsa(?:\.pub)?$", "SSH key"),
+        (r"id_ed25519(?:\.pub)?$", "SSH key"),
+        (r"\.p12$", "PKCS12 certificate"),
+        (r"\.pfx$", "PFX certificate"),
+        (r"credentials(?:\.json)?$", "credentials file"),
+        (r"secrets\.ya?ml$", "secrets file"),
+        (r"\.htpasswd$", "htpasswd file"),
+        (r"\.netrc$", "netrc file"),
+        (r"\.npmrc$", "npm config (may contain tokens)"),
+        (r"\.pypirc$", "pypi config (may contain tokens)"),
+        (r"\.aws/", "AWS config directory"),
+    ]
+
+    _SENSITIVE_CONTENT_RAW: list[tuple[str, str]] = [
+        (r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----", "private key"),
+        (r"AKIA[0-9A-Z]{16}", "AWS access key"),
+        (r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}", "GitHub token"),
+        (r"sk-[A-Za-z0-9]{48}", "OpenAI API key"),
+        (r"xox[baprs]-[0-9A-Za-z-]+", "Slack token"),
+    ]
+
+    SENSITIVE_FILE_PATTERNS = [
+        (re.compile(p, re.IGNORECASE), d) for p, d in _SENSITIVE_FILE_RAW
+    ]
+    SENSITIVE_CONTENT_PATTERNS = [(re.compile(p), d) for p, d in _SENSITIVE_CONTENT_RAW]
 
 
 def hash_content(content: str) -> str:
@@ -102,11 +122,11 @@ def check_file_pattern(file_path: str) -> tuple[bool, str | None]:
     filename = Path(file_path).name
 
     for pattern, description in SENSITIVE_FILE_PATTERNS:
-        # Check filename first
-        if re.search(pattern, filename, re.IGNORECASE):
+        # Check filename first (pattern is pre-compiled)
+        if pattern.search(filename):
             return True, f"Sensitive file type: {description}"
         # Also check full path for directory-based patterns (e.g., .aws/)
-        if re.search(pattern, file_path, re.IGNORECASE):
+        if pattern.search(file_path):
             return True, f"Sensitive file type: {description}"
 
     return False, None
@@ -118,7 +138,7 @@ def check_content_sensitive(content: str | None) -> tuple[bool, str | None, str 
         return False, None, None
 
     for pattern, description in SENSITIVE_CONTENT_PATTERNS:
-        if re.search(pattern, content):
+        if pattern.search(content):
             return True, f"Content contains: {description}", hash_content(content)
 
     return False, None, None

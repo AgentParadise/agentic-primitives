@@ -101,9 +101,15 @@ pub fn assert_primitive_exists(
         prim_path.display()
     );
 
-    // Check for metadata file (new convention: {id}.meta.yaml or {id}.yaml)
+    // Check for metadata file (new convention: {id}.meta.yaml, {id}.yaml, or type-specific)
     let meta_patterns = match prim_type {
-        "agents" | "commands" | "skills" => vec![
+        "agents" | "commands" => vec![
+            format!("{}.meta.yaml", id),
+            format!("{}.yaml", id),
+            "meta.yaml".to_string(),
+        ],
+        "skills" => vec![
+            format!("{}.skill.yaml", id),
             format!("{}.meta.yaml", id),
             format!("{}.yaml", id),
             "meta.yaml".to_string(),

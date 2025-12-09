@@ -1,0 +1,23 @@
+/**
+ * Tests for {{id}} tool.
+ */
+
+import { describe, expect, it } from "bun:test";
+import { run } from "../{{id}}";
+
+describe("{{id}}", () => {
+  describe("run", () => {
+    it("should return success status", async () => {
+      const result = await run({} as any);
+      expect(result.status).toBe("success");
+    });
+
+    it("should return a message", async () => {
+      const result = await run({} as any);
+      expect(result.message).toBeDefined();
+      expect(typeof result.message).toBe("string");
+    });
+
+    // TODO: Add more specific tests for {{id}}
+  });
+});

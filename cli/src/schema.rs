@@ -36,6 +36,7 @@ impl SchemaValidator {
         // Define expected schema files
         let schema_files = vec![
             "prompt-meta.schema.json",
+            "skill-meta.schema.json",
             "tool-meta.schema.json",
             "hook-meta.schema.json",
             "model-config.schema.json",
@@ -78,6 +79,11 @@ impl SchemaValidator {
     /// Validate prompt metadata
     pub fn validate_prompt_meta(&self, meta: &Value) -> Result<()> {
         self.validate("prompt-meta", meta)
+    }
+
+    /// Validate skill metadata
+    pub fn validate_skill_meta(&self, meta: &Value) -> Result<()> {
+        self.validate("skill-meta", meta)
     }
 
     /// Validate tool metadata

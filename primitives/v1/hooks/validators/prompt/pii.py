@@ -4,78 +4,88 @@ PII (Personally Identifiable Information) Validator
 
 Atomic validator that detects PII patterns in user prompts.
 Pure function - no side effects, no analytics, no stdin/stdout handling.
+
+Patterns are loaded from patterns/pii.patterns.yaml for easier maintenance.
 """
 
 import re
+from pathlib import Path
 from typing import Any
 
-# PII patterns to detect
-PII_PATTERNS: list[tuple[str, str, str]] = [
-    # SSN (US Social Security Number)
-    (r"\b\d{3}-\d{2}-\d{4}\b", "SSN", "high"),
-    (r"\b\d{9}\b", "potential SSN (9 digits)", "medium"),
-    # Credit card numbers - with or without dashes/spaces
-    # Visa: starts with 4, 13-16 digits
-    (r"\b4[0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{1,4}\b", "Visa card", "high"),
-    (r"\b4[0-9]{12}(?:[0-9]{3})?\b", "Visa card", "high"),
-    # Mastercard: starts with 51-55 or 2221-2720, 16 digits
-    (
-        r"\b5[1-5][0-9]{2}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b",
-        "Mastercard",
-        "high",
-    ),
-    (r"\b5[1-5][0-9]{14}\b", "Mastercard", "high"),
-    # Amex: starts with 34 or 37, 15 digits
-    (r"\b3[47][0-9]{2}[-\s]?[0-9]{6}[-\s]?[0-9]{5}\b", "Amex card", "high"),
-    (r"\b3[47][0-9]{13}\b", "Amex card", "high"),
-    # Discover: starts with 6011, 622126-622925, 644-649, 65, 16 digits
-    (
-        r"\b6(?:011|5[0-9]{2})[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b",
-        "Discover card",
-        "high",
-    ),
-    (r"\b6(?:011|5[0-9]{2})[0-9]{12}\b", "Discover card", "high"),
-    # Phone numbers (various formats)
-    (
-        r"\b(?:\+1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
-        "US phone number",
-        "medium",
-    ),
-    (
-        r"\b\+\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b",
-        "international phone",
-        "medium",
-    ),
-    # Email addresses
-    (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "email address", "low"),
-    # IP addresses
-    (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "IP address", "low"),
-    # Dates of birth (various formats)
-    (
-        r"\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:19|20)\d{2}\b",
-        "date (MM/DD/YYYY)",
-        "low",
-    ),
-    (
-        r"\b(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])\b",
-        "date (YYYY-MM-DD)",
-        "low",
-    ),
-    # Passport numbers (basic patterns)
-    (r"\b[A-Z]{1,2}\d{6,9}\b", "potential passport number", "medium"),
-    # Driver's license (very generic, state-dependent)
-    (r"\b[A-Z]\d{7,8}\b", "potential DL number", "low"),
-]
+# Load patterns from YAML file
+PATTERNS_FILE = Path(__file__).parent / "patterns" / "pii.patterns.yaml"
 
-# Patterns that might indicate personal context but aren't PII themselves
-CONTEXT_PATTERNS: list[tuple[str, str]] = [
-    (r"\bmy\s+(?:ssn|social\s+security)", "SSN context"),
-    (r"\bmy\s+(?:credit\s+card|cc\s+number)", "credit card context"),
-    (r"\bmy\s+(?:phone|cell|mobile)\s+(?:number|#)", "phone context"),
-    (r"\bmy\s+(?:address|home\s+address)", "address context"),
-    (r"\bmy\s+(?:password|passwd|pwd)", "password context"),
-    (r"\bmy\s+(?:bank\s+account|routing\s+number)", "banking context"),
-]
+# Try to load from YAML, fall back to hardcoded patterns
+try:
+    from ..pattern_loader import load_pii_patterns
+
+    PII_PATTERNS, CONTEXT_PATTERNS = load_pii_patterns(PATTERNS_FILE)
+except (ImportError, FileNotFoundError):
+    # Fallback to hardcoded patterns
+    _PII_RAW: list[tuple[str, str, str]] = [
+        (r"\b\d{3}-\d{2}-\d{4}\b", "SSN", "high"),
+        (r"\b\d{9}\b", "potential SSN (9 digits)", "medium"),
+        (
+            r"\b4[0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{1,4}\b",
+            "Visa card",
+            "high",
+        ),
+        (r"\b4[0-9]{12}(?:[0-9]{3})?\b", "Visa card", "high"),
+        (
+            r"\b5[1-5][0-9]{2}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b",
+            "Mastercard",
+            "high",
+        ),
+        (r"\b5[1-5][0-9]{14}\b", "Mastercard", "high"),
+        (r"\b3[47][0-9]{2}[-\s]?[0-9]{6}[-\s]?[0-9]{5}\b", "Amex card", "high"),
+        (r"\b3[47][0-9]{13}\b", "Amex card", "high"),
+        (
+            r"\b6(?:011|5[0-9]{2})[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b",
+            "Discover card",
+            "high",
+        ),
+        (r"\b6(?:011|5[0-9]{2})[0-9]{12}\b", "Discover card", "high"),
+        (
+            r"\b(?:\+1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+            "US phone number",
+            "medium",
+        ),
+        (
+            r"\b\+\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b",
+            "international phone",
+            "medium",
+        ),
+        (
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+            "email address",
+            "low",
+        ),
+        (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "IP address", "low"),
+        (
+            r"\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:19|20)\d{2}\b",
+            "date (MM/DD/YYYY)",
+            "low",
+        ),
+        (
+            r"\b(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])\b",
+            "date (YYYY-MM-DD)",
+            "low",
+        ),
+        (r"\b[A-Z]{1,2}\d{6,9}\b", "potential passport number", "medium"),
+        (r"\b[A-Z]\d{7,8}\b", "potential DL number", "low"),
+    ]
+
+    _CONTEXT_RAW: list[tuple[str, str]] = [
+        (r"\bmy\s+(?:ssn|social\s+security)", "SSN context"),
+        (r"\bmy\s+(?:credit\s+card|cc\s+number)", "credit card context"),
+        (r"\bmy\s+(?:phone|cell|mobile)\s+(?:number|#)", "phone context"),
+        (r"\bmy\s+(?:address|home\s+address)", "address context"),
+        (r"\bmy\s+(?:password|passwd|pwd)", "password context"),
+        (r"\bmy\s+(?:bank\s+account|routing\s+number)", "banking context"),
+    ]
+
+    PII_PATTERNS = [(re.compile(p, re.IGNORECASE), d, r) for p, d, r in _PII_RAW]
+    CONTEXT_PATTERNS = [(re.compile(p, re.IGNORECASE), d) for p, d in _CONTEXT_RAW]
 
 
 def validate(
@@ -100,9 +110,9 @@ def validate(
     highest_risk = "none"
     risk_order = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
-    # Check for PII patterns
+    # Check for PII patterns (patterns are pre-compiled with flags)
     for pattern, pii_type, risk_level in PII_PATTERNS:
-        matches = re.findall(pattern, prompt, re.IGNORECASE)
+        matches = pattern.findall(prompt)
         if matches:
             detected_pii.append(
                 {
@@ -117,7 +127,7 @@ def validate(
     # Check for context patterns (these raise awareness but don't block)
     detected_context: list[str] = []
     for pattern, context_type in CONTEXT_PATTERNS:
-        if re.search(pattern, prompt, re.IGNORECASE):
+        if pattern.search(prompt):
             detected_context.append(context_type)
 
     # Determine action based on risk level

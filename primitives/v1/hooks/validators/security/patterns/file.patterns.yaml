@@ -1,0 +1,224 @@
+# File Operations Security Patterns
+# Used by file.py validator to detect sensitive file operations
+name: File Operations Security Patterns
+description: Patterns for validating file operations for security risks
+
+blocked_paths:
+  # System files (include both symlink paths and real paths for macOS)
+  - path: "/etc/passwd"
+    description: "System user database"
+    risk_level: critical
+  - path: "/etc/shadow"
+    description: "System password hashes"
+    risk_level: critical
+  - path: "/etc/sudoers"
+    description: "Sudo configuration"
+    risk_level: critical
+  - path: "/etc/hosts"
+    description: "Host resolution"
+    risk_level: critical
+  - path: "/private/etc/passwd"
+    description: "macOS system user database"
+    risk_level: critical
+  - path: "/private/etc/shadow"
+    description: "macOS system password hashes"
+    risk_level: critical
+  - path: "/private/etc/sudoers"
+    description: "macOS sudo configuration"
+    risk_level: critical
+  - path: "/private/etc/hosts"
+    description: "macOS host resolution"
+    risk_level: critical
+  - path: "/boot/"
+    description: "Boot partition"
+    risk_level: critical
+  - path: "/proc/"
+    description: "Process filesystem"
+    risk_level: critical
+  - path: "/sys/"
+    description: "System filesystem"
+    risk_level: critical
+  - path: "/dev/"
+    description: "Device filesystem"
+    risk_level: critical
+
+sensitive_paths:
+  # Paths that require extra scrutiny (warn but don't block)
+  - path: "/etc/"
+    description: "System configuration directory"
+    risk_level: medium
+  - path: "/var/log/"
+    description: "System logs"
+    risk_level: medium
+  - path: "/tmp/"
+    description: "Temporary files"
+    risk_level: low
+  - path: "/usr/"
+    description: "User programs"
+    risk_level: medium
+  - path: "/opt/"
+    description: "Optional software"
+    risk_level: medium
+  - path: "~/.ssh/"
+    description: "SSH keys and config"
+    risk_level: high
+  - path: "~/.gnupg/"
+    description: "GPG keys"
+    risk_level: high
+  - path: "~/.aws/"
+    description: "AWS credentials"
+    risk_level: high
+  - path: "~/.config/"
+    description: "User configuration"
+    risk_level: medium
+
+sensitive_file_patterns:
+  # File patterns that should never be read/written by AI
+  - id: env-file
+    pattern: '(?:^|/)\.env(?:\.local|\.production|\.staging)?$'
+    description: "environment file"
+    risk_level: high
+    test_cases:
+      - input: ".env"
+        expected: blocked
+      - input: ".env.local"
+        expected: blocked
+      - input: ".env.production"
+        expected: blocked
+      - input: "config.env"
+        expected: allowed
+
+  - id: pem-cert
+    pattern: '\.pem$'
+    description: "PEM certificate/key"
+    risk_level: high
+    test_cases:
+      - input: "server.pem"
+        expected: blocked
+
+  - id: private-key
+    pattern: '\.key$'
+    description: "private key"
+    risk_level: high
+    test_cases:
+      - input: "private.key"
+        expected: blocked
+
+  - id: ssh-rsa
+    pattern: 'id_rsa(?:\.pub)?$'
+    description: "SSH key"
+    risk_level: high
+    test_cases:
+      - input: "id_rsa"
+        expected: blocked
+      - input: "id_rsa.pub"
+        expected: blocked
+
+  - id: ssh-ed25519
+    pattern: 'id_ed25519(?:\.pub)?$'
+    description: "SSH key"
+    risk_level: high
+    test_cases:
+      - input: "id_ed25519"
+        expected: blocked
+
+  - id: p12-cert
+    pattern: '\.p12$'
+    description: "PKCS12 certificate"
+    risk_level: high
+
+  - id: pfx-cert
+    pattern: '\.pfx$'
+    description: "PFX certificate"
+    risk_level: high
+
+  - id: credentials-json
+    pattern: 'credentials(?:\.json)?$'
+    description: "credentials file"
+    risk_level: high
+    test_cases:
+      - input: "credentials.json"
+        expected: blocked
+      - input: "credentials"
+        expected: blocked
+
+  - id: secrets-yaml
+    pattern: 'secrets\.ya?ml$'
+    description: "secrets file"
+    risk_level: high
+    test_cases:
+      - input: "secrets.yaml"
+        expected: blocked
+      - input: "secrets.yml"
+        expected: blocked
+
+  - id: htpasswd
+    pattern: '\.htpasswd$'
+    description: "htpasswd file"
+    risk_level: high
+
+  - id: netrc
+    pattern: '\.netrc$'
+    description: "netrc file"
+    risk_level: high
+
+  - id: npmrc
+    pattern: '\.npmrc$'
+    description: "npm config (may contain tokens)"
+    risk_level: high
+
+  - id: pypirc
+    pattern: '\.pypirc$'
+    description: "pypi config (may contain tokens)"
+    risk_level: high
+
+  - id: aws-dir
+    pattern: '\.aws/'
+    description: "AWS config directory"
+    risk_level: high
+
+sensitive_content_patterns:
+  # Content patterns that indicate sensitive data
+  - id: private-key-header
+    pattern: "-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
+    description: "private key"
+    risk_level: critical
+    test_cases:
+      - input: "-----BEGIN RSA PRIVATE KEY-----"
+        expected: blocked
+      - input: "-----BEGIN OPENSSH PRIVATE KEY-----"
+        expected: blocked
+      - input: "-----BEGIN PUBLIC KEY-----"
+        expected: allowed
+
+  - id: aws-access-key
+    pattern: "AKIA[0-9A-Z]{16}"
+    description: "AWS access key"
+    risk_level: critical
+    test_cases:
+      - input: "AKIAIOSFODNN7EXAMPLE"
+        expected: blocked
+
+  - id: github-token
+    pattern: "(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}"
+    description: "GitHub token"
+    risk_level: critical
+    test_cases:
+      - input: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        expected: blocked
+
+  - id: openai-key
+    pattern: "sk-[A-Za-z0-9]{48}"
+    description: "OpenAI API key"
+    risk_level: critical
+    test_cases:
+      - input: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        expected: blocked
+
+  - id: slack-token
+    pattern: "xox[baprs]-[0-9A-Za-z-]+"
+    description: "Slack token"
+    risk_level: critical
+    test_cases:
+      - input: "xoxb-FAKE-TOKEN-FOR-TESTING-ONLY"
+        expected: blocked

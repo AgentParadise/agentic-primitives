@@ -117,18 +117,19 @@ impl SemanticValidator {
 
         // Try to find metadata file (prioritize new naming convention per ADR-019)
         let meta_path = [
-            format!("{dir_name}.meta.yaml"), // Prompt: {id}.meta.yaml (ADR-019)
-            format!("{dir_name}.tool.yaml"), // Tool: {id}.tool.yaml
-            format!("{dir_name}.hook.yaml"), // Hook: {id}.hook.yaml
-            format!("{dir_name}.yaml"),      // Legacy prompt: {id}.yaml
-            "meta.yaml".to_string(),         // Legacy prompt
-            "tool.meta.yaml".to_string(),    // Legacy tool
-            "hook.meta.yaml".to_string(),    // Legacy hook
+            format!("{dir_name}.skill.yaml"), // Skill: {id}.skill.yaml
+            format!("{dir_name}.meta.yaml"),  // Prompt: {id}.meta.yaml (ADR-019)
+            format!("{dir_name}.tool.yaml"),  // Tool: {id}.tool.yaml
+            format!("{dir_name}.hook.yaml"),  // Hook: {id}.hook.yaml
+            format!("{dir_name}.yaml"),       // Legacy prompt: {id}.yaml
+            "meta.yaml".to_string(),          // Legacy prompt
+            "tool.meta.yaml".to_string(),     // Legacy tool
+            "hook.meta.yaml".to_string(),     // Legacy hook
         ]
         .iter()
         .map(|f| primitive_path.join(f))
         .find(|p| p.exists())
-        .ok_or_else(|| anyhow::anyhow!("Missing metadata file ({dir_name}.meta.yaml, {dir_name}.tool.yaml, {dir_name}.hook.yaml, or meta.yaml)"))?;
+        .ok_or_else(|| anyhow::anyhow!("Missing metadata file ({dir_name}.skill.yaml, {dir_name}.meta.yaml, {dir_name}.tool.yaml, {dir_name}.hook.yaml, or meta.yaml)"))?;
 
         let meta_content = std::fs::read_to_string(&meta_path)
             .with_context(|| format!("Failed to read metadata from {}", meta_path.display()))?;

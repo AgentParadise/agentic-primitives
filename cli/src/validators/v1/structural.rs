@@ -61,13 +61,14 @@ impl StructuralValidator {
 
         // Try to find metadata file (prioritize new naming convention per ADR-019)
         let meta_path = [
-            format!("{dir_name}.meta.yaml"), // Prompt: {id}.meta.yaml (ADR-019)
-            format!("{dir_name}.tool.yaml"), // Tool: {id}.tool.yaml
-            format!("{dir_name}.hook.yaml"), // Hook: {id}.hook.yaml
-            format!("{dir_name}.yaml"),      // Legacy prompt: {id}.yaml
-            "meta.yaml".to_string(),         // Legacy prompt: meta.yaml
-            "tool.meta.yaml".to_string(),    // Legacy tool
-            "hook.meta.yaml".to_string(),    // Legacy hook
+            format!("{dir_name}.skill.yaml"), // Skill: {id}.skill.yaml
+            format!("{dir_name}.meta.yaml"),  // Prompt: {id}.meta.yaml (ADR-019)
+            format!("{dir_name}.tool.yaml"),  // Tool: {id}.tool.yaml
+            format!("{dir_name}.hook.yaml"),  // Hook: {id}.hook.yaml
+            format!("{dir_name}.yaml"),       // Legacy prompt: {id}.yaml
+            "meta.yaml".to_string(),          // Legacy prompt: meta.yaml
+            "tool.meta.yaml".to_string(),     // Legacy tool
+            "hook.meta.yaml".to_string(),     // Legacy hook
         ]
         .iter()
         .map(|f| primitive_path.join(f))
@@ -75,7 +76,7 @@ impl StructuralValidator {
         .ok_or_else(|| StructuralError::MissingFile {
             path: primitive_path.to_path_buf(),
             file: format!(
-                "{dir_name}.meta.yaml, {dir_name}.tool.yaml, {dir_name}.hook.yaml, or meta.yaml"
+                "{dir_name}.skill.yaml, {dir_name}.meta.yaml, {dir_name}.tool.yaml, {dir_name}.hook.yaml, or meta.yaml"
             ),
         })?;
 
@@ -217,10 +218,74 @@ impl StructuralValidator {
         Ok(())
     }
 
+    /// Validate tool structure (used for standalone tools and bundled skill tools)
+    fn validate_tool_structure(&self, tool_path: &Path) -> Result<()> {
+        let tool_name = tool_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid tool directory name"))?;
+
+        // Require <tool-name>.tool.yaml
+        let tool_yaml = tool_path.join(format!("{tool_name}.tool.yaml"));
+        let legacy_tool_yaml = tool_path.join("tool.meta.yaml");
+        if !tool_yaml.exists() && !legacy_tool_yaml.exists() {
+            return Err(StructuralError::MissingFile {
+                path: tool_path.to_path_buf(),
+                file: format!("{tool_name}.tool.yaml"),
+            }
+            .into());
+        }
+
+        // Reject generic names FIRST (before checking for proper implementation)
+        let index_ts = tool_path.join("index.ts");
+        let main_py = tool_path.join("main.py");
+        if index_ts.exists() || main_py.exists() {
+            return Err(anyhow::anyhow!(
+                "Generic filenames (index.ts, main.py) not allowed. Use {tool_name}.ts or {}.py",
+                tool_name.replace('-', "_")
+            ));
+        }
+
+        // Require implementation file with descriptive name
+        let py_impl = tool_path.join(format!("{}.py", tool_name.replace('-', "_")));
+        let ts_impl = tool_path.join(format!("{tool_name}.ts"));
+
+        if !py_impl.exists() && !ts_impl.exists() {
+            return Err(StructuralError::MissingFile {
+                path: tool_path.to_path_buf(),
+                file: format!("{}.py or {tool_name}.ts", tool_name.replace('-', "_")),
+            }
+            .into());
+        }
+
+        // Require tests/ directory
+        let tests_dir = tool_path.join("tests");
+        if !tests_dir.exists() || !tests_dir.is_dir() {
+            return Err(StructuralError::MissingFile {
+                path: tool_path.to_path_buf(),
+                file: "tests/ directory".to_string(),
+            }
+            .into());
+        }
+
+        // Require project file
+        let pyproject = tool_path.join("pyproject.toml");
+        let package_json = tool_path.join("package.json");
+        if !pyproject.exists() && !package_json.exists() {
+            return Err(StructuralError::MissingFile {
+                path: tool_path.to_path_buf(),
+                file: "pyproject.toml or package.json".to_string(),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
+
     /// Check for required files based on primitive type
     fn check_required_files(&self, primitive_path: &Path, kind: &str) -> Result<()> {
         match kind {
-            "agent" | "command" | "skill" | "meta-prompt" => {
+            "agent" | "command" | "meta-prompt" => {
                 // Get the directory name (which should match the ID)
                 let dir_name = primitive_path
                     .file_name()
@@ -240,6 +305,59 @@ impl StructuralValidator {
 
                 if !has_version_file {
                     return Err(StructuralError::NoVersionFiles.into());
+                }
+            }
+            "skill" => {
+                // Get the directory name (which should match the ID)
+                let dir_name = primitive_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .context("Invalid skill directory name")?;
+
+                // Require <id>.skill.yaml (preferred) or <id>.meta.yaml or <id>.yaml (legacy)
+                let skill_yaml = primitive_path.join(format!("{dir_name}.skill.yaml"));
+                let legacy_meta = primitive_path.join(format!("{dir_name}.meta.yaml"));
+                let legacy_yaml = primitive_path.join(format!("{dir_name}.yaml"));
+                let very_legacy_meta = primitive_path.join("meta.yaml");
+
+                if !skill_yaml.exists()
+                    && !legacy_meta.exists()
+                    && !legacy_yaml.exists()
+                    && !very_legacy_meta.exists()
+                {
+                    return Err(StructuralError::MissingFile {
+                        path: primitive_path.to_path_buf(),
+                        file: format!("{dir_name}.skill.yaml"),
+                    }
+                    .into());
+                }
+
+                // Require at least one version file:
+                // {id}.skill.v{N}.md (new) or {id}.prompt.v{N}.md (legacy) or {id}.v{N}.md (legacy)
+                let has_skill_file = std::fs::read_dir(primitive_path)?
+                    .filter_map(|e| e.ok())
+                    .any(|e| {
+                        let filename = e.file_name().to_string_lossy().to_string();
+                        (filename.starts_with(&format!("{dir_name}.skill.v"))
+                            || filename.starts_with(&format!("{dir_name}.prompt.v"))
+                            || filename.starts_with(&format!("{dir_name}.v")))
+                            && filename.ends_with(".md")
+                    });
+
+                if !has_skill_file {
+                    return Err(StructuralError::NoVersionFiles.into());
+                }
+
+                // Validate tools/ if present (must match primitives/v1/tools/ structure)
+                let tools_dir = primitive_path.join("tools");
+                if tools_dir.exists() && tools_dir.is_dir() {
+                    for entry in std::fs::read_dir(&tools_dir)? {
+                        let entry = entry?;
+                        if entry.path().is_dir() {
+                            // Recursively validate tool structure
+                            self.validate_tool_structure(&entry.path())?;
+                        }
+                    }
                 }
             }
             "tool" => {
@@ -538,6 +656,204 @@ mod tests {
 
         let validator = StructuralValidator::new();
         let result = validator.validate(&primitive_path);
+        assert!(result.is_ok());
+    }
+
+    // Skill validation tests
+
+    #[test]
+    fn test_validate_skill_with_new_naming() {
+        let temp_dir = TempDir::new().unwrap();
+        let primitive_path = temp_dir.path().join("test-skill");
+        fs::create_dir_all(&primitive_path).unwrap();
+
+        // Create skill.yaml with new naming convention
+        fs::write(
+            primitive_path.join("test-skill.skill.yaml"),
+            "id: test-skill\nkind: skill\ncategory: test\nsummary: Test skill",
+        )
+        .unwrap();
+        // Create skill version file with new naming: {id}.skill.v{N}.md
+        fs::write(
+            primitive_path.join("test-skill.skill.v1.md"),
+            "# Test Skill",
+        )
+        .unwrap();
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate(&primitive_path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_skill_with_legacy_naming() {
+        let temp_dir = TempDir::new().unwrap();
+        let primitive_path = temp_dir.path().join("test-skill");
+        fs::create_dir_all(&primitive_path).unwrap();
+
+        // Create meta.yaml with legacy naming convention
+        fs::write(
+            primitive_path.join("test-skill.meta.yaml"),
+            "id: test-skill\nkind: skill\ncategory: test\nsummary: Test skill",
+        )
+        .unwrap();
+        // Create prompt version file with legacy naming: {id}.prompt.v{N}.md
+        fs::write(
+            primitive_path.join("test-skill.prompt.v1.md"),
+            "# Test Skill",
+        )
+        .unwrap();
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate(&primitive_path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_skill_missing_version_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let primitive_path = temp_dir.path().join("test-skill");
+        fs::create_dir_all(&primitive_path).unwrap();
+
+        fs::write(
+            primitive_path.join("test-skill.skill.yaml"),
+            "id: test-skill\nkind: skill\ncategory: test\nsummary: Test skill",
+        )
+        .unwrap();
+        // Don't create version file
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate(&primitive_path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No version files"));
+    }
+
+    #[test]
+    fn test_validate_skill_with_resources() {
+        let temp_dir = TempDir::new().unwrap();
+        let primitive_path = temp_dir.path().join("test-skill");
+        fs::create_dir_all(&primitive_path).unwrap();
+        fs::create_dir_all(primitive_path.join("resources")).unwrap();
+
+        fs::write(
+            primitive_path.join("test-skill.skill.yaml"),
+            "id: test-skill\nkind: skill\ncategory: test\nsummary: Test skill",
+        )
+        .unwrap();
+        fs::write(
+            primitive_path.join("test-skill.skill.v1.md"),
+            "# Test Skill",
+        )
+        .unwrap();
+        fs::write(primitive_path.join("resources/guide.md"), "# Guide").unwrap();
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate(&primitive_path);
+        assert!(result.is_ok());
+    }
+
+    // Tool structure validation tests
+
+    #[test]
+    fn test_tool_structure_rejects_index_ts() {
+        let temp_dir = TempDir::new().unwrap();
+        let tool_path = temp_dir.path().join("my-tool");
+        fs::create_dir_all(&tool_path).unwrap();
+        fs::create_dir_all(tool_path.join("tests")).unwrap();
+
+        fs::write(
+            tool_path.join("my-tool.tool.yaml"),
+            "id: my-tool\nkind: tool\ncategory: test",
+        )
+        .unwrap();
+        fs::write(tool_path.join("index.ts"), "// bad").unwrap();
+        fs::write(tool_path.join("package.json"), "{}").unwrap();
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate_tool_structure(&tool_path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("index.ts"));
+    }
+
+    #[test]
+    fn test_tool_structure_rejects_main_py() {
+        let temp_dir = TempDir::new().unwrap();
+        let tool_path = temp_dir.path().join("my-tool");
+        fs::create_dir_all(&tool_path).unwrap();
+        fs::create_dir_all(tool_path.join("tests")).unwrap();
+
+        fs::write(
+            tool_path.join("my-tool.tool.yaml"),
+            "id: my-tool\nkind: tool\ncategory: test",
+        )
+        .unwrap();
+        fs::write(tool_path.join("main.py"), "# bad").unwrap();
+        fs::write(tool_path.join("pyproject.toml"), "[project]").unwrap();
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate_tool_structure(&tool_path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("main.py"));
+    }
+
+    #[test]
+    fn test_tool_structure_requires_tests_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let tool_path = temp_dir.path().join("my-tool");
+        fs::create_dir_all(&tool_path).unwrap();
+
+        fs::write(
+            tool_path.join("my-tool.tool.yaml"),
+            "id: my-tool\nkind: tool\ncategory: test",
+        )
+        .unwrap();
+        fs::write(tool_path.join("my_tool.py"), "# impl").unwrap();
+        fs::write(tool_path.join("pyproject.toml"), "[project]").unwrap();
+        // Don't create tests/
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate_tool_structure(&tool_path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("tests/"));
+    }
+
+    #[test]
+    fn test_tool_structure_valid_python() {
+        let temp_dir = TempDir::new().unwrap();
+        let tool_path = temp_dir.path().join("my-tool");
+        fs::create_dir_all(&tool_path).unwrap();
+        fs::create_dir_all(tool_path.join("tests")).unwrap();
+
+        fs::write(
+            tool_path.join("my-tool.tool.yaml"),
+            "id: my-tool\nkind: tool\ncategory: test",
+        )
+        .unwrap();
+        fs::write(tool_path.join("my_tool.py"), "# impl").unwrap();
+        fs::write(tool_path.join("pyproject.toml"), "[project]").unwrap();
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate_tool_structure(&tool_path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_tool_structure_valid_typescript() {
+        let temp_dir = TempDir::new().unwrap();
+        let tool_path = temp_dir.path().join("my-tool");
+        fs::create_dir_all(&tool_path).unwrap();
+        fs::create_dir_all(tool_path.join("tests")).unwrap();
+
+        fs::write(
+            tool_path.join("my-tool.tool.yaml"),
+            "id: my-tool\nkind: tool\ncategory: test",
+        )
+        .unwrap();
+        fs::write(tool_path.join("my-tool.ts"), "// impl").unwrap();
+        fs::write(tool_path.join("package.json"), "{}").unwrap();
+
+        let validator = StructuralValidator::new();
+        let result = validator.validate_tool_structure(&tool_path);
         assert!(result.is_ok());
     }
 }

@@ -79,12 +79,37 @@ impl PromptKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToolRuntime {
+    #[default]
+    Python,
+    Bun,
+}
+
+impl ToolRuntime {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ToolRuntime::Python => "python",
+            ToolRuntime::Bun => "bun",
+        }
+    }
+
+    /// Get file extension for implementation
+    pub fn impl_extension(&self) -> &str {
+        match self {
+            ToolRuntime::Python => "py",
+            ToolRuntime::Bun => "ts",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NewPrimitiveArgs {
     pub prim_type: PrimitiveType,
     pub category: String,
     pub id: String,
     pub kind: Option<PromptKind>,
+    pub runtime: ToolRuntime,
     pub spec_version: SpecVersion,
     pub experimental: bool,
 }
@@ -219,11 +244,18 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     });
 
     let prompt_content = renderer.render_prompt_content(&prompt_data)?;
-    // Filename must match pattern: {id}.prompt.v{N}.md
-    let prompt_filename = format!("{}.prompt.v1.md", args.id);
-    let prompt_path = path.join(&prompt_filename);
-    fs::write(&prompt_path, &prompt_content)
-        .with_context(|| format!("Failed to write prompt: {prompt_path:?}"))?;
+
+    // Filename depends on kind:
+    // - Skills: {id}.skill.v{N}.md
+    // - Others: {id}.prompt.v{N}.md
+    let content_filename = if kind == PromptKind::Skill {
+        format!("{}.skill.v1.md", args.id)
+    } else {
+        format!("{}.prompt.v1.md", args.id)
+    };
+    let content_path = path.join(&content_filename);
+    fs::write(&content_path, &prompt_content)
+        .with_context(|| format!("Failed to write prompt: {content_path:?}"))?;
 
     // 2. Calculate BLAKE3 hash with prefix
     let hash = format!(
@@ -231,7 +263,7 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
         blake3::hash(prompt_content.as_bytes()).to_hex()
     );
 
-    // 3. Render {id}.yaml with versions array
+    // 3. Render metadata with versions array
     let meta_data = serde_json::json!({
         "id": &args.id,
         "category": &args.category,
@@ -246,17 +278,24 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
         PromptKind::MetaPrompt => renderer.render_meta_prompt_meta(&meta_data)?,
     };
 
-    // Add versions array to {id}.yaml with proper format
+    // Add versions array to metadata file with proper format
     let created_date = Utc::now().format("%Y-%m-%d").to_string();
     let meta_with_versions = format!(
         "{}\nversions:\n  - version: 1\n    file: {}\n    hash: \"{}\"\n    status: active\n    created: \"{}\"\n    notes: \"Initial version\"\ndefault_version: 1\n",
         meta_content.trim_end(),
-        prompt_filename,
+        content_filename,
         hash,
         created_date
     );
 
-    let meta_filename = format!("{}.yaml", &args.id);
+    // Metadata filename depends on kind:
+    // - Skills: {id}.skill.yaml
+    // - Others: {id}.yaml
+    let meta_filename = if kind == PromptKind::Skill {
+        format!("{}.skill.yaml", &args.id)
+    } else {
+        format!("{}.yaml", &args.id)
+    };
     fs::write(path.join(&meta_filename), meta_with_versions)
         .with_context(|| format!("Failed to write {meta_filename}"))?;
 
@@ -266,31 +305,84 @@ fn create_prompt_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
 fn create_tool_primitive(path: &Path, args: &NewPrimitiveArgs) -> Result<()> {
     let renderer = TemplateRenderer::new()?;
 
-    // Render {id}.tool.yaml
+    // Convert id to snake_case for Python module names
+    let id_snake = args.id.replace('-', "_");
+
+    // Common template data
     let tool_data = serde_json::json!({
         "id": &args.id,
-        "kind": "tool",  // Correct kind for tools
+        "id_snake": &id_snake,
+        "kind": "tool",
         "category": &args.category,
         "description": format!("TODO: Describe what {} does", &args.id),
+        "args": [],
+        "runtime_python": args.runtime == ToolRuntime::Python,
+        "runtime_bun": args.runtime == ToolRuntime::Bun,
     });
 
+    // Render {id}.tool.yaml
     let tool_meta = renderer.render_tool_meta(&tool_data)?;
     let meta_filename = format!("{}.tool.yaml", &args.id);
     fs::write(path.join(&meta_filename), tool_meta)
         .with_context(|| format!("Failed to write {meta_filename}"))?;
 
-    // Create stub implementation files
-    fs::write(
-        path.join("impl.claude.yaml"),
-        "# Claude MCP tool implementation\ncommand: \"echo\"\nargs:\n  - \"TODO: Implement tool\"\n",
-    )
-    .with_context(|| "Failed to write impl.claude.yaml")?;
+    // Create tests/ directory
+    let tests_dir = path.join("tests");
+    fs::create_dir_all(&tests_dir).with_context(|| "Failed to create tests/ directory")?;
 
-    fs::write(
-        path.join("impl.openai.json"),
-        "{\n  \"// TODO\": \"Add OpenAI function calling definition\"\n}\n",
-    )
-    .with_context(|| "Failed to write impl.openai.json")?;
+    match args.runtime {
+        ToolRuntime::Python => {
+            // Create Python implementation
+            let impl_content = renderer.render_tool_impl_python(&tool_data)?;
+            let impl_filename = format!("{}.py", &id_snake);
+            fs::write(path.join(&impl_filename), impl_content)
+                .with_context(|| format!("Failed to write {impl_filename}"))?;
+
+            // Create pyproject.toml
+            let pyproject = renderer.render_tool_pyproject(&tool_data)?;
+            fs::write(path.join("pyproject.toml"), pyproject)
+                .with_context(|| "Failed to write pyproject.toml")?;
+
+            // Create test file
+            let test_content = renderer.render_tool_test_python(&tool_data)?;
+            fs::write(tests_dir.join("__init__.py"), "")
+                .with_context(|| "Failed to write tests/__init__.py")?;
+            fs::write(
+                tests_dir.join(format!("test_{}.py", &id_snake)),
+                test_content,
+            )
+            .with_context(|| "Failed to write test file")?;
+        }
+        ToolRuntime::Bun => {
+            // Create TypeScript implementation
+            let impl_content = renderer.render_tool_impl_typescript(&tool_data)?;
+            let impl_filename = format!("{}.ts", &args.id);
+            fs::write(path.join(&impl_filename), impl_content)
+                .with_context(|| format!("Failed to write {impl_filename}"))?;
+
+            // Create package.json
+            let package_json = renderer.render_tool_package_json(&tool_data)?;
+            fs::write(path.join("package.json"), package_json)
+                .with_context(|| "Failed to write package.json")?;
+
+            // Create tsconfig.json
+            let tsconfig = renderer.render_tool_tsconfig(&tool_data)?;
+            fs::write(path.join("tsconfig.json"), tsconfig)
+                .with_context(|| "Failed to write tsconfig.json")?;
+
+            // Create test file
+            let test_content = renderer.render_tool_test_typescript(&tool_data)?;
+            fs::write(
+                tests_dir.join(format!("{}.test.ts", &args.id)),
+                test_content,
+            )
+            .with_context(|| "Failed to write test file")?;
+        }
+    }
+
+    // Create README.md
+    let readme = renderer.render_tool_readme(&tool_data)?;
+    fs::write(path.join("README.md"), readme).with_context(|| "Failed to write README.md")?;
 
     Ok(())
 }
@@ -468,6 +560,7 @@ mod tests {
             category: "python".to_string(),
             id: "python-pro".to_string(),
             kind: Some(PromptKind::Agent),
+            runtime: ToolRuntime::default(),
             spec_version: SpecVersion::V1,
             experimental: false,
         };
@@ -487,6 +580,7 @@ mod tests {
             category: "testing".to_string(),
             id: "run-tests".to_string(),
             kind: None,
+            runtime: ToolRuntime::Python,
             spec_version: SpecVersion::V1,
             experimental: false,
         };
@@ -502,6 +596,7 @@ mod tests {
             category: "test".to_string(),
             id: "test-agent".to_string(),
             kind: Some(PromptKind::Agent),
+            runtime: ToolRuntime::default(),
             spec_version: SpecVersion::V1,
             experimental: true,
         };
@@ -517,6 +612,7 @@ mod tests {
             category: "InvalidCategory".to_string(),
             id: "test".to_string(),
             kind: Some(PromptKind::Agent),
+            runtime: ToolRuntime::default(),
             spec_version: SpecVersion::V1,
             experimental: false,
         };
@@ -533,6 +629,7 @@ mod tests {
             category: "test".to_string(),
             id: "test".to_string(),
             kind: None,
+            runtime: ToolRuntime::default(),
             spec_version: SpecVersion::V1,
             experimental: false,
         };
@@ -553,6 +650,7 @@ mod tests {
             category: "testing".to_string(),
             id: "test-agent".to_string(),
             kind: Some(PromptKind::Agent),
+            runtime: ToolRuntime::default(),
             spec_version: SpecVersion::V1,
             experimental: false,
         };
@@ -575,7 +673,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_tool_primitive() {
+    fn test_create_tool_primitive_python() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("test-tool");
         fs::create_dir_all(&path).unwrap();
@@ -585,6 +683,7 @@ mod tests {
             category: "testing".to_string(),
             id: "test-tool".to_string(),
             kind: None,
+            runtime: ToolRuntime::Python,
             spec_version: SpecVersion::V1,
             experimental: false,
         };
@@ -592,10 +691,43 @@ mod tests {
         let result = create_tool_primitive(&path, &args);
         assert!(result.is_ok());
 
-        // Check files exist
+        // Check Python-specific files exist
         assert!(path.join("test-tool.tool.yaml").exists());
-        assert!(path.join("impl.claude.yaml").exists());
-        assert!(path.join("impl.openai.json").exists());
+        assert!(path.join("test_tool.py").exists());
+        assert!(path.join("pyproject.toml").exists());
+        assert!(path.join("tests").exists());
+        assert!(path.join("tests/__init__.py").exists());
+        assert!(path.join("tests/test_test_tool.py").exists());
+        assert!(path.join("README.md").exists());
+    }
+
+    #[test]
+    fn test_create_tool_primitive_bun() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("my-tool");
+        fs::create_dir_all(&path).unwrap();
+
+        let args = NewPrimitiveArgs {
+            prim_type: PrimitiveType::Tool,
+            category: "testing".to_string(),
+            id: "my-tool".to_string(),
+            kind: None,
+            runtime: ToolRuntime::Bun,
+            spec_version: SpecVersion::V1,
+            experimental: false,
+        };
+
+        let result = create_tool_primitive(&path, &args);
+        assert!(result.is_ok());
+
+        // Check TypeScript-specific files exist
+        assert!(path.join("my-tool.tool.yaml").exists());
+        assert!(path.join("my-tool.ts").exists());
+        assert!(path.join("package.json").exists());
+        assert!(path.join("tsconfig.json").exists());
+        assert!(path.join("tests").exists());
+        assert!(path.join("tests/my-tool.test.ts").exists());
+        assert!(path.join("README.md").exists());
     }
 
     #[test]
@@ -609,6 +741,7 @@ mod tests {
             category: "testing".to_string(),
             id: "test-hook".to_string(),
             kind: None,
+            runtime: ToolRuntime::default(),
             spec_version: SpecVersion::V1,
             experimental: false,
         };
@@ -638,6 +771,7 @@ mod tests {
             category: "test".to_string(),
             id: "test-agent".to_string(),
             kind: Some(PromptKind::Agent),
+            runtime: ToolRuntime::default(),
             spec_version: SpecVersion::V1,
             experimental: true, // Use experimental to skip full validation
         };
