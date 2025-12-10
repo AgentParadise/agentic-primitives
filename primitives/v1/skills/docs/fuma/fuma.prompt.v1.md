@@ -1,7 +1,7 @@
 ---
 description: Fumadocs styling patterns and component guidelines
 model: sonnet
-allowed-tools: Read, Write, StrReplace
+allowed-tools: Read, Write
 ---
 
 # Fumadocs Documentation Styling

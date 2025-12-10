@@ -15,11 +15,10 @@ defaults:
 tools:
   - Read
   - Write
-  - StrReplace
 versions:
   - version: 1
     file: fuma.prompt.v1.md
-    hash: "blake3:eff53f1faf494836be3e6f56afd794a30492080f5f983a79326d1ee3fcaea5af"
+    hash: "blake3:9672f4680b3931523ffbbd23d17d4e8decc385fa2b07fd7a640b000265631ea1"
     status: active
     created: "2025-12-10"
     notes: "Initial version documenting Fumadocs styling patterns"

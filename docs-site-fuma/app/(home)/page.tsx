@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { ArrowRight, BookOpen, Rocket, Terminal, GitBranch, Shield, Plug, Layers, Zap } from 'lucide-react';
 import { HeroScene } from '@/components/HeroScene';
 
