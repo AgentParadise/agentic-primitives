@@ -18,7 +18,7 @@ tools:
 versions:
   - version: 1
     file: fuma.prompt.v1.md
-    hash: "blake3:f967698b7b6490b911a8902cb20f49234ee45b3cfea735c2880faf927fe97993"
+    hash: "blake3:100dae1b93b2d48f1558436dd996395e68a5158f407a699278f78484f2ac1497"
     status: active
     created: "2025-12-10"
     notes: "Initial version documenting Fumadocs styling patterns"
