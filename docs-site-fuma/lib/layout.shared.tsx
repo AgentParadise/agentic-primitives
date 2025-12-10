@@ -23,7 +23,7 @@ export function baseOptions(): BaseLayoutProps {
             height={28}
             className="block dark:hidden"
           />
-          <span className="font-semibold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent dark:from-indigo-300 dark:to-purple-300">
+          <span className="font-semibold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent dark:from-indigo-300 dark:to-purple-300 pb-0.5">
             agentic-primitives
           </span>
         </div>
