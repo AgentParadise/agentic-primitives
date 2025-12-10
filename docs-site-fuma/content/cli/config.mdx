@@ -1,0 +1,332 @@
+---
+title: agentic-p config
+description: Manage configuration
+---
+
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## Overview
+
+The `config` command manages agentic-p configuration at project and global levels.
+
+## Usage
+
+```bash
+agentic-p config <SUBCOMMAND> [OPTIONS]
+```
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `init` | Create configuration file |
+| `get` | Get a configuration value |
+| `set` | Set a configuration value |
+| `list` | List all configuration |
+| `path` | Show configuration file paths |
+
+---
+
+## config init
+
+Create a configuration file with all options documented (tsconfig-style).
+
+```bash
+agentic-p config init [OPTIONS]
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--global` | Create global config | `false` (project) |
+| `--force` | Overwrite existing | `false` |
+| `--minimal` | Minimal config (uncommented) | `false` |
+
+### Examples
+
+```bash
+# Create project config
+agentic-p config init
+
+# Create global config
+agentic-p config init --global
+
+# Minimal config
+agentic-p config init --minimal
+```
+
+### Generated Config
+
+```yaml
+# agentic.yaml - Project configuration
+# All options are documented. Uncomment to customize.
+
+# Repository metadata
+# repository:
+#   name: "my-primitives"
+#   description: "My agentic primitives"
+
+# Default model for new primitives
+# defaults:
+#   model:
+#     provider: anthropic
+#     name: claude-4-sonnet
+
+# Version pinning (like npm resolutions)
+# primitives:
+#   python/python-pro: 2
+#   qa/review: latest
+#   security/bash-validator: default
+
+# Build settings
+# build:
+#   output_dir: "build"
+#   providers:
+#     - claude
+#     - openai
+#   clean_before_build: false
+
+# Validation settings
+# validation:
+#   strict: true
+#   check_hashes: true
+#   fail_on_warnings: false
+
+# Installation settings
+# install:
+#   preserve_local: true
+#   backup_before_install: false
+```
+
+---
+
+## config get
+
+Get a specific configuration value.
+
+```bash
+agentic-p config get <KEY> [OPTIONS]
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--global` | Read from global config | `false` |
+
+### Examples
+
+```bash
+# Get default model
+agentic-p config get defaults.model.name
+
+# Get build output directory
+agentic-p config get build.output_dir
+
+# Get global setting
+agentic-p config get defaults.model.provider --global
+```
+
+### Output
+
+```
+defaults.model.name = claude-4-sonnet
+```
+
+---
+
+## config set
+
+Set a configuration value.
+
+```bash
+agentic-p config set <KEY> <VALUE> [OPTIONS]
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--global` | Write to global config | `false` |
+
+### Examples
+
+```bash
+# Set default model
+agentic-p config set defaults.model.name claude-4-opus
+
+# Enable strict validation
+agentic-p config set validation.strict true
+
+# Set global default
+agentic-p config set defaults.model.provider openai --global
+```
+
+### Output
+
+```
+✓ Set defaults.model.name = claude-4-opus
+```
+
+---
+
+## config list
+
+List all configuration values with their sources.
+
+```bash
+agentic-p config list [OPTIONS]
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--format <FMT>` | Output format: `table`, `json`, `yaml` | `table` |
+| `--effective` | Show merged effective config | `false` |
+
+### Examples
+
+```bash
+# List all config
+agentic-p config list
+
+# Show effective (merged) config
+agentic-p config list --effective
+
+# JSON output
+agentic-p config list --format json
+```
+
+### Output
+
+```
+Configuration:
+
+KEY                          VALUE              SOURCE
+─────────────────────────────────────────────────────────────
+defaults.model.provider      anthropic          project
+defaults.model.name          claude-4-sonnet    project
+build.output_dir             build              default
+validation.strict            true               project
+validation.check_hashes      false              global
+
+Sources: project (agentic.yaml), global (~/.config/agentic-p/config.yaml), default
+```
+
+---
+
+## config path
+
+Show configuration file paths.
+
+```bash
+agentic-p config path
+```
+
+### Output
+
+```
+Configuration paths:
+
+Project:  /path/to/project/agentic.yaml (exists)
+Global:   ~/.config/agentic-p/config.yaml (exists)
+```
+
+---
+
+## Configuration Hierarchy
+
+Configuration is merged from multiple sources (later overrides earlier):
+
+```
+1. Defaults (built-in)
+        ↓
+2. Global config (~/.config/agentic-p/config.yaml)
+        ↓
+3. Project config (./agentic.yaml)
+        ↓
+4. Environment variables (AGENTIC_*)
+        ↓
+5. Command-line flags
+```
+
+## Environment Variables
+
+| Variable | Config Equivalent |
+|----------|-------------------|
+| `AGENTIC_HOME` | Base config directory |
+| `AGENTIC_PRIMITIVES` | primitives directory path |
+| `AGENTIC_DEFAULT_PROVIDER` | defaults.model.provider |
+| `AGENTIC_STRICT` | validation.strict |
+
+## Version Pinning
+
+Pin specific primitive versions in your project config:
+
+```yaml
+# agentic.yaml
+primitives:
+  # Pin to specific version
+  python/python-pro: 2
+  qa/review: 1
+
+  # Use latest active version
+  security/bash-validator: latest
+
+  # Use primitive's default version
+  testing/pytest-patterns: default
+```
+
+<Callout type="info">
+This works like npm's `resolutions` or yarn's `overrides` — only specify what you need to override.
+</Callout>
+
+## Common Use Cases
+
+<Accordions>
+  <Accordion title="Set team defaults">
+    ```yaml
+    # agentic.yaml
+    defaults:
+      model:
+        provider: anthropic
+        name: claude-4-sonnet
+
+    validation:
+      strict: true
+      check_hashes: true
+    ```
+  </Accordion>
+  <Accordion title="Pin production versions">
+    ```yaml
+    # agentic.yaml
+    primitives:
+      python/python-pro: 2
+      qa/review: 1
+      security/bash-validator: 1
+    ```
+  </Accordion>
+  <Accordion title="Configure CI build">
+    ```yaml
+    # agentic.yaml
+    build:
+      output_dir: dist
+      providers:
+        - claude
+      clean_before_build: true
+
+    validation:
+      strict: true
+      fail_on_warnings: true
+    ```
+  </Accordion>
+</Accordions>
+
+## Related Commands
+
+- [`agentic-p init`](/docs/cli/init) - Initialize repository
+- [`agentic-p validate`](/docs/cli/validate) - Use validation config
+- [`agentic-p build`](/docs/cli/build) - Use build config
