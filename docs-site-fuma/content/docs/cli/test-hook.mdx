@@ -1,0 +1,308 @@
+---
+title: agentic-p test-hook
+description: Test hooks locally
+---
+
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+
+## Overview
+
+The `test-hook` command allows you to test hook implementations locally with sample events before deployment.
+
+## Usage
+
+```bash
+agentic-p test-hook <PATH> [OPTIONS]
+```
+
+## Arguments
+
+| Argument | Description | Required |
+|----------|-------------|----------|
+| `<PATH>` | Hook path (e.g., `security/bash-validator`) | Yes |
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-i, --input <FILE\|JSON>` | Event input (file path or inline JSON) | Required |
+| `--version <N>` | Test specific version | Default version |
+| `--event <TYPE>` | Event type to simulate | Auto-detect |
+| `-v, --verbose` | Show detailed output | `false` |
+| `--timeout <MS>` | Execution timeout | `5000` |
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Test with JSON file
+agentic-p test-hook security/bash-validator --input test-event.json
+
+# Test with inline JSON
+agentic-p test-hook security/bash-validator --input '{"tool_name": "Bash", "tool_input": {"command": "ls -la"}}'
+```
+
+### With Options
+
+```bash
+# Test specific version
+agentic-p test-hook security/bash-validator --version 2 --input event.json
+
+# Specify event type
+agentic-p test-hook security/bash-validator --event PreToolUse --input event.json
+
+# Verbose output
+agentic-p test-hook security/bash-validator --input event.json --verbose
+```
+
+## Event Input Format
+
+### PreToolUse Event
+
+```json
+{
+  "type": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "rm -rf /tmp/cache"
+  },
+  "session_id": "test-session-123",
+  "timestamp": "2025-12-09T10:30:00Z"
+}
+```
+
+### UserPromptSubmit Event
+
+```json
+{
+  "type": "UserPromptSubmit",
+  "prompt_text": "Please update my API key: sk-abc123...",
+  "session_id": "test-session-123",
+  "timestamp": "2025-12-09T10:30:00Z"
+}
+```
+
+### PostToolUse Event
+
+```json
+{
+  "type": "PostToolUse",
+  "tool_name": "Read",
+  "tool_input": {
+    "path": "/etc/passwd"
+  },
+  "tool_output": "root:x:0:0:root:/root:/bin/bash\n...",
+  "session_id": "test-session-123"
+}
+```
+
+### SessionStart Event
+
+```json
+{
+  "type": "SessionStart",
+  "session_id": "test-session-123",
+  "working_directory": "/home/user/project",
+  "timestamp": "2025-12-09T10:30:00Z"
+}
+```
+
+## Output Format
+
+### Allowed
+
+```
+Testing: security/bash-validator v1
+Event:   PreToolUse
+Input:   {"tool_name": "Bash", "command": "ls -la"}
+
+Result: ✓ ALLOWED
+
+Response:
+{
+  "allow": true
+}
+
+Execution time: 12ms
+```
+
+### Blocked
+
+```
+Testing: security/bash-validator v1
+Event:   PreToolUse
+Input:   {"tool_name": "Bash", "command": "rm -rf /"}
+
+Result: ✗ BLOCKED
+
+Response:
+{
+  "allow": false,
+  "message": "Blocked dangerous command: rm -rf /"
+}
+
+Execution time: 8ms
+```
+
+### Warning
+
+```
+Testing: security/file-security v1
+Event:   PreToolUse
+Input:   {"tool_name": "Read", "path": ".env"}
+
+Result: ⚠ WARNING
+
+Response:
+{
+  "allow": true,
+  "warning": "Reading sensitive file: .env"
+}
+
+Execution time: 15ms
+```
+
+## Verbose Output
+
+```bash
+agentic-p test-hook security/bash-validator --input event.json --verbose
+```
+
+```
+═══════════════════════════════════════════════════════════
+Testing Hook: security/bash-validator
+═══════════════════════════════════════════════════════════
+
+Hook Path:    primitives/v1/hooks/security/bash-validator
+Version:      1
+Events:       PreToolUse
+Action:       block
+Runtime:      python
+Entrypoint:   middleware.py
+
+Input Event:
+{
+  "type": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "rm -rf /tmp/cache"
+  }
+}
+
+Matcher Check:
+  Tool Name: Bash ✓ (matches: Bash, Shell)
+
+Executing middleware...
+  > python middleware.py
+
+Middleware Output:
+{
+  "allow": true
+}
+
+═══════════════════════════════════════════════════════════
+Result: ✓ ALLOWED
+Execution time: 23ms
+═══════════════════════════════════════════════════════════
+```
+
+## Test Fixtures
+
+Create test fixtures for repeatable testing:
+
+```
+tests/
+├── events/
+│   ├── pre-tool-use/
+│   │   ├── safe-ls.json
+│   │   ├── dangerous-rm.json
+│   │   └── sudo-command.json
+│   ├── user-prompt/
+│   │   ├── normal-prompt.json
+│   │   ├── contains-email.json
+│   │   └── contains-api-key.json
+│   └── session/
+│       └── session-start.json
+└── expected/
+    ├── bash-validator/
+    │   ├── safe-ls.json        # Expected: allow
+    │   └── dangerous-rm.json   # Expected: block
+    └── prompt-filter/
+        └── contains-email.json # Expected: warn
+```
+
+## Batch Testing
+
+Test multiple events at once:
+
+```bash
+# Test all events in directory
+for f in tests/events/pre-tool-use/*.json; do
+  echo "Testing: $f"
+  agentic-p test-hook security/bash-validator --input "$f"
+  echo ""
+done
+```
+
+## Common Use Cases
+
+<Accordions>
+  <Accordion title="Validate security rules">
+    ```bash
+    # Test dangerous command is blocked
+    agentic-p test-hook security/bash-validator \
+      --input '{"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}'
+
+    # Should output: BLOCKED
+    ```
+  </Accordion>
+  <Accordion title="Test PII detection">
+    ```bash
+    agentic-p test-hook security/prompt-filter \
+      --input '{"type": "UserPromptSubmit", "prompt_text": "My email is test@example.com"}'
+
+    # Should output: WARNING
+    ```
+  </Accordion>
+  <Accordion title="Regression testing">
+    ```bash
+    # Create test script
+    agentic-p test-hook security/bash-validator --input tests/safe.json
+    agentic-p test-hook security/bash-validator --input tests/dangerous.json
+    ```
+  </Accordion>
+</Accordions>
+
+## Error Handling
+
+### Hook not found
+
+```
+Error: Hook not found: security/unknown-hook
+       Available hooks: bash-validator, file-security, prompt-filter
+```
+
+### Invalid event format
+
+```
+Error: Invalid event input
+       Expected JSON with 'type' field
+       Got: { "command": "ls" }
+```
+
+### Middleware error
+
+```
+Error: Middleware execution failed
+       Exit code: 1
+       Stderr: ModuleNotFoundError: No module named 'yaml'
+
+Hint: Check hook dependencies in the hook.yaml
+```
+
+## Related Commands
+
+- [`agentic-p new hook`](/docs/cli/new) - Create hooks
+- [`agentic-p validate`](/docs/cli/validate) - Validate hooks
+- [`agentic-p build`](/docs/cli/build) - Build hooks for deployment

@@ -1,0 +1,25 @@
+id: fuma
+kind: skill
+category: docs
+domain: documentation
+summary: "Fumadocs styling patterns: Three.js headers, Lucide icons, gradient buttons, and theme-aware components"
+tags:
+  - documentation
+  - fumadocs
+  - styling
+  - ui
+  - threejs
+defaults:
+  preferred_models:
+    - claude/sonnet
+tools:
+  - Read
+  - Write
+versions:
+  - version: 1
+    file: fuma.prompt.v1.md
+    hash: "blake3:9672f4680b3931523ffbbd23d17d4e8decc385fa2b07fd7a640b000265631ea1"
+    status: active
+    created: "2025-12-10"
+    notes: "Initial version documenting Fumadocs styling patterns"
+default_version: 1

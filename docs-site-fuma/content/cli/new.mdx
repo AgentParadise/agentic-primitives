@@ -1,0 +1,273 @@
+---
+title: agentic-p new
+description: Create a new primitive
+---
+
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## Overview
+
+The `new` command scaffolds a new primitive with the correct structure, templates, and configuration.
+
+## Usage
+
+```bash
+agentic-p new <TYPE> <PATH>
+```
+
+## Arguments
+
+| Argument | Description | Required |
+|----------|-------------|----------|
+| `<TYPE>` | Primitive type: `agent`, `command`, `skill`, `tool`, `hook` | Yes |
+| `<PATH>` | Path in format `category/name` | Yes |
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-d, --description <TEXT>` | Primitive description | Auto-generated |
+| `-m, --model <MODEL>` | Model reference (e.g., `anthropic/claude-4-sonnet`) | From config |
+| `--no-prompt` | Skip creating prompt file | `false` |
+| `-f, --force` | Overwrite existing primitive | `false` |
+| `-v, --verbose` | Show detailed output | `false` |
+
+## Examples
+
+### Create Agents
+
+```bash
+# Python expert agent
+agentic-p new agent python/python-pro
+
+# DevOps agent with description
+agentic-p new agent devops/infrastructure-pro -d "Expert in AWS, Terraform, and K8s"
+
+# Agent with specific model
+agentic-p new agent rust/rust-expert --model anthropic/claude-4-opus
+```
+
+### Create Commands
+
+```bash
+# Code review command
+agentic-p new command qa/review
+
+# Documentation generator
+agentic-p new command docs/generate-readme
+
+# Meta-prompt (prompt generator)
+agentic-p new command meta/prompt-builder
+```
+
+### Create Skills
+
+```bash
+# Testing patterns skill
+agentic-p new skill testing/pytest-patterns
+
+# Security knowledge
+agentic-p new skill security/owasp-top-10
+```
+
+### Create Tools
+
+```bash
+# Shell tool
+agentic-p new tool shell/run-tests
+
+# API integration
+agentic-p new tool integrations/github-api
+```
+
+### Create Hooks
+
+```bash
+# Security hook
+agentic-p new hook security/bash-validator
+
+# Analytics hook
+agentic-p new hook analytics/event-logger
+
+# Lifecycle hook
+agentic-p new hook lifecycle/session-tracker
+```
+
+## Created Files
+
+### Agent
+
+```
+primitives/v1/agents/python/python-pro/
+├── python-pro.meta.yaml
+└── python-pro.v1.md
+```
+
+### Command
+
+```
+primitives/v1/commands/qa/review/
+├── review.meta.yaml
+└── review.v1.md
+```
+
+### Skill
+
+```
+primitives/v1/skills/testing/pytest-patterns/
+├── pytest-patterns.meta.yaml
+└── pytest-patterns.v1.md
+```
+
+### Tool
+
+```
+primitives/v1/tools/shell/run-tests/
+├── run-tests.tool.yaml
+├── impl.local.py
+└── README.md
+```
+
+### Hook
+
+```
+primitives/v1/hooks/security/bash-validator/
+├── bash-validator.hook.yaml
+└── middleware.py
+```
+
+## Generated Templates
+
+### Meta File (Agents/Commands/Skills)
+
+```yaml
+spec_version: "v1"
+type: agent  # or command, skill
+name: python-pro
+description: "Python expert agent"
+
+versions:
+  - version: 1
+    status: active
+    hash: blake3:pending
+    created: "2025-12-09"
+    notes: "Initial version"
+
+default_version: 1
+
+model:
+  provider: anthropic
+  name: claude-4-sonnet
+```
+
+### Prompt File
+
+```markdown
+# Python Pro Agent
+
+You are an expert Python developer...
+
+## Expertise
+- Modern Python (3.11+)
+- Type hints and mypy
+- pytest and testing
+- Async patterns
+
+## Guidelines
+1. Always use type hints
+2. Follow PEP 8
+3. Write tests
+```
+
+### Tool Spec
+
+```yaml
+spec_version: "v1"
+type: tool
+name: run-tests
+description: "Execute test suite"
+
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: "Test path"
+  required:
+    - path
+
+output_schema:
+  type: object
+  properties:
+    passed:
+      type: integer
+    failed:
+      type: integer
+```
+
+### Hook Spec
+
+```yaml
+spec_version: "v1"
+type: hook
+name: bash-validator
+description: "Validates bash commands"
+
+events:
+  - PreToolUse
+
+action: block
+
+matcher:
+  tool_names:
+    - Bash
+    - Shell
+
+implementation:
+  runtime: python
+  entrypoint: middleware.py
+```
+
+## Path Format
+
+Paths follow the pattern `category/name`:
+
+| Example | Category | Name |
+|---------|----------|------|
+| `python/python-pro` | python | python-pro |
+| `qa/review` | qa | review |
+| `security/bash-validator` | security | bash-validator |
+
+<Callout type="info">
+Names must be **kebab-case** (lowercase with hyphens).
+</Callout>
+
+## Common Use Cases
+
+<Accordions>
+  <Accordion title="Create a specialized agent">
+    ```bash
+    agentic-p new agent react/react-expert -d "Senior React developer with hooks expertise"
+    # Edit primitives/v1/agents/react/react-expert/react-expert.v1.md
+    ```
+  </Accordion>
+  <Accordion title="Create a security hook">
+    ```bash
+    agentic-p new hook security/api-key-filter
+    # Edit the middleware.py to add detection logic
+    ```
+  </Accordion>
+  <Accordion title="Create a meta-prompt">
+    ```bash
+    agentic-p new command meta/generate-agent
+    # This creates a prompt that generates other prompts
+    ```
+  </Accordion>
+</Accordions>
+
+## Related Commands
+
+- [`agentic-p init`](/docs/cli/init) - Initialize repository first
+- [`agentic-p validate`](/docs/cli/validate) - Validate after creation
+- [`agentic-p list`](/docs/cli/list) - See all primitives
