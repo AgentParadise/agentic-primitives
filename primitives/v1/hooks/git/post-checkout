@@ -19,10 +19,10 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SESSION_ID="${CLAUDE_SESSION_ID:-${AEF_SESSION_ID:-unknown}}"
 
-# Detect if this is a new branch
-# prev_ref is all zeros for new branches in some scenarios
-if [[ "$PREV_REF" == "0000000000000000000000000000000000000000" ]] || \
-   ! git rev-parse --verify "$BRANCH@{1}" >/dev/null 2>&1; then
+# Detect if this is a new branch using reflog
+# A branch is newly created if its reflog has only 1 entry (or none)
+REFLOG_COUNT=$(git reflog show "$BRANCH" --format=%H 2>/dev/null | wc -l | tr -d ' ')
+if [[ "${REFLOG_COUNT:-0}" -le 1 ]]; then
   EVENT_TYPE="git_branch_created"
 else
   EVENT_TYPE="git_branch_switched"
