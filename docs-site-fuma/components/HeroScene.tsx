@@ -58,8 +58,6 @@ function useTheme() {
   return isDark;
 }
 
-// Legacy COLORS for backward compatibility
-const COLORS = DARK_COLORS;
 
 function NetworkNodes({ isDark }: { isDark: boolean }) {
   const ref = useRef<THREE.Points>(null);
