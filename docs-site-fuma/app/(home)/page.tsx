@@ -28,7 +28,7 @@ export default function HomePage() {
             </div>
 
             {/* Main Title */}
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent pb-1">
               Agentic Primitives
             </h1>
             <p className="text-lg md:text-xl text-fd-muted-foreground max-w-2xl mb-8">
