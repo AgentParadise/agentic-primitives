@@ -546,6 +546,8 @@ For static export, search must be configured to use the correct API endpoint wit
 
 ### RootProvider Search Configuration
 
+For static export, use `type: 'static'` which downloads the search index once and searches client-side:
+
 ```typescript
 // app/layout.tsx
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
@@ -558,6 +560,7 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
   }}
   search={{
     options: {
+      type: 'static',  // Required for static export
       api: `${basePath}/api/search`,
     },
   }}
@@ -566,7 +569,10 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
 </RootProvider>
 ```
 
-**Why this is needed:** Without this configuration, the search dialog will call `/api/search` instead of `/agentic-primitives/api/search` on GitHub Pages.
+**Key points:**
+- `type: 'static'` tells Fumadocs to download the search index and search locally using Orama
+- `api` must include the basePath for GitHub Pages
+- The search route should use `staticGET` which exports the index, not search results
 
 ## LLM-Friendly Documentation
 

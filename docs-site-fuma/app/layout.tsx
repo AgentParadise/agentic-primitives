@@ -36,6 +36,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           }}
           search={{
             options: {
+              type: 'static',
               api: `${basePath}/api/search`,
             },
           }}
