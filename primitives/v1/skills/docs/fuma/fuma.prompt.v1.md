@@ -396,7 +396,7 @@ docs-site-fuma/
 │   ├── docs/
 │   │   └── layout.tsx      # Docs layout with sidebar
 │   ├── global.css          # Custom CSS enhancements
-│   └── layout.tsx          # Root layout
+│   └── layout.tsx          # Root layout with metadata
 ├── components/
 │   ├── Badge.tsx
 │   ├── FeatureCard.tsx
@@ -408,7 +408,144 @@ docs-site-fuma/
 │       └── index.mdx       # Introduction page
 ├── lib/
 │   ├── cn.ts               # Class name utility
-│   ├── layout.shared.tsx   # Shared layout config
+│   ├── layout.shared.tsx   # Shared layout config (nav, logo)
 │   └── source.ts           # Content source loaders
+├── public/
+│   ├── favicon.svg         # Site favicon
+│   ├── logo-dark.svg       # Dark mode logo
+│   └── logo-light.svg      # Light mode logo
 └── mdx-components.tsx      # MDX component registration
 ```
+
+## GitHub Pages Deployment
+
+### Static Export Configuration
+
+For GitHub Pages deployment, configure `next.config.mjs` to use static export:
+
+```javascript
+// next.config.mjs
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+const isStaticExport = basePath.length > 0;
+
+const config = {
+  reactStrictMode: true,
+  ...(isStaticExport && {
+    output: 'export',
+    basePath,
+    images: { unoptimized: true },
+  }),
+};
+```
+
+### Static Asset Paths (CRITICAL)
+
+**All static assets (images, favicon, logo) must use the basePath prefix for GitHub Pages:**
+
+```typescript
+// lib/layout.shared.tsx
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
+// Logo images
+<Image src={`${basePath}/logo-dark.svg`} ... />
+<Image src={`${basePath}/logo-light.svg`} ... />
+```
+
+```typescript
+// app/layout.tsx
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
+export const metadata: Metadata = {
+  icons: {
+    icon: `${basePath}/favicon.svg`,
+    apple: `${basePath}/favicon.svg`,
+  },
+  metadataBase: new URL('https://yourorg.github.io/repo-name'),
+};
+```
+
+### Search API for Static Export
+
+The search API must use `staticGET` for static export:
+
+```typescript
+// app/api/search/route.ts
+import { createSearchAPI } from 'fumadocs-core/search/server';
+
+export const revalidate = 3600;
+
+export const { staticGET: GET } = createSearchAPI('advanced', {
+  indexes: source.getPages().map((page) => ({
+    title: page.data.title,
+    description: page.data.description,
+    url: page.url,
+    id: page.url,
+    structuredData: page.data.structuredData,
+  })),
+});
+```
+
+### GitHub Actions Workflow
+
+```yaml
+# .github/workflows/docs.yml
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs-site-fuma/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: docs-site-fuma/package-lock.json
+      - run: npm ci
+        working-directory: ./docs-site-fuma
+      - run: npm run build
+        working-directory: ./docs-site-fuma
+        env:
+          NEXT_PUBLIC_BASE_PATH: /repo-name
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs-site-fuma/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
+```
+
+### GitHub Settings
+
+1. Go to **Settings → Pages**
+2. Set **Source** to **GitHub Actions**
+3. The workflow will deploy automatically on push to main
+
+## Common Issues & Solutions
+
+| Issue | Solution |
+|-------|----------|
+| Logo/favicon not loading | Add `basePath` prefix to asset paths |
+| Search API fails on static export | Use `staticGET` instead of `GET` |
+| Dynamic export error | Add `export const dynamic = 'force-static'` |
+| Images broken | Set `images: { unoptimized: true }` |
+| Links broken | Next.js handles internal links automatically with basePath |
