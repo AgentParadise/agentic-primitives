@@ -18,8 +18,13 @@ case "$TARGET_BRANCH" in
   main|master|staging|develop|production|release/*) IS_STABLE="true" ;;
 esac
 
-# Get stats about the merge
-COMMITS_MERGED=$(git log --oneline "$MERGE_HEAD..HEAD" 2>/dev/null | wc -l | tr -d ' ')
+# Get stats about the merge - count commits between merge parents
+# HEAD^1 is the previous tip, HEAD^2 is the merged branch tip
+if git rev-parse HEAD^2 >/dev/null 2>&1; then
+  COMMITS_MERGED=$(git log --oneline HEAD^1..HEAD^2 2>/dev/null | wc -l | tr -d ' ')
+else
+  COMMITS_MERGED="0"
+fi
 COMMITS_MERGED="${COMMITS_MERGED:-0}"
 
 # Emit JSONL event

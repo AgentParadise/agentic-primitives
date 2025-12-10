@@ -84,10 +84,10 @@ def install_hooks(target_dir: Path, script_dir: Path) -> bool:
         if dst.exists() and not dst.is_symlink() and not is_our_hook(dst):
             backup = dst.with_suffix(".bak")
             print(f"  Backing up existing {hook} to {hook}.bak")
-            shutil.move(str(dst), str(backup))
+            shutil.move(dst, backup)
 
         try:
-            shutil.copy2(str(src), str(dst))
+            shutil.copy2(src, dst)
             # Make executable on Unix-like systems
             if os.name != "nt":
                 dst.chmod(dst.stat().st_mode | 0o111)
@@ -128,7 +128,7 @@ def uninstall_hooks(target_dir: Path) -> bool:
 
         # Restore backup if exists
         if backup.exists():
-            shutil.move(str(backup), str(dst))
+            shutil.move(backup, dst)
             print(f"  Restored {hook} from backup")
 
     print("Done!")
