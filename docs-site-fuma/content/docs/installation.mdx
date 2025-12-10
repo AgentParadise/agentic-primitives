@@ -1,0 +1,274 @@
+---
+title: Installation
+description: Detailed installation instructions for agentic-p
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## System Requirements
+
+| Requirement | Minimum Version | Notes |
+|-------------|-----------------|-------|
+| **Rust** | 1.75+ | For building the CLI |
+| **Python** | 3.11+ | Managed automatically by UV |
+| **UV** | Latest | Required for Python hooks |
+| **Just** | Latest | Optional but recommended |
+
+## Installing Dependencies
+
+### Rust
+
+Rust is required to build the agentic-p CLI from source.
+
+<Tabs items={['macOS / Linux', 'Windows']}>
+  <Tab value="macOS / Linux">
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    source $HOME/.cargo/env
+    rustc --version
+    ```
+  </Tab>
+  <Tab value="Windows">
+    Download and run the installer from [rustup.rs](https://rustup.rs), or use winget:
+    ```powershell
+    winget install Rustlang.Rustup
+    ```
+  </Tab>
+</Tabs>
+
+### UV (Python Environment Manager)
+
+UV is **required** for running hooks with proper dependency management.
+
+<Tabs items={['macOS / Linux', 'Windows']}>
+  <Tab value="macOS / Linux">
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    uv --version
+    ```
+  </Tab>
+  <Tab value="Windows">
+    ```powershell
+    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+    uv --version
+    ```
+  </Tab>
+</Tabs>
+
+<Callout type="info" title="Why UV?">
+- ✅ **Cross-platform:** Works on Windows, Mac, and Linux
+- ✅ **Fast:** Rust-based, 10-100x faster than pip
+- ✅ **Isolated:** Manages Python environments per project
+- ✅ **Zero config:** Just works out of the box
+</Callout>
+
+### Just (Task Runner)
+
+Just is a command runner that provides turnkey operations.
+
+<Tabs items={['macOS', 'Linux', 'Windows']}>
+  <Tab value="macOS">
+    ```bash
+    brew install just
+    ```
+  </Tab>
+  <Tab value="Linux">
+    ```bash
+    # Via cargo
+    cargo install just
+
+    # Or via package manager (Ubuntu/Debian)
+    sudo apt install just
+    ```
+  </Tab>
+  <Tab value="Windows">
+    ```powershell
+    winget install Casey.Just
+    ```
+  </Tab>
+</Tabs>
+
+## Installing agentic-p
+
+### From Source (Recommended)
+
+<Steps>
+  <Step>
+    ### Clone the Repository
+    ```bash
+    git clone https://github.com/AgentParadise/agentic-primitives.git
+    cd agentic-primitives
+    ```
+  </Step>
+  <Step>
+    ### Build the CLI
+    ```bash
+    # Using Just (recommended)
+    just build
+
+    # Or directly with Cargo
+    cd cli && cargo build --release
+    ```
+  </Step>
+  <Step>
+    ### Install to PATH
+    ```bash
+    # Using Just
+    just install
+
+    # Or manually
+    cp target/release/agentic-p ~/.local/bin/
+    ```
+  </Step>
+  <Step>
+    ### Verify Installation
+    ```bash
+    agentic-p --version
+    ```
+  </Step>
+</Steps>
+
+### From Release Binary (Coming Soon)
+
+Pre-built binaries will be available:
+
+```bash
+# macOS / Linux
+curl -fsSL https://agentic-p.dev/install.sh | sh
+```
+
+### Via Homebrew (Coming Soon)
+
+```bash
+brew tap AgentParadise/tap
+brew install agentic-p
+```
+
+### Via Cargo
+
+```bash
+cargo install agentic-p
+```
+
+## Post-Installation Setup
+
+### Shell Completions
+
+<Tabs items={['Bash', 'Zsh', 'Fish']}>
+  <Tab value="Bash">
+    ```bash
+    agentic-p completions bash > ~/.local/share/bash-completion/completions/agentic-p
+    ```
+  </Tab>
+  <Tab value="Zsh">
+    ```bash
+    agentic-p completions zsh > ~/.zfunc/_agentic-p
+    # Add to ~/.zshrc: fpath+=~/.zfunc
+    ```
+  </Tab>
+  <Tab value="Fish">
+    ```bash
+    agentic-p completions fish > ~/.config/fish/completions/agentic-p.fish
+    ```
+  </Tab>
+</Tabs>
+
+### Configuration
+
+Create a global configuration file:
+
+```bash
+agentic-p config init --global
+```
+
+This creates `~/.config/agentic-p/config.yaml`.
+
+## Development Setup
+
+For contributing to agentic-p:
+
+```bash
+# Clone the repository
+git clone https://github.com/AgentParadise/agentic-primitives.git
+cd agentic-primitives
+
+# Install git hooks
+just git-hooks-install
+
+# Run the full QA suite
+just qa
+
+# Build in debug mode
+just build
+
+# Run tests
+just test
+```
+
+### Available Just Commands
+
+| Command | Description |
+|---------|-------------|
+| `just` | List all available commands |
+| `just build` | Build debug version |
+| `just build-release` | Build release version |
+| `just install` | Install to PATH |
+| `just test` | Run all tests |
+| `just fmt` | Format code |
+| `just lint` | Run linters |
+| `just qa` | Full QA suite |
+| `just docs` | Launch documentation site |
+
+## Troubleshooting
+
+<Accordions>
+  <Accordion title="Command not found: agentic-p">
+    Ensure the binary is in your PATH:
+    ```bash
+    # Check if installed
+    which agentic-p
+
+    # Add to PATH if needed
+    export PATH="$HOME/.local/bin:$PATH"
+    ```
+  </Accordion>
+  <Accordion title="UV not found">
+    Make sure UV is installed and in your PATH:
+    ```bash
+    # Reinstall UV
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Check installation
+    uv --version
+    ```
+  </Accordion>
+  <Accordion title="Build errors on Windows">
+    Ensure you have the Visual Studio C++ Build Tools:
+    ```powershell
+    winget install Microsoft.VisualStudio.2022.BuildTools
+    ```
+  </Accordion>
+  <Accordion title="Permission denied on install">
+    Use a local directory:
+    ```bash
+    mkdir -p ~/.local/bin
+    cp target/release/agentic-p ~/.local/bin/
+    export PATH="$HOME/.local/bin:$PATH"
+    ```
+  </Accordion>
+</Accordions>
+
+## Next Steps
+
+<Cards>
+  <Card href="/docs/quickstart" title="Quick Start">
+    Create your first primitive
+  </Card>
+  <Card href="/docs/cli" title="CLI Reference">
+    Learn all available commands
+  </Card>
+</Cards>

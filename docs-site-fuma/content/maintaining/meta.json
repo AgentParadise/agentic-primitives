@@ -1,0 +1,10 @@
+{
+  "title": "Maintaining Docs",
+  "pages": [
+    "index",
+    "mermaid",
+    "writing-style",
+    "code-examples",
+    "components"
+  ]
+}

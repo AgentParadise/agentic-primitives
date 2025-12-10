@@ -1,0 +1,343 @@
+---
+title: File Structure
+description: Complete reference for the repository file structure
+---
+
+## Repository Structure
+
+A complete agentic-primitives repository follows this structure:
+
+```
+agentic-primitives/
+├── primitives/               # Primitive definitions
+│   └── v1/                   # Spec version
+│       ├── agents/           # Persistent personas
+│       ├── commands/         # User-invoked actions
+│       │   └── meta/         # Meta-prompts
+│       ├── skills/           # Knowledge patterns
+│       ├── tools/            # External integrations
+│       └── hooks/            # Lifecycle handlers
+│
+├── providers/                # Provider configurations
+│   ├── models/               # LLM providers
+│   │   ├── anthropic/
+│   │   ├── openai/
+│   │   └── google/
+│   └── agents/               # Agent runtime providers
+│       ├── claude-code/
+│       └── cursor/
+│
+├── specs/                    # JSON schemas
+│   └── v1/
+│       ├── prompt-meta.schema.json
+│       ├── tool-meta.schema.json
+│       └── hook-meta.schema.json
+│
+├── build/                    # Generated output
+│   ├── claude/
+│   └── openai/
+│
+├── primitives.config.yaml    # Repository config
+└── agentic.yaml             # Project config (optional)
+```
+
+---
+
+## Primitives Directory
+
+### Agents
+
+```
+primitives/v1/agents/<category>/<name>/
+├── <name>.meta.yaml          # Metadata and versions
+├── <name>.v1.md              # Version 1 prompt
+├── <name>.v2.md              # Version 2 prompt
+└── README.md                 # Optional documentation
+```
+
+**Example:**
+```
+primitives/v1/agents/python/python-pro/
+├── python-pro.meta.yaml
+├── python-pro.v1.md
+├── python-pro.v2.md
+└── README.md
+```
+
+### Commands
+
+```
+primitives/v1/commands/<category>/<name>/
+├── <name>.meta.yaml
+├── <name>.v1.md
+└── <name>.v2.md
+```
+
+**Meta-prompts** (prompt generators) go in a special `meta/` category:
+```
+primitives/v1/commands/meta/<name>/
+├── <name>.meta.yaml
+└── <name>.v1.md
+```
+
+### Skills
+
+```
+primitives/v1/skills/<category>/<name>/
+├── <name>.meta.yaml
+├── <name>.v1.md
+└── <name>.v2.md
+```
+
+### Tools
+
+```
+primitives/v1/tools/<category>/<name>/
+├── <name>.tool.yaml          # Tool specification
+├── impl.local.py             # Local implementation
+├── impl.local.ts             # Alternative: TypeScript
+├── impl.claude.yaml          # Claude MCP binding
+├── impl.openai.json          # OpenAI function binding
+├── tests/                    # Tool tests
+│   └── test_<name>.py
+└── README.md
+```
+
+### Hooks
+
+```
+primitives/v1/hooks/<category>/<name>/
+├── <name>.hook.yaml          # Hook configuration
+├── middleware.py             # Python implementation
+├── middleware.ts             # Alternative: TypeScript
+└── tests/
+    └── test_<name>.py
+```
+
+---
+
+## Providers Directory
+
+### Model Providers
+
+```
+providers/models/<provider>/
+├── config.yaml               # Provider metadata
+├── <model-1>.yaml            # Model configuration
+├── <model-2>.yaml
+└── README.md
+```
+
+**Example:** `providers/models/anthropic/`
+```yaml
+# config.yaml
+provider: anthropic
+display_name: "Anthropic"
+api_base: "https://api.anthropic.com"
+
+# claude-4-sonnet.yaml
+provider: anthropic
+name: claude-4-sonnet
+display_name: "Claude 4 Sonnet"
+capabilities:
+  max_tokens: 200000
+  vision: true
+  tool_use: true
+```
+
+### Agent Providers
+
+```
+providers/agents/<provider>/
+├── config.yaml               # Agent metadata
+├── hooks-supported.yaml      # Supported hook events
+├── hooks-format.yaml         # hooks.json format spec
+└── hooks-config/             # Per-primitive configs
+    ├── bash-validator.yaml
+    └── file-security.yaml
+```
+
+---
+
+## Specs Directory
+
+JSON schemas for validation:
+
+```
+specs/v1/
+├── prompt-meta.schema.json   # Agents, commands, skills
+├── tool-meta.schema.json     # Tools
+├── hook-meta.schema.json     # Hooks
+├── model-config.schema.json  # Model configs
+├── provider-impl.schema.json # Provider implementations
+└── README.md
+```
+
+---
+
+## Build Directory
+
+Generated output from `agentic-p build`:
+
+```
+build/<provider>/
+├── .agentic-manifest.yaml    # Tracks installed primitives
+├── hooks/
+│   ├── hooks.json            # Hook configuration
+│   └── <category>/
+│       └── <name>.py
+├── commands/
+│   └── <category>/
+│       └── <name>.md
+├── agents/
+│   └── <category>/
+│       └── <name>.md
+└── skills/
+    └── <category>/
+        └── <name>.md
+```
+
+---
+
+## Configuration Files
+
+### primitives.config.yaml
+
+Repository-level configuration:
+
+```yaml
+# Repository metadata
+spec_version: "v1"
+
+repository:
+  name: "my-primitives"
+  description: "My agentic primitives collection"
+  url: "https://github.com/user/my-primitives"
+
+# Default settings for new primitives
+defaults:
+  model:
+    provider: anthropic
+    name: claude-4-sonnet
+
+# Build configuration
+build:
+  output_dir: "build"
+  providers:
+    - claude
+    - openai
+
+# Validation settings
+validation:
+  strict: true
+  check_hashes: true
+```
+
+### agentic.yaml
+
+Project-level configuration (for consumers):
+
+```yaml
+# Version pinning
+primitives:
+  python/python-pro: 2
+  qa/review: 1
+  security/bash-validator: latest
+
+# Override defaults
+defaults:
+  model:
+    provider: openai
+    name: gpt-4
+
+# Local extensions
+local_primitives:
+  - ./custom-primitives/
+```
+
+---
+
+## Naming Conventions
+
+### File Names
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Meta file | `<name>.meta.yaml` | `python-pro.meta.yaml` |
+| Prompt file | `<name>.v<N>.md` | `python-pro.v2.md` |
+| Tool spec | `<name>.tool.yaml` | `run-tests.tool.yaml` |
+| Hook spec | `<name>.hook.yaml` | `bash-validator.hook.yaml` |
+| Implementation | `impl.<provider>.<ext>` | `impl.local.py` |
+
+### Directory Names
+
+- **Always kebab-case**: `python-pro`, `code-review`, `bash-validator`
+- **Categories**: Short, descriptive: `python`, `qa`, `security`, `analytics`
+- **No spaces or underscores**
+
+### Version Files
+
+Prompt versions use sequential integers:
+```
+<name>.v1.md   # Version 1
+<name>.v2.md   # Version 2
+<name>.v3.md   # Version 3
+```
+
+---
+
+## Special Files
+
+### README.md
+
+Optional documentation in primitive directories:
+
+```markdown
+# Python Pro Agent
+
+Expert Python developer with modern best practices.
+
+## Usage
+
+@python-pro Review my FastAPI code
+
+## Changelog
+
+- v2: Added async patterns expertise
+- v1: Initial version
+```
+
+### tests/
+
+Test files for tools and hooks:
+
+```
+<primitive>/tests/
+├── test_<name>.py
+├── fixtures/
+│   ├── input_1.json
+│   └── input_2.json
+└── conftest.py
+```
+
+### .gitignore
+
+Recommended entries:
+
+```bash
+# Build output
+build/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+```

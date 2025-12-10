@@ -1,0 +1,287 @@
+---
+title: agentic-p inspect
+description: Show detailed primitive information
+---
+
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+
+## Overview
+
+The `inspect` command displays detailed information about a specific primitive, including metadata, versions, and content.
+
+## Usage
+
+```bash
+agentic-p inspect <PATH> [OPTIONS]
+```
+
+## Arguments
+
+| Argument | Description | Required |
+|----------|-------------|----------|
+| `<PATH>` | Primitive path (e.g., `python/python-pro`) | Yes |
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--version <N>` | Inspect specific version | Default version |
+| `--show-content` | Display prompt/implementation content | `false` |
+| `--show-hash` | Display BLAKE3 hash | `false` |
+| `--format <FMT>` | Output format: `pretty`, `json`, `yaml` | `pretty` |
+| `-v, --verbose` | Show all available information | `false` |
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Inspect an agent
+agentic-p inspect python/python-pro
+
+# Inspect a hook
+agentic-p inspect security/bash-validator
+
+# Inspect a command
+agentic-p inspect qa/review
+```
+
+### With Options
+
+```bash
+# Show specific version
+agentic-p inspect python/python-pro --version 1
+
+# Show content
+agentic-p inspect python/python-pro --show-content
+
+# Show hash
+agentic-p inspect python/python-pro --show-hash
+
+# Full verbose output
+agentic-p inspect python/python-pro --verbose
+```
+
+### Output Formats
+
+```bash
+# JSON output
+agentic-p inspect python/python-pro --format json
+
+# YAML output
+agentic-p inspect python/python-pro --format yaml
+```
+
+## Output Examples
+
+### Pretty Format (Default)
+
+```
+╭─────────────────────────────────────────────────╮
+│  python/python-pro                              │
+╰─────────────────────────────────────────────────╯
+
+Type:        agent
+Category:    python
+Name:        python-pro
+Description: Expert Python developer with modern best practices
+
+Model:
+  Provider:  anthropic
+  Name:      claude-4-sonnet
+
+Versions:
+  v1  deprecated  2025-11-13  Initial version
+  v2  active      2025-12-09  Added async patterns expertise
+
+Default Version: 2
+
+Path: primitives/v1/agents/python/python-pro
+```
+
+### With Content
+
+```bash
+agentic-p inspect python/python-pro --show-content
+```
+
+```
+╭─────────────────────────────────────────────────╮
+│  python/python-pro                              │
+╰─────────────────────────────────────────────────╯
+
+Type:        agent
+...
+
+Content (v2):
+──────────────────────────────────────────────────
+# Python Pro Agent
+
+You are an expert Python developer with deep knowledge of:
+- Modern Python (3.11+) best practices
+- Type hints and static analysis (mypy, pyright)
+- Testing with pytest
+- Async/await patterns
+- Package management with UV and Poetry
+
+## Guidelines
+
+1. Always use type hints for function signatures
+2. Follow PEP 8 style guidelines
+3. Write comprehensive docstrings (Google style)
+4. Suggest tests for new functionality
+5. Use modern Python features (match statements, dataclasses)
+──────────────────────────────────────────────────
+```
+
+### With Hash
+
+```bash
+agentic-p inspect python/python-pro --show-hash
+```
+
+```
+╭─────────────────────────────────────────────────╮
+│  python/python-pro                              │
+╰─────────────────────────────────────────────────╯
+
+Type:        agent
+...
+
+Versions:
+  v1  deprecated  2025-11-13
+      Hash: blake3:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+
+  v2  active      2025-12-09
+      Hash: blake3:a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a
+```
+
+### JSON Format
+
+```json
+{
+  "type": "agent",
+  "category": "python",
+  "name": "python-pro",
+  "description": "Expert Python developer with modern best practices",
+  "path": "primitives/v1/agents/python/python-pro",
+  "model": {
+    "provider": "anthropic",
+    "name": "claude-4-sonnet"
+  },
+  "default_version": 2,
+  "versions": [
+    {
+      "version": 1,
+      "status": "deprecated",
+      "hash": "blake3:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "created": "2025-11-13",
+      "notes": "Initial version"
+    },
+    {
+      "version": 2,
+      "status": "active",
+      "hash": "blake3:a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a",
+      "created": "2025-12-09",
+      "notes": "Added async patterns expertise"
+    }
+  ]
+}
+```
+
+## Inspecting Different Types
+
+### Hook Inspection
+
+```bash
+agentic-p inspect security/bash-validator --verbose
+```
+
+```
+╭─────────────────────────────────────────────────╮
+│  security/bash-validator                        │
+╰─────────────────────────────────────────────────╯
+
+Type:        hook
+Category:    security
+Name:        bash-validator
+Description: Validates bash commands for dangerous operations
+
+Events:
+  - PreToolUse
+
+Action:      block
+
+Matcher:
+  Tool Names: Bash, Shell, Execute
+
+Implementation:
+  Runtime:    python
+  Entrypoint: middleware.py
+
+Path: primitives/v1/hooks/security/bash-validator
+```
+
+### Tool Inspection
+
+```bash
+agentic-p inspect shell/run-tests --verbose
+```
+
+```
+╭─────────────────────────────────────────────────╮
+│  shell/run-tests                                │
+╰─────────────────────────────────────────────────╯
+
+Type:        tool
+Category:    shell
+Name:        run-tests
+Description: Execute test suite
+
+Input Schema:
+  path:    string (required) - Test path
+  verbose: boolean (optional) - Verbose output
+
+Output Schema:
+  passed:  integer - Number of passed tests
+  failed:  integer - Number of failed tests
+  output:  string - Test output
+
+Implementations:
+  - local (python)
+  - claude (mcp)
+
+Path: primitives/v1/tools/shell/run-tests
+```
+
+## Common Use Cases
+
+<Accordions>
+  <Accordion title="Check version history">
+    ```bash
+    agentic-p inspect python/python-pro --verbose
+    ```
+  </Accordion>
+  <Accordion title="Verify hash integrity">
+    ```bash
+    agentic-p inspect python/python-pro --show-hash
+    agentic-p validate --check-hashes
+    ```
+  </Accordion>
+  <Accordion title="Review prompt content">
+    ```bash
+    agentic-p inspect python/python-pro --show-content --version 2
+    ```
+  </Accordion>
+  <Accordion title="Export for documentation">
+    ```bash
+    agentic-p inspect python/python-pro --format yaml > python-pro-spec.yaml
+    ```
+  </Accordion>
+</Accordions>
+
+## Related Commands
+
+- [`agentic-p list`](/docs/cli/list) - List all primitives
+- [`agentic-p validate`](/docs/cli/validate) - Validate primitive
+- [`agentic-p version`](/docs/cli/version) - Manage versions
