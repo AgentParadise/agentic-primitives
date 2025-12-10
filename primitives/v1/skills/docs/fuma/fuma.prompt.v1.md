@@ -540,12 +540,88 @@ jobs:
 2. Set **Source** to **GitHub Actions**
 3. The workflow will deploy automatically on push to main
 
+## Search Configuration
+
+For static export, search must be configured to use the correct API endpoint with basePath:
+
+### RootProvider Search Configuration
+
+```typescript
+// app/layout.tsx
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
+<RootProvider
+  theme={{
+    defaultTheme: 'dark',
+    attribute: 'class',
+    enableSystem: true,
+  }}
+  search={{
+    options: {
+      api: `${basePath}/api/search`,
+    },
+  }}
+>
+  {children}
+</RootProvider>
+```
+
+**Why this is needed:** Without this configuration, the search dialog will call `/api/search` instead of `/agentic-primitives/api/search` on GitHub Pages.
+
+## LLM-Friendly Documentation
+
+Fumadocs supports generating plain text exports for LLMs via route handlers.
+
+### Full Text Export Route
+
+```typescript
+// app/llms-full.txt/route.ts
+import { source } from '@/lib/source';
+import { NextResponse } from 'next/server';
+
+export const revalidate = 3600;
+
+export function GET() {
+  const pages = source.getPages();
+  
+  const content = pages
+    .map((page) => {
+      return `# ${page.data.title}\n\n${page.data.description || ''}\n\nURL: ${page.url}\n\n---\n`;
+    })
+    .join('\n');
+
+  return new NextResponse(content, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  });
+}
+```
+
+Access at: `https://your-site.github.io/repo-name/llms-full.txt`
+
 ## Common Issues & Solutions
 
 | Issue | Solution |
 |-------|----------|
-| Logo/favicon not loading | Add `basePath` prefix to asset paths |
-| Search API fails on static export | Use `staticGET` instead of `GET` |
+| Logo/favicon not loading | Add `basePath` prefix to asset paths in layout.tsx and layout.shared.tsx |
+| Search not working | Configure `search.options.api` with basePath in RootProvider |
+| Search API fails on static export | Use `staticGET` instead of `GET` in route handler |
 | Dynamic export error | Add `export const dynamic = 'force-static'` |
-| Images broken | Set `images: { unoptimized: true }` |
+| Images broken | Set `images: { unoptimized: true }` in next.config.mjs |
 | Links broken | Next.js handles internal links automatically with basePath |
+| Three.js not rendering | Ensure `'use client'` directive and proper Canvas setup |
+| Theme not detected | Use MutationObserver to watch `document.documentElement.classList` |
+
+## Checklist for New Fumadocs Sites
+
+- [ ] Configure `next.config.mjs` with basePath and static export
+- [ ] Add basePath to logo images in `layout.shared.tsx`
+- [ ] Add basePath to favicon in `app/layout.tsx`
+- [ ] Configure search API endpoint with basePath in RootProvider
+- [ ] Use `staticGET` for search API route
+- [ ] Set up GitHub Actions workflow with `NEXT_PUBLIC_BASE_PATH`
+- [ ] Enable GitHub Pages with "GitHub Actions" source
+- [ ] Add Three.js hero scene (optional)
+- [ ] Register custom components in `mdx-components.tsx`
+- [ ] Add LLM-friendly text export route (optional)

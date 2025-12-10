@@ -2,6 +2,7 @@ import { RootProvider } from 'fumadocs-ui/provider/next';
 import './global.css';
 import { Inter } from 'next/font/google';
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://agentparadise.github.io/agentic-primitives'),
 };
 
-export default function Layout({ children }: LayoutProps<'/'>) {
+export default function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={inter.className} suppressHydrationWarning>
       <body className="flex flex-col min-h-screen">
@@ -32,6 +33,11 @@ export default function Layout({ children }: LayoutProps<'/'>) {
             defaultTheme: 'dark',
             attribute: 'class',
             enableSystem: true,
+          }}
+          search={{
+            options: {
+              api: `${basePath}/api/search`,
+            },
           }}
         >
           {children}
