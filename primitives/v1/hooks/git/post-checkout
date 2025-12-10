@@ -1,0 +1,34 @@
+#!/bin/bash
+# Post-checkout hook - emit branch events
+#
+# Args: $1=prev_ref, $2=new_ref, $3=is_branch_checkout (1=branch, 0=file)
+#
+# This hook tracks branch checkouts and creation for observability.
+
+PREV_REF="$1"
+NEW_REF="$2"
+IS_BRANCH="$3"
+
+# Only track branch checkouts, not file checkouts
+[[ "$IS_BRANCH" != "1" ]] && exit 0
+
+ANALYTICS_PATH="${ANALYTICS_PATH:-.agentic/analytics/events.jsonl}"
+mkdir -p "$(dirname "$ANALYTICS_PATH")"
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SESSION_ID="${CLAUDE_SESSION_ID:-${AEF_SESSION_ID:-unknown}}"
+
+# Detect if this is a new branch
+# prev_ref is all zeros for new branches in some scenarios
+if [[ "$PREV_REF" == "0000000000000000000000000000000000000000" ]] || \
+   ! git rev-parse --verify "$BRANCH@{1}" >/dev/null 2>&1; then
+  EVENT_TYPE="git_branch_created"
+else
+  EVENT_TYPE="git_branch_switched"
+fi
+
+# Emit JSONL event
+echo "{\"timestamp\":\"$TIMESTAMP\",\"event_type\":\"$EVENT_TYPE\",\"session_id\":\"$SESSION_ID\",\"branch\":\"$BRANCH\",\"prev_ref\":\"$PREV_REF\",\"new_ref\":\"$NEW_REF\"}" >> "$ANALYTICS_PATH"
+
+exit 0

@@ -23,10 +23,7 @@ def log_analytics(event: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a") as f:
             f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
+                json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), **event}) + "\n"
             )
     except Exception:
         pass
@@ -44,16 +41,20 @@ def main() -> None:
 
         event = json.loads(input_data)
 
+        # Get content preview (first 200 chars)
+        message = event.get("message", "")
+        content_preview = message[:200] if message else ""
+
         log_analytics(
             {
-                "event_type": "notification",
+                "event_type": "notification_sent",
                 "handler": "notification",
                 "hook_event": event.get("hook_event_name", "Notification"),
                 "session_id": event.get("session_id"),
                 "notification_type": event.get(
                     "matcher"
                 ),  # permission_prompt, idle_prompt, error, warning
-                "message": event.get("message"),
+                "content_preview": content_preview,
                 "audit": {
                     "transcript_path": event.get("transcript_path"),
                     "cwd": event.get("cwd"),
