@@ -41,9 +41,13 @@ def main() -> None:
 
         event = json.loads(input_data)
 
-        # Get content preview (first 200 chars)
+        # Get content preview (first 200 bytes, safely truncated for UTF-8)
         message = event.get("message", "")
-        content_preview = message[:200] if message else ""
+        content_preview = (
+            message.encode("utf-8")[:200].decode("utf-8", errors="ignore")
+            if message
+            else ""
+        )
 
         log_analytics(
             {

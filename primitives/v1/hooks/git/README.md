@@ -11,6 +11,16 @@ These hooks capture git operations and emit JSONL events to `.agentic/analytics/
 - **Code Velocity**: Monitor code reaching stable branches
 - **Workflow Patterns**: Analyze development patterns over time
 
+## Requirements
+
+- **Python 3.8+** - Required for the installer. Also used for JSON escaping in hooks (with bash fallback if unavailable).
+- **Git 2.9+** - For global hooks support via `core.hooksPath`.
+- **Bash** - The hooks are bash scripts.
+
+### Windows Notes
+
+On Windows, these hooks require **Git Bash** (included with Git for Windows) to execute. The hooks are bash scripts and will not run directly in PowerShell or CMD. Git for Windows automatically uses Git Bash to run hooks, so no additional configuration is needed.
+
 ## Installation
 
 ### Single Repository
