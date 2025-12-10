@@ -1,0 +1,380 @@
+---
+title: Create a Skill
+description: Build reusable knowledge patterns for testing with pytest
+---
+
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## What You'll Build
+
+In this guide, you'll create a **pytest-patterns Skill** — a reusable knowledge module containing testing best practices that any agent can reference.
+
+<Callout type="info">
+**Time:** ~10 minutes
+**Prerequisites:** agentic-p installed, repository initialized
+</Callout>
+
+## What Are Skills?
+
+Skills are **reusable knowledge patterns** that agents can reference to enhance their capabilities. Unlike agents (persistent personas), skills are:
+
+- **Modular**: Focused on a specific domain
+- **Composable**: Can be combined with agents and commands
+- **Referenced**: Not invoked directly, but available to agents
+
+## Step 1: Create the Skill
+
+```bash
+agentic-p new skill testing/pytest-patterns -d "Modern pytest testing patterns and best practices"
+```
+
+This creates:
+```
+primitives/v1/skills/testing/pytest-patterns/
+├── pytest-patterns.meta.yaml
+└── pytest-patterns.v1.md
+```
+
+## Step 2: Configure Metadata
+
+Edit `pytest-patterns.meta.yaml`:
+
+```yaml
+spec_version: "v1"
+type: skill
+name: pytest-patterns
+description: "Modern pytest testing patterns and best practices"
+
+versions:
+  - version: 1
+    status: active
+    hash: blake3:pending
+    created: "2025-12-09"
+    notes: "Initial version - core pytest patterns"
+
+default_version: 1
+
+# Skills don't need model specifications
+# They're referenced by agents, not invoked directly
+
+categories:
+  - testing
+  - python
+  - quality
+
+# Optional: Related skills
+related:
+  - testing/mocking-patterns
+  - testing/fixtures-guide
+```
+
+## Step 3: Write the Skill Content
+
+Edit `pytest-patterns.v1.md`:
+
+````markdown
+# pytest Testing Patterns
+
+## Test Organization
+
+### Directory Structure
+
+```
+tests/
+├── conftest.py           # Shared fixtures
+├── unit/                 # Unit tests
+│   ├── test_models.py
+│   └── test_utils.py
+├── integration/          # Integration tests
+│   └── test_api.py
+└── e2e/                  # End-to-end tests
+    └── test_workflows.py
+```
+
+### Naming Conventions
+
+- Test files: `test_*.py` or `*_test.py`
+- Test functions: `test_<action>_<scenario>_<expected>`
+- Test classes: `Test<Subject>`
+
+```python
+# Good naming examples
+def test_user_login_with_valid_credentials_succeeds():
+    ...
+
+def test_user_login_with_invalid_password_returns_401():
+    ...
+
+class TestUserAuthentication:
+    def test_login_creates_session(self):
+        ...
+```
+
+## Fixture Patterns
+
+### Basic Fixture
+
+```python
+import pytest
+
+@pytest.fixture
+def user():
+    """Create a test user."""
+    return User(name="test", email="test@example.com")
+```
+
+### Fixture with Cleanup
+
+```python
+@pytest.fixture
+def database_connection():
+    """Provide database connection with cleanup."""
+    conn = create_connection()
+    yield conn
+    conn.close()
+```
+
+### Parametrized Fixture
+
+```python
+@pytest.fixture(params=["sqlite", "postgres"])
+def database(request):
+    """Test with multiple database backends."""
+    return create_database(request.param)
+```
+
+### Factory Fixture
+
+```python
+@pytest.fixture
+def create_user():
+    """Factory for creating test users."""
+    def _create_user(name="test", **kwargs):
+        return User(name=name, **kwargs)
+    return _create_user
+
+def test_with_factory(create_user):
+    user1 = create_user(name="alice")
+    user2 = create_user(name="bob", admin=True)
+```
+
+## Parametrization
+
+### Basic Parametrize
+
+```python
+@pytest.mark.parametrize("input,expected", [
+    ("hello", "HELLO"),
+    ("world", "WORLD"),
+    ("", ""),
+])
+def test_uppercase(input, expected):
+    assert input.upper() == expected
+```
+
+### Multiple Parameters
+
+```python
+@pytest.mark.parametrize("x", [1, 2, 3])
+@pytest.mark.parametrize("y", [10, 20])
+def test_multiply(x, y):
+    # Tests all combinations: (1,10), (1,20), (2,10), ...
+    assert x * y == x * y
+```
+
+### IDs for Clarity
+
+```python
+@pytest.mark.parametrize("user,expected", [
+    pytest.param(User(admin=True), True, id="admin-user"),
+    pytest.param(User(admin=False), False, id="regular-user"),
+])
+def test_permissions(user, expected):
+    assert user.can_delete() == expected
+```
+
+## Mocking Patterns
+
+### Patch Decorator
+
+```python
+from unittest.mock import patch
+
+@patch("myapp.services.send_email")
+def test_registration_sends_email(mock_send):
+    register_user("test@example.com")
+    mock_send.assert_called_once_with("test@example.com")
+```
+
+### Context Manager
+
+```python
+def test_api_call():
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.json.return_value = {"status": "ok"}
+        result = fetch_status()
+        assert result == "ok"
+```
+
+### pytest-mock (Preferred)
+
+```python
+def test_with_mocker(mocker):
+    mock_api = mocker.patch("myapp.api.fetch")
+    mock_api.return_value = {"data": "test"}
+
+    result = process_data()
+
+    mock_api.assert_called_once()
+    assert result == "processed: test"
+```
+
+## Async Testing
+
+```python
+import pytest
+
+@pytest.mark.asyncio
+async def test_async_function():
+    result = await fetch_data()
+    assert result is not None
+
+@pytest.fixture
+async def async_client():
+    async with AsyncClient() as client:
+        yield client
+
+@pytest.mark.asyncio
+async def test_with_async_fixture(async_client):
+    response = await async_client.get("/health")
+    assert response.status_code == 200
+```
+
+## Markers
+
+### Custom Markers
+
+```python
+# conftest.py
+def pytest_configure(config):
+    config.addinivalue_line("markers", "slow: marks tests as slow")
+    config.addinivalue_line("markers", "integration: integration tests")
+
+# test_example.py
+@pytest.mark.slow
+def test_large_dataset():
+    ...
+
+@pytest.mark.integration
+def test_database_query():
+    ...
+```
+
+### Running by Marker
+
+```bash
+pytest -m "not slow"           # Skip slow tests
+pytest -m "integration"        # Only integration tests
+pytest -m "not integration"    # Skip integration tests
+```
+
+## Exception Testing
+
+```python
+def test_raises_value_error():
+    with pytest.raises(ValueError) as exc_info:
+        validate_email("invalid")
+
+    assert "invalid email" in str(exc_info.value)
+
+def test_raises_with_match():
+    with pytest.raises(ValueError, match=r"must be \d+"):
+        parse_number("abc")
+```
+
+## Coverage Best Practices
+
+```bash
+# Run with coverage
+pytest --cov=myapp --cov-report=html --cov-report=term
+
+# Fail if coverage below threshold
+pytest --cov=myapp --cov-fail-under=80
+```
+
+### Coverage Configuration
+
+```ini
+# pyproject.toml
+[tool.coverage.run]
+branch = true
+source = ["myapp"]
+omit = ["tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+```
+````
+
+## Step 4: Validate and Build
+
+```bash
+# Validate
+agentic-p validate
+
+# Build
+agentic-p build --provider claude
+
+# Install
+agentic-p install --provider claude --project
+```
+
+## How Skills Are Used
+
+Skills are automatically available to agents. When an agent needs testing knowledge, it can reference this skill:
+
+```
+@python-pro Please write tests for this User model using pytest best practices.
+```
+
+The agent can access the pytest-patterns skill to provide high-quality testing guidance.
+
+## Best Practices
+
+<Accordions>
+  <Accordion title="Keep skills focused">
+    One skill = one domain. Create separate skills for pytest, mocking, fixtures, etc.
+  </Accordion>
+  <Accordion title="Include runnable examples">
+    All code examples should be copy-paste ready and runnable.
+  </Accordion>
+  <Accordion title="Document the 'why'">
+    Explain when to use each pattern, not just how.
+  </Accordion>
+  <Accordion title="Keep current">
+    Update skills as libraries evolve. Version appropriately.
+  </Accordion>
+</Accordions>
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Create a Command"
+    href="/docs/guides/create-command"
+  >
+    Create a code review command
+  </Card>
+  <Card
+    title="Create a Hook"
+    href="/docs/guides/create-hook"
+  >
+    Add safety middleware
+  </Card>
+</Cards>

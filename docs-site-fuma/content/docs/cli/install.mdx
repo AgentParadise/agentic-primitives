@@ -1,0 +1,258 @@
+---
+title: agentic-p install
+description: Install primitives to project or global location
+---
+
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## Overview
+
+The `install` command deploys built primitives to your project's provider directory (e.g., `.claude/`) or a global location.
+
+## Usage
+
+```bash
+agentic-p install [OPTIONS]
+```
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --provider <NAME>` | Target provider: `claude`, `openai`, `cursor` | Required |
+| `--project` | Install to project directory | `false` |
+| `--global` | Install to global directory | `false` |
+| `--target <DIR>` | Custom installation directory | Auto |
+| `--build-dir <DIR>` | Source build directory | `build/<provider>` |
+| `--dry-run` | Preview changes without installing | `false` |
+| `--force` | Overwrite without confirmation | `false` |
+| `-v, --verbose` | Show detailed output | `false` |
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Install to project
+agentic-p install --provider claude --project
+
+# Install globally
+agentic-p install --provider claude --global
+
+# Custom target
+agentic-p install --provider claude --target ~/.config/claude
+```
+
+### Preview Changes
+
+```bash
+# Dry run
+agentic-p install --provider claude --project --dry-run --verbose
+```
+
+### Force Install
+
+```bash
+# Skip confirmation
+agentic-p install --provider claude --project --force
+```
+
+## Installation Targets
+
+### Project Installation (`--project`)
+
+Installs to the current project's provider directory:
+
+| Provider | Directory |
+|----------|-----------|
+| Claude | `.claude/` |
+| OpenAI | `.openai/` |
+| Cursor | `.cursor/` |
+
+### Global Installation (`--global`)
+
+Installs to the user's global provider directory:
+
+| Provider | Directory |
+|----------|-----------|
+| Claude | `~/.claude/` |
+| OpenAI | `~/.config/openai/` |
+| Cursor | `~/.cursor/` |
+
+## Smart Installation
+
+The install command is **smart** — it preserves local customizations:
+
+<Steps>
+  <Step>
+    ### Compare
+    Compares manifest hashes between source and target.
+  </Step>
+  <Step>
+    ### Identify Changes
+    Only primitives with changed hashes are updated.
+  </Step>
+  <Step>
+    ### Preserve Local
+    Files not in the manifest are preserved.
+  </Step>
+  <Step>
+    ### Install
+    Only changed primitives are copied.
+  </Step>
+</Steps>
+
+## Dry Run Output
+
+```bash
+agentic-p install --provider claude --project --dry-run --verbose
+```
+
+```
+Dry run - No files will be changed
+
+Target: .claude/
+
+Changes:
+  UPDATE  hooks/security/bash-validator.py
+          (hash changed: blake3:9f86d081... → blake3:a7ffc6f8...)
+
+  ADD     hooks/analytics/event-logger.py
+          (new primitive)
+
+  SKIP    commands/qa/review.md
+          (unchanged)
+
+  PRESERVE  commands/custom/my-command.md
+            (local file, not in manifest)
+
+Summary:
+  1 file(s) would be updated
+  1 file(s) would be added
+  1 file(s) unchanged
+  1 file(s) preserved (local)
+```
+
+## Preserving Local Files
+
+Files not managed by agentic-p are preserved:
+
+```
+.claude/
+├── hooks/
+│   ├── hooks.json              # Managed - may be updated
+│   └── security/
+│       └── bash-validator.py   # Managed - may be updated
+├── commands/
+│   ├── qa/
+│   │   └── review.md           # Managed - may be updated
+│   └── custom/
+│       └── my-local-cmd.md     # LOCAL - always preserved!
+└── settings.json               # LOCAL - always preserved!
+```
+
+<Callout type="info">
+Create local commands in directories not used by primitives, or add them to `.agentic-ignore`.
+</Callout>
+
+## Manifest Tracking
+
+The `.agentic-manifest.yaml` tracks installed primitives:
+
+```yaml
+# .claude/.agentic-manifest.yaml
+spec_version: "v1"
+installed_at: "2025-12-09T10:30:00Z"
+source: "/path/to/primitives"
+
+primitives:
+  - type: hook
+    name: bash-validator
+    version: 1
+    hash: blake3:9f86d081...
+    path: hooks/security/bash-validator.py
+
+  - type: command
+    name: review
+    version: 1
+    hash: blake3:def456...
+    path: commands/qa/review.md
+```
+
+## Workflow
+
+<Steps>
+  <Step>
+    ### Build
+    ```bash
+    agentic-p build --provider claude
+    ```
+  </Step>
+  <Step>
+    ### Preview
+    ```bash
+    agentic-p install --provider claude --project --dry-run
+    ```
+  </Step>
+  <Step>
+    ### Install
+    ```bash
+    agentic-p install --provider claude --project
+    ```
+  </Step>
+  <Step>
+    ### Verify
+    ```bash
+    ls -la .claude/
+    ```
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+<Accordions>
+  <Accordion title="Update project primitives">
+    ```bash
+    agentic-p build --provider claude
+    agentic-p install --provider claude --project
+    ```
+  </Accordion>
+  <Accordion title="Share globally">
+    ```bash
+    agentic-p build --provider claude
+    agentic-p install --provider claude --global
+    # Available in all projects
+    ```
+  </Accordion>
+  <Accordion title="CI/CD deployment">
+    ```bash
+    agentic-p validate
+    agentic-p build --provider claude --clean
+    agentic-p install --provider claude --project --force
+    ```
+  </Accordion>
+</Accordions>
+
+## Error Handling
+
+### Target exists without manifest
+
+```
+Warning: Target .claude/ exists but has no manifest.
+         Use --force to overwrite, or --dry-run to preview.
+```
+
+### Hash verification failed
+
+```
+Error: Installed primitive hash doesn't match manifest.
+       Target may have been modified locally.
+       Use --force to overwrite.
+```
+
+## Related Commands
+
+- [`agentic-p build`](/docs/cli/build) - Build before installing
+- [`agentic-p validate`](/docs/cli/validate) - Validate before building

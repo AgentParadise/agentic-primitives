@@ -121,3 +121,9 @@ docs/_reference/agentic-prompts/
 docs/_reference/agentic-tools/
 docs/_reference/tac-12_multi-agent-orchestration/
 docs/_reference/*.md
+
+# Temporary planning files
+PROJECT-PLAN_*.md
+
+# Cursor config
+.cursorignore
