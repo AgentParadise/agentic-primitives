@@ -2,16 +2,17 @@ import { createMDX } from 'fumadocs-mdx/next';
 
 const withMDX = createMDX();
 
-// Check if building for GitHub Pages
-const isGitHubPages = process.env.NEXT_PUBLIC_BASE_PATH === '/agentic-primitives';
+// Get basePath from environment variable (set in GitHub Actions workflow)
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+const isStaticExport = basePath.length > 0;
 
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
-  // Static export for GitHub Pages
-  ...(isGitHubPages && {
+  // Static export for GitHub Pages (when NEXT_PUBLIC_BASE_PATH is set)
+  ...(isStaticExport && {
     output: 'export',
-    basePath: '/agentic-primitives',
+    basePath,
     images: {
       unoptimized: true,
     },
