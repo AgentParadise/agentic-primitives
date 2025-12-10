@@ -1,20 +1,23 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import Image from 'next/image';
 
+// Get basePath for static export (GitHub Pages)
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: (
         <div className="flex items-center gap-2.5">
           <Image
-            src="/logo-dark.svg"
+            src={`${basePath}/logo-dark.svg`}
             alt="agentic-primitives"
             width={28}
             height={28}
             className="hidden dark:block"
           />
           <Image
-            src="/logo-light.svg"
+            src={`${basePath}/logo-light.svg`}
             alt="agentic-primitives"
             width={28}
             height={28}
