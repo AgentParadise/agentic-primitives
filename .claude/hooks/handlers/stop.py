@@ -23,10 +23,7 @@ def log_analytics(event: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a") as f:
             f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
+                json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), **event}) + "\n"
             )
     except Exception:
         pass
@@ -47,11 +44,11 @@ def main() -> None:
 
         log_analytics(
             {
-                "event_type": "hook_decision",
+                "event_type": "agent_stopped",
                 "handler": "stop",
                 "hook_event": event.get("hook_event_name", "Stop"),
-                "decision": "allow",
                 "session_id": event.get("session_id"),
+                "reason": event.get("stop_reason", "normal_completion"),
                 "audit": {
                     "transcript_path": event.get("transcript_path"),
                     "cwd": event.get("cwd"),
