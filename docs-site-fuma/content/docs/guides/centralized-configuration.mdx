@@ -1,0 +1,517 @@
+---
+title: Centralized Configuration
+description: Type-safe environment configuration with automatic .env synchronization
+---
+
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
+## What You'll Build
+
+In this guide, you'll create a **centralized configuration system** using Pydantic Settings that:
+
+- Validates environment variables on startup
+- Auto-generates `.env.example` from code
+- Idempotently syncs `.env` without losing values
+- Preserves external variables with warnings
+
+<Callout type="info">
+**Time:** ~15 minutes  
+**Prerequisites:** Python 3.10+, Pydantic, pydantic-settings
+</Callout>
+
+## Why Centralized Configuration?
+
+| Problem | Solution |
+|---------|----------|
+| `.env` and docs get out of sync | Auto-generate from code |
+| Missing env vars cause runtime errors | Validate on startup |
+| New team members don't know what to set | Self-documenting fields |
+| Updating `.env` overwrites existing values | Idempotent sync |
+| External tools add their own vars | Detect and preserve |
+
+## Architecture Overview
+
+```
+┌─────────────────────────┐
+│   Settings Classes      │  ← Source of truth
+│   (Pydantic BaseSettings)│
+└───────────┬─────────────┘
+            │ generate
+            ▼
+┌─────────────────────────┐
+│     .env.example        │  ← Always fresh
+└───────────┬─────────────┘
+            │ idempotent sync
+            ▼
+┌─────────────────────────┐
+│        .env             │
+├─────────────────────────┤
+│ ✓ Existing values       │  ← Preserved
+│ + New variables         │  ← Added
+│ ⚠️ External vars         │  ← Detected
+└─────────────────────────┘
+```
+
+## Step 1: Create Settings Classes
+
+### Main Application Settings
+
+```python
+# settings/config.py
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    """Application settings with validation and documentation.
+    
+    All settings are loaded from environment variables.
+    Required variables will fail fast on startup with clear error messages.
+    """
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+    
+    # Application
+    app_name: str = Field(
+        default="my-app",
+        description="Application name for logging and identification",
+    )
+    
+    debug: bool = Field(
+        default=False,
+        description="Enable debug mode. Never enable in production.",
+    )
+    
+    # Database
+    database_url: str | None = Field(
+        default=None,
+        description=(
+            "PostgreSQL connection URL. "
+            "Format: postgresql://user:password@host:port/database"
+        ),
+    )
+    
+    # Secrets (use SecretStr for sensitive values)
+    api_key: SecretStr | None = Field(
+        default=None,
+        description="API key for external service. Get from: https://example.com/keys",
+    )
+```
+
+### Modular Settings for Specific Concerns
+
+```python
+# settings/github.py
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class GitHubAppSettings(BaseSettings):
+    """GitHub App authentication settings.
+    
+    Uses AEF_GITHUB_* prefix for all variables.
+    """
+    
+    model_config = SettingsConfigDict(
+        env_prefix="AEF_GITHUB_",  # ← Variables become AEF_GITHUB_APP_ID, etc.
+        env_file=".env",
+        extra="ignore",
+    )
+    
+    app_id: str | None = Field(
+        default=None,
+        description="GitHub App ID (numeric). Find at: GitHub App settings → General",
+    )
+    
+    app_name: str | None = Field(
+        default=None,
+        description="GitHub App slug for commit attribution (e.g., 'my-bot')",
+    )
+    
+    installation_id: str | None = Field(
+        default=None,
+        description="Installation ID per organization",
+    )
+    
+    private_key: SecretStr | None = Field(
+        default=None,
+        description="RSA private key in PEM format for JWT signing",
+    )
+    
+    @property
+    def is_configured(self) -> bool:
+        """Check if GitHub App is fully configured."""
+        return bool(self.app_id and self.installation_id and self.private_key)
+    
+    @property
+    def bot_username(self) -> str | None:
+        """Get bot username for commit attribution."""
+        return f"{self.app_name}[bot]" if self.app_name else None
+```
+
+### Compose Settings with Properties
+
+```python
+# settings/config.py (continued)
+class Settings(BaseSettings):
+    # ... previous fields ...
+    
+    @property
+    def github(self) -> GitHubAppSettings:
+        """Get GitHub App settings (AEF_GITHUB_* prefix)."""
+        from settings.github import GitHubAppSettings
+        return GitHubAppSettings()
+    
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production mode."""
+        return self.app_environment == "production"
+
+# Singleton with caching
+from functools import lru_cache
+
+@lru_cache
+def get_settings() -> Settings:
+    """Get cached application settings."""
+    return Settings()
+
+def reset_settings() -> None:
+    """Clear settings cache (for testing)."""
+    get_settings.cache_clear()
+```
+
+## Step 2: Create the Generator Script
+
+```python
+# scripts/generate_env_example.py
+#!/usr/bin/env python3
+"""Generate .env.example and sync .env idempotently."""
+
+from pathlib import Path
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings
+
+PROJECT_ROOT = Path(__file__).parent.parent
+
+# Import your settings classes
+from settings.config import Settings
+from settings.github import GitHubAppSettings
+
+def get_default_value(field_info) -> str:
+    """Get default value as string for .env file."""
+    from pydantic_core import PydanticUndefined
+    
+    default = field_info.default
+    
+    if default is None or default is PydanticUndefined:
+        return ""
+    if isinstance(default, bool):
+        return str(default).lower()
+    if hasattr(default, "value"):  # Enums
+        return str(default.value)
+    
+    return str(default)
+
+def is_secret_type(field_type) -> bool:
+    """Check if field is a secret (shouldn't show defaults)."""
+    from typing import get_args, get_origin
+    
+    if field_type is SecretStr:
+        return True
+    origin = get_origin(field_type)
+    if origin is not None:
+        return SecretStr in get_args(field_type)
+    return False
+
+def generate_section(settings_class: type[BaseSettings], section_name: str, prefix: str = "") -> list[str]:
+    """Generate env vars for a settings class."""
+    lines = [
+        "",
+        "# " + "=" * 70,
+        f"# {section_name}",
+        "# " + "=" * 70,
+        "",
+    ]
+    
+    for field_name, field_info in settings_class.model_fields.items():
+        field_type = settings_class.__annotations__.get(field_name, str)
+        env_name = f"{prefix}{field_name.upper()}"
+        default = get_default_value(field_info)
+        
+        # Add description as comment
+        if field_info.description:
+            for line in field_info.description.split(". "):
+                lines.append(f"# {line.strip()}")
+        
+        # Add variable (empty for secrets)
+        if is_secret_type(field_type):
+            lines.append(f"{env_name}=")
+        else:
+            lines.append(f"{env_name}={default}")
+        lines.append("")
+    
+    return lines
+
+def generate_env_example() -> str:
+    """Generate .env.example content from all settings classes."""
+    lines = [
+        "# " + "=" * 70,
+        "# ENVIRONMENT CONFIGURATION",
+        "# " + "=" * 70,
+        "#",
+        "# AUTO-GENERATED from settings classes. Run: python scripts/generate_env_example.py",
+        "#",
+    ]
+    
+    # Main settings (no prefix)
+    lines.extend(generate_section(Settings, "APPLICATION"))
+    
+    # GitHub App settings (AEF_GITHUB_ prefix)
+    lines.extend(generate_section(GitHubAppSettings, "GITHUB APP", prefix="AEF_GITHUB_"))
+    
+    return "\n".join(lines)
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    """Parse existing .env into key=value dict."""
+    if not path.exists():
+        return {}
+    
+    env_vars = {}
+    for line in path.read_text().split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            env_vars[key.strip()] = value.strip()
+    
+    return env_vars
+
+def sync_env_file(example_path: Path, env_path: Path) -> tuple[int, int, list[str]]:
+    """Sync .env idempotently, preserving existing values."""
+    existing_vars = parse_env_file(env_path)
+    example_content = example_path.read_text()
+    
+    template_keys = set()
+    new_vars = []
+    output_lines = []
+    
+    for line in example_content.split("\n"):
+        stripped = line.strip()
+        
+        # Keep comments as-is
+        if not stripped or stripped.startswith("#"):
+            output_lines.append(line)
+            continue
+        
+        # Parse KEY=VALUE
+        if "=" in line:
+            key, _, default_value = line.partition("=")
+            key = key.strip()
+            template_keys.add(key)
+            
+            if key in existing_vars:
+                # Preserve existing value
+                output_lines.append(f"{key}={existing_vars[key]}")
+            else:
+                # Add new variable with default
+                output_lines.append(f"{key}={default_value.strip()}")
+                new_vars.append(key)
+        else:
+            output_lines.append(line)
+    
+    # Find and preserve external variables
+    extra_vars = [k for k in existing_vars if k not in template_keys]
+    
+    if extra_vars:
+        output_lines.extend([
+            "",
+            "# " + "=" * 70,
+            "# EXTERNAL / UNKNOWN VARIABLES",
+            "# " + "=" * 70,
+            "# These variables are not defined in settings classes.",
+            "",
+        ])
+        for key in sorted(extra_vars):
+            output_lines.append(f"{key}={existing_vars[key]}")
+    
+    env_path.write_text("\n".join(output_lines))
+    
+    return len(new_vars), len(extra_vars), extra_vars
+
+def main():
+    content = generate_env_example()
+    
+    example_path = PROJECT_ROOT / ".env.example"
+    env_path = PROJECT_ROOT / ".env"
+    
+    # Generate .env.example
+    example_path.write_text(content)
+    print(f"✅ Generated {example_path}")
+    
+    # Sync .env
+    if env_path.exists():
+        new_count, extra_count, extra_vars = sync_env_file(example_path, env_path)
+        
+        if new_count > 0:
+            print(f"✅ Added {new_count} new variables to .env")
+        else:
+            print(f"✅ .env is up to date")
+        
+        if extra_vars:
+            print(f"⚠️  {extra_count} external variables found:")
+            for var in extra_vars:
+                print(f"   - {var}")
+    else:
+        env_path.write_text(content)
+        print(f"✅ Created {env_path} from template")
+
+if __name__ == "__main__":
+    main()
+```
+
+## Step 3: Add to Justfile
+
+```just
+# justfile
+
+# Generate .env.example and sync .env
+gen-env:
+    uv run python scripts/generate_env_example.py
+```
+
+## Step 4: Usage
+
+### Generate and Sync
+
+```bash
+just gen-env
+# Output:
+# ✅ Generated .env.example
+# ✅ Added 3 new variables to .env
+# ⚠️  2 external variables found:
+#    - FIRECRAWL_API_KEY
+#    - UI_FEEDBACK_DATABASE_URL
+```
+
+### Access Settings in Code
+
+```python
+from settings import get_settings
+
+settings = get_settings()
+
+# Application settings
+print(f"App: {settings.app_name}")
+print(f"Debug: {settings.debug}")
+
+# Nested settings with prefix
+github = settings.github
+if github.is_configured:
+    print(f"GitHub Bot: {github.bot_username}")
+
+# Secrets are protected
+if settings.api_key:
+    # Use .get_secret_value() to access
+    key = settings.api_key.get_secret_value()
+```
+
+### Testing with Environment Overrides
+
+```python
+import pytest
+from unittest.mock import patch
+
+def test_settings_from_env():
+    env = {
+        "APP_NAME": "test-app",
+        "DEBUG": "true",
+        "AEF_GITHUB_APP_ID": "12345",
+    }
+    
+    with patch.dict(os.environ, env, clear=True):
+        from settings import reset_settings, get_settings
+        reset_settings()  # Clear cache
+        
+        settings = get_settings()
+        assert settings.app_name == "test-app"
+        assert settings.debug is True
+        assert settings.github.app_id == "12345"
+```
+
+## Best Practices
+
+<Accordions>
+  <Accordion title="Use prefixes for modular settings">
+    Each settings class should have a unique `env_prefix` to avoid collisions.
+    Example: `AEF_GITHUB_*`, `AEF_GIT_*`, `AEF_LOGGING_*`
+  </Accordion>
+  
+  <Accordion title="Always use SecretStr for sensitive values">
+    Pydantic's `SecretStr` prevents accidental logging of secrets:
+    ```python
+    api_key: SecretStr | None = Field(...)
+    
+    # In logs: SecretStr('**********')
+    # Access: settings.api_key.get_secret_value()
+    ```
+  </Accordion>
+  
+  <Accordion title="Write detailed descriptions">
+    Descriptions become comments in `.env.example`. Include:
+    - What the variable does
+    - Expected format
+    - Where to get the value
+  </Accordion>
+  
+  <Accordion title="Validate early, fail fast">
+    Access settings at startup to catch missing variables immediately:
+    ```python
+    # main.py
+    from settings import get_settings
+    settings = get_settings()  # Validates here
+    ```
+  </Accordion>
+  
+  <Accordion title="Use computed properties for derived values">
+    Don't repeat logic - compute from settings:
+    ```python
+    @property
+    def bot_email(self) -> str:
+        return f"{self.app_id}+{self.app_name}[bot]@users.noreply.github.com"
+    ```
+  </Accordion>
+</Accordions>
+
+## Sync Behavior Reference
+
+| Scenario | Action |
+|----------|--------|
+| Variable exists in `.env` | **Preserved** (never overwritten) |
+| New variable in settings | **Added** with default value |
+| Secret field | **Added** with empty value |
+| Variable removed from settings | **Moved** to EXTERNAL section |
+| External tool adds variable | **Preserved** with warning |
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Create an Agent"
+    href="/docs/guides/create-agent"
+  >
+    Build a coding assistant with specific skills
+  </Card>
+  <Card
+    title="Deploy to Claude"
+    href="/docs/guides/deploy-claude"
+  >
+    Export configuration to Claude Desktop
+  </Card>
+</Cards>
