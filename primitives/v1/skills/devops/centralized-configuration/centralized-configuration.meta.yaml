@@ -1,15 +1,17 @@
 id: centralized-configuration
 kind: skill
-category: python
-domain: configuration
-summary: "Type-safe environment configuration with Pydantic Settings and idempotent .env sync"
+category: devops
+domain: cross-cutting
+summary: "Type-safe, self-documenting environment configuration with idempotent sync"
 tags:
-  - python
   - configuration
-  - pydantic
   - environment
   - dotenv
-  - settings
+  - type-safety
+  - secrets
+  - devops
+  - cross-cutting
+  - polyglot
 defaults:
   preferred_models:
     - claude/sonnet
@@ -23,5 +25,8 @@ versions:
     hash: "blake3:pending"
     status: active
     created: "2025-12-11"
-    notes: "Initial version - Pydantic Settings with .env sync"
+    notes: "Initial version - philosophy, strategies, Python implementation"
 default_version: 1
+related:
+  - devops/logging
+  - devops/secrets-management
