@@ -138,7 +138,7 @@ A script that:
 
 1. **Introspects** configuration classes
 2. **Generates** `.env.example` with comments
-3. **Parses** existing `.env`
+3. **Parses** existing `.env` 
 4. **Merges** preserving user values
 5. **Detects** external variables
 
@@ -212,25 +212,25 @@ if TYPE_CHECKING:
 
 class Settings(BaseSettings):
     """Application settings - validated on startup."""
-
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
-
+    
     # Application
     app_name: str = Field(
         default="my-app",
         description="Application name for logging",
     )
-
+    
     debug: bool = Field(
         default=False,
         description="Enable debug mode. Never in production.",
     )
-
+    
     # Database
     database_url: str | None = Field(
         default=None,
@@ -239,13 +239,13 @@ class Settings(BaseSettings):
             "Format: postgresql://user:pass@host:port/db"
         ),
     )
-
+    
     # Secrets
     api_key: SecretStr | None = Field(
         default=None,
         description="External API key. Get from: https://example.com/keys",
     )
-
+    
     # Nested settings via property
     @property
     def github(self) -> "GitHubSettings":
@@ -276,47 +276,47 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class GitHubSettings(BaseSettings):
     """GitHub App settings with GITHUB_ prefix."""
-
+    
     model_config = SettingsConfigDict(
         env_prefix="GITHUB_",  # All vars become GITHUB_*
         env_file=".env",
         extra="ignore",
     )
-
+    
     app_id: str | None = Field(
         default=None,
         description="GitHub App ID from app settings page",
     )
-
+    
     app_name: str | None = Field(
         default=None,
         description="App slug for commit attribution",
     )
-
+    
     installation_id: str | None = Field(
         default=None,
         description="Installation ID per organization",
     )
-
+    
     private_key: SecretStr | None = Field(
         default=None,
         description="RSA private key (PEM format)",
     )
-
+    
     @property
     def is_configured(self) -> bool:
         return bool(self.app_id and self.installation_id and self.private_key)
-
+    
     @property
     def bot_username(self) -> str | None:
         return f"{self.app_name}[bot]" if self.app_name else None
-
+    
     @model_validator(mode="after")
     def validate_complete(self) -> Self:
         """Ensure all-or-nothing configuration."""
         required = [self.app_id, self.installation_id, self.private_key]
         provided = sum(1 for f in required if f is not None)
-
+        
         if 0 < provided < 3:
             missing = [
                 "GITHUB_APP_ID" if not self.app_id else None,
@@ -364,25 +364,25 @@ def is_secret(field_type) -> bool:
 def generate_section(cls: type[BaseSettings], name: str, prefix: str = "") -> list[str]:
     import textwrap
     lines = ["", "# " + "=" * 70, f"# {name}", "# " + "=" * 70, ""]
-
+    
     for fname, finfo in cls.model_fields.items():
         ftype = cls.__annotations__.get(fname, str)
         env_name = f"{prefix}{fname.upper()}"
-
+        
         if finfo.description:
             for line in textwrap.wrap(finfo.description, 70):
                 lines.append(f"# {line}")
-
+        
         lines.append(f"{env_name}={'' if is_secret(ftype) else get_default(finfo)}")
         lines.append("")
-
+    
     return lines
 
 
 def generate() -> str:
     from config.settings import Settings
     from config.github import GitHubSettings
-
+    
     lines = [
         "# " + "=" * 70,
         "# ENVIRONMENT CONFIGURATION",
@@ -410,11 +410,11 @@ def parse_env(path: Path) -> dict[str, str]:
 def sync(example: Path, env: Path) -> tuple[int, int, list[str]]:
     existing = parse_env(env)
     content = example.read_text()
-
+    
     template_keys = set()
     new_vars = []
     out = []
-
+    
     for line in content.split("\n"):
         s = line.strip()
         if not s or s.startswith("#"):
@@ -429,13 +429,13 @@ def sync(example: Path, env: Path) -> tuple[int, int, list[str]]:
                 new_vars.append(k)
         else:
             out.append(line)
-
+    
     extra = [k for k in existing if k not in template_keys]
     if extra:
         out.extend(["", "# " + "=" * 70, "# EXTERNAL VARIABLES", "# " + "=" * 70, ""])
         for k in sorted(extra):
             out.append(f"{k}={existing[k]}")
-
+    
     env.write_text("\n".join(out))
     return len(new_vars), len(extra), extra
 
@@ -444,10 +444,10 @@ def main():
     content = generate()
     example = PROJECT_ROOT / ".env.example"
     env = PROJECT_ROOT / ".env"
-
+    
     example.write_text(content)
     print(f"✅ Generated {example.name}")
-
+    
     if env.exists():
         new, ext, ext_vars = sync(example, env)
         print(f"✅ Synced .env ({new} new)" if new else "✅ .env up to date")
