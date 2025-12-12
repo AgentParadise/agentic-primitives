@@ -6,7 +6,6 @@
     "create-skill",
     "create-tool",
     "create-hook",
-    "centralized-configuration",
     "deploy-claude"
   ]
 }
