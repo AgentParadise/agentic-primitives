@@ -214,8 +214,7 @@ fn extract_tool_info(meta_path: &Path) -> Result<PrimitiveInfo> {
         let latest = meta
             .versions
             .iter()
-            .filter(|v| v.status == "active")
-            .next_back()
+            .rfind(|v| v.status == "active")
             .or_else(|| meta.versions.last());
         if let Some(v) = latest {
             format!("v{}", v.version)
@@ -274,8 +273,7 @@ fn extract_hook_info(meta_path: &Path) -> Result<PrimitiveInfo> {
         let latest = meta
             .versions
             .iter()
-            .filter(|v| v.status == "active")
-            .next_back()
+            .rfind(|v| v.status == "active")
             .or_else(|| meta.versions.last());
         if let Some(v) = latest {
             format!("v{}", v.version)
