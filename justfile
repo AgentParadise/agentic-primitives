@@ -323,22 +323,50 @@ uninstall:
 # DOCUMENTATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Generate all documentation
-[group('docs')]
-docs: rust-doc
-    @echo '{{ GREEN }}✓ Documentation generated{{ NORMAL }}'
-
-# Serve documentation locally
+# Start docs site development server (Fumadocs)
 [group('docs')]
 [unix]
-docs-serve:
-    @echo '{{ YELLOW }}Serving documentation...{{ NORMAL }}'
+docs:
+    @echo '{{ YELLOW }}Starting docs site (Fumadocs) on http://localhost:4321...{{ NORMAL }}'
+    cd docs-site-fuma && [ -d node_modules ] || npm install --silent && npm run dev -- -p 4321
+
+[group('docs')]
+[windows]
+docs:
+    Write-Host "Starting docs site (Fumadocs) on http://localhost:4321..." -ForegroundColor Yellow
+    Set-Location docs-site-fuma; if (!(Test-Path node_modules)) { npm install --silent }; npm run dev -- -p 4321
+
+# Build docs site for production
+[group('docs')]
+[unix]
+docs-build:
+    @echo '{{ YELLOW }}Building docs site...{{ NORMAL }}'
+    cd docs-site-fuma && [ -d node_modules ] || npm install --silent && npm run build
+    @echo '{{ GREEN }}✓ Docs site built{{ NORMAL }}'
+
+[group('docs')]
+[windows]
+docs-build:
+    Write-Host "Building docs site..." -ForegroundColor Yellow
+    Set-Location docs-site-fuma; if (!(Test-Path node_modules)) { npm install --silent }; npm run build
+    Write-Host "✓ Docs site built" -ForegroundColor Green
+
+# Generate Rust API documentation
+[group('docs')]
+docs-rust: rust-doc
+    @echo '{{ GREEN }}✓ Rust documentation generated{{ NORMAL }}'
+
+# Serve Rust documentation locally
+[group('docs')]
+[unix]
+docs-rust-serve:
+    @echo '{{ YELLOW }}Serving Rust documentation...{{ NORMAL }}'
     cd cli && cargo doc --no-deps && python3 -m http.server --directory target/doc 8080
 
 [group('docs')]
 [windows]
-docs-serve:
-    Write-Host "Serving documentation..." -ForegroundColor Yellow
+docs-rust-serve:
+    Write-Host "Serving Rust documentation..." -ForegroundColor Yellow
     Set-Location cli; cargo doc --no-deps; python -m http.server --directory target/doc 8080
 
 # ═══════════════════════════════════════════════════════════════════════════════
