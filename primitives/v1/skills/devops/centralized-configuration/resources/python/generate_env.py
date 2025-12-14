@@ -49,7 +49,7 @@ def get_default_value(field_info: FieldInfo) -> str:
         return str(default).lower()
 
     # Handle lists/tuples (skip complex defaults)
-    if isinstance(default, list | tuple):
+    if isinstance(default, (list, tuple)):
         return ""
 
     return str(default)
