@@ -92,7 +92,7 @@ providers:
     output_dir: ".claude"
 
     # Default model
-    default_model: "claude/sonnet"
+    default_model: "claude/opus"
 
     # Hook execution timeout (seconds)
     hook_timeout: 60

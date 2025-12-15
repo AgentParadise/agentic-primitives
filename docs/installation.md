@@ -137,3 +137,56 @@ If you want to remove the PATH configuration, edit your shell rc file (e.g., `~/
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+---
+
+## Installing Primitives
+
+After the CLI is installed, you can build and install primitives to your project or globally.
+
+### Build & Install All Primitives
+
+```bash
+# Build all primitives for Claude
+agentic-p build --provider claude
+
+# Install to current project
+agentic-p install --provider claude
+
+# Install globally (~/.claude/)
+agentic-p install --provider claude --global
+```
+
+### Selective Installation (--only)
+
+Use the `--only` flag to install only the primitives you need:
+
+```bash
+# Install only QA-related primitives
+agentic-p build --provider claude --only "qa/*"
+agentic-p install --provider claude --only "qa/*"
+
+# Install specific primitives (comma-separated patterns)
+agentic-p build --provider claude --only "qa/review,devops/commit,hooks/*"
+agentic-p install --provider claude --only "qa/review,devops/commit,hooks/*"
+```
+
+### Pattern Syntax
+
+The `--only` flag accepts comma-separated glob patterns:
+
+| Pattern | Description | Example Matches |
+|---------|-------------|-----------------|
+| `qa/*` | All primitives in `qa/` category | `qa/review`, `qa/pre-commit-qa` |
+| `qa/review` | Exact match | `qa/review` only |
+| `devops/*` | All devops primitives | `devops/commit`, `devops/push` |
+| `*/commit` | Any primitive ending in `commit` | `devops/commit`, `workflow/commit` |
+| `hooks/*` | All hooks | All hook primitives |
+
+### Dry Run
+
+Preview what would be installed without making changes:
+
+```bash
+agentic-p install --provider claude --only "qa/*" --dry-run --verbose
+```
+

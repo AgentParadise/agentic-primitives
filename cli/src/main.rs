@@ -149,6 +149,10 @@ enum Commands {
         #[arg(long)]
         kind: Option<String>,
 
+        /// Only include primitives matching patterns (comma-separated globs, e.g., "qa/*,devops/commit")
+        #[arg(long)]
+        only: Option<String>,
+
         /// Clean output directory before build
         #[arg(long)]
         clean: bool,
@@ -171,6 +175,10 @@ enum Commands {
         /// Build directory to install from (default: ./build/<provider>/)
         #[arg(long)]
         build_dir: Option<PathBuf>,
+
+        /// Only install primitives matching patterns (comma-separated globs, e.g., "qa/*,devops/commit")
+        #[arg(long)]
+        only: Option<String>,
 
         /// Backup existing files before install (default: true)
         #[arg(long, default_value = "true")]
@@ -395,6 +403,7 @@ fn main() {
             primitive,
             type_filter,
             kind,
+            only,
             clean,
             verbose,
         } => {
@@ -404,6 +413,7 @@ fn main() {
                 primitive,
                 type_filter,
                 kind,
+                only,
                 clean,
                 verbose,
             };
@@ -414,6 +424,7 @@ fn main() {
             provider,
             global,
             build_dir,
+            only,
             backup,
             dry_run,
             verbose,
@@ -422,6 +433,7 @@ fn main() {
                 provider,
                 global,
                 build_dir,
+                only,
                 backup,
                 dry_run,
                 verbose,

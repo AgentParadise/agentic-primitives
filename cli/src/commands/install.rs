@@ -1,5 +1,6 @@
 use crate::config::PrimitivesConfig;
-use crate::manifest::{AgenticManifest, ManifestDiff, MANIFEST_FILENAME};
+use crate::manifest::{AgenticManifest, ManifestDiff, ManifestPrimitive, MANIFEST_FILENAME};
+use crate::utils::{matches_only_patterns, parse_only_patterns, warn_if_empty_match};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Local;
 use colored::Colorize;
@@ -13,9 +14,30 @@ pub struct InstallArgs {
     pub provider: String,
     pub global: bool,
     pub build_dir: Option<PathBuf>,
+    pub only: Option<String>,
     pub backup: bool,
     pub dry_run: bool,
     pub verbose: bool,
+}
+
+/// Filter primitives based on --only patterns
+fn filter_primitives_by_patterns(
+    primitives: &[ManifestPrimitive],
+    only: &Option<String>,
+) -> Result<Vec<ManifestPrimitive>> {
+    match only {
+        None => Ok(primitives.to_vec()),
+        Some(only_str) => {
+            let patterns = parse_only_patterns(only_str)?;
+            let filtered: Vec<_> = primitives
+                .iter()
+                .filter(|p| matches_only_patterns(&p.id, &patterns))
+                .cloned()
+                .collect();
+            warn_if_empty_match(filtered.len(), &patterns, "primitives");
+            Ok(filtered)
+        }
+    }
 }
 
 pub struct InstallResult {
@@ -295,7 +317,26 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
 
     // 5. Calculate diff and show what will change
     if let Some(ref source) = source_manifest {
-        let diff = ManifestDiff::compare(source, target_manifest.as_ref());
+        // Apply --only filter if specified
+        let filtered_source = if args.only.is_some() {
+            let filtered_primitives =
+                filter_primitives_by_patterns(&source.primitives, &args.only)?;
+            if args.verbose {
+                println!(
+                    "  {} Filtered to {} primitives (--only {:?})",
+                    "ℹ".cyan(),
+                    filtered_primitives.len(),
+                    args.only
+                );
+            }
+            let mut filtered = source.clone();
+            filtered.primitives = filtered_primitives;
+            filtered
+        } else {
+            source.clone()
+        };
+
+        let diff = ManifestDiff::compare(&filtered_source, target_manifest.as_ref());
 
         if args.verbose || args.dry_run {
             print_sync_preview(&diff, &target_manifest);
@@ -303,7 +344,7 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
 
         // 6. Smart sync - only install managed files
         let files_to_install = diff.files_to_install();
-        let managed_files: HashSet<String> = source.managed_files().into_iter().collect();
+        let managed_files: HashSet<String> = filtered_source.managed_files().into_iter().collect();
 
         // Backup only managed files that will be overwritten
         let backup_location = if !args.dry_run && args.backup && !diff.updated.is_empty() {
@@ -336,9 +377,9 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
 
         let total_files = installed_files.len() + hooks_count + extras_count;
 
-        // Copy manifest to install location
+        // Copy manifest to install location (use filtered if --only was specified)
         if !args.dry_run {
-            source
+            filtered_source
                 .save(&install_location)
                 .context("Failed to save manifest to install location")?;
         }
@@ -923,5 +964,72 @@ mod tests {
         assert!(install_location.join("a/file1.txt").exists());
         assert!(install_location.join("a/b/file2.txt").exists());
         assert!(install_location.join("a/b/c/file3.txt").exists());
+    }
+
+    // Tests for --only pattern filtering
+    // Note: parse_only_patterns and matches_only_patterns are tested in utils/pattern.rs
+
+    #[test]
+    fn test_filter_primitives_by_patterns() {
+        use crate::manifest::ManifestPrimitive;
+
+        let primitives = vec![
+            ManifestPrimitive {
+                id: "qa/review".to_string(),
+                kind: "commands".to_string(),
+                version: 1,
+                hash: "test".to_string(),
+                files: vec!["commands/qa/review.md".to_string()],
+            },
+            ManifestPrimitive {
+                id: "qa/pre-commit-qa".to_string(),
+                kind: "commands".to_string(),
+                version: 1,
+                hash: "test".to_string(),
+                files: vec!["commands/qa/pre-commit-qa.md".to_string()],
+            },
+            ManifestPrimitive {
+                id: "devops/commit".to_string(),
+                kind: "commands".to_string(),
+                version: 1,
+                hash: "test".to_string(),
+                files: vec!["commands/devops/commit.md".to_string()],
+            },
+        ];
+
+        // Filter with qa/*
+        let filtered =
+            filter_primitives_by_patterns(&primitives, &Some("qa/*".to_string())).unwrap();
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|p| p.id.starts_with("qa/")));
+
+        // Filter with exact match
+        let filtered =
+            filter_primitives_by_patterns(&primitives, &Some("devops/commit".to_string())).unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "devops/commit");
+
+        // No filter = all
+        let filtered = filter_primitives_by_patterns(&primitives, &None).unwrap();
+        assert_eq!(filtered.len(), 3);
+    }
+
+    #[test]
+    fn test_filter_primitives_invalid_pattern() {
+        use crate::manifest::ManifestPrimitive;
+
+        let primitives = vec![ManifestPrimitive {
+            id: "qa/review".to_string(),
+            kind: "commands".to_string(),
+            version: 1,
+            hash: "test".to_string(),
+            files: vec!["commands/qa/review.md".to_string()],
+        }];
+
+        // Invalid pattern should return error
+        let result = filter_primitives_by_patterns(&primitives, &Some("[unclosed".to_string()));
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Invalid glob pattern"));
     }
 }
