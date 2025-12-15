@@ -8,4 +8,5 @@ pub mod providers;
 pub mod schema;
 pub mod spec_version;
 pub mod templates;
+pub mod utils;
 pub mod validators;

@@ -3,7 +3,6 @@
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use colored::Colorize;
-use glob::Pattern;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -11,6 +10,7 @@ use walkdir::WalkDir;
 use crate::config::PrimitivesConfig;
 use crate::manifest::{AgenticManifest, ManifestPrimitive, MANIFEST_FILENAME};
 use crate::providers::{ClaudeTransformer, OpenAITransformer, ProviderTransformer};
+use crate::utils::{matches_only_patterns, parse_only_patterns, warn_if_empty_match};
 
 /// Arguments for the build command
 #[derive(Debug, Clone)]
@@ -34,23 +34,6 @@ pub struct BuildResult {
     pub files_generated: Vec<PathBuf>,
     pub errors: Vec<String>,
     pub manifest: AgenticManifest,
-}
-
-/// Parse comma-separated glob patterns from --only flag
-fn parse_only_patterns(only: &str) -> Vec<Pattern> {
-    only.split(',')
-        .map(|p| p.trim())
-        .filter(|p| !p.is_empty())
-        .filter_map(|p| Pattern::new(p).ok())
-        .collect()
-}
-
-/// Check if a primitive ID matches any of the --only patterns
-fn matches_only_patterns(primitive_id: &str, patterns: &[Pattern]) -> bool {
-    if patterns.is_empty() {
-        return true; // No filter = include all
-    }
-    patterns.iter().any(|p| p.matches(primitive_id))
 }
 
 /// Extract primitive ID from path (e.g., "qa/review" from ".../commands/qa/review/")
@@ -189,7 +172,7 @@ fn should_include_primitive(path: &Path, args: &BuildArgs) -> Result<bool> {
 
     // --only pattern filter (glob patterns like "qa/*", "devops/commit")
     if let Some(ref only) = args.only {
-        let patterns = parse_only_patterns(only);
+        let patterns = parse_only_patterns(only)?;
         if let Some(primitive_id) = extract_primitive_id(path) {
             if !matches_only_patterns(&primitive_id, &patterns) {
                 return Ok(false);
@@ -449,6 +432,12 @@ pub fn execute(args: &BuildArgs, config: &PrimitivesConfig) -> Result<()> {
     // 3. Discover primitives
     let primitives = discover_primitives(args, config)?;
 
+    // Warn if --only filter resulted in no matches
+    if let Some(ref only) = args.only {
+        let patterns = parse_only_patterns(only)?;
+        warn_if_empty_match(primitives.len(), &patterns, "primitives");
+    }
+
     if primitives.is_empty() {
         println!("{}", "No primitives found matching filters".yellow());
         return Ok(());
@@ -628,57 +617,7 @@ mod tests {
         assert!(should_include_primitive(path, &args).is_err());
     }
 
-    // Tests for --only pattern matching
-    #[test]
-    fn test_parse_only_patterns_single() {
-        let patterns = parse_only_patterns("qa/review");
-        assert_eq!(patterns.len(), 1);
-        assert!(patterns[0].matches("qa/review"));
-    }
-
-    #[test]
-    fn test_parse_only_patterns_multiple() {
-        let patterns = parse_only_patterns("qa/*,devops/commit");
-        assert_eq!(patterns.len(), 2);
-        assert!(patterns[0].matches("qa/review"));
-        assert!(patterns[0].matches("qa/pre-commit-qa"));
-        assert!(patterns[1].matches("devops/commit"));
-    }
-
-    #[test]
-    fn test_parse_only_patterns_with_whitespace() {
-        let patterns = parse_only_patterns(" qa/* , devops/* ");
-        assert_eq!(patterns.len(), 2);
-        assert!(patterns[0].matches("qa/anything"));
-        assert!(patterns[1].matches("devops/anything"));
-    }
-
-    #[test]
-    fn test_parse_only_patterns_empty() {
-        let patterns = parse_only_patterns("");
-        assert!(patterns.is_empty());
-    }
-
-    #[test]
-    fn test_matches_only_patterns_empty_matches_all() {
-        let patterns: Vec<Pattern> = vec![];
-        assert!(matches_only_patterns("anything", &patterns));
-    }
-
-    #[test]
-    fn test_matches_only_patterns_glob() {
-        let patterns = parse_only_patterns("qa/*");
-        assert!(matches_only_patterns("qa/review", &patterns));
-        assert!(matches_only_patterns("qa/pre-commit-qa", &patterns));
-        assert!(!matches_only_patterns("devops/commit", &patterns));
-    }
-
-    #[test]
-    fn test_matches_only_patterns_exact() {
-        let patterns = parse_only_patterns("qa/review");
-        assert!(matches_only_patterns("qa/review", &patterns));
-        assert!(!matches_only_patterns("qa/other", &patterns));
-    }
+    // Note: parse_only_patterns and matches_only_patterns are tested in utils/pattern.rs
 
     #[test]
     fn test_extract_primitive_id() {

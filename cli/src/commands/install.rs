@@ -1,9 +1,9 @@
 use crate::config::PrimitivesConfig;
 use crate::manifest::{AgenticManifest, ManifestDiff, ManifestPrimitive, MANIFEST_FILENAME};
+use crate::utils::{matches_only_patterns, parse_only_patterns, warn_if_empty_match};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Local;
 use colored::Colorize;
-use glob::Pattern;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -20,37 +20,22 @@ pub struct InstallArgs {
     pub verbose: bool,
 }
 
-/// Parse comma-separated glob patterns from --only flag
-fn parse_only_patterns(only: &str) -> Vec<Pattern> {
-    only.split(',')
-        .map(|p| p.trim())
-        .filter(|p| !p.is_empty())
-        .filter_map(|p| Pattern::new(p).ok())
-        .collect()
-}
-
-/// Check if a primitive ID matches any of the --only patterns
-fn matches_only_patterns(primitive_id: &str, patterns: &[Pattern]) -> bool {
-    if patterns.is_empty() {
-        return true; // No filter = include all
-    }
-    patterns.iter().any(|p| p.matches(primitive_id))
-}
-
 /// Filter primitives based on --only patterns
 fn filter_primitives_by_patterns(
     primitives: &[ManifestPrimitive],
     only: &Option<String>,
-) -> Vec<ManifestPrimitive> {
+) -> Result<Vec<ManifestPrimitive>> {
     match only {
-        None => primitives.to_vec(),
+        None => Ok(primitives.to_vec()),
         Some(only_str) => {
-            let patterns = parse_only_patterns(only_str);
-            primitives
+            let patterns = parse_only_patterns(only_str)?;
+            let filtered: Vec<_> = primitives
                 .iter()
                 .filter(|p| matches_only_patterns(&p.id, &patterns))
                 .cloned()
-                .collect()
+                .collect();
+            warn_if_empty_match(filtered.len(), &patterns, "primitives");
+            Ok(filtered)
         }
     }
 }
@@ -334,7 +319,8 @@ pub fn execute(args: &InstallArgs, _config: &PrimitivesConfig) -> Result<()> {
     if let Some(ref source) = source_manifest {
         // Apply --only filter if specified
         let filtered_source = if args.only.is_some() {
-            let filtered_primitives = filter_primitives_by_patterns(&source.primitives, &args.only);
+            let filtered_primitives =
+                filter_primitives_by_patterns(&source.primitives, &args.only)?;
             if args.verbose {
                 println!(
                     "  {} Filtered to {} primitives (--only {:?})",
@@ -981,33 +967,7 @@ mod tests {
     }
 
     // Tests for --only pattern filtering
-    #[test]
-    fn test_parse_only_patterns_single() {
-        let patterns = parse_only_patterns("qa/review");
-        assert_eq!(patterns.len(), 1);
-        assert!(patterns[0].matches("qa/review"));
-    }
-
-    #[test]
-    fn test_parse_only_patterns_multiple() {
-        let patterns = parse_only_patterns("qa/*,devops/commit");
-        assert_eq!(patterns.len(), 2);
-        assert!(patterns[0].matches("qa/review"));
-        assert!(patterns[1].matches("devops/commit"));
-    }
-
-    #[test]
-    fn test_matches_only_patterns_empty() {
-        let patterns: Vec<glob::Pattern> = vec![];
-        assert!(matches_only_patterns("anything", &patterns));
-    }
-
-    #[test]
-    fn test_matches_only_patterns_glob() {
-        let patterns = parse_only_patterns("qa/*");
-        assert!(matches_only_patterns("qa/review", &patterns));
-        assert!(!matches_only_patterns("devops/commit", &patterns));
-    }
+    // Note: parse_only_patterns and matches_only_patterns are tested in utils/pattern.rs
 
     #[test]
     fn test_filter_primitives_by_patterns() {
@@ -1038,18 +998,38 @@ mod tests {
         ];
 
         // Filter with qa/*
-        let filtered = filter_primitives_by_patterns(&primitives, &Some("qa/*".to_string()));
+        let filtered =
+            filter_primitives_by_patterns(&primitives, &Some("qa/*".to_string())).unwrap();
         assert_eq!(filtered.len(), 2);
         assert!(filtered.iter().all(|p| p.id.starts_with("qa/")));
 
         // Filter with exact match
         let filtered =
-            filter_primitives_by_patterns(&primitives, &Some("devops/commit".to_string()));
+            filter_primitives_by_patterns(&primitives, &Some("devops/commit".to_string())).unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "devops/commit");
 
         // No filter = all
-        let filtered = filter_primitives_by_patterns(&primitives, &None);
+        let filtered = filter_primitives_by_patterns(&primitives, &None).unwrap();
         assert_eq!(filtered.len(), 3);
+    }
+
+    #[test]
+    fn test_filter_primitives_invalid_pattern() {
+        use crate::manifest::ManifestPrimitive;
+
+        let primitives = vec![ManifestPrimitive {
+            id: "qa/review".to_string(),
+            kind: "commands".to_string(),
+            version: 1,
+            hash: "test".to_string(),
+            files: vec!["commands/qa/review.md".to_string()],
+        }];
+
+        // Invalid pattern should return error
+        let result = filter_primitives_by_patterns(&primitives, &Some("[unclosed".to_string()));
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Invalid glob pattern"));
     }
 }
