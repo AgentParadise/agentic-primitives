@@ -510,6 +510,28 @@ This transforms:
 - Tools → Tool configurations
 - Hooks → `settings.json` entries
 
+### Selective Build (--only)
+
+Build only specific primitives using glob patterns:
+
+```bash
+# Build only QA-related primitives
+agentic-p build --provider claude --only "qa/*"
+
+# Build specific primitives (comma-separated)
+agentic-p build --provider claude --only "qa/review,devops/commit"
+
+# Build all commands in a category
+agentic-p build --provider claude --only "devops/*,meta/*"
+```
+
+**Pattern Syntax:**
+| Pattern | Matches |
+|---------|---------|
+| `qa/*` | All primitives in `qa/` category |
+| `qa/review` | Exact match |
+| `*/commit` | Any primitive ending in `commit` |
+
 ### Preview Build Output
 
 ```bash
@@ -541,15 +563,29 @@ Install to current project:
 
 ```bash
 # Install to ./.claude/
-agentic-p install --provider claude --project
+agentic-p install --provider claude
 ```
 
-### Custom Installation
+### Selective Installation (--only)
+
+Install only specific primitives:
 
 ```bash
-# Build and install to custom location
-agentic-p build --provider claude --output ./my-output
-agentic-p install --provider claude --source ./my-output --target ./my-project/.claude/
+# Install only QA commands
+agentic-p install --provider claude --only "qa/*"
+
+# Install specific primitives
+agentic-p install --provider claude --only "qa/review,devops/commit,hooks/*"
+
+# Dry-run to preview what would be installed
+agentic-p install --provider claude --only "qa/*" --dry-run
+```
+
+### Custom Build Directory
+
+```bash
+# Install from custom build location
+agentic-p install --provider claude --build-dir ./my-build/claude
 ```
 
 ---

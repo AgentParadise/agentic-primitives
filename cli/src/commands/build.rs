@@ -3,6 +3,7 @@
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use colored::Colorize;
+use glob::Pattern;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -19,6 +20,7 @@ pub struct BuildArgs {
     pub primitive: Option<String>,
     pub type_filter: Option<String>,
     pub kind: Option<String>,
+    pub only: Option<String>,
     pub clean: bool,
     pub verbose: bool,
 }
@@ -32,6 +34,50 @@ pub struct BuildResult {
     pub files_generated: Vec<PathBuf>,
     pub errors: Vec<String>,
     pub manifest: AgenticManifest,
+}
+
+/// Parse comma-separated glob patterns from --only flag
+fn parse_only_patterns(only: &str) -> Vec<Pattern> {
+    only.split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .filter_map(|p| Pattern::new(p).ok())
+        .collect()
+}
+
+/// Check if a primitive ID matches any of the --only patterns
+fn matches_only_patterns(primitive_id: &str, patterns: &[Pattern]) -> bool {
+    if patterns.is_empty() {
+        return true; // No filter = include all
+    }
+    patterns.iter().any(|p| p.matches(primitive_id))
+}
+
+/// Extract primitive ID from path (e.g., "qa/review" from ".../commands/qa/review/")
+fn extract_primitive_id(path: &Path) -> Option<String> {
+    let components: Vec<_> = path.components().collect();
+
+    // Find the index of type directory (commands, skills, agents, tools, hooks)
+    let type_idx = components.iter().position(|c| {
+        let name = c.as_os_str().to_string_lossy();
+        name == "commands"
+            || name == "skills"
+            || name == "agents"
+            || name == "tools"
+            || name == "hooks"
+    })?;
+
+    // Build the ID from remaining path components (category/id)
+    let id_parts: Vec<String> = components[type_idx + 1..]
+        .iter()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect();
+
+    if id_parts.is_empty() {
+        return None;
+    }
+
+    Some(id_parts.join("/"))
 }
 
 /// Get a transformer for the specified provider
@@ -138,6 +184,16 @@ fn should_include_primitive(path: &Path, args: &BuildArgs) -> Result<bool> {
 
         if !has_kind {
             return Ok(false);
+        }
+    }
+
+    // --only pattern filter (glob patterns like "qa/*", "devops/commit")
+    if let Some(ref only) = args.only {
+        let patterns = parse_only_patterns(only);
+        if let Some(primitive_id) = extract_primitive_id(path) {
+            if !matches_only_patterns(&primitive_id, &patterns) {
+                return Ok(false);
+            }
         }
     }
 
@@ -485,6 +541,7 @@ mod tests {
             primitive: None,
             type_filter: None,
             kind: None,
+            only: None,
             clean: false,
             verbose: false,
         };
@@ -500,6 +557,7 @@ mod tests {
             primitive: None,
             type_filter: Some("prompt".to_string()),
             kind: None,
+            only: None,
             clean: false,
             verbose: false,
         };
@@ -515,6 +573,7 @@ mod tests {
             primitive: None,
             type_filter: Some("tool".to_string()),
             kind: None,
+            only: None,
             clean: false,
             verbose: false,
         };
@@ -530,6 +589,7 @@ mod tests {
             primitive: None,
             type_filter: None,
             kind: Some("agent".to_string()),
+            only: None,
             clean: false,
             verbose: false,
         };
@@ -545,6 +605,7 @@ mod tests {
             primitive: None,
             type_filter: None,
             kind: Some("command".to_string()),
+            only: None,
             clean: false,
             verbose: false,
         };
@@ -560,9 +621,109 @@ mod tests {
             primitive: None,
             type_filter: Some("invalid".to_string()),
             kind: None,
+            only: None,
             clean: false,
             verbose: false,
         };
         assert!(should_include_primitive(path, &args).is_err());
+    }
+
+    // Tests for --only pattern matching
+    #[test]
+    fn test_parse_only_patterns_single() {
+        let patterns = parse_only_patterns("qa/review");
+        assert_eq!(patterns.len(), 1);
+        assert!(patterns[0].matches("qa/review"));
+    }
+
+    #[test]
+    fn test_parse_only_patterns_multiple() {
+        let patterns = parse_only_patterns("qa/*,devops/commit");
+        assert_eq!(patterns.len(), 2);
+        assert!(patterns[0].matches("qa/review"));
+        assert!(patterns[0].matches("qa/pre-commit-qa"));
+        assert!(patterns[1].matches("devops/commit"));
+    }
+
+    #[test]
+    fn test_parse_only_patterns_with_whitespace() {
+        let patterns = parse_only_patterns(" qa/* , devops/* ");
+        assert_eq!(patterns.len(), 2);
+        assert!(patterns[0].matches("qa/anything"));
+        assert!(patterns[1].matches("devops/anything"));
+    }
+
+    #[test]
+    fn test_parse_only_patterns_empty() {
+        let patterns = parse_only_patterns("");
+        assert!(patterns.is_empty());
+    }
+
+    #[test]
+    fn test_matches_only_patterns_empty_matches_all() {
+        let patterns: Vec<Pattern> = vec![];
+        assert!(matches_only_patterns("anything", &patterns));
+    }
+
+    #[test]
+    fn test_matches_only_patterns_glob() {
+        let patterns = parse_only_patterns("qa/*");
+        assert!(matches_only_patterns("qa/review", &patterns));
+        assert!(matches_only_patterns("qa/pre-commit-qa", &patterns));
+        assert!(!matches_only_patterns("devops/commit", &patterns));
+    }
+
+    #[test]
+    fn test_matches_only_patterns_exact() {
+        let patterns = parse_only_patterns("qa/review");
+        assert!(matches_only_patterns("qa/review", &patterns));
+        assert!(!matches_only_patterns("qa/other", &patterns));
+    }
+
+    #[test]
+    fn test_extract_primitive_id() {
+        let path = Path::new("/primitives/v1/commands/qa/review");
+        assert_eq!(extract_primitive_id(path), Some("qa/review".to_string()));
+
+        let path = Path::new("/primitives/v1/skills/testing/pytest-patterns");
+        assert_eq!(
+            extract_primitive_id(path),
+            Some("testing/pytest-patterns".to_string())
+        );
+
+        let path = Path::new("/primitives/v1/hooks");
+        assert_eq!(extract_primitive_id(path), None);
+    }
+
+    #[test]
+    fn test_should_include_primitive_only_filter_match() {
+        let path = Path::new("/primitives/v1/commands/qa/review");
+        let args = BuildArgs {
+            provider: "claude".to_string(),
+            output: None,
+            primitive: None,
+            type_filter: None,
+            kind: None,
+            only: Some("qa/*".to_string()),
+            clean: false,
+            verbose: false,
+        };
+        assert!(should_include_primitive(path, &args).unwrap());
+    }
+
+    #[test]
+    fn test_should_include_primitive_only_filter_no_match() {
+        let path = Path::new("/primitives/v1/commands/devops/commit");
+        let args = BuildArgs {
+            provider: "claude".to_string(),
+            output: None,
+            primitive: None,
+            type_filter: None,
+            kind: None,
+            only: Some("qa/*".to_string()),
+            clean: false,
+            verbose: false,
+        };
+        assert!(!should_include_primitive(path, &args).unwrap());
     }
 }
