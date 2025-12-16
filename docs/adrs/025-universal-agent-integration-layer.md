@@ -51,7 +51,7 @@ agentic-primitives/
 ├── lib/python/
 │   ├── agentic_hooks/       # ✅ EXISTS - Event emission
 │   ├── agentic_security/    # 🆕 NEW - Security policies
-│   ├── agentic_isolation/   # 🆕 NEW - Workspace abstraction  
+│   ├── agentic_isolation/   # 🆕 NEW - Workspace abstraction
 │   ├── agentic_agent/       # 🆕 NEW - Instrumented agent
 │   └── adapters/            # 🆕 NEW - Runtime adapters
 │       ├── claude_cli/      # .claude/hooks generator
@@ -280,5 +280,5 @@ options = config.to_claude_sdk()     # For Claude SDK
 
 ---
 
-**Status**: Proposed  
+**Status**: Proposed
 **Last Updated**: 2025-12-16
