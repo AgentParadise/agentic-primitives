@@ -106,10 +106,10 @@ async with IsolatedWorkspace.create(
 async with IsolatedWorkspace.create() as workspace:
     # Write file
     await workspace.write_file("test.py", "print('hello')")
-    
+
     # Read file
     content = await workspace.read_file("test.py")
-    
+
     # Check existence
     exists = await workspace.file_exists("test.py")
 ```
@@ -135,7 +135,7 @@ class MyProvider:
     @property
     def name(self) -> str:
         return "my-provider"
-    
+
     async def create(self, config): ...
     async def destroy(self, workspace): ...
     async def execute(self, workspace, command, **kwargs): ...
