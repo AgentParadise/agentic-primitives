@@ -97,7 +97,7 @@ The analytics system normalizes provider-specific hook events into 10 standard e
 
 **Hook Event Source**: `SessionStart`
 
-**When It Fires**: 
+**When It Fires**:
 - At application startup
 - When resuming a previous session
 - After clearing conversation history
@@ -198,9 +198,9 @@ cat events.jsonl | jq -r 'select(.event_type == "session_started") | .session_id
 
 ```bash
 # Extract session start and end times
-cat events.jsonl | jq -r 'select(.event_type | contains("session")) | 
-  {session_id, event_type, timestamp}' | 
-  jq -s 'group_by(.session_id) | 
+cat events.jsonl | jq -r 'select(.event_type | contains("session")) |
+  {session_id, event_type, timestamp}' |
+  jq -s 'group_by(.session_id) |
   map({session: .[0].session_id, start: .[0].timestamp, end: .[1].timestamp})'
 ```
 
@@ -266,11 +266,11 @@ Consider:
 
 ```bash
 # Analyze prompt lengths
-cat events.jsonl | jq 'select(.event_type == "user_prompt_submitted") | .context.prompt_length' | 
+cat events.jsonl | jq 'select(.event_type == "user_prompt_submitted") | .context.prompt_length' |
   jq -s 'add / length'  # Average length
 
 # Count prompts per session
-cat events.jsonl | jq -r 'select(.event_type == "user_prompt_submitted") | .session_id' | 
+cat events.jsonl | jq -r 'select(.event_type == "user_prompt_submitted") | .session_id' |
   sort | uniq -c
 
 # Find long prompts (>500 chars)
@@ -369,15 +369,15 @@ cat events.jsonl | jq 'select(.event_type == "user_prompt_submitted" and .contex
 
 ```bash
 # Most popular tools
-cat events.jsonl | jq -r 'select(.event_type == "tool_execution_started") | .context.tool_name' | 
+cat events.jsonl | jq -r 'select(.event_type == "tool_execution_started") | .context.tool_name' |
   sort | uniq -c | sort -rn
 
 # File write operations
-cat events.jsonl | jq 'select(.event_type == "tool_execution_started" and .context.tool_name == "Write") | 
+cat events.jsonl | jq 'select(.event_type == "tool_execution_started" and .context.tool_name == "Write") |
   .context.tool_input.file_path'
 
 # Bash commands executed
-cat events.jsonl | jq -r 'select(.event_type == "tool_execution_started" and .context.tool_name == "Bash") | 
+cat events.jsonl | jq -r 'select(.event_type == "tool_execution_started" and .context.tool_name == "Bash") |
   .context.tool_input.command'
 ```
 
@@ -470,10 +470,10 @@ cat events.jsonl | jq -r 'select(.event_type == "tool_execution_started" and .co
 ```bash
 # Match start and complete events by tool_use_id
 cat events.jsonl | jq -r '
-  select(.event_type | contains("tool_execution")) | 
+  select(.event_type | contains("tool_execution")) |
   {tool_use_id: .context.tool_use_id, event_type, timestamp}' |
-  jq -s 'group_by(.tool_use_id) | 
-  map(select(length == 2) | 
+  jq -s 'group_by(.tool_use_id) |
+  map(select(length == 2) |
   {tool: .[0].tool_use_id, duration: (.[1].timestamp | fromdate) - (.[0].timestamp | fromdate)})'
 ```
 
@@ -481,8 +481,8 @@ cat events.jsonl | jq -r '
 
 ```bash
 # Count successful vs failed executions
-cat events.jsonl | jq 'select(.event_type == "tool_execution_completed") | 
-  .context.tool_response.success' | 
+cat events.jsonl | jq 'select(.event_type == "tool_execution_completed") |
+  .context.tool_response.success' |
   sort | uniq -c
 ```
 
@@ -556,18 +556,18 @@ Permission request typically happens before tool execution:
 
 ```bash
 # Most common tools requiring permission
-cat events.jsonl | jq -r 'select(.event_type == "permission_requested") | .context.tool_name' | 
+cat events.jsonl | jq -r 'select(.event_type == "permission_requested") | .context.tool_name' |
   sort | uniq -c | sort -rn
 
 # Permission requests by permission mode
-cat events.jsonl | jq 'select(.event_type == "permission_requested") | 
+cat events.jsonl | jq 'select(.event_type == "permission_requested") |
   {tool: .context.tool_name, mode: .metadata.permission_mode}'
 
 # Find tools that always need permission
 cat events.jsonl | jq -r '
-  select(.event_type | contains("tool_execution")) | 
+  select(.event_type | contains("tool_execution")) |
   {tool: .context.tool_name, event: .event_type}' |
-  jq -s 'group_by(.tool) | 
+  jq -s 'group_by(.tool) |
   map({tool: .[0].tool, count: length})'
 ```
 
@@ -621,7 +621,7 @@ The `stop_hook_active` field prevents infinite loops. If your stop hook keeps th
 
 ```bash
 # Count agent stops per session
-cat events.jsonl | jq -r 'select(.event_type == "agent_stopped") | .session_id' | 
+cat events.jsonl | jq -r 'select(.event_type == "agent_stopped") | .session_id' |
   sort | uniq -c
 
 # Find sessions with stop hooks active
@@ -629,7 +629,7 @@ cat events.jsonl | jq 'select(.event_type == "agent_stopped" and .context.stop_h
 
 # Calculate response time (prompt to stop)
 cat events.jsonl | jq -r '
-  select(.event_type == "user_prompt_submitted" or .event_type == "agent_stopped") | 
+  select(.event_type == "user_prompt_submitted" or .event_type == "agent_stopped") |
   {event: .event_type, timestamp, session_id}' |
   jq -s 'group_by(.session_id) | map(select(length >= 2))'
 ```
@@ -762,7 +762,7 @@ cat events.jsonl | jq 'select(.event_type == "tool_execution_started" and .conte
 
 ```bash
 # Count notifications by type
-cat events.jsonl | jq -r 'select(.event_type == "system_notification") | .context.notification_type' | 
+cat events.jsonl | jq -r 'select(.event_type == "system_notification") | .context.notification_type' |
   sort | uniq -c
 
 # Find idle notifications
@@ -777,7 +777,7 @@ cat events.jsonl | jq 'select(.event_type == "system_notification" and .context.
 
 **Hook Event Source**: `PreCompact`
 
-**When It Fires**: 
+**When It Fires**:
 - Manually via `/compact` command
 - Automatically when context window is full
 
@@ -840,7 +840,7 @@ cat events.jsonl | jq 'select(.event_type == "system_notification" and .context.
 
 ```bash
 # Count compactions by trigger type
-cat events.jsonl | jq -r 'select(.event_type == "context_compacted") | .context.trigger' | 
+cat events.jsonl | jq -r 'select(.event_type == "context_compacted") | .context.trigger' |
   sort | uniq -c
 
 # Find sessions with auto compaction (long conversations)
@@ -982,4 +982,3 @@ df.set_index('timestamp').resample('1H')['event_type'].count().plot()
 - [Analytics Examples](./examples/analytics/) - Example configurations
 - [ADR-011: Analytics Middleware](./adrs/011-analytics-middleware.md) - Architecture decisions
 - [JSON Schema](../specs/v1/analytics-events.schema.json) - Complete schema definition
-
