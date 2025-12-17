@@ -1,0 +1,38 @@
+[project]
+name = "otel-first-agent-example"
+version = "0.1.0"
+description = "Example: OTel-first observability for Claude CLI agents"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    # Core packages from agentic-primitives
+    "agentic-otel",
+    "agentic-adapters[otel,security]",
+    "agentic-security",
+    "agentic-isolation",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# For local development, use path dependencies
+[tool.uv.sources]
+agentic-otel = { path = "../../lib/python/agentic_otel" }
+agentic-adapters = { path = "../../lib/python/agentic_adapters" }
+agentic-security = { path = "../../lib/python/agentic_security" }
+agentic-isolation = { path = "../../lib/python/agentic_isolation" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
