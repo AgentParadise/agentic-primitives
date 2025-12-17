@@ -20,14 +20,14 @@ Dependencies:
 from __future__ import annotations
 
 from enum import Enum
-from functools import cached_property, lru_cache
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
-    from .github import GitHubSettings
+    from config.github import GitHubSettings
 
 
 class Environment(str, Enum):
@@ -108,10 +108,10 @@ class Settings(BaseSettings):
     # NESTED SETTINGS
     # =========================================================================
 
-    @cached_property
+    @property
     def github(self) -> GitHubSettings:
         """Get GitHub settings (GITHUB_* prefix)."""
-        from .github import GitHubSettings
+        from config.github import GitHubSettings
 
         return GitHubSettings()
 

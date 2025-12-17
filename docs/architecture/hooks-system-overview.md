@@ -2,6 +2,82 @@
 
 A visual guide to understanding the agentic-primitives hook system.
 
+## Two Execution Patterns
+
+The agentic-primitives hook system supports **two distinct execution patterns** depending on how the agent is invoked:
+
+### Pattern A: CLI Agent (File-based Hooks)
+
+**Used by:** Claude Code CLI, interactive development sessions
+
+```
+Claude Code CLI
+    │ triggers
+    ▼
+File-based hooks (.claude/hooks/)
+    │ write to
+    ▼
+.agentic/analytics/events.jsonl
+    │ watched by
+    ▼
+File Watcher / AnalyticsStreamer
+    │ forwards to
+    ▼
+Event Store / Backend
+```
+
+**Characteristics:**
+- Human interactive sessions
+- File-based hook scripts (Python/Shell)
+- Events written to JSONL files
+- Good for development/debugging
+
+This is the pattern described in detail below.
+
+### Pattern B: SDK Agent (Stdout-based Events)
+
+**Used by:** `claude-agent-sdk`, programmatic agent execution, containerized workloads
+
+```
+claude-agent-sdk query()
+    │ yields
+    ▼
+ResultMessage (usage, content, tool blocks)
+    │ processed by
+    ▼
+Agent Runner → emit_*() → stdout (JSONL)
+    │ streamed by
+    ▼
+Orchestrator (reads container stdout)
+    │ parses and forwards
+    ▼
+Event Store / Backend
+```
+
+**Characteristics:**
+- Programmatic, autonomous execution
+- JSONL to stdout (industry standard for containerized agents)
+- Orchestrator collects events from stdout stream
+- Scales to 10,000+ concurrent agents
+
+**Industry Alignment**: The stdout-based pattern aligns with:
+- OpenAI Codex CLI architecture
+- Langfuse/LangSmith agent tracing
+- E2B sandbox observability
+
+### Pattern Selection Guide
+
+| Criteria | Use Pattern A (File) | Use Pattern B (Stdout) |
+|----------|---------------------|------------------------|
+| Agent execution | Claude Code CLI | claude-agent-sdk |
+| Environment | Local filesystem | Docker/container |
+| Scalability | Single agent | 1000s of agents |
+| Primary user | Human developer | Orchestration system |
+
+> **Note**: Both patterns produce the same event schema, just through different transport mechanisms.
+
+---
+
 ## High-Level Architecture
 
 ```mermaid
@@ -10,17 +86,17 @@ graph TB
         Handlers[handlers/<br/>pre-tool-use.py<br/>post-tool-use.py<br/>user-prompt.py]
         Validators[validators/<br/>security/bash.py<br/>security/file.py<br/>prompt/pii.py]
     end
-    
+
     subgraph "Build System"
         Build[agentic-p build<br/>--provider claude]
     end
-    
+
     subgraph "Output (.claude/)"
         Settings[settings.json]
         OutHandlers[hooks/handlers/]
         OutValidators[hooks/validators/]
     end
-    
+
     subgraph "Runtime (Claude)"
         Event[Hook Event] --> Handler[Handler]
         Handler --> Validator1[Validator]
@@ -28,14 +104,14 @@ graph TB
         Handler --> Analytics[Log Analytics]
         Handler --> Decision[Return Decision]
     end
-    
+
     Handlers --> Build
     Validators --> Build
     Build --> Settings
     Build --> OutHandlers
     Build --> OutValidators
     OutHandlers --> Event
-    
+
     style Handlers fill:#9f9,stroke:#333,color:#000
     style Validators fill:#9f9,stroke:#333,color:#000
     style Build fill:#f99,stroke:#333,color:#000
@@ -74,7 +150,7 @@ sequenceDiagram
     participant Handler as pre-tool-use.py
     participant Validator as validators/security/bash.py
     participant Analytics as events.jsonl
-    
+
     Claude->>Handler: Event JSON via stdin
     Handler->>Handler: Parse event
     Handler->>Handler: Determine validators to run
@@ -174,7 +250,7 @@ graph LR
     subgraph "Claude Invokes Hook"
         A[PreToolUse Event] -->|stdin JSON| B[pre-tool-use.py]
     end
-    
+
     subgraph "Handler Processing"
         B --> C{Tool = Bash?}
         C -->|Yes| D[import bash.py]
@@ -183,12 +259,12 @@ graph LR
         F -->|No| G[Block + Log]
         F -->|Yes| H[Allow + Log]
     end
-    
+
     subgraph "Response"
         G --> I[stdout: decision=block]
         H --> J[stdout: decision=allow]
     end
-    
+
     style B fill:#ff9,stroke:#333,color:#000
     style D fill:#9f9,stroke:#333,color:#000
 ```
