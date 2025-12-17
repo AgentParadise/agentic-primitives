@@ -2,6 +2,72 @@
 
 Complete reference for all analytics event types in the agentic-primitives system.
 
+> **⚠️ Deprecation Notice (v0.2.0)**
+>
+> The JSONL-based analytics system documented here is **deprecated** in favor of
+> **OTel-first observability**. New implementations should use `agentic_otel` for
+> telemetry emission.
+>
+> **Migration Path:**
+> - Custom JSONL backends → OTel Collector with file exporter
+> - Custom HTTP backends → OTLP exporter to OTel Collector
+> - Event parsing scripts → OTel Collector processors
+>
+> See [ADR-026: OTel-First Observability](./adrs/026-otel-first-observability.md)
+> for architectural details and migration guidance.
+
+---
+
+## OTel-First Approach (Recommended)
+
+The recommended approach uses OpenTelemetry for all observability:
+
+```python
+from agentic_otel import OTelConfig, HookOTelEmitter
+
+# Configure OTel endpoint (typically OTel Collector)
+config = OTelConfig(
+    endpoint="http://collector:4317",
+    service_name="agentic-hooks",
+    resource_attributes={
+        "deployment.environment": "production",
+        "service.version": "1.0.0",
+    },
+)
+
+# Emit events as OTel signals
+emitter = HookOTelEmitter(config)
+
+# Tool spans (traces)
+with emitter.start_tool_span("Bash", tool_use_id, tool_input) as span:
+    result = execute_tool()
+    span.set_attribute("tool.success", result.success)
+
+# Security events (logs/events)
+emitter.emit_security_event(
+    hook_type="pre_tool_use",
+    decision="block",
+    tool_name="Bash",
+    tool_use_id=tool_use_id,
+    reason="Dangerous command blocked",
+)
+```
+
+**Benefits of OTel-first:**
+- Native Claude CLI support (metrics exported automatically)
+- Industry-standard format (vendor-neutral)
+- Rich correlation (traces link to metrics to logs)
+- Powerful collectors (filtering, sampling, routing)
+
+---
+
+## Legacy JSONL Format (Deprecated)
+
+The following documentation covers the legacy JSONL event format.
+It remains functional but is not recommended for new implementations.
+
+---
+
 ## Overview
 
 The analytics system normalizes provider-specific hook events into 10 standard event types. This document provides detailed documentation for each event type.

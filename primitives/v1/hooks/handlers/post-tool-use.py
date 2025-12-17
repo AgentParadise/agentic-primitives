@@ -6,6 +6,10 @@ This handler:
 1. Receives PostToolUse events from Claude
 2. Logs tool execution metadata (duration, success, output preview)
 3. Always allows (post-execution, can't block)
+
+OTel Support:
+    Set OTEL_EXPORTER_OTLP_ENDPOINT to enable OTel emission.
+    Falls back to JSONL if OTel is not configured or unavailable.
 """
 
 import json
@@ -15,8 +19,69 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# === OTEL EMITTER (lazy initialized) ===
+_otel_emitter = None
 
-# === INLINE ANALYTICS ===
+
+def _get_otel_emitter():
+    """Get OTel emitter if available, None otherwise."""
+    global _otel_emitter
+    if _otel_emitter is not None:
+        return _otel_emitter
+
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        return None
+
+    try:
+        from agentic_otel import HookOTelEmitter, OTelConfig
+
+        resource_attrs = {}
+        attrs_str = os.getenv("OTEL_RESOURCE_ATTRIBUTES", "")
+        if attrs_str:
+            for item in attrs_str.split(","):
+                if "=" in item:
+                    k, v = item.split("=", 1)
+                    resource_attrs[k] = v
+
+        config = OTelConfig(
+            endpoint=endpoint,
+            service_name=os.getenv("OTEL_SERVICE_NAME", "agentic-hooks"),
+            resource_attributes=resource_attrs,
+        )
+        _otel_emitter = HookOTelEmitter(config)
+        return _otel_emitter
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+
+def emit_tool_completed_otel(
+    tool_name: str,
+    tool_use_id: str,
+    success: bool,
+    error: str | None = None,
+) -> bool:
+    """Emit tool completion via OTel. Returns True if emitted."""
+    emitter = _get_otel_emitter()
+    if emitter is None:
+        return False
+
+    try:
+        emitter.emit_security_event(
+            hook_type="post_tool_use",
+            decision="allow",  # PostToolUse always allows
+            tool_name=tool_name,
+            tool_use_id=tool_use_id,
+            reason=error if not success else None,
+        )
+        return True
+    except Exception:
+        return False
+
+
+# === INLINE ANALYTICS (fallback) ===
 def log_analytics(event: dict[str, Any]) -> None:
     """Log to analytics file. Fail-safe - never blocks."""
     try:
@@ -90,26 +155,37 @@ def main() -> None:
 
         # Determine success/failure
         is_error = False
+        error_msg = None
         if isinstance(tool_result, dict):
             is_error = tool_result.get("is_error", False) or "error" in tool_result
+            if is_error:
+                error_msg = tool_result.get("error", "Tool execution failed")
 
-        # Log to analytics with audit trail
-        analytics_event = {
-            "event_type": "tool_execution",
-            "handler": "post-tool-use",
-            "hook_event": event.get(
-                "hook_event_name", "PostToolUse"
-            ),  # Claude's hook event
-            "tool_name": tool_name,
-            "session_id": event.get("session_id"),
-            "tool_use_id": event.get("tool_use_id"),
-            "success": not is_error,
-            "output_preview": extract_output_preview(tool_result),
-            "input_preview": json.dumps(tool_input)[:200] if tool_input else None,
-        }
-        if audit:
-            analytics_event["audit"] = audit
-        log_analytics(analytics_event)
+        # Try OTel first, fall back to JSONL
+        tool_use_id = event.get("tool_use_id", "unknown")
+        otel_emitted = emit_tool_completed_otel(
+            tool_name=tool_name,
+            tool_use_id=tool_use_id,
+            success=not is_error,
+            error=error_msg,
+        )
+
+        # Fall back to JSONL analytics if OTel not available
+        if not otel_emitted:
+            analytics_event = {
+                "event_type": "tool_execution",
+                "handler": "post-tool-use",
+                "hook_event": event.get("hook_event_name", "PostToolUse"),
+                "tool_name": tool_name,
+                "session_id": event.get("session_id"),
+                "tool_use_id": tool_use_id,
+                "success": not is_error,
+                "output_preview": extract_output_preview(tool_result),
+                "input_preview": json.dumps(tool_input)[:200] if tool_input else None,
+            }
+            if audit:
+                analytics_event["audit"] = audit
+            log_analytics(analytics_event)
 
         # Always allow (post-execution)
         print(json.dumps({"decision": "allow"}))

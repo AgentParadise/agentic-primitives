@@ -6,8 +6,12 @@ This handler:
 1. Receives PreToolUse events from Claude
 2. Determines which validators to run based on tool_name
 3. Calls validators in-process (no subprocess)
-4. Logs decisions to analytics
+4. Logs decisions to analytics (OTel or JSONL)
 5. Returns allow/block decision
+
+OTel Support:
+    Set OTEL_EXPORTER_OTLP_ENDPOINT to enable OTel emission.
+    Falls back to JSONL if OTel is not configured or unavailable.
 """
 
 import json
@@ -27,8 +31,73 @@ TOOL_VALIDATORS: dict[str, list[str]] = {
     "MultiEdit": ["security.file"],
 }
 
+# === OTEL EMITTER (lazy initialized) ===
+_otel_emitter = None
 
-# === INLINE ANALYTICS ===
+
+def _get_otel_emitter():
+    """Get OTel emitter if available, None otherwise."""
+    global _otel_emitter
+    if _otel_emitter is not None:
+        return _otel_emitter
+
+    # Check if OTel is configured
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        return None
+
+    try:
+        from agentic_otel import HookOTelEmitter, OTelConfig
+
+        # Parse resource attributes from environment
+        resource_attrs = {}
+        attrs_str = os.getenv("OTEL_RESOURCE_ATTRIBUTES", "")
+        if attrs_str:
+            for item in attrs_str.split(","):
+                if "=" in item:
+                    k, v = item.split("=", 1)
+                    resource_attrs[k] = v
+
+        config = OTelConfig(
+            endpoint=endpoint,
+            service_name=os.getenv("OTEL_SERVICE_NAME", "agentic-hooks"),
+            resource_attributes=resource_attrs,
+        )
+        _otel_emitter = HookOTelEmitter(config)
+        return _otel_emitter
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+
+def emit_security_decision_otel(
+    tool_name: str,
+    tool_use_id: str,
+    decision: str,
+    reason: str | None,
+    validators_run: list[str],
+) -> bool:
+    """Emit security decision via OTel. Returns True if emitted."""
+    emitter = _get_otel_emitter()
+    if emitter is None:
+        return False
+
+    try:
+        emitter.emit_security_event(
+            hook_type="pre_tool_use",
+            decision=decision,
+            tool_name=tool_name,
+            tool_use_id=tool_use_id,
+            reason=reason,
+            validators=validators_run,
+        )
+        return True
+    except Exception:
+        return False
+
+
+# === INLINE ANALYTICS (fallback) ===
 def log_analytics(event: dict[str, Any]) -> None:
     """Log to analytics file. Fail-safe - never blocks."""
     try:
@@ -126,23 +195,33 @@ def main() -> None:
         result = run_validators(tool_name, tool_input, context)
         decision = "block" if not result.get("safe", True) else "allow"
 
-        # Log to analytics with audit trail
-        analytics_event = {
-            "event_type": "hook_decision",
-            "handler": "pre-tool-use",
-            "hook_event": context.get("hook_event_name"),  # Claude's hook event type
-            "tool_name": tool_name,
-            "tool_input_preview": json.dumps(tool_input)[:200] if tool_input else None,
-            "decision": decision,
-            "reason": result.get("reason"),
-            "session_id": context.get("session_id"),
-            "tool_use_id": context.get("tool_use_id"),
-            "validators_run": result.get("validators_run", []),
-            "metadata": result.get("metadata"),
-        }
-        if audit:
-            analytics_event["audit"] = audit
-        log_analytics(analytics_event)
+        # Try OTel first, fall back to JSONL
+        otel_emitted = emit_security_decision_otel(
+            tool_name=tool_name,
+            tool_use_id=context.get("tool_use_id", "unknown"),
+            decision=decision,
+            reason=result.get("reason"),
+            validators_run=result.get("validators_run", []),
+        )
+
+        # Fall back to JSONL analytics if OTel not available
+        if not otel_emitted:
+            analytics_event = {
+                "event_type": "hook_decision",
+                "handler": "pre-tool-use",
+                "hook_event": context.get("hook_event_name"),
+                "tool_name": tool_name,
+                "tool_input_preview": json.dumps(tool_input)[:200] if tool_input else None,
+                "decision": decision,
+                "reason": result.get("reason"),
+                "session_id": context.get("session_id"),
+                "tool_use_id": context.get("tool_use_id"),
+                "validators_run": result.get("validators_run", []),
+                "metadata": result.get("metadata"),
+            }
+            if audit:
+                analytics_event["audit"] = audit
+            log_analytics(analytics_event)
 
         # Output response
         response: dict[str, Any] = {"decision": decision}
