@@ -84,9 +84,12 @@ uv run python main.py "Create a hello world Python script"
 
 ## Files
 
-- `main.py` - Entry point that runs ClaudeCLIRunner with OTel
-- `generate_hooks.py` - Generates security hooks with OTel backend
-- `.claude/hooks/handlers/` - Generated hook scripts
+| File | Description |
+|------|-------------|
+| `main.py` | Run Claude CLI directly with OTel (no container) |
+| `run_isolated.py` | **Run Claude CLI in an isolated Docker container** |
+| `generate_hooks.py` | Generate security hooks with OTel backend |
+| `.claude/hooks/handlers/` | Generated hook scripts |
 
 ## Key Concepts
 
