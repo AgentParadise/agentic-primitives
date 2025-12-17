@@ -1,0 +1,18 @@
+name: Quick Task
+description: Fast execution for simple tasks with limited resources
+
+headless:
+  allowed_tools:
+    - Bash
+    - Read
+    - Write
+  output_format: stream-json
+  permission_mode: bypassPermissions
+  max_turns: 10
+
+isolation:
+  provider: docker
+  image: ghcr.io/anthropics/claude-code:latest
+  timeout: 120
+  memory_mb: 1024
+  cpu_cores: 1.0

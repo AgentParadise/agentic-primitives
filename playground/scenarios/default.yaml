@@ -1,0 +1,20 @@
+name: Default
+description: Standard agent execution with common tools
+
+headless:
+  allowed_tools:
+    - Bash
+    - Read
+    - Write
+    - Glob
+    - Grep
+    - LS
+  output_format: stream-json
+  permission_mode: bypassPermissions
+
+isolation:
+  provider: docker
+  image: ghcr.io/anthropics/claude-code:latest
+  timeout: 300
+  memory_mb: 2048
+  cpu_cores: 2.0
