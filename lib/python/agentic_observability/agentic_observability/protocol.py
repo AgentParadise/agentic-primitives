@@ -72,6 +72,7 @@ class ObservationContext:
     workflow_id: str | None = None
     phase_id: str | None = None
     agent_id: str | None = None
+    workspace_path: str | None = None  # Path to isolated workspace (host path)
     observation_id: str = field(default_factory=lambda: str(uuid4()))
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_id: str | None = None
