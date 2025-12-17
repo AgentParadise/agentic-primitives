@@ -505,6 +505,44 @@ loc:
     (Get-ChildItem -Recurse services,lib -Filter *.py -ErrorAction SilentlyContinue | Get-Content | Measure-Object -Line).Lines
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# DOCKER / WORKSPACE IMAGES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Build a workspace provider image (e.g., claude-cli)
+[group('docker')]
+[unix]
+build-provider provider:
+    @echo '{{ YELLOW }}Building provider: {{ provider }}{{ NORMAL }}'
+    uv run scripts/build-provider.py {{ provider }}
+    @echo '{{ GREEN }}✓ Provider image built{{ NORMAL }}'
+
+[group('docker')]
+[windows]
+build-provider provider:
+    Write-Host "Building provider: {{ provider }}" -ForegroundColor Yellow
+    uv run scripts/build-provider.py {{ provider }}
+    Write-Host "✓ Provider image built" -ForegroundColor Green
+
+# Build Claude CLI workspace image
+[group('docker')]
+build-workspace-claude-cli: (build-provider "claude-cli")
+
+# Stage provider build context only (no docker build)
+[group('docker')]
+[unix]
+stage-provider provider:
+    @echo '{{ YELLOW }}Staging provider: {{ provider }}{{ NORMAL }}'
+    uv run scripts/build-provider.py {{ provider }} --stage-only
+    @echo '{{ GREEN }}✓ Staged to build/{{ provider }}/{{ NORMAL }}'
+
+# List available workspace providers
+[group('docker')]
+[unix]
+list-providers:
+    @echo '{{ YELLOW }}Available workspace providers:{{ NORMAL }}'
+    @ls -1 providers/workspaces/ | grep -v README
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ADVANCED
 # ═══════════════════════════════════════════════════════════════════════════════
 
