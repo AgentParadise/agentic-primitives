@@ -48,7 +48,7 @@ emitter = HookOTelEmitter(config)
 with emitter.start_tool_span("Bash", tool_use_id, tool_input) as span:
     result = run_security_checks()
     span.set_attribute("tool.success", result.safe)
-    
+
     if not result.safe:
         emitter.emit_security_event(
             hook_type="pre_tool_use",
