@@ -22,7 +22,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
 ]
-provides-extras = ["security", "hooks", "dev"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "backports-asyncio-runner"

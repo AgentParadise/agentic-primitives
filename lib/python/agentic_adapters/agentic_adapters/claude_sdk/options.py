@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agentic_security import SecurityPolicy
@@ -97,12 +98,14 @@ def create_observability_hooks(
         if hook_client:
             try:
                 # Emit tool_started event
-                hook_client.emit_sync({
-                    "type": "tool_started",
-                    "tool_name": tool_name,
-                    "tool_input": tool_input,
-                    "tool_id": tool_id,
-                })
+                hook_client.emit_sync(
+                    {
+                        "type": "tool_started",
+                        "tool_name": tool_name,
+                        "tool_input": tool_input,
+                        "tool_id": tool_id,
+                    }
+                )
             except Exception:
                 pass  # Non-blocking
 
@@ -125,13 +128,15 @@ def create_observability_hooks(
         if hook_client:
             try:
                 # Emit tool_completed event
-                hook_client.emit_sync({
-                    "type": "tool_completed",
-                    "tool_name": tool_name,
-                    "tool_id": tool_id,
-                    "success": not isinstance(result, Exception),
-                    "duration_ms": duration_ms,
-                })
+                hook_client.emit_sync(
+                    {
+                        "type": "tool_completed",
+                        "tool_name": tool_name,
+                        "tool_id": tool_id,
+                        "success": not isinstance(result, Exception),
+                        "duration_ms": duration_ms,
+                    }
+                )
             except Exception:
                 pass  # Non-blocking
 

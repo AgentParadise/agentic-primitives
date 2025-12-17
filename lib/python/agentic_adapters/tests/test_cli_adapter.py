@@ -1,13 +1,17 @@
 """Tests for Claude CLI adapter."""
 
-import pytest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from agentic_adapters.claude_cli import (
-    generate_hooks,
-    generate_pre_tool_use_hook,
-    generate_post_tool_use_hook,
+    ClaudeCLIRunner,
+    CLIResult,
     HookTemplate,
+    generate_hooks,
+    generate_post_tool_use_hook,
+    generate_pre_tool_use_hook,
 )
 
 
@@ -20,8 +24,9 @@ class TestHookTemplate:
 
         assert template.security_enabled is True
         assert template.observability_enabled is True
-        assert template.observability_backend == "jsonl"
+        assert template.observability_backend == "otel"  # Changed from jsonl
         assert template.make_executable is True
+        assert template.otel_service_name == "agentic-hooks"
 
     def test_custom_paths(self) -> None:
         """Should support custom paths."""
@@ -222,3 +227,139 @@ class TestGenerateHooks:
 
         assert all(isinstance(f, Path) for f in files)
         assert all(f.exists() for f in files)
+
+    def test_otel_backend(self, tmp_path: Path) -> None:
+        """Should generate OTel recording code."""
+        output_dir = tmp_path / "hooks"
+        template = HookTemplate(
+            observability_enabled=True,
+            observability_backend="otel",
+            observability_endpoint="http://collector:4317",
+        )
+
+        generate_hooks(output_dir, template=template)
+
+        post_code = (output_dir / "post_tool_use.py").read_text()
+        assert "agentic_otel" in post_code
+        assert "OTelConfig" in post_code
+        assert "HookOTelEmitter" in post_code
+
+
+class TestClaudeCLIRunner:
+    """Tests for ClaudeCLIRunner."""
+
+    @pytest.fixture
+    def mock_otel_config(self) -> MagicMock:
+        """Create a mock OTelConfig."""
+        config = MagicMock()
+        config.to_env.return_value = {
+            "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://test:4317",
+        }
+        return config
+
+    def test_init_default_values(self, mock_otel_config: MagicMock) -> None:
+        """Should have sensible defaults."""
+        runner = ClaudeCLIRunner(otel_config=mock_otel_config)
+
+        assert runner.cwd == "/workspace"
+        assert runner.permission_mode == "bypassPermissions"
+        assert runner.claude_command == "claude"
+
+    def test_init_invalid_permission_mode(self, mock_otel_config: MagicMock) -> None:
+        """Should reject invalid permission modes."""
+        with pytest.raises(ValueError, match="Invalid permission_mode"):
+            ClaudeCLIRunner(
+                otel_config=mock_otel_config,
+                permission_mode="invalid",
+            )
+
+    def test_get_env_includes_otel(self, mock_otel_config: MagicMock) -> None:
+        """Should include OTel config in environment."""
+        runner = ClaudeCLIRunner(otel_config=mock_otel_config)
+
+        env = runner.get_env()
+
+        assert env["CLAUDE_CODE_ENABLE_TELEMETRY"] == "1"
+        assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://test:4317"
+
+    def test_get_env_includes_extra(self, mock_otel_config: MagicMock) -> None:
+        """Should include extra env vars."""
+        runner = ClaudeCLIRunner(
+            otel_config=mock_otel_config,
+            extra_env={"CUSTOM_VAR": "value"},
+        )
+
+        env = runner.get_env()
+
+        assert env["CUSTOM_VAR"] == "value"
+
+    def test_get_command_basic(self, mock_otel_config: MagicMock) -> None:
+        """Should build basic command."""
+        runner = ClaudeCLIRunner(
+            otel_config=mock_otel_config,
+            permission_mode="default",
+        )
+
+        cmd = runner.get_command("Hello")
+
+        assert cmd == ["claude", "--print", "Hello"]
+
+    def test_get_command_bypass_permissions(self, mock_otel_config: MagicMock) -> None:
+        """Should add skip permissions flag."""
+        runner = ClaudeCLIRunner(
+            otel_config=mock_otel_config,
+            permission_mode="bypassPermissions",
+        )
+
+        cmd = runner.get_command("Hello")
+
+        assert "--dangerously-skip-permissions" in cmd
+
+    def test_get_command_plan_mode(self, mock_otel_config: MagicMock) -> None:
+        """Should configure plan mode."""
+        runner = ClaudeCLIRunner(
+            otel_config=mock_otel_config,
+            permission_mode="plan",
+        )
+
+        cmd = runner.get_command("Hello")
+
+        assert "--allowedTools" in cmd
+
+    @pytest.mark.asyncio
+    async def test_run_not_found(self, mock_otel_config: MagicMock) -> None:
+        """Should raise FileNotFoundError if claude not found."""
+        runner = ClaudeCLIRunner(
+            otel_config=mock_otel_config,
+            claude_command="nonexistent-claude-command",
+        )
+
+        with pytest.raises(FileNotFoundError, match="Claude CLI not found"):
+            await runner.run("Hello")
+
+    @pytest.mark.asyncio
+    async def test_run_success(self, mock_otel_config: MagicMock) -> None:
+        """Should return CLIResult on success."""
+        runner = ClaudeCLIRunner(otel_config=mock_otel_config)
+
+        # Mock subprocess
+        with patch.object(runner, "_find_claude", return_value=True):
+            with patch("asyncio.create_subprocess_exec") as mock_exec:
+                mock_process = MagicMock()
+                mock_process.returncode = 0
+                mock_process.communicate = MagicMock(return_value=(b"output", b""))
+                mock_exec.return_value = mock_process
+
+                # Make communicate awaitable
+                async def mock_communicate() -> tuple[bytes, bytes]:
+                    return (b"output", b"")
+
+                mock_process.communicate = mock_communicate
+
+                result = await runner.run("Hello")
+
+                assert isinstance(result, CLIResult)
+                assert result.success is True
+                assert result.exit_code == 0
+                assert result.stdout == "output"

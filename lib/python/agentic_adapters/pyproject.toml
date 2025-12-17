@@ -23,12 +23,9 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-security = [
-    # agentic-security when published
-]
-hooks = [
-    # agentic-hooks when published
-]
+# Note: These are local packages - use path deps for development
+# otel = ["agentic-otel>=0.1.0"]  # When published to PyPI
+# security = ["agentic-security>=0.1.0"]  # When published to PyPI
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

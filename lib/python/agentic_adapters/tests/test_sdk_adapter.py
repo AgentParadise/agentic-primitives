@@ -1,14 +1,13 @@
 """Tests for Claude SDK adapter."""
 
-import pytest
 from dataclasses import dataclass
 from typing import Any
 
 from agentic_adapters.claude_sdk import (
-    create_agent_options,
-    create_security_hooks,
-    create_observability_hooks,
     HookConfig,
+    create_agent_options,
+    create_observability_hooks,
+    create_security_hooks,
 )
 
 
@@ -21,6 +20,7 @@ class MockSecurityPolicy:
 
     def validate(self, tool_name: str, tool_input: dict[str, Any]) -> Any:
         """Mock validation."""
+
         @dataclass
         class Result:
             safe: bool
@@ -211,7 +211,9 @@ class TestCreateAgentOptions:
             custom_pre_called.append(tool_name)
             return None
 
-        def custom_post(tool_name: str, tool_input: dict, result: Any, duration: float | None) -> None:
+        def custom_post(
+            tool_name: str, tool_input: dict, result: Any, duration: float | None
+        ) -> None:
             custom_post_called.append(tool_name)
 
         config = HookConfig(

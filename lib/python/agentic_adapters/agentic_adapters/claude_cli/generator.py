@@ -1,8 +1,13 @@
-"""Generate .claude/hooks/ Python files for Claude CLI."""
+"""Generate .claude/hooks/ Python files for Claude CLI.
+
+Supports two observability backends:
+- "otel": OpenTelemetry (recommended) - uses agentic_otel for spans/events
+- "jsonl": Legacy JSONL file logging
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -98,9 +103,13 @@ class HookTemplate:
 
     # Observability
     observability_enabled: bool = True
-    observability_backend: str = "jsonl"  # "jsonl", "http", "timescaledb"
-    observability_endpoint: str | None = None
+    observability_backend: str = "otel"  # "otel" (recommended), "jsonl", "http"
+    observability_endpoint: str | None = None  # OTel collector or HTTP endpoint
     jsonl_path: str = ".agentic/analytics/events.jsonl"
+
+    # OTel-specific settings
+    otel_service_name: str = "agentic-hooks"
+    otel_resource_attributes: dict[str, str] = field(default_factory=dict)
 
     # Output
     make_executable: bool = True
@@ -126,7 +135,7 @@ def _generate_security_code(template: HookTemplate) -> tuple[str, str, str]:
 
     policy_code = "\n".join(policy_lines)
 
-    validation = '''    result = policy.validate(tool_name, tool_input)
+    validation = """    result = policy.validate(tool_name, tool_input)
 
     if not result.safe:
         return {
@@ -134,7 +143,7 @@ def _generate_security_code(template: HookTemplate) -> tuple[str, str, str]:
             "reason": result.reason or "Security policy violation",
         }
 
-    return {"decision": "allow"}'''
+    return {"decision": "allow"}"""
 
     return imports, policy_code, validation
 
@@ -144,7 +153,48 @@ def _generate_observability_code(template: HookTemplate) -> tuple[str, str, str]
     if not template.observability_enabled:
         return "", "", "    pass  # Observability disabled"
 
-    if template.observability_backend == "jsonl":
+    if template.observability_backend == "otel":
+        # OTel-based observability (recommended)
+        endpoint = template.observability_endpoint or "http://localhost:4317"
+        resource_attrs = template.otel_resource_attributes
+
+        # Build resource attributes string
+        attrs_items = ", ".join(f'"{k}": "{v}"' for k, v in resource_attrs.items())
+        attrs_dict = "{" + attrs_items + "}" if attrs_items else "{}"
+
+        imports = """import os
+from agentic_otel import OTelConfig, HookOTelEmitter
+from agentic_otel.semantic import AgentSemanticConventions as Sem"""
+
+        setup = f'''# OTel configuration
+_otel_config = OTelConfig(
+    endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "{endpoint}"),
+    service_name="{template.otel_service_name}",
+    resource_attributes={{
+        **{attrs_dict},
+        # Inherit from environment (platform injects these)
+        **dict(
+            item.split("=", 1)
+            for item in os.environ.get("OTEL_RESOURCE_ATTRIBUTES", "").split(",")
+            if "=" in item
+        ),
+    }},
+)
+_emitter = HookOTelEmitter(_otel_config)'''
+
+        recording = """    # Get tool_use_id from hook input (passed via stdin)
+    tool_use_id = tool_input.get("_tool_use_id", "unknown")
+
+    # Emit tool completion event
+    _emitter.emit_security_event(
+        hook_type="post_tool_use",
+        decision="completed" if error is None else "error",
+        tool_name=tool_name,
+        tool_use_id=tool_use_id,
+        reason=error,
+    )"""
+
+    elif template.observability_backend == "jsonl":
         imports = """import os
 from pathlib import Path
 from datetime import datetime, UTC"""
@@ -153,7 +203,7 @@ from datetime import datetime, UTC"""
 EVENTS_PATH = Path("{template.jsonl_path}")
 EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)'''
 
-        recording = '''    event = {
+        recording = """    event = {
         "type": "tool_completed",
         "timestamp": datetime.now(UTC).isoformat(),
         "tool_name": tool_name,
@@ -162,7 +212,7 @@ EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)'''
     }
 
     with open(EVENTS_PATH, "a") as f:
-        f.write(json.dumps(event) + "\\n")'''
+        f.write(json.dumps(event) + "\\n")"""
 
     elif template.observability_backend == "http":
         endpoint = template.observability_endpoint or "http://localhost:8080/events"
@@ -172,7 +222,7 @@ from datetime import datetime, UTC"""
         setup = f'''# HTTP endpoint
 ENDPOINT = "{endpoint}"'''
 
-        recording = '''    event = {
+        recording = """    event = {
         "type": "tool_completed",
         "timestamp": datetime.now(UTC).isoformat(),
         "tool_name": tool_name,
@@ -189,7 +239,7 @@ ENDPOINT = "{endpoint}"'''
         )
         urllib.request.urlopen(req, timeout=5)
     except Exception:
-        pass  # Non-blocking'''
+        pass  # Non-blocking"""
 
     else:
         imports = ""
