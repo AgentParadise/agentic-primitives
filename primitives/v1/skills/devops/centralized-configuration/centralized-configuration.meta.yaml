@@ -18,15 +18,12 @@ defaults:
 tools:
   - Read
   - Write
-  - Shell
+  - Bash
 versions:
   - version: 1
     file: centralized-configuration.prompt.v1.md
-    hash: "blake3:pending"
+    hash: "blake3:95ed3e548ea7682b13558754fe34701e3072a1e4b64df252f2fd9a092db9e7f1"
     status: active
     created: "2025-12-11"
     notes: "Initial version - philosophy, strategies, Python implementation"
 default_version: 1
-related:
-  - devops/logging
-  - devops/secrets-management
