@@ -11,8 +11,8 @@ receivers:
 
 processors:
   batch:
-    timeout: 1s
-    send_batch_size: 100
+    timeout: 200ms
+    send_batch_size: 1
 
 exporters:
   # Log everything to console for debugging

@@ -2,6 +2,26 @@
 
 End-to-end tests validating the OpenTelemetry pipeline for agentic-primitives.
 
+## Claude CLI Telemetry
+
+Claude CLI emits **metrics** and **logs** (not traces) via OpenTelemetry when configured with:
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+```
+
+### Telemetry Output
+
+**Metrics:**
+- `claude_code.cost.usage` - Cost per API request in USD (by model)
+- `claude_code.token.usage` - Token counts by type (input, output, cacheRead, cacheCreation)
+
+**Logs:**
+- `claude_code.api_request` - Events for each API call with model, tokens, duration, cost
+
 ## Prerequisites
 
 1. **Docker** must be running
@@ -58,7 +78,7 @@ Tests for the `agentic-workspace-claude-cli` image:
 
 ### TestClaudeCLIOTel
 Tests for Claude CLI's native OTel emission:
-- Traces are emitted when running tasks
+- Metrics and logs are emitted when running tasks
 - OTel environment variables are passed correctly
 
 ### TestHookOTelEmission

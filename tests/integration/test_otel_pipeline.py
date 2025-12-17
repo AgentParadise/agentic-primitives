@@ -2,9 +2,13 @@
 Integration tests for the OTel pipeline.
 
 These tests validate that:
-1. Claude CLI emits OTel traces when running in the workspace image
-2. The OTel collector receives and exports the traces
+1. Claude CLI emits OTel metrics and logs when running in the workspace image
+2. The OTel collector receives and exports the telemetry
 3. Hook events are properly instrumented
+
+Claude CLI telemetry includes:
+- Metrics: claude_code.cost.usage, claude_code.token.usage
+- Logs: claude_code.api_request events
 
 Requirements:
 - Docker must be running
@@ -33,8 +37,7 @@ class TestOTelCollector:
         """Verify the OTel collector is running and responding."""
         # Check the collector is running
         result = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.Running}}",
-             "test-otel-collector"],
+            ["docker", "inspect", "--format", "{{.State.Running}}", "test-otel-collector"],
             capture_output=True,
             text=True,
         )
@@ -54,8 +57,7 @@ class TestOTelCollector:
         """Verify we can connect to the collector endpoint."""
         # Use curl to check the health endpoint
         result = subprocess.run(
-            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-             "http://localhost:13133"],
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:13133"],
             capture_output=True,
             text=True,
         )
@@ -72,7 +74,9 @@ class TestWorkspaceImage:
             ["docker", "image", "inspect", workspace_image],
             capture_output=True,
         )
-        assert result.returncode == 0, f"Image {workspace_image} not found. Run: just build-provider claude-cli"
+        assert result.returncode == 0, (
+            f"Image {workspace_image} not found. Run: just build-provider claude-cli"
+        )
 
     def test_claude_cli_version(self, workspace_image: str):
         """Verify Claude CLI is installed in the image."""
@@ -87,8 +91,15 @@ class TestWorkspaceImage:
     def test_agentic_packages_installed(self, workspace_image: str):
         """Verify agentic packages are installed."""
         result = subprocess.run(
-            ["docker", "run", "--rm", workspace_image,
-             "python3", "-c", "from agentic_otel import OTelConfig; print('ok')"],
+            [
+                "docker",
+                "run",
+                "--rm",
+                workspace_image,
+                "python3",
+                "-c",
+                "from agentic_otel import OTelConfig; print('ok')",
+            ],
             capture_output=True,
             text=True,
         )
@@ -98,8 +109,7 @@ class TestWorkspaceImage:
     def test_hooks_installed(self, workspace_image: str):
         """Verify hooks are installed at /opt/agentic/hooks."""
         result = subprocess.run(
-            ["docker", "run", "--rm", workspace_image,
-             "ls", "-la", "/opt/agentic/hooks/handlers/"],
+            ["docker", "run", "--rm", workspace_image, "ls", "-la", "/opt/agentic/hooks/handlers/"],
             capture_output=True,
             text=True,
         )
@@ -115,7 +125,8 @@ class TestClaudeCLIOTel:
         self,
         otel_collector: str,
         workspace_image: str,
-        get_traces,
+        get_metrics,
+        get_logs,
         output_dir: Path,
     ):
         """
@@ -126,25 +137,41 @@ class TestClaudeCLIOTel:
         2. Traces are sent to the collector
         3. Collector exports traces to file
         """
-        # Clear any existing traces
-        traces_file = output_dir / "traces.jsonl"
-        if traces_file.exists():
-            traces_file.unlink()
+        # Get baseline counts before running
+        baseline_metrics = len(get_metrics())
+        baseline_logs = len(get_logs())
 
         # Run Claude CLI with OTel configured
-        # Using a simple echo task that shouldn't require API calls
+        # Claude CLI emits metrics and logs (not traces) via OTLP
         result = subprocess.run(
             [
-                "docker", "run", "--rm",
-                "--network", "integration_test-network",
-                "-e", "ANTHROPIC_API_KEY",
-                "-e", "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317",
-                "-e", "OTEL_SERVICE_NAME=claude-code-test",
-                "-e", "OTEL_TRACES_EXPORTER=otlp",
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "integration_test-network",
+                "-e",
+                "ANTHROPIC_API_KEY",
+                "-e",
+                "CLAUDE_CODE_ENABLE_TELEMETRY=1",
+                "-e",
+                "OTEL_METRICS_EXPORTER=otlp",
+                "-e",
+                "OTEL_LOGS_EXPORTER=otlp",
+                "-e",
+                "OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
+                "-e",
+                "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317",
+                "-e",
+                "OTEL_SERVICE_NAME=claude-code-test",
                 workspace_image,
-                "claude", "-p", "What is 2+2? Reply with just the number.",
-                "--allowedTools", "none",
-                "--output-format", "json",
+                "claude",
+                "-p",
+                "What is 2+2? Reply with just the number.",
+                "--allowedTools",
+                "none",
+                "--output-format",
+                "json",
             ],
             capture_output=True,
             text=True,
@@ -155,30 +182,42 @@ class TestClaudeCLIOTel:
         print(f"Claude CLI stdout: {result.stdout[:500] if result.stdout else 'empty'}")
         print(f"Claude CLI stderr: {result.stderr[:500] if result.stderr else 'empty'}")
 
-        # The CLI should complete (may fail if no API key, but we check that)
-        # Give collector time to flush
-        time.sleep(3)
+        # The CLI should complete
+        assert result.returncode == 0
 
-        # Check for traces
-        traces = get_traces()
+        # Wait for collector to flush and check for new telemetry
+        # Retry a few times since file writes can be batched
+        new_metrics = 0
+        new_logs = 0
+        for _attempt in range(5):
+            time.sleep(2)
+            new_metrics = len(get_metrics()) - baseline_metrics
+            new_logs = len(get_logs()) - baseline_logs
+            if new_metrics > 0 or new_logs > 0:
+                break
 
-        # We should have at least some trace data
-        # Note: If no API key, this will be empty but test is skipped
-        print(f"Found {len(traces)} trace entries")
+        print(f"Found {new_metrics} new metric entries")
+        print(f"Found {new_logs} new log entries")
 
-        # For now, just verify the infrastructure works
-        # Full trace validation requires API key and actual execution
-        assert result.returncode == 0 or "api" in result.stderr.lower()
+        # Verify we received new telemetry
+        # Claude CLI emits api_request logs and cost/token metrics
+        assert new_metrics > 0 or new_logs > 0, "No new telemetry received"
 
     def test_otel_env_vars_passed_to_container(self, workspace_image: str):
         """Verify OTel environment variables are accessible in the container."""
         result = subprocess.run(
             [
-                "docker", "run", "--rm",
-                "-e", "OTEL_EXPORTER_OTLP_ENDPOINT=http://test:4317",
-                "-e", "OTEL_SERVICE_NAME=test-service",
+                "docker",
+                "run",
+                "--rm",
+                "-e",
+                "OTEL_EXPORTER_OTLP_ENDPOINT=http://test:4317",
+                "-e",
+                "OTEL_SERVICE_NAME=test-service",
                 workspace_image,
-                "bash", "-c", "echo $OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_SERVICE_NAME",
+                "bash",
+                "-c",
+                "echo $OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_SERVICE_NAME",
             ],
             capture_output=True,
             text=True,
@@ -245,17 +284,35 @@ class TestEndToEndPipeline:
         # Run a task that will use the Read tool
         result = subprocess.run(
             [
-                "docker", "run", "--rm",
-                "--network", "integration_test-network",
-                "-e", "ANTHROPIC_API_KEY",
-                "-e", "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317",
-                "-e", "OTEL_SERVICE_NAME=claude-code-e2e",
-                "-e", "OTEL_TRACES_EXPORTER=otlp",
-                "-v", f"{output_dir}:/workspace/output",
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "integration_test-network",
+                "-e",
+                "ANTHROPIC_API_KEY",
+                "-e",
+                "CLAUDE_CODE_ENABLE_TELEMETRY=1",
+                "-e",
+                "OTEL_METRICS_EXPORTER=otlp",
+                "-e",
+                "OTEL_LOGS_EXPORTER=otlp",
+                "-e",
+                "OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
+                "-e",
+                "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317",
+                "-e",
+                "OTEL_SERVICE_NAME=claude-code-e2e",
+                "-v",
+                f"{output_dir}:/workspace/output",
                 workspace_image,
-                "claude", "-p", "Read the file /etc/os-release and tell me the OS name",
-                "--allowedTools", "Read",
-                "--output-format", "json",
+                "claude",
+                "-p",
+                "Read the file /etc/os-release and tell me the OS name",
+                "--allowedTools",
+                "Read",
+                "--output-format",
+                "json",
             ],
             capture_output=True,
             text=True,

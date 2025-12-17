@@ -22,9 +22,7 @@ OUTPUT_DIR = TEST_DIR / "output"
 COMPOSE_FILE = TEST_DIR / "docker-compose.yaml"
 
 # Workspace image
-WORKSPACE_IMAGE = os.getenv(
-    "AGENTIC_WORKSPACE_IMAGE", "agentic-workspace-claude-cli:latest"
-)
+WORKSPACE_IMAGE = os.getenv("AGENTIC_WORKSPACE_IMAGE", "agentic-workspace-claude-cli:latest")
 
 
 @pytest.fixture(scope="session")
@@ -34,8 +32,17 @@ def otel_collector() -> Generator[str, None, None]:
 
     Yields the collector endpoint URL.
     """
-    # Ensure output directory exists and is clean
+    # Ensure output directory exists
     OUTPUT_DIR.mkdir(exist_ok=True)
+
+    # Stop any existing collector and clean output files
+    # This ensures file handles are fresh when files are created
+    subprocess.run(
+        ["docker", "compose", "-f", str(COMPOSE_FILE), "down", "-v"],
+        capture_output=True,
+    )
+
+    # Clean output files after stopping collector
     for f in OUTPUT_DIR.glob("*.jsonl"):
         f.unlink()
 
@@ -52,8 +59,7 @@ def otel_collector() -> Generator[str, None, None]:
     for _i in range(max_retries):
         try:
             result = subprocess.run(
-                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                 "http://localhost:13133"],
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:13133"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -108,22 +114,28 @@ def read_jsonl_file(path: Path) -> list[dict]:
 @pytest.fixture
 def get_traces(output_dir: Path):
     """Factory fixture to get traces from the output file."""
+
     def _get_traces() -> list[dict]:
         return read_jsonl_file(output_dir / "traces.jsonl")
+
     return _get_traces
 
 
 @pytest.fixture
 def get_metrics(output_dir: Path):
     """Factory fixture to get metrics from the output file."""
+
     def _get_metrics() -> list[dict]:
         return read_jsonl_file(output_dir / "metrics.jsonl")
+
     return _get_metrics
 
 
 @pytest.fixture
 def get_logs(output_dir: Path):
     """Factory fixture to get logs from the output file."""
+
     def _get_logs() -> list[dict]:
         return read_jsonl_file(output_dir / "logs.jsonl")
+
     return _get_logs
