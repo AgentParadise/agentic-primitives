@@ -77,7 +77,7 @@ class IsolationConfig:
     provider: Literal["docker", "local"] = "docker"
 
     # Docker-specific
-    image: str = "ghcr.io/anthropics/claude-code:latest"
+    image: str = "agentic-workspace:latest"
 
     # Resource limits
     timeout: int = 300  # seconds
@@ -130,7 +130,12 @@ class ScenarioConfig:
 
         # Default values for headless config
         default_tools = ["Bash", "Read", "Write", "Glob", "Grep"]
-        default_image = "ghcr.io/anthropics/claude-code:latest"
+        # Use environment variable or fallback to agentic-primitives default
+        import os
+        default_image = os.environ.get(
+            "PLAYGROUND_WORKSPACE_IMAGE",
+            "agentic-workspace:latest"
+        )
 
         headless = HeadlessConfig(
             allowed_tools=headless_data.get("allowed_tools", default_tools),

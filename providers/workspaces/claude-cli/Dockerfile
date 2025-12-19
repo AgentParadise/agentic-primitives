@@ -1,5 +1,5 @@
 # Agentic Primitives: Claude CLI Workspace Image
-# Production-ready Docker image with Claude CLI for OTel-first agent execution
+# Production-ready Docker image with Claude CLI for agent execution
 #
 # ⚠️  BUILD VIA: scripts/build-provider.py claude-cli
 #     This Dockerfile expects a staged build context, not the raw repo.
@@ -7,13 +7,11 @@
 # Features:
 #   - Node.js 22 LTS (required for Claude CLI)
 #   - Python 3.12 + uv (for hooks and agentic packages)
-#   - Claude CLI with native OpenTelemetry support
-#   - Pre-bundled primitive hooks
+#   - Claude CLI with JSONL event emission to stdout
+#   - Pre-bundled primitive hooks with agentic_events
 #   - Security hardening (non-root, no setuid)
 #
-# OTel Configuration:
-#   - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
-#   - OTEL_SERVICE_NAME=claude-code
+# Events are emitted as JSONL to stdout, captured by the agent runner.
 #
 # See ADR-027: Provider-Based Workspace Images
 
@@ -112,10 +110,7 @@ ENV HOME=/home/agent \
     # Hooks location
     AGENTIC_HOOKS_DIR=/opt/agentic/hooks \
     # Python path for validators
-    PYTHONPATH=/opt/agentic/hooks \
-    # OTel defaults (override at runtime)
-    OTEL_SERVICE_NAME=claude-code \
-    OTEL_TRACES_SAMPLER=always_on
+    PYTHONPATH=/opt/agentic/hooks
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \

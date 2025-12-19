@@ -1,22 +1,22 @@
 """Claude CLI Adapter - Run Claude CLI and generate hooks.
 
 This adapter provides:
-- ClaudeCLIRunner: Execute Claude CLI with OTel configuration
+- ClaudeCLIRunner: Execute Claude CLI and capture events
 - generate_hooks: Generate .claude/hooks/ Python files
 
 Usage:
-    from agentic_otel import OTelConfig
     from agentic_adapters.claude_cli import ClaudeCLIRunner, generate_hooks
 
-    # Run CLI with OTel
-    config = OTelConfig(endpoint="http://collector:4317")
-    runner = ClaudeCLIRunner(otel_config=config)
+    # Run CLI and capture events
+    runner = ClaudeCLIRunner(cwd="/workspace")
     result = await runner.run("Create a file")
+    for event in result.events:
+        print(event["event_type"])
 
     # Generate hooks for a workspace
     generate_hooks(
         output_dir=".claude/hooks",
-        observability_backend="otel",
+        observability_backend="events",
     )
 """
 
@@ -26,7 +26,7 @@ from agentic_adapters.claude_cli.generator import (
     generate_post_tool_use_hook,
     generate_pre_tool_use_hook,
 )
-from agentic_adapters.claude_cli.runner import ClaudeCLIRunner, CLIResult
+from agentic_adapters.claude_cli.runner import CLIResult, ClaudeCLIRunner
 
 __all__ = [
     # Runner

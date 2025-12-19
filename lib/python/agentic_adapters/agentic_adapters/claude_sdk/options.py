@@ -24,7 +24,7 @@ class HookConfig:
 
     # Observability
     observability_enabled: bool = True
-    hook_client: Any | None = None  # HookClient from agentic_hooks
+    hook_client: Any | None = None  # Optional event client for observability
 
     # Custom hooks (user-provided)
     custom_pre_tool_use: list[PreToolUseHook] = field(default_factory=list)

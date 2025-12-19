@@ -1,7 +1,7 @@
-"""Claude CLI Runner - Execute Claude CLI with OTel configuration.
+"""Claude CLI Runner - Execute Claude CLI and capture events.
 
 This module provides a high-level interface for running Claude CLI
-with proper OTel telemetry configuration.
+and capturing JSONL events from stdout.
 """
 
 from __future__ import annotations
@@ -11,10 +11,7 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from agentic_otel import OTelConfig
+from typing import Any
 
 
 @dataclass
@@ -26,33 +23,30 @@ class CLIResult:
     stdout: str
     stderr: str
     duration_seconds: float
+    events: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
 class ClaudeCLIRunner:
-    """Run Claude CLI with OTel configuration.
+    """Run Claude CLI and capture events.
 
-    This runner executes the Claude CLI command with proper environment
-    variables for OTel telemetry. The CLI's native OTel support will
-    automatically emit metrics for token usage, costs, etc.
+    This runner executes the Claude CLI command and captures JSONL events
+    from stdout. Events are parsed and returned with the result.
 
     Example:
-        >>> from agentic_otel import OTelConfig
         >>> from agentic_adapters.claude_cli import ClaudeCLIRunner
         >>>
-        >>> config = OTelConfig(
-        ...     endpoint="http://collector:4317",
-        ...     resource_attributes={"aef.execution_id": "exec-123"}
-        ... )
-        >>> runner = ClaudeCLIRunner(otel_config=config)
+        >>> runner = ClaudeCLIRunner(cwd="/workspace")
         >>> result = await runner.run("Create a hello world file")
+        >>> for event in result.events:
+        ...     print(event["event_type"])
     """
 
-    otel_config: OTelConfig
     cwd: str = "/workspace"
     permission_mode: str = "bypassPermissions"
     claude_command: str = "claude"
     extra_env: dict[str, str] = field(default_factory=dict)
+    allowed_tools: list[str] | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration."""
@@ -65,20 +59,12 @@ class ClaudeCLIRunner:
     def get_env(self) -> dict[str, str]:
         """Get environment variables for CLI execution.
 
-        Combines:
-        - Current environment
-        - OTel configuration
-        - Extra env vars
-
         Returns:
             Dict of environment variables
         """
         env = os.environ.copy()
 
-        # Add OTel config
-        env.update(self.otel_config.to_env())
-
-        # Add extra env vars (can override OTel)
+        # Add extra env vars
         env.update(self.extra_env)
 
         return env
@@ -94,18 +80,19 @@ class ClaudeCLIRunner:
         """
         cmd = [
             self.claude_command,
-            "--print",  # Non-interactive mode
+            "-p",  # Prompt mode (non-interactive)
+            prompt,
+            "--output-format",
+            "json",  # JSON output for structured data
         ]
 
         # Add permission mode if not default
-        if self.permission_mode != "default":
-            if self.permission_mode == "bypassPermissions":
-                cmd.append("--dangerously-skip-permissions")
-            elif self.permission_mode == "plan":
-                cmd.extend(["--allowedTools", ""])  # Plan mode - no tools
+        if self.permission_mode == "bypassPermissions":
+            cmd.append("--dangerously-skip-permissions")
 
-        # Add prompt
-        cmd.append(prompt)
+        # Add allowed tools
+        if self.allowed_tools is not None:
+            cmd.extend(["--allowedTools", ",".join(self.allowed_tools)])
 
         return cmd
 
@@ -113,22 +100,21 @@ class ClaudeCLIRunner:
         self,
         prompt: str,
         timeout: int = 3600,
-        capture_output: bool = True,
     ) -> CLIResult:
         """Run Claude CLI with the given prompt.
 
         Args:
             prompt: The prompt to send to Claude
             timeout: Maximum execution time in seconds
-            capture_output: Whether to capture stdout/stderr
 
         Returns:
-            CLIResult with exit code and output
+            CLIResult with exit code, output, and parsed events
 
         Raises:
             asyncio.TimeoutError: If execution exceeds timeout
             FileNotFoundError: If claude command not found
         """
+        import json
         import time
 
         # Validate claude is available
@@ -141,29 +127,58 @@ class ClaudeCLIRunner:
         env = self.get_env()
 
         start_time = time.monotonic()
+        events: list[dict[str, Any]] = []
+        stdout_lines: list[str] = []
+        process = None
 
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE if capture_output else None,
-                stderr=asyncio.subprocess.PIPE if capture_output else None,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=self.cwd,
                 env=env,
             )
 
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(),
+            # Read stdout and parse events
+            async def read_stdout():
+                assert process.stdout is not None
+                async for line in process.stdout:
+                    line_str = line.decode().strip()
+                    if line_str:
+                        stdout_lines.append(line_str)
+                        # Try to parse as JSON event
+                        try:
+                            data = json.loads(line_str)
+                            if isinstance(data, dict) and "event_type" in data:
+                                events.append(data)
+                        except json.JSONDecodeError:
+                            pass
+
+            async def read_stderr():
+                assert process.stderr is not None
+                stderr_data = await process.stderr.read()
+                return stderr_data.decode() if stderr_data else ""
+
+            # Run both readers with timeout
+            stderr_task = asyncio.create_task(read_stderr())
+            stdout_task = asyncio.create_task(read_stdout())
+
+            await asyncio.wait_for(
+                asyncio.gather(stdout_task, process.wait()),
                 timeout=timeout,
             )
 
+            stderr = await stderr_task
             duration = time.monotonic() - start_time
 
             return CLIResult(
                 success=process.returncode == 0,
                 exit_code=process.returncode or 0,
-                stdout=stdout_bytes.decode() if stdout_bytes else "",
-                stderr=stderr_bytes.decode() if stderr_bytes else "",
+                stdout="\n".join(stdout_lines),
+                stderr=stderr,
                 duration_seconds=duration,
+                events=events,
             )
 
         except asyncio.TimeoutError:

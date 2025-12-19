@@ -14,7 +14,7 @@ headless:
 
 isolation:
   provider: docker
-  image: ghcr.io/anthropics/claude-code:latest
+  image: agentic-workspace:latest
   timeout: 300
   memory_mb: 2048
   cpu_cores: 2.0

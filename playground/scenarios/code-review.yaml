@@ -21,12 +21,12 @@ headless:
     - Performance considerations
     - Error handling
     - Documentation quality
-    
+
     You may write a REVIEW.md file with your findings.
   max_turns: 30
 
 isolation:
   provider: docker
-  image: ghcr.io/anthropics/claude-code:latest
+  image: agentic-workspace:latest
   timeout: 600
   memory_mb: 2048

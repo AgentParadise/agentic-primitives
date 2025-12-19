@@ -21,12 +21,12 @@ headless:
     - Unsafe input handling
     - Injection vulnerabilities
     - Authentication/authorization issues
-    
+
     Do NOT modify any files. Only read and analyze.
   max_turns: 20
 
 isolation:
   provider: docker
-  image: ghcr.io/anthropics/claude-code:latest
+  image: agentic-workspace:latest
   timeout: 600
   memory_mb: 2048

@@ -1,7 +1,7 @@
-"""Agent Executor - Run Claude CLI in isolated workspaces with OTel.
+"""Agent Executor - Run Claude CLI in isolated workspaces.
 
 This module provides the core execution logic for running agents
-in isolated containers with proper OTel configuration.
+in isolated containers with event capture.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from agentic_isolation import IsolatedWorkspace, ResourceLimits
-from agentic_otel import OTelConfig
 
 from .config import ScenarioConfig
 
@@ -47,6 +46,9 @@ class ExecutionResult:
     # Files created (if any)
     created_files: list[str] = field(default_factory=list)
 
+    # Events captured from stdout (JSONL)
+    events: list[dict[str, Any]] = field(default_factory=list)
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -62,36 +64,36 @@ class ExecutionResult:
             "workspace_path": self.workspace_path,
             "provider": self.provider,
             "created_files": self.created_files,
+            "events_count": len(self.events),
         }
 
 
 class AgentExecutor:
     """Execute Claude CLI agents in isolated workspaces.
 
-    This executor wraps the IsolatedWorkspace and OTelConfig to provide
-    a simple interface for running agents with proper observability.
+    This executor wraps the IsolatedWorkspace to provide a simple
+    interface for running agents with event capture.
 
     Example:
         >>> config = ScenarioConfig.default()
         >>> executor = AgentExecutor(config)
         >>> result = await executor.run("Create a hello world script")
+        >>> for event in result.events:
+        ...     print(event["event_type"])
     """
 
     def __init__(
         self,
         config: ScenarioConfig,
-        otel_endpoint: str = "http://host.docker.internal:4317",
         on_output: Callable[[str], None] | None = None,
     ):
         """Initialize executor.
 
         Args:
             config: Scenario configuration
-            otel_endpoint: OTel collector endpoint
             on_output: Optional callback for streaming output
         """
         self.config = config
-        self.otel_endpoint = otel_endpoint
         self.on_output = on_output
         self._session_id = str(uuid.uuid4())
 
@@ -100,17 +102,12 @@ class AgentExecutor:
         """Get current session ID."""
         return self._session_id
 
-    def _create_otel_config(self) -> OTelConfig:
-        """Create OTel configuration for this execution."""
-        return OTelConfig(
-            endpoint=self.otel_endpoint,
-            service_name="agentic-playground",
-            resource_attributes={
-                "playground.session.id": self._session_id,
-                "playground.scenario.name": self.config.name,
-                "isolation.provider": self.config.isolation.provider,
-            },
-        )
+    def _get_environment(self) -> dict[str, str]:
+        """Get environment variables for the workspace."""
+        return {
+            "CLAUDE_SESSION_ID": self._session_id,
+            "AGENTIC_SCENARIO": self.config.name,
+        }
 
     def _build_cli_command(self, task: str) -> str:
         """Build the Claude CLI command.
@@ -122,7 +119,7 @@ class AgentExecutor:
             Full command string
         """
         # Start with base command
-        cmd_parts = ["claude", "--print"]
+        cmd_parts = ["claude", "-p"]
 
         # Add headless args
         cmd_parts.extend(self.config.headless.to_cli_args())
@@ -132,6 +129,30 @@ class AgentExecutor:
         cmd_parts.append(f'"{escaped_task}"')
 
         return " ".join(cmd_parts)
+
+    def _parse_events(self, stdout: str) -> list[dict[str, Any]]:
+        """Parse JSONL events from stdout.
+
+        Args:
+            stdout: Raw stdout from the agent
+
+        Returns:
+            List of parsed event dicts
+        """
+        import json
+
+        events = []
+        for line in stdout.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                if isinstance(data, dict) and "event_type" in data:
+                    events.append(data)
+            except json.JSONDecodeError:
+                pass
+        return events
 
     async def run(
         self,
@@ -150,7 +171,6 @@ class AgentExecutor:
             ExecutionResult with output and status
         """
         started_at = datetime.now()
-        otel_config = self._create_otel_config()
         iso_config = self.config.isolation
 
         # Resource limits
@@ -165,19 +185,10 @@ class AgentExecutor:
             self.on_output(f"📋 Scenario: {self.config.name}")
             self.on_output(f"🐳 Provider: {iso_config.provider}")
 
-        # Determine OTel endpoint based on provider
-        if iso_config.provider == "local":
-            # For local, use localhost
-            otel_config = OTelConfig(
-                endpoint="http://localhost:4317",
-                service_name="agentic-playground",
-                resource_attributes=otel_config.resource_attributes,
-            )
-
         async with IsolatedWorkspace.create(
             provider=iso_config.provider,
             image=iso_config.image if iso_config.provider == "docker" else None,
-            environment=otel_config.to_env(),
+            environment=self._get_environment(),
             limits=limits,
         ) as workspace:
             if verbose and self.on_output:
@@ -211,6 +222,9 @@ class AgentExecutor:
                 timeout=iso_config.timeout,
             )
 
+            # Parse events from stdout
+            events = self._parse_events(result.stdout)
+
             # List created files
             ls_result = await workspace.execute("ls -la")
             created_files = []
@@ -237,13 +251,13 @@ class AgentExecutor:
                 workspace_path=str(workspace.path),
                 provider=iso_config.provider,
                 created_files=created_files,
+                events=events,
             )
 
 
 async def run_agent(
     task: str,
     scenario: ScenarioConfig | None = None,
-    otel_endpoint: str = "http://host.docker.internal:4317",
     verbose: bool = False,
     on_output: Callable[[str], None] | None = None,
 ) -> ExecutionResult:
@@ -252,7 +266,6 @@ async def run_agent(
     Args:
         task: The task to give the agent
         scenario: Scenario configuration (default if None)
-        otel_endpoint: OTel collector endpoint
         verbose: Enable verbose output
         on_output: Optional callback for streaming output
 
@@ -264,7 +277,6 @@ async def run_agent(
 
     executor = AgentExecutor(
         config=scenario,
-        otel_endpoint=otel_endpoint,
         on_output=on_output,
     )
 

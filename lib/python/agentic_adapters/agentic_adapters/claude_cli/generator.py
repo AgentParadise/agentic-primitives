@@ -1,7 +1,7 @@
 """Generate .claude/hooks/ Python files for Claude CLI.
 
 Supports two observability backends:
-- "otel": OpenTelemetry (recommended) - uses agentic_otel for spans/events
+- "events": Uses agentic_events for JSONL event emission (recommended)
 - "jsonl": Legacy JSONL file logging
 """
 
@@ -69,6 +69,8 @@ def record_tool_use(
     tool_input: dict[str, Any],
     tool_result: Any,
     error: str | None,
+    session_id: str | None,
+    tool_use_id: str | None,
 ) -> None:
     """Record tool execution."""
 {recording_code}
@@ -82,9 +84,11 @@ def main() -> None:
     tool_input = hook_input.get("tool_input", {{}})
     tool_result = hook_input.get("tool_result")
     error = hook_input.get("error")
+    session_id = hook_input.get("session_id")
+    tool_use_id = hook_input.get("tool_use_id")
 
     # Record
-    record_tool_use(tool_name, tool_input, tool_result, error)
+    record_tool_use(tool_name, tool_input, tool_result, error, session_id, tool_use_id)
 
 
 if __name__ == "__main__":
@@ -103,13 +107,8 @@ class HookTemplate:
 
     # Observability
     observability_enabled: bool = True
-    observability_backend: str = "otel"  # "otel" (recommended), "jsonl", "http"
-    observability_endpoint: str | None = None  # OTel collector or HTTP endpoint
+    observability_backend: str = "events"  # "events" (recommended), "jsonl", "http"
     jsonl_path: str = ".agentic/analytics/events.jsonl"
-
-    # OTel-specific settings
-    otel_service_name: str = "agentic-hooks"
-    otel_resource_attributes: dict[str, str] = field(default_factory=dict)
 
     # Output
     make_executable: bool = True
@@ -153,45 +152,29 @@ def _generate_observability_code(template: HookTemplate) -> tuple[str, str, str]
     if not template.observability_enabled:
         return "", "", "    pass  # Observability disabled"
 
-    if template.observability_backend == "otel":
-        # OTel-based observability (recommended)
-        endpoint = template.observability_endpoint or "http://localhost:4317"
-        resource_attrs = template.otel_resource_attributes
-
-        # Build resource attributes string
-        attrs_items = ", ".join(f'"{k}": "{v}"' for k, v in resource_attrs.items())
-        attrs_dict = "{" + attrs_items + "}" if attrs_items else "{}"
-
+    if template.observability_backend == "events":
+        # agentic_events based observability (recommended)
         imports = """import os
-from agentic_otel import OTelConfig, HookOTelEmitter
-from agentic_otel.semantic import AgentSemanticConventions as Sem"""
+from agentic_events import EventEmitter"""
 
-        setup = f'''# OTel configuration
-_otel_config = OTelConfig(
-    endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "{endpoint}"),
-    service_name="{template.otel_service_name}",
-    resource_attributes={{
-        **{attrs_dict},
-        # Inherit from environment (platform injects these)
-        **dict(
-            item.split("=", 1)
-            for item in os.environ.get("OTEL_RESOURCE_ATTRIBUTES", "").split(",")
-            if "=" in item
-        ),
-    }},
-)
-_emitter = HookOTelEmitter(_otel_config)'''
+        setup = '''# Event emitter (writes JSONL to stdout, captured by agent runner)
+_emitter = None
 
-        recording = """    # Get tool_use_id from hook input (passed via stdin)
-    tool_use_id = tool_input.get("_tool_use_id", "unknown")
+def _get_emitter(session_id: str | None = None):
+    global _emitter
+    if _emitter is None:
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+        )
+    return _emitter'''
 
-    # Emit tool completion event
-    _emitter.emit_security_event(
-        hook_type="post_tool_use",
-        decision="completed" if error is None else "error",
+        recording = """    emitter = _get_emitter(session_id)
+    emitter.tool_completed(
         tool_name=tool_name,
-        tool_use_id=tool_use_id,
-        reason=error,
+        tool_use_id=tool_use_id or "unknown",
+        success=error is None,
+        error=error,
     )"""
 
     elif template.observability_backend == "jsonl":
@@ -215,12 +198,11 @@ EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)'''
         f.write(json.dumps(event) + "\\n")"""
 
     elif template.observability_backend == "http":
-        endpoint = template.observability_endpoint or "http://localhost:8080/events"
         imports = """import urllib.request
 from datetime import datetime, UTC"""
 
-        setup = f'''# HTTP endpoint
-ENDPOINT = "{endpoint}"'''
+        setup = '''# HTTP endpoint
+ENDPOINT = os.environ.get("AGENTIC_EVENTS_ENDPOINT", "http://localhost:8080/events")'''
 
         recording = """    event = {
         "type": "tool_completed",
@@ -297,7 +279,7 @@ def generate_hooks(
     template: HookTemplate | None = None,
     security_enabled: bool = True,
     observability_enabled: bool = True,
-    observability_backend: str = "jsonl",
+    observability_backend: str = "events",
     **kwargs: Any,
 ) -> list[Path]:
     """Generate Claude CLI hook files.
@@ -307,7 +289,7 @@ def generate_hooks(
         template: Full configuration (or use params below)
         security_enabled: Generate security hooks
         observability_enabled: Generate observability hooks
-        observability_backend: Backend type ("jsonl", "http")
+        observability_backend: Backend type ("events", "jsonl", "http")
         **kwargs: Additional template options
 
     Returns:

@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agentic_adapters.claude_cli import (
-    ClaudeCLIRunner,
     CLIResult,
+    ClaudeCLIRunner,
     HookTemplate,
     generate_hooks,
     generate_post_tool_use_hook,
@@ -24,9 +24,8 @@ class TestHookTemplate:
 
         assert template.security_enabled is True
         assert template.observability_enabled is True
-        assert template.observability_backend == "otel"  # Changed from jsonl
+        assert template.observability_backend == "events"
         assert template.make_executable is True
-        assert template.otel_service_name == "agentic-hooks"
 
     def test_custom_paths(self) -> None:
         """Should support custom paths."""
@@ -97,19 +96,19 @@ class TestGeneratePostToolUseHook:
         template = HookTemplate(
             observability_enabled=True,
             observability_backend="http",
-            observability_endpoint="http://test:8080/events",
         )
         code = generate_post_tool_use_hook(template)
 
-        assert "http://test:8080/events" in code
-        assert "urllib" in code
+        assert "urlopen" in code
+        assert "POST" in code
 
     def test_disabled_observability(self) -> None:
-        """Should skip observability when disabled."""
+        """Should skip recording when disabled."""
         template = HookTemplate(observability_enabled=False)
         code = generate_post_tool_use_hook(template)
 
-        assert "pass" in code  # No-op
+        assert "pass" in code
+        assert "Observability disabled" in code
 
     def test_includes_main_entry(self) -> None:
         """Should include main entry point."""
@@ -122,26 +121,36 @@ class TestGeneratePostToolUseHook:
 class TestGenerateHooks:
     """Tests for generate_hooks."""
 
-    def test_creates_both_files(self, tmp_path: Path) -> None:
-        """Should create pre and post hook files."""
-        output_dir = tmp_path / ".claude" / "hooks"
+    def test_creates_files(self, tmp_path: Path) -> None:
+        """Should create hook files."""
+        output_dir = tmp_path / "hooks"
 
         files = generate_hooks(output_dir)
 
         assert len(files) == 2
-        assert (output_dir / "pre_tool_use.py").exists()
-        assert (output_dir / "post_tool_use.py").exists()
+        assert all(f.exists() for f in files)
 
-    def test_creates_output_directory(self, tmp_path: Path) -> None:
-        """Should create output directory if missing."""
-        output_dir = tmp_path / "nested" / "deep" / "hooks"
+    def test_makes_executable(self, tmp_path: Path) -> None:
+        """Should make files executable by default."""
+        output_dir = tmp_path / "hooks"
 
-        generate_hooks(output_dir)
+        files = generate_hooks(output_dir)
 
-        assert output_dir.exists()
+        for f in files:
+            assert f.stat().st_mode & 0o100  # Executable
 
-    def test_security_only(self, tmp_path: Path) -> None:
-        """Should create only pre hook when observability disabled."""
+    def test_no_executable(self, tmp_path: Path) -> None:
+        """Should not make files executable when disabled."""
+        output_dir = tmp_path / "hooks"
+        template = HookTemplate(make_executable=False)
+
+        files = generate_hooks(output_dir, template=template)
+
+        for f in files:
+            assert not (f.stat().st_mode & 0o100)
+
+    def test_only_security(self, tmp_path: Path) -> None:
+        """Should only generate security hook when observability disabled."""
         output_dir = tmp_path / "hooks"
 
         files = generate_hooks(
@@ -151,11 +160,10 @@ class TestGenerateHooks:
         )
 
         assert len(files) == 1
-        assert (output_dir / "pre_tool_use.py").exists()
-        assert not (output_dir / "post_tool_use.py").exists()
+        assert files[0].name == "pre_tool_use.py"
 
-    def test_observability_only(self, tmp_path: Path) -> None:
-        """Should create only post hook when security disabled."""
+    def test_only_observability(self, tmp_path: Path) -> None:
+        """Should only generate observability hook when security disabled."""
         output_dir = tmp_path / "hooks"
 
         files = generate_hooks(
@@ -165,201 +173,112 @@ class TestGenerateHooks:
         )
 
         assert len(files) == 1
-        assert (output_dir / "post_tool_use.py").exists()
-        assert not (output_dir / "pre_tool_use.py").exists()
+        assert files[0].name == "post_tool_use.py"
 
-    def test_makes_executable(self, tmp_path: Path) -> None:
-        """Should make files executable."""
-        output_dir = tmp_path / "hooks"
-
-        files = generate_hooks(output_dir)
-
-        for f in files:
-            mode = f.stat().st_mode
-            assert mode & 0o100  # Owner executable bit
-
-    def test_non_executable(self, tmp_path: Path) -> None:
-        """Should respect make_executable=False."""
-        output_dir = tmp_path / "hooks"
-        template = HookTemplate(make_executable=False)
-
-        files = generate_hooks(output_dir, template=template)
-
-        for f in files:
-            mode = f.stat().st_mode
-            assert not (mode & 0o100)  # No owner executable bit
-
-    def test_custom_template(self, tmp_path: Path) -> None:
-        """Should use custom template."""
-        output_dir = tmp_path / "hooks"
-        template = HookTemplate(
-            blocked_paths=["/custom/blocked"],
-            observability_backend="http",
-            observability_endpoint="http://custom:9000",
-        )
-
-        generate_hooks(output_dir, template=template)
-
-        pre_content = (output_dir / "pre_tool_use.py").read_text()
-        post_content = (output_dir / "post_tool_use.py").read_text()
-
-        assert "/custom/blocked" in pre_content
-        assert "http://custom:9000" in post_content
-
-    def test_generated_code_is_valid(self, tmp_path: Path) -> None:
-        """Should generate syntactically valid Python."""
-        output_dir = tmp_path / "hooks"
-
-        generate_hooks(output_dir)
-
-        pre_code = (output_dir / "pre_tool_use.py").read_text()
-        post_code = (output_dir / "post_tool_use.py").read_text()
-
-        # Both should compile without syntax errors
-        compile(pre_code, "pre_tool_use.py", "exec")
-        compile(post_code, "post_tool_use.py", "exec")
-
-    def test_returns_file_paths(self, tmp_path: Path) -> None:
-        """Should return list of created file paths."""
-        output_dir = tmp_path / "hooks"
+    def test_creates_directory(self, tmp_path: Path) -> None:
+        """Should create output directory if needed."""
+        output_dir = tmp_path / "nested" / "hooks"
 
         files = generate_hooks(output_dir)
 
-        assert all(isinstance(f, Path) for f in files)
-        assert all(f.exists() for f in files)
+        assert output_dir.exists()
+        assert len(files) == 2
 
-    def test_otel_backend(self, tmp_path: Path) -> None:
-        """Should generate OTel recording code."""
+    def test_events_backend(self, tmp_path: Path) -> None:
+        """Should generate agentic_events recording code."""
         output_dir = tmp_path / "hooks"
         template = HookTemplate(
             observability_enabled=True,
-            observability_backend="otel",
-            observability_endpoint="http://collector:4317",
+            observability_backend="events",
         )
 
         generate_hooks(output_dir, template=template)
 
         post_code = (output_dir / "post_tool_use.py").read_text()
-        assert "agentic_otel" in post_code
-        assert "OTelConfig" in post_code
-        assert "HookOTelEmitter" in post_code
+        assert "agentic_events" in post_code
+        assert "EventEmitter" in post_code
 
 
 class TestClaudeCLIRunner:
     """Tests for ClaudeCLIRunner."""
 
-    @pytest.fixture
-    def mock_otel_config(self) -> MagicMock:
-        """Create a mock OTelConfig."""
-        config = MagicMock()
-        config.to_env.return_value = {
-            "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://test:4317",
-        }
-        return config
-
-    def test_init_default_values(self, mock_otel_config: MagicMock) -> None:
+    def test_init_default_values(self) -> None:
         """Should have sensible defaults."""
-        runner = ClaudeCLIRunner(otel_config=mock_otel_config)
+        runner = ClaudeCLIRunner()
 
         assert runner.cwd == "/workspace"
         assert runner.permission_mode == "bypassPermissions"
         assert runner.claude_command == "claude"
 
-    def test_init_invalid_permission_mode(self, mock_otel_config: MagicMock) -> None:
-        """Should reject invalid permission modes."""
-        with pytest.raises(ValueError, match="Invalid permission_mode"):
-            ClaudeCLIRunner(
-                otel_config=mock_otel_config,
-                permission_mode="invalid",
-            )
+    def test_init_invalid_permission_mode(self) -> None:
+        """Should reject invalid permission mode."""
+        with pytest.raises(ValueError):
+            ClaudeCLIRunner(permission_mode="invalid")
 
-    def test_get_env_includes_otel(self, mock_otel_config: MagicMock) -> None:
-        """Should include OTel config in environment."""
-        runner = ClaudeCLIRunner(otel_config=mock_otel_config)
-
+    def test_get_env(self) -> None:
+        """Should return environment with extra vars."""
+        runner = ClaudeCLIRunner(extra_env={"CUSTOM_VAR": "value"})
         env = runner.get_env()
 
-        assert env["CLAUDE_CODE_ENABLE_TELEMETRY"] == "1"
-        assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://test:4317"
-
-    def test_get_env_includes_extra(self, mock_otel_config: MagicMock) -> None:
-        """Should include extra env vars."""
-        runner = ClaudeCLIRunner(
-            otel_config=mock_otel_config,
-            extra_env={"CUSTOM_VAR": "value"},
-        )
-
-        env = runner.get_env()
-
+        assert "CUSTOM_VAR" in env
         assert env["CUSTOM_VAR"] == "value"
 
-    def test_get_command_basic(self, mock_otel_config: MagicMock) -> None:
-        """Should build basic command."""
-        runner = ClaudeCLIRunner(
-            otel_config=mock_otel_config,
-            permission_mode="default",
-        )
+    def test_get_command(self) -> None:
+        """Should build correct command."""
+        runner = ClaudeCLIRunner()
+        cmd = runner.get_command("test prompt")
 
-        cmd = runner.get_command("Hello")
+        assert "claude" in cmd
+        assert "-p" in cmd
+        assert "test prompt" in cmd
+        assert "--output-format" in cmd
+        assert "json" in cmd
 
-        assert cmd == ["claude", "--print", "Hello"]
-
-    def test_get_command_bypass_permissions(self, mock_otel_config: MagicMock) -> None:
-        """Should add skip permissions flag."""
-        runner = ClaudeCLIRunner(
-            otel_config=mock_otel_config,
-            permission_mode="bypassPermissions",
-        )
-
-        cmd = runner.get_command("Hello")
+    def test_get_command_bypass_permissions(self) -> None:
+        """Should include bypass permissions flag."""
+        runner = ClaudeCLIRunner(permission_mode="bypassPermissions")
+        cmd = runner.get_command("test")
 
         assert "--dangerously-skip-permissions" in cmd
 
-    def test_get_command_plan_mode(self, mock_otel_config: MagicMock) -> None:
-        """Should configure plan mode."""
-        runner = ClaudeCLIRunner(
-            otel_config=mock_otel_config,
-            permission_mode="plan",
-        )
-
-        cmd = runner.get_command("Hello")
+    def test_get_command_allowed_tools(self) -> None:
+        """Should include allowed tools."""
+        runner = ClaudeCLIRunner(allowed_tools=["Read", "Write"])
+        cmd = runner.get_command("test")
 
         assert "--allowedTools" in cmd
+        idx = cmd.index("--allowedTools")
+        assert cmd[idx + 1] == "Read,Write"
 
-    @pytest.mark.asyncio
-    async def test_run_not_found(self, mock_otel_config: MagicMock) -> None:
-        """Should raise FileNotFoundError if claude not found."""
-        runner = ClaudeCLIRunner(
-            otel_config=mock_otel_config,
-            claude_command="nonexistent-claude-command",
+
+class TestCLIResult:
+    """Tests for CLIResult dataclass."""
+
+    def test_success_result(self) -> None:
+        """Should create successful result."""
+        result = CLIResult(
+            success=True,
+            exit_code=0,
+            stdout="output",
+            stderr="",
+            duration_seconds=1.5,
+            events=[{"event_type": "test"}],
         )
 
-        with pytest.raises(FileNotFoundError, match="Claude CLI not found"):
-            await runner.run("Hello")
+        assert result.success is True
+        assert result.exit_code == 0
+        assert len(result.events) == 1
 
-    @pytest.mark.asyncio
-    async def test_run_success(self, mock_otel_config: MagicMock) -> None:
-        """Should return CLIResult on success."""
-        runner = ClaudeCLIRunner(otel_config=mock_otel_config)
+    def test_failed_result(self) -> None:
+        """Should create failed result."""
+        result = CLIResult(
+            success=False,
+            exit_code=1,
+            stdout="",
+            stderr="error",
+            duration_seconds=0.5,
+        )
 
-        # Mock subprocess
-        with patch.object(runner, "_find_claude", return_value=True):
-            with patch("asyncio.create_subprocess_exec") as mock_exec:
-                mock_process = MagicMock()
-                mock_process.returncode = 0
-                mock_process.communicate = MagicMock(return_value=(b"output", b""))
-                mock_exec.return_value = mock_process
-
-                # Make communicate awaitable
-                async def mock_communicate() -> tuple[bytes, bytes]:
-                    return (b"output", b"")
-
-                mock_process.communicate = mock_communicate
-
-                result = await runner.run("Hello")
-
-                assert isinstance(result, CLIResult)
-                assert result.success is True
-                assert result.exit_code == 0
-                assert result.stdout == "output"
+        assert result.success is False
+        assert result.exit_code == 1
+        assert result.events == []

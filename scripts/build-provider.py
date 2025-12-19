@@ -109,7 +109,7 @@ def build_wheels(build_context: Path) -> None:
     packages_dir.mkdir(parents=True, exist_ok=True)
 
     # Packages to include in the image
-    required_packages = ["agentic_otel", "agentic_security"]
+    required_packages = ["agentic_events", "agentic_security"]
 
     for pkg_name in required_packages:
         pkg_path = PYTHON_PACKAGES_DIR / pkg_name
@@ -158,9 +158,7 @@ def main():
     parser.add_argument("provider", help="Provider name (e.g., claude-cli)")
     parser.add_argument("--tag", help="Custom image tag")
     parser.add_argument("--no-cache", action="store_true", help="Build without cache")
-    parser.add_argument(
-        "--stage-only", action="store_true", help="Only stage files, don't build"
-    )
+    parser.add_argument("--stage-only", action="store_true", help="Only stage files, don't build")
     args = parser.parse_args()
 
     provider = args.provider

@@ -98,7 +98,7 @@ class TestWorkspaceImage:
                 workspace_image,
                 "python3",
                 "-c",
-                "from agentic_otel import OTelConfig; print('ok')",
+                "from agentic_events import EventEmitter; print('ok')",
             ],
             capture_output=True,
             text=True,
@@ -227,25 +227,19 @@ class TestClaudeCLIOTel:
         assert "test-service" in result.stdout
 
 
-class TestHookOTelEmission:
-    """Tests for hook OTel emission (from pre-tool-use, etc.)."""
+class TestHookEventEmission:
+    """Tests for hook event emission (from pre-tool-use, etc.)."""
 
-    def test_hook_can_emit_otel(self, workspace_image: str):
-        """Verify the hook can import and use agentic_otel."""
-        # Run Python in container to test the hook's OTel capability
+    def test_hook_can_emit_events(self, workspace_image: str):
+        """Verify the hook can import and use agentic_events."""
+        # Run Python in container to test the hook's event emission capability
         test_script = """
-import os
-os.environ['OTEL_EXPORTER_OTLP_ENDPOINT'] = 'http://localhost:4317'
-os.environ['OTEL_SERVICE_NAME'] = 'test-hook'
+from agentic_events import EventEmitter, EventType
 
-from agentic_otel import OTelConfig, HookOTelEmitter
-
-config = OTelConfig(
-    endpoint='http://localhost:4317',
-    service_name='test-hook',
-)
-emitter = HookOTelEmitter(config)
-print('HookOTelEmitter initialized successfully')
+emitter = EventEmitter(session_id='test-session', provider='claude')
+event = emitter.tool_started('Bash', 'toolu_123', 'echo hello')
+print('EventEmitter initialized successfully')
+print(f'Event type: {event["event_type"]}')
 """
         result = subprocess.run(
             ["docker", "run", "--rm", workspace_image, "python3", "-c", test_script],
@@ -254,6 +248,7 @@ print('HookOTelEmitter initialized successfully')
         )
         assert result.returncode == 0
         assert "successfully" in result.stdout
+        assert "tool_execution_started" in result.stdout
 
 
 class TestEndToEndPipeline:
