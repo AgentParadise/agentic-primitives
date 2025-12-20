@@ -40,7 +40,12 @@ from typing import IO, TextIO
 
 
 def is_jsonl_event(line: str) -> bool:
-    """Check if a line looks like a JSONL event."""
+    """Check if a line looks like a JSONL event.
+    
+    Supports two formats:
+    1. Hook events: {"event_type": "tool_execution_started", ...}
+    2. Claude CLI native: {"type": "assistant", ...}
+    """
     line = line.strip()
     if not line:
         return False
@@ -48,8 +53,8 @@ def is_jsonl_event(line: str) -> bool:
         return False
     try:
         data = json.loads(line)
-        # Must have event_type to be an event
-        return "event_type" in data
+        # Hook events have event_type, Claude CLI has type
+        return "event_type" in data or "type" in data
     except json.JSONDecodeError:
         return False
 
@@ -115,7 +120,8 @@ def capture_from_stream(
         events.append(event)
 
         if verbose:
-            event_type = event.get("event_type", "unknown")
+            # Support both hook events (event_type) and CLI events (type)
+            event_type = event.get("event_type") or event.get("type", "unknown")
             print(f"  [event] {event_type} @ {offset_ms}ms", file=sys.stderr)
 
     # Calculate duration
