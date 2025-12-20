@@ -1,0 +1,369 @@
+---
+title: Execution Scenarios
+description: Configure agent execution with YAML scenarios
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+
+Scenarios are YAML configuration files that define how agents execute. They control tools, permissions, isolation, and behavior.
+
+## Quick Start
+
+Use a scenario with the playground:
+
+```bash
+uv run python run.py "Review this code" --scenario security-audit
+```
+
+## Scenario Format
+
+Scenarios are YAML files with two main sections:
+
+```yaml
+name: Scenario Name
+description: What this scenario does
+
+headless:
+  # Tool and execution configuration
+  allowed_tools: [...]
+  output_format: stream-json
+  permission_mode: bypassPermissions
+
+isolation:
+  # Container configuration
+  provider: docker
+  image: agentic-workspace:latest
+  timeout: 300
+```
+
+## Headless Configuration
+
+The `headless` section configures agent execution:
+
+### Tool Control
+
+```yaml
+headless:
+  # Allow only these tools
+  allowed_tools:
+    - Bash
+    - Read
+    - Write
+    - Glob
+    - Grep
+    - LS
+
+  # Explicitly block these tools (takes precedence)
+  disallowed_tools:
+    - WebFetch
+    - TodoWrite
+```
+
+| Option | Description |
+|--------|-------------|
+| `allowed_tools` | Tools the agent can use |
+| `disallowed_tools` | Tools explicitly blocked (overrides allowed) |
+
+### Output Format
+
+```yaml
+headless:
+  output_format: stream-json
+```
+
+| Value | Description |
+|-------|-------------|
+| `stream-json` | JSONL events to stderr (for recording) |
+| `text` | Human-readable output |
+
+### Permission Mode
+
+```yaml
+headless:
+  permission_mode: bypassPermissions
+```
+
+| Value | Description |
+|-------|-------------|
+| `bypassPermissions` | Skip all permission prompts |
+| `default` | Use default Claude CLI behavior |
+
+### Turn Limits
+
+```yaml
+headless:
+  max_turns: 20
+```
+
+Limits the number of agent turns to prevent runaway execution.
+
+### System Prompt
+
+```yaml
+headless:
+  system_prompt: |
+    You are a security engineer performing a code audit.
+    Focus on identifying:
+    - Potential security vulnerabilities
+    - Hardcoded secrets or credentials
+    - Unsafe input handling
+```
+
+Override the default system prompt for specialized behavior.
+
+## Isolation Configuration
+
+The `isolation` section configures the container:
+
+```yaml
+isolation:
+  provider: docker           # or "local"
+  image: agentic-workspace:latest
+  timeout: 300               # seconds
+  memory_mb: 2048            # MB
+  cpu_cores: 2.0             # cores
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `provider` | `docker` | Execution provider (`docker` or `local`) |
+| `image` | — | Docker image to use |
+| `timeout` | `300` | Maximum execution time (seconds) |
+| `memory_mb` | `2048` | Memory limit (MB) |
+| `cpu_cores` | `2.0` | CPU core limit |
+
+## Built-in Scenarios
+
+### default.yaml
+
+Standard agent execution with common tools:
+
+```yaml
+name: Default
+description: Standard agent execution with common tools
+
+headless:
+  allowed_tools:
+    - Bash
+    - Read
+    - Write
+    - Glob
+    - Grep
+    - LS
+  output_format: stream-json
+  permission_mode: bypassPermissions
+
+isolation:
+  provider: docker
+  image: agentic-workspace:latest
+  timeout: 300
+  memory_mb: 2048
+  cpu_cores: 2.0
+```
+
+### quick-task.yaml
+
+Fast execution for simple tasks:
+
+```yaml
+name: Quick Task
+description: Fast execution for simple tasks with limited resources
+
+headless:
+  allowed_tools:
+    - Bash
+    - Read
+    - Write
+  output_format: stream-json
+  permission_mode: bypassPermissions
+  max_turns: 10
+
+isolation:
+  provider: docker
+  image: agentic-workspace:latest
+  timeout: 120
+  memory_mb: 1024
+  cpu_cores: 1.0
+```
+
+### security-audit.yaml
+
+Read-only security analysis:
+
+```yaml
+name: Security Audit
+description: Security-focused scenario with restricted tools
+
+headless:
+  allowed_tools:
+    - Read
+    - Grep
+    - Glob
+    - LS
+  disallowed_tools:
+    - Write
+    - Bash
+    - WebFetch
+  output_format: stream-json
+  permission_mode: bypassPermissions
+  system_prompt: |
+    You are a security engineer performing a code audit.
+    Focus on identifying:
+    - Potential security vulnerabilities
+    - Hardcoded secrets or credentials
+    - Unsafe input handling
+    - Injection vulnerabilities
+    - Authentication/authorization issues
+
+    Do NOT modify any files. Only read and analyze.
+  max_turns: 20
+
+isolation:
+  provider: docker
+  image: agentic-workspace:latest
+  timeout: 600
+  memory_mb: 2048
+```
+
+### code-review.yaml
+
+Code quality analysis with write access for reports:
+
+```yaml
+name: Code Review
+description: Code review scenario for analyzing code quality
+
+headless:
+  allowed_tools:
+    - Read
+    - Grep
+    - Glob
+    - LS
+    - Write
+  disallowed_tools:
+    - Bash
+    - WebFetch
+  output_format: stream-json
+  permission_mode: bypassPermissions
+  system_prompt: |
+    You are a senior software engineer performing a code review.
+    Focus on:
+    - Code quality and readability
+    - Best practices and patterns
+    - Performance considerations
+    - Error handling
+    - Documentation quality
+
+    You may write a REVIEW.md file with your findings.
+  max_turns: 30
+
+isolation:
+  provider: docker
+  image: agentic-workspace:latest
+  timeout: 600
+  memory_mb: 2048
+```
+
+## Creating Custom Scenarios
+
+### Step 1: Create the YAML file
+
+```bash
+touch playground/scenarios/my-scenario.yaml
+```
+
+### Step 2: Define the configuration
+
+```yaml
+name: My Custom Scenario
+description: What this scenario does
+
+headless:
+  allowed_tools:
+    - Read
+    - Write
+  max_turns: 15
+
+isolation:
+  provider: docker
+  image: agentic-workspace:latest
+  timeout: 180
+```
+
+### Step 3: Use it
+
+```bash
+uv run python run.py "Your task" --scenario my-scenario
+```
+
+## Programmatic Usage
+
+Load and modify scenarios in Python:
+
+```python
+from playground.src.config import load_scenario, list_scenarios
+
+# List available scenarios
+print(list_scenarios())
+# ['default', 'quick-task', 'security-audit', 'code-review']
+
+# Load a scenario
+config = load_scenario("default")
+
+# Override settings
+config.isolation.provider = "local"
+config.isolation.timeout = 120
+config.headless.max_turns = 10
+
+# Use with executor
+from playground.src.executor import AgentExecutor
+
+executor = AgentExecutor(config=config)
+result = await executor.run("Your task")
+```
+
+## Use Cases
+
+<Accordions>
+  <Accordion title="Security scanning">
+    Use `security-audit` to scan code for vulnerabilities without allowing modifications:
+
+    ```bash
+    uv run python run.py "Scan for security issues in src/" --scenario security-audit
+    ```
+  </Accordion>
+  <Accordion title="Quick one-off tasks">
+    Use `quick-task` for simple tasks with faster timeout:
+
+    ```bash
+    uv run python run.py "What is the current date?" --scenario quick-task
+    ```
+  </Accordion>
+  <Accordion title="Code reviews">
+    Use `code-review` to analyze code and generate a review report:
+
+    ```bash
+    uv run python run.py "Review the API module" --scenario code-review
+    ```
+  </Accordion>
+  <Accordion title="CI/CD integration">
+    Create a minimal scenario for CI with strict limits:
+
+    ```yaml
+    name: CI Check
+    headless:
+      allowed_tools: [Read, Grep, Glob]
+      max_turns: 5
+    isolation:
+      timeout: 60
+      memory_mb: 512
+    ```
+  </Accordion>
+</Accordions>
+
+## Related
+
+- [Playground](./playground) — Interactive execution
+- [Docker Isolation](./docker) — Container configuration
+- [Session Recording](./recording) — Capture sessions for testing

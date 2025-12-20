@@ -1,0 +1,280 @@
+---
+title: Session Recording
+description: Record agent sessions for deterministic testing
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+
+Session recording captures agent events with timing for deterministic test replay. Record once, replay forever — no API costs, no network required.
+
+## Why Record Sessions?
+
+| Benefit | Description |
+|---------|-------------|
+| **No API Costs** | Record once, replay in tests forever |
+| **Deterministic** | Same events every time |
+| **Fast** | 45-second session replays in 45ms at 1000x speed |
+| **CI/CD Friendly** | No secrets or network needed for playback |
+| **Debuggable** | Share recordings to reproduce issues |
+
+## Quick Start
+
+### Capture a Recording
+
+Use Docker Compose with the sidecar pattern:
+
+```bash
+cd providers/workspaces/claude-cli
+
+# Set environment variables
+export PROMPT="List all Python files"
+export TASK="list-files"
+export CLI_VERSION="2.0.74"
+
+# Capture recording
+docker compose -f docker-compose.record.yaml up
+```
+
+The recording is saved to `fixtures/recordings/v2.0.74_claude-sonnet-4-5_list-files.jsonl`.
+
+### Use in Tests
+
+```python
+from agentic_events import load_recording
+
+# Load by short name
+player = load_recording("list-files")
+
+# Get all events instantly
+events = player.get_events()
+assert len(events) == 6
+
+# Or replay with timing at 100x speed
+await player.play(emit_fn=store.insert_one, speed=100)
+```
+
+## Capture Methods
+
+### Method 1: Docker Compose Sidecar (Recommended)
+
+The sidecar pattern uses a second container to capture events from Docker logs:
+
+```yaml
+# docker-compose.record.yaml
+services:
+  agent:
+    image: agentic-workspace-claude-cli:latest
+    environment:
+      - ANTHROPIC_API_KEY
+      - ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+    command:
+      [
+        "-p", "${PROMPT:-What is 2+2?}",
+        "--verbose",
+        "--output-format", "stream-json",
+      ]
+
+  recorder:
+    image: ghcr.io/astral-sh/uv:python3.12-alpine
+    depends_on:
+      - agent
+    volumes:
+      - ../../../scripts:/scripts:ro
+      - ./fixtures/recordings:/recordings
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["sh", "-c", "apk add docker-cli && docker logs -f agent 2>&1 | uv run python /scripts/capture_recording.py --output /recordings/recording.jsonl"]
+```
+
+Run with:
+
+```bash
+PROMPT="Your task here" TASK="task-name" docker compose -f docker-compose.record.yaml up
+```
+
+### Method 2: Direct Pipe
+
+Pipe Claude CLI output directly to the capture script:
+
+```bash
+docker run --rm -e ANTHROPIC_API_KEY \
+  agentic-workspace-claude-cli \
+  claude -p "List files" --verbose --output-format stream-json 2>&1 | \
+  python scripts/capture_recording.py \
+    --output recordings/my-recording.jsonl \
+    --cli-version 2.0.74 \
+    --model claude-sonnet-4-5 \
+    --task "List files"
+```
+
+### Method 3: In-Process Recording
+
+For development, use `SessionRecorder` directly:
+
+```python
+from agentic_events import SessionRecorder
+
+with SessionRecorder(
+    output_path="fixtures/my-recording.jsonl",
+    cli_version="2.0.74",
+    model="claude-sonnet-4-5-20250929",
+    task="My task description"
+) as recorder:
+    # Your code that generates events
+    recorder.record({"event_type": "session_started", ...})
+    recorder.record({"event_type": "tool_execution_started", ...})
+```
+
+## Recording Format
+
+Recordings are JSONL files with a metadata header:
+
+```jsonl
+{"_recording": {"version": 1, "cli_version": "2.0.74", "model": "claude-sonnet-4-5", "task": "list-files", "duration_ms": 4200, "event_count": 6}}
+{"_offset_ms": 0, "event_type": "session_started", "session_id": "abc-123", ...}
+{"_offset_ms": 150, "event_type": "tool_execution_started", "context": {"tool_name": "Bash"}, ...}
+{"_offset_ms": 1200, "event_type": "tool_execution_completed", "context": {"success": true}, ...}
+{"_offset_ms": 4200, "event_type": "session_completed", ...}
+```
+
+### Metadata Fields
+
+| Field | Description |
+|-------|-------------|
+| `version` | Recording format version (currently 1) |
+| `cli_version` | Claude CLI version used |
+| `model` | Model name |
+| `task` | Human-readable task description |
+| `duration_ms` | Total session duration |
+| `event_count` | Number of events |
+| `session_id` | Original session ID |
+| `recorded_at` | ISO timestamp |
+| `capture_method` | How recording was captured |
+
+## SessionPlayer API
+
+Load and replay recordings:
+
+```python
+from agentic_events import SessionPlayer, load_recording
+
+# Load by path
+player = SessionPlayer("fixtures/recordings/v2.0.74_claude-sonnet-4-5_list-files.jsonl")
+
+# Or by short name (finds matching recording)
+player = load_recording("list-files")
+
+# Access metadata
+print(f"CLI Version: {player.metadata.cli_version}")
+print(f"Model: {player.metadata.model}")
+print(f"Duration: {player.metadata.duration_ms}ms")
+print(f"Events: {player.metadata.event_count}")
+
+# Get all events instantly (for unit tests)
+events = player.get_events()
+
+# Replay with timing (for integration tests)
+await player.play(emit_fn=store.insert_one, speed=100)  # 100x speed
+
+# Get session ID
+session_id = player.session_id
+```
+
+## Pytest Fixtures
+
+Use the `@pytest.mark.recording` decorator:
+
+```python
+import pytest
+
+@pytest.mark.recording("list-files")
+def test_event_processing(recording):
+    events = recording.get_events()
+    assert len(events) > 0
+    assert events[0]["event_type"] == "session_started"
+
+@pytest.mark.recording("simple-bash")
+async def test_projection(recording, event_store, projection):
+    # Replay at 100x speed
+    await recording.play(emit_fn=event_store.insert_one, speed=100)
+
+    # Verify projection state
+    session = await projection.get(recording.session_id)
+    assert session.status == "completed"
+```
+
+## Available Recordings
+
+| Recording | Events | Duration | Description |
+|-----------|--------|----------|-------------|
+| `simple-bash` | 6 | 3.2s | List Python files with Glob |
+| `file-create` | 6 | 4.6s | Create a hello.py file |
+| `git-status` | 5 | 4.1s | Check git repository status |
+| `file-read` | 9 | 8.7s | Read pyproject.toml contents |
+| `multi-tool` | 8 | 3.7s | Multiple tools in sequence |
+| `simple-question` | 3 | ~1s | Simple math question (no tools) |
+| `list-files` | 6 | 7.7s | List directory contents |
+
+### Naming Convention
+
+```
+v{cli_version}_{model}_{task-slug}.jsonl
+```
+
+Examples:
+- `v2.0.74_claude-sonnet-4-5_git-status.jsonl`
+- `v2.0.74_claude-sonnet-4-5_simple-bash.jsonl`
+
+CLI version first for better sorting (related versions group together).
+
+## Event Schema Versioning
+
+Recordings include `event_schema_version` for handling format changes:
+
+- **Version 0**: Original format (implicit, no version field)
+- **Version 1**: Current format with standardized field names
+
+The `SessionPlayer._normalize_event()` method automatically migrates old formats to current schema.
+
+## Troubleshooting
+
+<Accordions>
+  <Accordion title="No recording found matching...">
+    Check available recordings:
+
+    ```python
+    from agentic_events import list_recordings
+    print([p.name for p in list_recordings()])
+    ```
+  </Accordion>
+  <Accordion title="Recording format is invalid">
+    Verify the recording has a metadata header:
+
+    ```bash
+    head -1 recording.jsonl
+    # Should start with: {"_recording": ...}
+    ```
+  </Accordion>
+  <Accordion title="Events look wrong after playback">
+    Check the event schema version:
+
+    ```python
+    player = load_recording("my-recording")
+    print(f"Schema version: {player.metadata.event_schema_version}")
+    ```
+  </Accordion>
+  <Accordion title="Docker logs capture fails">
+    Ensure docker-cli is available in the recorder container and the Docker socket is mounted:
+
+    ```yaml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ```
+  </Accordion>
+</Accordions>
+
+## Related
+
+- [ADR-030: Session Recording for Testing](/docs/adrs/030-session-recording-testing)
+- [Playground](./playground) — Interactive execution
+- [Scenarios](./scenarios) — Configure execution

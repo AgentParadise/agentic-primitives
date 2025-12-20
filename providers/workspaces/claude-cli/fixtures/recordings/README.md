@@ -35,7 +35,13 @@ def test_something(recording):
 
 | File | CLI | Model | Events | Duration | Description |
 |------|-----|-------|--------|----------|-------------|
-| v2.0.74_claude-sonnet-4-5_list-files.jsonl | 2.0.74 | claude-sonnet-4-5 | 12 | 4.2s | List files using Bash |
+| v2.0.74_claude-sonnet-4-5_simple-bash.jsonl | 2.0.74 | claude-sonnet-4-5 | 6 | 3.2s | List Python files with Glob |
+| v2.0.74_claude-sonnet-4-5_file-create.jsonl | 2.0.74 | claude-sonnet-4-5 | 6 | 4.6s | Create a hello.py file |
+| v2.0.74_claude-sonnet-4-5_git-status.jsonl | 2.0.74 | claude-sonnet-4-5 | 5 | 4.1s | Check git repository status |
+| v2.0.74_claude-sonnet-4-5_file-read.jsonl | 2.0.74 | claude-sonnet-4-5 | 9 | 8.7s | Read pyproject.toml contents |
+| v2.0.74_claude-sonnet-4-5_multi-tool.jsonl | 2.0.74 | claude-sonnet-4-5 | 8 | 3.7s | Multiple tools in sequence |
+| v2.0.74_claude-sonnet-4-5_simple-question.jsonl | 2.0.74 | claude-sonnet-4-5 | 3 | <1s | Simple math (no tools) |
+| v2.0.74_claude-sonnet-4-5_list-files.jsonl | 2.0.74 | claude-sonnet-4-5 | 6 | 7.7s | List directory contents |
 
 ## Naming Convention
 
