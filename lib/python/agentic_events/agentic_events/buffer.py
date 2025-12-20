@@ -127,7 +127,7 @@ class BatchBuffer:
             try:
                 await self._flush_task
             except asyncio.CancelledError:
-                pass
+                pass  # Expected when stopping the periodic flush task
             self._flush_task = None
 
         # Flush any remaining events
@@ -159,7 +159,7 @@ def parse_jsonl_line(line: str) -> dict[str, Any] | None:
         if isinstance(event, dict) and "event_type" in event:
             return event
     except json.JSONDecodeError:
-        pass
+        pass  # Not all lines are valid JSON; ignore non-JSON lines
 
     return None
 

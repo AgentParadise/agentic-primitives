@@ -86,15 +86,18 @@ class AgentExecutor:
         self,
         config: ScenarioConfig,
         on_output: Callable[[str], None] | None = None,
+        otel_endpoint: str | None = None,
     ):
         """Initialize executor.
 
         Args:
             config: Scenario configuration
             on_output: Optional callback for streaming output
+            otel_endpoint: Optional OTel collector endpoint for event export
         """
         self.config = config
         self.on_output = on_output
+        self.otel_endpoint = otel_endpoint
         self._session_id = str(uuid.uuid4())
 
     @property
@@ -151,7 +154,7 @@ class AgentExecutor:
                 if isinstance(data, dict) and "event_type" in data:
                     events.append(data)
             except json.JSONDecodeError:
-                pass
+                pass  # Not all stdout lines are JSON events
         return events
 
     async def run(

@@ -46,6 +46,8 @@ def main() -> None:
             input_data = sys.stdin.read()
 
         if not input_data:
+            # Always allow even with no input
+            print(json.dumps({"decision": "allow"}))
             return
 
         event = json.loads(input_data)

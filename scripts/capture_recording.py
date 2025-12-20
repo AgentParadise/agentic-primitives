@@ -36,7 +36,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import IO, TextIO
+from typing import TextIO
 
 
 def is_jsonl_event(line: str) -> bool:
@@ -143,7 +143,7 @@ def capture_from_stream(
         }
     }
 
-    with open(output_path, "w") as f:
+    with Path(output_path).open("w") as f:
         f.write(json.dumps(metadata) + "\n")
         for event in events:
             f.write(json.dumps(event, default=str) + "\n")

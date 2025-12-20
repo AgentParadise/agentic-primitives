@@ -6,6 +6,7 @@ and YAML loading utilities.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -131,7 +132,6 @@ class ScenarioConfig:
         # Default values for headless config
         default_tools = ["Bash", "Read", "Write", "Glob", "Grep"]
         # Use environment variable or fallback to agentic-primitives default
-        import os
         default_image = os.environ.get(
             "PLAYGROUND_WORKSPACE_IMAGE",
             "agentic-workspace:latest"

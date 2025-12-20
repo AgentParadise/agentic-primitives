@@ -56,7 +56,7 @@ def otel_collector() -> Generator[str, None, None]:
     # Wait for the health endpoint to respond (more reliable than Docker health check)
     max_retries = 30
     endpoint_ready = False
-    for _i in range(max_retries):
+    for _ in range(max_retries):
         try:
             result = subprocess.run(
                 ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:13133"],
@@ -68,7 +68,7 @@ def otel_collector() -> Generator[str, None, None]:
                 endpoint_ready = True
                 break
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            pass
+            pass  # Retry until health endpoint responds
         time.sleep(1)
 
     if not endpoint_ready:

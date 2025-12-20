@@ -153,7 +153,7 @@ class ClaudeCLIRunner:
                             if isinstance(data, dict) and "event_type" in data:
                                 events.append(data)
                         except json.JSONDecodeError:
-                            pass
+                            pass  # Not all stdout lines are JSON events
 
             async def read_stderr():
                 assert process.stderr is not None

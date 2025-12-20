@@ -21,7 +21,7 @@ tools:
 versions:
   - version: 1
     file: testing-expert.prompt.v1.md
-    hash: "blake3:TBD"
+    hash: "blake3:c879d699031a52988b4e54ad23d3768247ea85fb059c91e55c5f35d9a51493a4"
     status: active
     created: "2025-12-18"
     notes: "Initial version: Testing philosophy and AI agent verification patterns"
