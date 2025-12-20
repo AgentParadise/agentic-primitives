@@ -56,17 +56,53 @@ events = player.get_events()
 await player.play(emit_fn=event_store.insert_one, speed=100)
 ```
 
-### 3. Recording Format (JSONL)
+### 3. Fixture Helpers
+Ergonomic functions for finding and loading recordings in tests.
+
+```python
+from agentic_events import load_recording, list_recordings, get_recordings_dir
+
+# Load by short name (finds matching recording)
+player = load_recording("list-files")
+
+# List all available recordings
+for path in list_recordings():
+    print(path.name)
+
+# Get recordings directory path
+dir_path = get_recordings_dir()
+```
+
+### 4. Pytest Fixture
+Use the `@pytest.mark.recording` decorator for ergonomic test setup.
+
+```python
+@pytest.mark.recording("list-files")
+def test_something(recording):
+    events = recording.get_events()
+    assert len(events) > 0
+```
+
+### 5. Recording Format (JSONL)
 
 ```jsonl
-{"_recording": {"version": 1, "cli_version": "1.0.52", "model": "claude-3-5-sonnet-20241022", "recorded_at": "2024-12-20T...", "duration_ms": 45000, "task": "Simple git status check", "event_count": 12}}
+{"_recording": {"version": 1, "event_schema_version": 1, "cli_version": "1.0.52", "model": "claude-3-5-sonnet-20241022", "recorded_at": "2024-12-20T...", "duration_ms": 45000, "task": "Simple git status check", "event_count": 12}}
 {"_offset_ms": 0, "event_type": "session_started", "session_id": "abc-123", ...}
 {"_offset_ms": 150, "event_type": "tool_execution_started", "context": {"tool_name": "Bash"}, ...}
 {"_offset_ms": 1200, "event_type": "tool_execution_completed", "context": {"success": true}, ...}
 {"_offset_ms": 45000, "event_type": "session_completed", ...}
 ```
 
-### 4. Naming Convention
+### 6. Event Schema Versioning
+
+Recordings include `event_schema_version` for handling format changes:
+
+- **Version 0**: Original format (implicit, no version field)
+- **Version 1**: Current format with standardized field names
+
+The `SessionPlayer._normalize_event()` method automatically migrates old formats to current schema, enabling graceful handling of format changes in future versions.
+
+### 7. Naming Convention
 
 ```
 {cli_version}_{model}_{task-slug}.jsonl
@@ -79,7 +115,7 @@ Examples:
 
 CLI version first for better sorting (versions change together).
 
-### 5. Fixture Location
+### 8. Fixture Location
 
 Recordings live near the provider workspace they were captured from:
 
@@ -92,7 +128,7 @@ providers/workspaces/claude-cli/
       v1.0.52_claude-3-5-sonnet-20241022_code-review.jsonl
 ```
 
-### 6. Container Logging Capture (Zero Overhead)
+### 9. Container Logging Capture (Zero Overhead)
 
 For production scale (10k+ agents), we use external capture instead of in-process recording.
 The agent writes events to stderr as JSONL, and an external process captures them.
@@ -156,9 +192,12 @@ python scripts/capture_recording.py --generate-name \
 ## Implementation
 
 ```
-lib/python/agentic_events/agentic_events/
-  recorder.py    # SessionRecorder class (in-process)
-  player.py      # SessionPlayer class (playback)
+lib/python/agentic_events/
+  agentic_events/
+    recorder.py    # SessionRecorder class (in-process)
+    player.py      # SessionPlayer class (playback)
+    fixtures.py    # Helper functions (load_recording, list_recordings, etc.)
+  conftest.py      # Pytest fixture for @pytest.mark.recording
 
 scripts/
   capture_recording.py  # External capture from container logs
