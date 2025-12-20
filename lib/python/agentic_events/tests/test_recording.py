@@ -2,13 +2,11 @@
 
 import asyncio
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from agentic_events import SessionRecorder, SessionPlayer
-from agentic_events.types import EventType
+from agentic_events import SessionPlayer, SessionRecorder
 
 
 class TestSessionRecorder:
@@ -24,15 +22,19 @@ class TestSessionRecorder:
             model="claude-3-5-sonnet-20241022",
             task="Test recording",
         ) as recorder:
-            recorder.record({
-                "event_type": "session_started",
-                "session_id": "test-123",
-            })
-            recorder.record({
-                "event_type": "tool_execution_started",
-                "session_id": "test-123",
-                "context": {"tool_name": "Bash"},
-            })
+            recorder.record(
+                {
+                    "event_type": "session_started",
+                    "session_id": "test-123",
+                }
+            )
+            recorder.record(
+                {
+                    "event_type": "tool_execution_started",
+                    "session_id": "test-123",
+                    "context": {"tool_name": "Bash"},
+                }
+            )
 
         assert output_file.exists()
         assert recorder.event_count == 2
@@ -66,6 +68,7 @@ class TestSessionRecorder:
             recorder.record({"event_type": "start", "session_id": "s1"})
             # Small sleep to create offset
             import time
+
             time.sleep(0.05)  # 50ms
             recorder.record({"event_type": "end", "session_id": "s1"})
 
@@ -114,24 +117,32 @@ class TestSessionPlayer:
             model="claude-3-5-sonnet-20241022",
             task="Sample session",
         ) as recorder:
-            recorder.record({
-                "event_type": "session_started",
-                "session_id": "sample-123",
-            })
-            recorder.record({
-                "event_type": "tool_execution_started",
-                "session_id": "sample-123",
-                "context": {"tool_name": "Bash", "tool_use_id": "toolu_1"},
-            })
-            recorder.record({
-                "event_type": "tool_execution_completed",
-                "session_id": "sample-123",
-                "context": {"tool_use_id": "toolu_1", "success": True},
-            })
-            recorder.record({
-                "event_type": "session_completed",
-                "session_id": "sample-123",
-            })
+            recorder.record(
+                {
+                    "event_type": "session_started",
+                    "session_id": "sample-123",
+                }
+            )
+            recorder.record(
+                {
+                    "event_type": "tool_execution_started",
+                    "session_id": "sample-123",
+                    "context": {"tool_name": "Bash", "tool_use_id": "toolu_1"},
+                }
+            )
+            recorder.record(
+                {
+                    "event_type": "tool_execution_completed",
+                    "session_id": "sample-123",
+                    "context": {"tool_use_id": "toolu_1", "success": True},
+                }
+            )
+            recorder.record(
+                {
+                    "event_type": "session_completed",
+                    "session_id": "sample-123",
+                }
+            )
 
         return recording_file
 
@@ -210,6 +221,7 @@ class TestSessionPlayer:
         ) as recorder:
             recorder.record({"event_type": "start", "session_id": "t1"})
             import time
+
             time.sleep(0.1)  # 100ms gap
             recorder.record({"event_type": "end", "session_id": "t1"})
 
@@ -250,8 +262,16 @@ class TestRoundTrip:
 
         original_events = [
             {"event_type": "session_started", "session_id": "rt-123"},
-            {"event_type": "tool_execution_started", "session_id": "rt-123", "context": {"tool_name": "Read"}},
-            {"event_type": "tool_execution_completed", "session_id": "rt-123", "context": {"success": True}},
+            {
+                "event_type": "tool_execution_started",
+                "session_id": "rt-123",
+                "context": {"tool_name": "Read"},
+            },
+            {
+                "event_type": "tool_execution_completed",
+                "session_id": "rt-123",
+                "context": {"success": True},
+            },
             {"event_type": "session_completed", "session_id": "rt-123"},
         ]
 
@@ -270,7 +290,7 @@ class TestRoundTrip:
 
         # Compare (ignoring timestamp differences)
         assert len(played_events) == len(original_events)
-        for orig, played in zip(original_events, played_events):
+        for orig, played in zip(original_events, played_events, strict=True):
             assert played["event_type"] == orig["event_type"]
             assert played["session_id"] == orig["session_id"]
 
@@ -333,7 +353,9 @@ class TestSchemaVersioning:
 
         with open(recording_file, "w") as f:
             f.write(json.dumps(metadata) + "\n")
-            f.write(json.dumps({"_offset_ms": 0, "event_type": "test", "session_id": "old-123"}) + "\n")
+            f.write(
+                json.dumps({"_offset_ms": 0, "event_type": "test", "session_id": "old-123"}) + "\n"
+            )
 
         player = SessionPlayer(recording_file)
 
@@ -362,7 +384,9 @@ class TestSchemaVersioning:
 
         with open(recording_file, "w") as f:
             f.write(json.dumps(metadata) + "\n")
-            f.write(json.dumps({"_offset_ms": 0, "event_type": "test", "session_id": "old-123"}) + "\n")
+            f.write(
+                json.dumps({"_offset_ms": 0, "event_type": "test", "session_id": "old-123"}) + "\n"
+            )
 
         player = SessionPlayer(recording_file)
         events = player.get_events()
@@ -370,4 +394,3 @@ class TestSchemaVersioning:
         # Events should be loaded and normalized
         assert len(events) == 1
         assert events[0]["event_type"] == "test"
-

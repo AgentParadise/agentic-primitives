@@ -14,7 +14,9 @@ Recording and playback for testing (ADR-030):
     >>> from agentic_events import SessionRecorder, SessionPlayer
     >>>
     >>> # Record a session
-    >>> with SessionRecorder("recording.jsonl", cli_version="1.0.52", model="claude-3-5-sonnet") as rec:
+    >>> with SessionRecorder(
+    ...     "recording.jsonl", cli_version="1.0.52", model="claude-3-5-sonnet"
+    ... ) as rec:
     ...     rec.record({"event_type": "session_started", ...})
     >>>
     >>> # Play back for tests

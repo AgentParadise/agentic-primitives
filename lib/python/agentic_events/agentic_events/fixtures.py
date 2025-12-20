@@ -78,14 +78,9 @@ def load_recording(name: str) -> SessionPlayer:
     matches = list(recordings_dir.glob(f"*{name}*.jsonl"))
     if not matches:
         available = [p.name for p in list_recordings()]
-        raise FileNotFoundError(
-            f"No recording found matching '{name}'. "
-            f"Available: {available}"
-        )
+        raise FileNotFoundError(f"No recording found matching '{name}'. Available: {available}")
 
     if len(matches) > 1:
-        raise ValueError(
-            f"Multiple recordings match '{name}': {[m.name for m in matches]}"
-        )
+        raise ValueError(f"Multiple recordings match '{name}': {[m.name for m in matches]}")
 
     return SessionPlayer(matches[0])

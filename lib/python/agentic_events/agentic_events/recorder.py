@@ -40,7 +40,9 @@ class SessionRecorder:
 
     Examples:
         Basic usage:
-        >>> with SessionRecorder("recording.jsonl", cli_version="1.0.52", model="claude-3-5-sonnet") as rec:
+        >>> with SessionRecorder(
+        ...     "recording.jsonl", cli_version="1.0.52", model="claude-3-5-sonnet"
+        ... ) as rec:
         ...     rec.record({"event_type": "started", "session_id": "abc"})
         ...     rec.record({"event_type": "completed"})
 
@@ -171,7 +173,7 @@ class SessionRecorder:
 
         return self._output_path
 
-    def __enter__(self) -> "SessionRecorder":
+    def __enter__(self) -> SessionRecorder:
         """Context manager entry."""
         return self
 
@@ -201,4 +203,3 @@ class SessionRecorder:
         # Normalize model name (remove special chars)
         model_slug = model.replace("/", "-").replace(":", "-")
         return f"v{cli_version}_{model_slug}_{task_slug}.jsonl"
-

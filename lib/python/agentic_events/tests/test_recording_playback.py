@@ -44,7 +44,9 @@ class TestRecordingPlayback:
 
         # Verify metadata
         assert player.metadata.cli_version == "2.0.74"
-        assert "claude" in player.metadata.model.lower() or "sonnet" in player.metadata.model.lower()
+        assert (
+            "claude" in player.metadata.model.lower() or "sonnet" in player.metadata.model.lower()
+        )
         assert player.metadata.event_count > 0
         assert player.session_id is not None
 
@@ -197,4 +199,3 @@ class TestEventExtraction:
         # Should have reasonable duration
         assert duration > 0
         assert duration < 60000  # Less than 1 minute
-

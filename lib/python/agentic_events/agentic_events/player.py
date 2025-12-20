@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 
 @dataclass
@@ -44,7 +45,7 @@ class RecordingMetadata:
     session_id: str | None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "RecordingMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> RecordingMetadata:
         """Create from metadata dict."""
         recording = data.get("_recording", data)
         recorded_at = recording.get("recorded_at", "")
@@ -200,10 +201,7 @@ class SessionPlayer:
             List of event dicts.
         """
         if strip_timing:
-            return [
-                {k: v for k, v in event.items() if k != "_offset_ms"}
-                for event in self._events
-            ]
+            return [{k: v for k, v in event.items() if k != "_offset_ms"} for event in self._events]
         return self._events.copy()
 
     async def play(
@@ -269,4 +267,3 @@ class SessionPlayer:
     def __iter__(self):
         """Iterate over events (with timing stripped)."""
         return iter(self.get_events())
-

@@ -2,9 +2,6 @@
 
 import io
 import json
-from datetime import datetime
-
-import pytest
 
 from agentic_events import EventEmitter, EventType, SecurityDecision
 
