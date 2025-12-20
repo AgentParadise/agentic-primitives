@@ -35,7 +35,7 @@ _emitter = None
 
 def _get_emitter(session_id: str | None = None):
     """Get event emitter, creating if needed.
-    
+
     Events are emitted to STDERR so they don't interfere with the
     hook decision output (which goes to STDOUT for Claude CLI).
     """
