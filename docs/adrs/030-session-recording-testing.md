@@ -92,6 +92,47 @@ providers/workspaces/claude-cli/
       v1.0.52_claude-3-5-sonnet-20241022_code-review.jsonl
 ```
 
+### 6. Container Logging Capture (Zero Overhead)
+
+For production scale (10k+ agents), we use external capture instead of in-process recording.
+The agent writes events to stderr as JSONL, and an external process captures them.
+
+**Why external capture?**
+- Zero overhead on the agent (no listeners, no middleware)
+- Agent just writes to stderr and continues
+- Recording happens outside the agent process
+- Scales to 10k+ concurrent agents
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     AGENT CONTAINER                              │
+│   Claude CLI → hooks → EventEmitter → stderr (JSONL)            │
+│                                 │                                │
+│                     (writes, doesn't wait)                       │
+└─────────────────────────────────┼────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────┴────────────────────────────────┐
+│                     EXTERNAL CAPTURE                              │
+│   docker logs → capture_recording.py → recording.jsonl           │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Usage:**
+```bash
+# Pipe from docker run
+docker run --rm agentic-workspace-claude-cli claude -p "Task" 2>&1 | \
+    python scripts/capture_recording.py -o recording.jsonl -v
+
+# Capture from running container
+python scripts/capture_recording.py -c my-container -o recording.jsonl -f
+
+# Auto-generate filename
+python scripts/capture_recording.py --generate-name \
+    --cli-version 1.0.52 --model claude-3-5-sonnet --task "git status"
+```
+
 ## Consequences
 
 ### Positive
@@ -116,14 +157,23 @@ providers/workspaces/claude-cli/
 
 ```
 lib/python/agentic_events/agentic_events/
-  recorder.py    # SessionRecorder class
-  player.py      # SessionPlayer class
-  testing.py     # Pytest fixtures (optional)
+  recorder.py    # SessionRecorder class (in-process)
+  player.py      # SessionPlayer class (playback)
+
+scripts/
+  capture_recording.py  # External capture from container logs
 
 providers/workspaces/claude-cli/fixtures/recordings/
   README.md
   *.jsonl
 ```
+
+### Capture Methods
+
+| Method | Use Case | Overhead |
+|--------|----------|----------|
+| `SessionRecorder` | Dev/testing, direct access | Low |
+| `capture_recording.py` | Production, containers | Zero |
 
 ## Related ADRs
 
