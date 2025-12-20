@@ -13,10 +13,15 @@ Usage:
     # List all available recordings
     for path in list_recordings():
         print(path.name)
+
+Environment Variables:
+    AGENTIC_RECORDINGS_DIR: Override the recordings directory path.
+        Useful when agentic_events is installed as a dependency.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .player import SessionPlayer
@@ -26,8 +31,14 @@ def get_recordings_dir() -> Path:
     """Get the canonical recordings directory.
 
     Returns:
-        Path to providers/workspaces/claude-cli/fixtures/recordings/
+        Path to recordings directory. Uses AGENTIC_RECORDINGS_DIR env var
+        if set, otherwise resolves relative to this package.
     """
+    # Check for environment variable override
+    env_path = os.environ.get("AGENTIC_RECORDINGS_DIR")
+    if env_path:
+        return Path(env_path)
+
     # Navigate from agentic_events/fixtures.py to repo root:
     # fixtures.py -> agentic_events -> agentic_events -> python -> lib -> repo_root
     repo_root = Path(__file__).parent.parent.parent.parent.parent

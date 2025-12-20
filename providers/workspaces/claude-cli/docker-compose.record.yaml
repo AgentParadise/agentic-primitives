@@ -13,17 +13,24 @@ services:
     image: agentic-workspace-claude-cli:latest
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5-20250929}
     # Override entrypoint to run claude directly
     entrypoint: ["claude"]
-    command: ["-p", "${PROMPT:-What is 2+2?}", "--output-format", "stream-json"]
+    command:
+      [
+        "-p",
+        "${PROMPT:-What is 2+2?}",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+      ]
     # Capture stderr where events are emitted
     tty: true
     stdin_open: true
 
   # Sidecar that captures the agent's output
   recorder:
-    image: python:3.12-slim
+    image: ghcr.io/astral-sh/uv:python3.12-alpine
     depends_on:
       - agent
     volumes:
@@ -32,23 +39,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - CLI_VERSION=${CLI_VERSION:-unknown}
-      - MODEL=${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+      - MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5-20250929}
       - TASK=${TASK:-session}
-    # Wait for agent to start, then capture its logs
-    command: >
-      bash -c "
-        pip install docker > /dev/null 2>&1;
-        sleep 2;
-        python /scripts/capture_recording.py
-          --container claude-cli-agent-1
-          --output /recordings/v$${CLI_VERSION}_$${MODEL}_$${TASK}.jsonl
-          --cli-version $${CLI_VERSION}
-          --model $${MODEL}
-          --task '$${TASK}'
-          --follow
-          --verbose
-      "
-
+    # Install docker CLI, wait for agent, capture logs
+    command:
+      [
+        "sh",
+        "-c",
+        "apk add --no-cache docker-cli > /dev/null 2>&1 && sleep 2 && docker logs -f claude-cli-agent-1 2>&1 | uv run python /scripts/capture_recording.py --output /recordings/v$${CLI_VERSION}_claude-sonnet-4-5_$${TASK}.jsonl --cli-version $${CLI_VERSION} --model claude-sonnet-4-5 --task $${TASK} --verbose",
+      ]
 # Alternative: Simple one-shot recording without sidecar
 # Just pipe the output:
 #
@@ -57,4 +56,3 @@ services:
 #     agentic-workspace-claude-cli \
 #     claude -p "Your task" 2>&1 | \
 #     python scripts/capture_recording.py -o recording.jsonl -v
-
