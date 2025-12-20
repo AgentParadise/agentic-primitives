@@ -131,18 +131,33 @@ def build_wheels(build_context: Path) -> None:
             print(f"  ✓ Built: {pkg_name}")
 
 
+def get_git_commit() -> str:
+    """Get the current git commit hash."""
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()[:12]  # Short hash
+    return "unknown"
+
+
 def docker_build(
     build_context: Path,
     tag: str,
     no_cache: bool = False,
 ) -> None:
-    """Run docker build."""
-    cmd = ["docker", "build", "-t", tag, "."]
+    """Run docker build with commit label for cache invalidation."""
+    commit = get_git_commit()
+    cmd = ["docker", "build", "-t", tag, "--label", f"agentic.commit={commit}", "."]
     if no_cache:
         cmd.insert(2, "--no-cache")
 
     print(f"\n🐳 Building Docker image: {tag}")
     print(f"   Context: {build_context}")
+    print(f"   Commit: {commit}")
 
     result = subprocess.run(cmd, cwd=build_context)
 

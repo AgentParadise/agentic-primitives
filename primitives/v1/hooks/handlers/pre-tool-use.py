@@ -34,7 +34,11 @@ _emitter = None
 
 
 def _get_emitter(session_id: str | None = None):
-    """Get event emitter, creating if needed."""
+    """Get event emitter, creating if needed.
+    
+    Events are emitted to STDERR so they don't interfere with the
+    hook decision output (which goes to STDOUT for Claude CLI).
+    """
     global _emitter
     if _emitter is not None:
         return _emitter
@@ -45,6 +49,7 @@ def _get_emitter(session_id: str | None = None):
         _emitter = EventEmitter(
             session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
             provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
         )
         return _emitter
     except ImportError:

@@ -32,6 +32,7 @@ def _get_emitter(session_id: str | None = None):
         _emitter = EventEmitter(
             session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
             provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
         )
         return _emitter
     except ImportError:
