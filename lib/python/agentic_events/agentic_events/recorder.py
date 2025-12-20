@@ -37,9 +37,25 @@ class SessionRecorder:
     Attributes:
         session_id: The session ID being recorded (set on first event).
         event_count: Number of events recorded.
+
+    Examples:
+        Basic usage:
+        >>> with SessionRecorder("recording.jsonl", cli_version="1.0.52", model="claude-3-5-sonnet") as rec:
+        ...     rec.record({"event_type": "started", "session_id": "abc"})
+        ...     rec.record({"event_type": "completed"})
+
+        Generate filename:
+        >>> filename = SessionRecorder.generate_filename(
+        ...     cli_version="1.0.52",
+        ...     model="claude-3-5-sonnet",
+        ...     task_slug="list-files"
+        ... )
+        >>> print(filename)
+        v1.0.52_claude-3-5-sonnet_list-files.jsonl
     """
 
     RECORDING_VERSION = 1
+    EVENT_SCHEMA_VERSION = 1  # Increment when event format changes
 
     def __init__(
         self,
@@ -137,6 +153,7 @@ class SessionRecorder:
         metadata = {
             "_recording": {
                 "version": self.RECORDING_VERSION,
+                "event_schema_version": self.EVENT_SCHEMA_VERSION,
                 "cli_version": self._cli_version,
                 "model": self._model,
                 "provider": self._provider,

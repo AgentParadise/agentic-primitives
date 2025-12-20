@@ -274,3 +274,100 @@ class TestRoundTrip:
             assert played["event_type"] == orig["event_type"]
             assert played["session_id"] == orig["session_id"]
 
+
+class TestSchemaVersioning:
+    """Tests for event schema versioning."""
+
+    def test_recorder_includes_schema_version(self, tmp_path: Path):
+        """Recorder includes event_schema_version in metadata."""
+        recording_file = tmp_path / "versioned.jsonl"
+
+        with SessionRecorder(
+            output_path=recording_file,
+            cli_version="1.0.52",
+            model="test-model",
+        ) as recorder:
+            recorder.record({"event_type": "test", "session_id": "s1"})
+
+        # Read raw metadata
+        lines = recording_file.read_text().strip().split("\n")
+        meta = json.loads(lines[0])
+
+        assert "event_schema_version" in meta["_recording"]
+        assert meta["_recording"]["event_schema_version"] == 1
+
+    def test_player_parses_schema_version(self, tmp_path: Path):
+        """Player correctly parses event_schema_version."""
+        recording_file = tmp_path / "versioned.jsonl"
+
+        with SessionRecorder(
+            output_path=recording_file,
+            cli_version="1.0.52",
+            model="test-model",
+        ) as recorder:
+            recorder.record({"event_type": "test", "session_id": "s1"})
+
+        player = SessionPlayer(recording_file)
+
+        assert player.metadata.event_schema_version == 1
+
+    def test_player_handles_missing_schema_version(self, tmp_path: Path):
+        """Player defaults to 0 for old recordings without schema version."""
+        recording_file = tmp_path / "old_format.jsonl"
+
+        # Manually write an old-format recording without event_schema_version
+        metadata = {
+            "_recording": {
+                "version": 1,
+                "cli_version": "1.0.0",
+                "model": "test",
+                "provider": "claude",
+                "task": "",
+                "recorded_at": "2025-01-01T00:00:00Z",
+                "duration_ms": 100,
+                "event_count": 1,
+                "session_id": "old-123",
+                # Note: no event_schema_version
+            }
+        }
+
+        with open(recording_file, "w") as f:
+            f.write(json.dumps(metadata) + "\n")
+            f.write(json.dumps({"_offset_ms": 0, "event_type": "test", "session_id": "old-123"}) + "\n")
+
+        player = SessionPlayer(recording_file)
+
+        # Should default to 0
+        assert player.metadata.event_schema_version == 0
+
+    def test_player_normalizes_old_events(self, tmp_path: Path):
+        """Player normalizes events from older schema versions."""
+        recording_file = tmp_path / "old_events.jsonl"
+
+        # Create recording with schema v0 (old format)
+        metadata = {
+            "_recording": {
+                "version": 1,
+                "event_schema_version": 0,
+                "cli_version": "1.0.0",
+                "model": "test",
+                "provider": "claude",
+                "task": "",
+                "recorded_at": "2025-01-01T00:00:00Z",
+                "duration_ms": 100,
+                "event_count": 1,
+                "session_id": "old-123",
+            }
+        }
+
+        with open(recording_file, "w") as f:
+            f.write(json.dumps(metadata) + "\n")
+            f.write(json.dumps({"_offset_ms": 0, "event_type": "test", "session_id": "old-123"}) + "\n")
+
+        player = SessionPlayer(recording_file)
+        events = player.get_events()
+
+        # Events should be loaded and normalized
+        assert len(events) == 1
+        assert events[0]["event_type"] == "test"
+

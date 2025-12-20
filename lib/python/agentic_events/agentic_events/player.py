@@ -33,6 +33,7 @@ class RecordingMetadata:
     """Metadata from a recording file."""
 
     version: int
+    event_schema_version: int
     cli_version: str
     model: str
     provider: str
@@ -52,6 +53,7 @@ class RecordingMetadata:
 
         return cls(
             version=recording.get("version", 1),
+            event_schema_version=recording.get("event_schema_version", 0),
             cli_version=recording.get("cli_version", "unknown"),
             model=recording.get("model", "unknown"),
             provider=recording.get("provider", "claude"),
@@ -71,9 +73,27 @@ class SessionPlayer:
     - Timed playback (play) - for integration tests
     - Speed control - replay at 10x, 100x, 1000x speed
 
+    Automatically normalizes old event formats to current schema using
+    the event_schema_version in recording metadata.
+
     Attributes:
         metadata: Recording metadata (version, model, duration, etc).
         session_id: The session ID from the recording.
+
+    Examples:
+        Instant playback (unit tests):
+        >>> player = SessionPlayer("recording.jsonl")
+        >>> events = player.get_events()
+        >>> print(f"Recorded {len(events)} events")
+
+        Timed playback (integration tests):
+        >>> async def process_event(event):
+        ...     await store.insert(event)
+        >>> await player.play(emit_fn=process_event, speed=100)
+
+        Access metadata:
+        >>> print(f"CLI version: {player.metadata.cli_version}")
+        >>> print(f"Event schema: v{player.metadata.event_schema_version}")
     """
 
     def __init__(self, recording_path: str | Path) -> None:
@@ -109,6 +129,7 @@ class SessionPlayer:
             # Old format without metadata header
             self._metadata = RecordingMetadata(
                 version=0,
+                event_schema_version=0,
                 cli_version="unknown",
                 model="unknown",
                 provider="claude",
@@ -120,12 +141,42 @@ class SessionPlayer:
             )
             event_lines = lines
 
-        # Parse events
+        # Parse events and normalize to current schema
         for line in event_lines:
             line = line.strip()
             if line:
                 event = json.loads(line)
-                self._events.append(event)
+                normalized = self._normalize_event(event)
+                self._events.append(normalized)
+
+    def _normalize_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        """Normalize old event formats to current schema.
+
+        This allows recordings to work even after schema changes.
+        Each schema version migration is handled explicitly.
+
+        Args:
+            event: Raw event dict from recording.
+
+        Returns:
+            Normalized event dict matching current schema.
+        """
+        schema_version = self._metadata.event_schema_version if self._metadata else 0
+
+        # Schema v1 (current) - no changes needed
+        if schema_version >= 1:
+            return event
+
+        # Schema v0 (old format) - migrate if needed
+        # Currently no migrations needed, but this is where they would go.
+        # Example migration:
+        # if "tool_name" in event and "context" not in event:
+        #     event = {
+        #         "context": {"tool_name": event["tool_name"]},
+        #         **{k: v for k, v in event.items() if k != "tool_name"}
+        #     }
+
+        return event
 
     @property
     def metadata(self) -> RecordingMetadata:
