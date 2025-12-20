@@ -218,3 +218,4 @@ class SessionPlayer:
     def __iter__(self):
         """Iterate over events (with timing stripped)."""
         return iter(self.get_events())
+

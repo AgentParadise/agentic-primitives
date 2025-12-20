@@ -57,3 +57,4 @@ services:
 #     agentic-workspace-claude-cli \
 #     claude -p "Your task" 2>&1 | \
 #     python scripts/capture_recording.py -o recording.jsonl -v
+

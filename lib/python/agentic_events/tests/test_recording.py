@@ -273,3 +273,4 @@ class TestRoundTrip:
         for orig, played in zip(original_events, played_events):
             assert played["event_type"] == orig["event_type"]
             assert played["session_id"] == orig["session_id"]
+

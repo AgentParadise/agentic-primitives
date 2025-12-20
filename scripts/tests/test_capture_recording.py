@@ -206,3 +206,4 @@ Another log
         lines = output_file.read_text().strip().split("\n")
         meta = json.loads(lines[0])
         assert meta["_recording"]["session_id"] == "my-session-id"
+

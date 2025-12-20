@@ -184,3 +184,4 @@ class SessionRecorder:
         # Normalize model name (remove special chars)
         model_slug = model.replace("/", "-").replace(":", "-")
         return f"v{cli_version}_{model_slug}_{task_slug}.jsonl"
+

@@ -189,3 +189,4 @@ class TestEventExtraction:
         # Should have reasonable duration
         assert duration > 0
         assert duration < 60000  # Less than 1 minute
+

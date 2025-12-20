@@ -179,3 +179,4 @@ providers/workspaces/claude-cli/fixtures/recordings/
 
 - ADR-029: Simplified Event System (event types)
 - ADR-027: Provider Workspace Images (where recordings live)
+

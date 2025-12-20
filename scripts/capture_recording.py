@@ -41,7 +41,7 @@ from typing import IO, TextIO
 
 def is_jsonl_event(line: str) -> bool:
     """Check if a line looks like a JSONL event.
-    
+
     Supports two formats:
     1. Hook events: {"event_type": "tool_execution_started", ...}
     2. Claude CLI native: {"type": "assistant", ...}
@@ -303,3 +303,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
