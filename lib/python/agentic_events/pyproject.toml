@@ -41,6 +41,8 @@ select = ["E", "F", "I", "B", "UP"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
+    "unit: marks test as a unit test (fast, no external dependencies)",
+    "integration: marks test as integration test (uses recordings or external resources)",
     "recording(name): marks test to load a recording fixture by name",
 ]
 

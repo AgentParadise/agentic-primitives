@@ -13,6 +13,8 @@ import pytest
 
 from agentic_events import SessionPlayer, get_recordings_dir, load_recording
 
+pytestmark = pytest.mark.integration
+
 # Use fixture helpers for path resolution
 FIXTURES_DIR = get_recordings_dir()
 SAMPLE_RECORDING = FIXTURES_DIR / "v2.0.74_claude-sonnet-4-5_list-files.jsonl"

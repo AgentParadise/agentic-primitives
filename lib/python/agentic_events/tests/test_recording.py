@@ -8,6 +8,8 @@ import pytest
 
 from agentic_events import SessionPlayer, SessionRecorder
 
+pytestmark = pytest.mark.unit
+
 
 class TestSessionRecorder:
     """Tests for SessionRecorder."""

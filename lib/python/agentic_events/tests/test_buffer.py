@@ -6,6 +6,8 @@ import pytest
 
 from agentic_events import BatchBuffer, enrich_event, parse_jsonl_line
 
+pytestmark = pytest.mark.unit
+
 
 class TestBatchBuffer:
     """Tests for BatchBuffer class."""

@@ -3,7 +3,11 @@
 import io
 import json
 
+import pytest
+
 from agentic_events import EventEmitter, EventType, SecurityDecision
+
+pytestmark = pytest.mark.unit
 
 
 class TestEventEmitter:

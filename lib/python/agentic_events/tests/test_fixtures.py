@@ -4,6 +4,9 @@ import pytest
 
 from agentic_events import get_recordings_dir, list_recordings, load_recording
 
+# These tests use the recordings directory, so they're integration tests
+pytestmark = pytest.mark.integration
+
 
 class TestGetRecordingsDir:
     """Tests for get_recordings_dir()."""
