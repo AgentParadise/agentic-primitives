@@ -25,6 +25,7 @@ Recording and playback for testing (ADR-030):
 
 from agentic_events.buffer import BatchBuffer, enrich_event, parse_jsonl_line
 from agentic_events.emitter import EventEmitter
+from agentic_events.fixtures import get_recordings_dir, list_recordings, load_recording
 from agentic_events.player import RecordingMetadata, SessionPlayer
 from agentic_events.recorder import SessionRecorder
 from agentic_events.types import EventType, SecurityDecision, SessionSource
@@ -44,6 +45,10 @@ __all__ = [
     "SessionRecorder",
     "SessionPlayer",
     "RecordingMetadata",
+    # Fixture helpers (ADR-030)
+    "get_recordings_dir",
+    "list_recordings",
+    "load_recording",
 ]
 
 __version__ = "0.1.0"

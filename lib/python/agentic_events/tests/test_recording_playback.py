@@ -7,15 +7,14 @@ Recording: v2.0.74_claude-sonnet-4-5_list-files.jsonl
 Task: "List files in directory" - uses Bash tool
 """
 
-import asyncio
 from pathlib import Path
 
 import pytest
 
-from agentic_events import SessionPlayer
+from agentic_events import SessionPlayer, get_recordings_dir, load_recording
 
-# Path to fixtures
-FIXTURES_DIR = Path(__file__).parent.parent.parent.parent.parent / "providers/workspaces/claude-cli/fixtures/recordings"
+# Use fixture helpers for path resolution
+FIXTURES_DIR = get_recordings_dir()
 SAMPLE_RECORDING = FIXTURES_DIR / "v2.0.74_claude-sonnet-4-5_list-files.jsonl"
 
 
@@ -25,6 +24,15 @@ def recording_exists():
     if not SAMPLE_RECORDING.exists():
         pytest.skip(f"Recording not found: {SAMPLE_RECORDING}")
     return SAMPLE_RECORDING
+
+
+@pytest.fixture
+def list_files_player():
+    """Load list-files recording using fixture helper."""
+    try:
+        return load_recording("list-files")
+    except FileNotFoundError:
+        pytest.skip("list-files recording not found")
 
 
 class TestRecordingPlayback:

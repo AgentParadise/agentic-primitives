@@ -40,6 +40,9 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "recording(name): marks test to load a recording fixture by name",
+]
 
 [dependency-groups]
 dev = [
