@@ -284,7 +284,56 @@ def make_user():
         user.delete()
 ```
 
-### Pattern 4: Test Doubles
+### Pattern 4: Test Markers (Categorization)
+
+Markers tag tests with metadata so pytest can run them selectively:
+
+```python
+import pytest
+
+@pytest.mark.unit
+def test_fast_logic():
+    """Runs in milliseconds, no I/O."""
+    assert 1 + 1 == 2
+
+@pytest.mark.integration
+async def test_with_database():
+    """Needs real database connection."""
+    result = await db.query("SELECT 1")
+    assert result == 1
+
+@pytest.mark.e2e
+async def test_full_workflow():
+    """Needs entire stack running."""
+    response = await api.post("/execute")
+    assert response.status_code == 200
+```
+
+**Running by marker:**
+```bash
+pytest -m unit           # Fast, every commit (~30s)
+pytest -m integration    # Slower, PR only (~2min)
+pytest -m "not e2e"      # Skip expensive tests
+```
+
+**Register in pyproject.toml:**
+```toml
+[tool.pytest.ini_options]
+markers = [
+    "unit: Fast tests with no external dependencies",
+    "integration: Tests requiring database or services",
+    "e2e: End-to-end tests requiring full stack",
+]
+```
+
+**Auto-detection rules:**
+| If test has... | Mark as |
+|----------------|---------|
+| `MagicMock`, `AsyncMock`, no DB imports | `@pytest.mark.unit` |
+| `event_store`, `postgresql://`, `docker` | `@pytest.mark.integration` |
+| `e2e_` in filename | `@pytest.mark.e2e` |
+
+### Pattern 5: Test Doubles
 
 | Double | Use Case |
 |--------|----------|

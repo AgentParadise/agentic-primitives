@@ -62,7 +62,8 @@ COPY packages/*.whl /tmp/packages/
 
 # Install agentic packages with uv
 # Using --break-system-packages since we're in a container
-RUN uv pip install --system --break-system-packages --no-cache /tmp/packages/*.whl \
+# pyjwt is required for Claude CLI MCP authentication
+RUN uv pip install --system --break-system-packages --no-cache /tmp/packages/*.whl pyjwt \
     && rm -rf /tmp/packages
 
 # =============================================================================
