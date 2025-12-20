@@ -104,6 +104,37 @@ class TestSessionRecorder:
 
         assert output_file.exists()
 
+    def test_create_factory_method(self, tmp_path: Path):
+        """Test create() factory generates standardized filename."""
+        recorder = SessionRecorder.create(
+            task_slug="simple-bash",
+            cli_version="2.0.74",
+            model="claude-sonnet-4-5",
+            output_dir=tmp_path,
+        )
+
+        # Should auto-generate the filename
+        assert recorder._output_path.name == "v2.0.74_claude-sonnet-4-5_simple-bash.jsonl"
+        assert recorder._output_path.parent == tmp_path
+
+        # Record something and close
+        recorder.record({"event_type": "test", "session_id": "s1"})
+        recorder.close()
+
+        assert recorder._output_path.exists()
+
+    def test_create_with_defaults(self, tmp_path: Path):
+        """Test create() uses sensible defaults."""
+        recorder = SessionRecorder.create("my-task", output_dir=tmp_path)
+
+        # Defaults should be applied
+        assert "v2.0.74" in recorder._output_path.name
+        assert "claude-sonnet-4-5" in recorder._output_path.name
+        assert "my-task" in recorder._output_path.name
+        assert recorder._task == "My Task"  # Auto-generated from slug
+
+        recorder.close()
+
 
 class TestSessionPlayer:
     """Tests for SessionPlayer."""

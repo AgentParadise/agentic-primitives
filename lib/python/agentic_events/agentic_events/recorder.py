@@ -203,3 +203,56 @@ class SessionRecorder:
         # Normalize model name (remove special chars)
         model_slug = model.replace("/", "-").replace(":", "-")
         return f"v{cli_version}_{model_slug}_{task_slug}.jsonl"
+
+    @classmethod
+    def create(
+        cls,
+        task_slug: str,
+        cli_version: str = "2.0.74",
+        model: str = "claude-sonnet-4-5",
+        task: str = "",
+        output_dir: str | Path | None = None,
+    ) -> "SessionRecorder":
+        """Create a recorder with auto-generated standardized filename.
+
+        This is the recommended way to create recordings - it enforces
+        the naming convention and puts files in the correct directory.
+
+        Args:
+            task_slug: Kebab-case task name (e.g., "simple-bash", "file-create")
+            cli_version: CLI version (default: "2.0.74")
+            model: Model name (default: "claude-sonnet-4-5")
+            task: Human-readable task description
+            output_dir: Override output directory (default: standard fixtures dir)
+
+        Returns:
+            SessionRecorder ready to record events.
+
+        Examples:
+            >>> recorder = SessionRecorder.create("simple-bash")
+            >>> # Creates: .../fixtures/recordings/v2.0.74_claude-sonnet-4-5_simple-bash.jsonl
+
+            >>> recorder = SessionRecorder.create(
+            ...     "git-status",
+            ...     task="Run git status and explain"
+            ... )
+        """
+        filename = cls.generate_filename(cli_version, model, task_slug)
+
+        if output_dir is None:
+            # Use standard fixtures directory
+            output_dir = (
+                Path(__file__).parent.parent.parent.parent
+                / "providers/workspaces/claude-cli/fixtures/recordings"
+            )
+        else:
+            output_dir = Path(output_dir)
+
+        output_path = output_dir / filename
+
+        return cls(
+            output_path=output_path,
+            cli_version=cli_version,
+            model=model,
+            task=task or task_slug.replace("-", " ").title(),
+        )
