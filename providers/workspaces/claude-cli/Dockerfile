@@ -111,7 +111,9 @@ ENV HOME=/home/agent \
     # Hooks location
     AGENTIC_HOOKS_DIR=/opt/agentic/hooks \
     # Python path for validators
-    PYTHONPATH=/opt/agentic/hooks
+    PYTHONPATH=/opt/agentic/hooks \
+    # Disable Claude Code attribution in commits/PRs
+    ANTHROPIC_NO_ATTRIBUTION=1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \
