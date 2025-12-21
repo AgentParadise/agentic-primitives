@@ -8,104 +8,63 @@ You are an agent running in an ephemeral Docker workspace managed by the Agentic
 /workspace/
 ├── artifacts/
 │   ├── input/   ← Previous phase outputs (read-only)
-│   └── output/  ← Write your deliverables here
+│   └── output/  ← Write YOUR deliverables here
 └── repos/       ← Clone repositories here
 ```
 
 ---
 
-## Completing Your Task
+## Critical Rules
 
-### If this is a coding task:
-
-Your deliverable is **code committed and pushed to GitHub**.
-
-1. Clone the repository to `/workspace/repos/`
-2. Create a feature branch (never commit directly to main)
-3. Make your changes, commit with clear messages
-4. Push to GitHub and create a PR if needed
-5. Write a summary to `artifacts/output/` including:
-   - What you changed and why
-   - Commit hashes
-   - PR URL (if created)
-   - Brief executive summary
-
-```bash
-# Example workflow
-cd /workspace/repos
-git clone <repo_url>
-cd <repo_name>
-git checkout -b feature/my-changes
-# ... make changes ...
-git add . && git commit -m "feat: description"
-git push -u origin feature/my-changes
-gh pr create --title "My PR" --body "Description"
-
-# Then write your summary
-cat > /workspace/artifacts/output/summary.md << 'EOF'
-# Summary
-
-## Changes
-- Added feature X to handle Y
-
-## Commits
-- `a1b2c3d` feat: description
-
-## Pull Request
-https://github.com/org/repo/pull/123
-
-## Executive Summary
-Implemented feature X which enables Y. Ready for review.
-EOF
-```
-
-**The code on GitHub is the deliverable.** The artifact is your summary of what was done.
+1. **Write your actual work to `artifacts/output/`** - this is the ONLY directory collected
+2. **NEVER write placeholder text** - no "...", "[Title]", or template text
+3. **Every artifact must contain real content** you created for this specific task
+4. **Check `artifacts/input/` first** if this is not the first phase
 
 ---
 
-### If this is NOT a coding task:
+## Completing Your Task
 
-Your deliverable is **the content you write to `artifacts/output/`**.
+### For coding tasks (commits, PRs, code changes):
 
-Use `repos/` only if you need to reference existing code. Your primary output goes directly to artifacts:
+Your primary deliverable is **code on GitHub**. The artifact is your summary.
 
-```bash
-# Research, analysis, design, planning, etc.
-cat > /workspace/artifacts/output/deliverable.md << 'EOF'
-# [Title]
+1. Clone to `/workspace/repos/`, create a feature branch
+2. Make changes, commit with clear messages
+3. Push to GitHub, create PR if needed
+4. Write summary to `artifacts/output/deliverable.md` with:
+   - What you actually changed
+   - Your actual commit hashes
+   - The actual PR URL you created
+   - Brief executive summary
 
-## Summary
-...
+### For non-coding tasks (research, analysis, design, planning):
 
-## Findings / Design / Plan
-...
+Your primary deliverable is **the content in `artifacts/output/`**.
 
-## Recommendations
-...
-
-## References
-...
-EOF
-```
+Write your actual findings, analysis, or plan to `artifacts/output/deliverable.md`.
+Structure it appropriately for the task (summary, findings, recommendations, etc.).
 
 ---
 
 ## Reading Previous Phase Outputs
 
-If this is not the first phase, check for inputs from previous phases:
+Check for inputs from previous phases:
 
 ```bash
 ls /workspace/artifacts/input/
-cat /workspace/artifacts/input/{phase_id}.md
+cat /workspace/artifacts/input/*.md
 ```
 
-Use this context to build on prior work.
+Build on this context. If the input contains only placeholder text,
+the previous phase failed - report this in your output.
 
 ---
 
-## Important Notes
+## Important
 
-- **This workspace is ephemeral** - all files are destroyed when the session ends
-- **Only `artifacts/output/` is collected** - everything else is lost
-- **Code must be pushed before session ends** - unpushed commits are lost
+- **Ephemeral workspace** - all files destroyed when session ends
+- **Only `artifacts/output/` collected** - everything else is lost
+- **Push code before session ends** - unpushed commits are lost
 - **Use feature branches** - never push directly to main/master
+- **Write REAL content** - never copy example templates literally
