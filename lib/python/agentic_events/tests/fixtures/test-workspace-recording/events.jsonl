@@ -1,0 +1,4 @@
+{"_recording": {"version": 1, "event_schema_version": 1, "cli_version": "2.0.74", "model": "claude-sonnet-4-5", "provider": "claude", "task": "Test workspace recording", "recorded_at": "2024-12-21T10:00:00+00:00", "duration_ms": 5000, "event_count": 3, "session_id": "test-session-123", "has_workspace": true, "workspace_files": ["artifacts/output/summary.md"]}}
+{"_offset_ms": 0, "type": "session_started", "session_id": "test-session-123"}
+{"_offset_ms": 2500, "type": "tool_execution", "session_id": "test-session-123", "tool_name": "write", "tool_input": {"path": "/workspace/artifacts/output/summary.md"}}
+{"_offset_ms": 5000, "type": "session_completed", "session_id": "test-session-123", "result": "success"}
