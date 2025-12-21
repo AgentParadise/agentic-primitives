@@ -33,8 +33,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
     jq \
+    tree \
     # Process management
     procps \
+    # Required for gh CLI installation
+    gnupg \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create python -> python3 symlink for compatibility
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -82,8 +96,14 @@ RUN usermod -l agent -d /home/agent -m node \
 RUN mkdir -p /workspace \
     && mkdir -p /opt/agentic/hooks \
     && mkdir -p /opt/agentic/config \
+    && mkdir -p /home/agent/.claude \
     && chown -R agent:agent /workspace \
-    && chown -R agent:agent /opt/agentic
+    && chown -R agent:agent /opt/agentic \
+    && chown -R agent:agent /home/agent/.claude
+
+# Create Claude config to disable attribution
+RUN echo '{"disableAttribution": true, "includeAttribution": false}' > /home/agent/.claude/config.json \
+    && chown agent:agent /home/agent/.claude/config.json
 
 # Copy pre-staged hooks from build context
 COPY hooks/ /opt/agentic/hooks/
@@ -94,7 +114,7 @@ RUN chmod -R 755 /opt/agentic/hooks \
     && chown -R agent:agent /opt/agentic/hooks
 
 # Verify installations (before security hardening)
-RUN claude --version && python3 --version && node --version && uv --version
+RUN claude --version && python3 --version && node --version && uv --version && gh --version
 
 # Security: Remove setuid/setgid binaries (exclude /usr/local)
 RUN find / -path /usr/local -prune -o -perm /6000 -type f -exec chmod a-s {} \; 2>/dev/null || true
@@ -113,7 +133,9 @@ ENV HOME=/home/agent \
     # Python path for validators
     PYTHONPATH=/opt/agentic/hooks \
     # Disable Claude Code attribution in commits/PRs
-    ANTHROPIC_NO_ATTRIBUTION=1
+    ANTHROPIC_NO_ATTRIBUTION=1 \
+    # Use uv for Python execution (faster, better caching)
+    UV_SYSTEM_PYTHON=1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \
