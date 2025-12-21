@@ -1,27 +1,38 @@
-"""Claude CLI Adapter - Generate .claude/hooks/ Python files.
+"""Claude CLI Adapter - Run Claude CLI and generate hooks.
 
-This adapter generates hook files for the Claude CLI that integrate
-agentic-primitives security and observability.
+This adapter provides:
+- ClaudeCLIRunner: Execute Claude CLI and capture events
+- generate_hooks: Generate .claude/hooks/ Python files
 
 Usage:
-    from agentic_adapters.claude_cli import generate_hooks
-    from agentic_security import SecurityPolicy
+    from agentic_adapters.claude_cli import ClaudeCLIRunner, generate_hooks
 
+    # Run CLI and capture events
+    runner = ClaudeCLIRunner(cwd="/workspace")
+    result = await runner.run("Create a file")
+    for event in result.events:
+        print(event["event_type"])
+
+    # Generate hooks for a workspace
     generate_hooks(
         output_dir=".claude/hooks",
-        security_policy=SecurityPolicy.with_defaults(),
-        observability_backend="jsonl",
+        observability_backend="events",
     )
 """
 
 from agentic_adapters.claude_cli.generator import (
-    generate_hooks,
-    generate_pre_tool_use_hook,
-    generate_post_tool_use_hook,
     HookTemplate,
+    generate_hooks,
+    generate_post_tool_use_hook,
+    generate_pre_tool_use_hook,
 )
+from agentic_adapters.claude_cli.runner import CLIResult, ClaudeCLIRunner
 
 __all__ = [
+    # Runner
+    "ClaudeCLIRunner",
+    "CLIResult",
+    # Hook generation
     "generate_hooks",
     "generate_pre_tool_use_hook",
     "generate_post_tool_use_hook",

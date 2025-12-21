@@ -1,0 +1,51 @@
+# Docker Compose for Playground OTel Visualization
+#
+# Usage:
+#   docker compose up -d       # Start otel-tui
+#   docker compose logs -f     # View logs
+#   docker compose down        # Stop
+#
+# Then run playground with --tui:
+#   python run.py "Your task" --tui
+
+services:
+  # otel-tui - Terminal UI for OTel signals
+  # https://github.com/ymtdzzz/otel-tui
+  otel-tui:
+    image: ymtdzzz/otel-tui:latest
+    container_name: playground-otel-tui
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    environment:
+      # Enable all signal types
+      OTEL_TUI_ENABLE_TRACES: "true"
+      OTEL_TUI_ENABLE_METRICS: "true"
+      OTEL_TUI_ENABLE_LOGS: "true"
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  # Alternative: OTel Collector + Prometheus + Grafana stack
+  # Uncomment if you want full observability stack
+  #
+  # otel-collector:
+  #   image: otel/opentelemetry-collector-contrib:0.92.0
+  #   container_name: playground-otel-collector
+  #   command: ["--config=/etc/otel-collector-config.yaml"]
+  #   volumes:
+  #     - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+  #   ports:
+  #     - "4317:4317"  # OTLP gRPC
+  #     - "4318:4318"  # OTLP HTTP
+  #     - "8889:8889"  # Prometheus metrics
+  #   restart: unless-stopped
+  #
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: playground-prometheus
+  #   volumes:
+  #     - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+  #   ports:
+  #     - "9090:9090"
+  #   restart: unless-stopped

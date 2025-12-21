@@ -1,4 +1,9 @@
-"""Generate .claude/hooks/ Python files for Claude CLI."""
+"""Generate .claude/hooks/ Python files for Claude CLI.
+
+Supports two observability backends:
+- "events": Uses agentic_events for JSONL event emission (recommended)
+- "jsonl": Legacy JSONL file logging
+"""
 
 from __future__ import annotations
 
@@ -64,6 +69,8 @@ def record_tool_use(
     tool_input: dict[str, Any],
     tool_result: Any,
     error: str | None,
+    session_id: str | None,
+    tool_use_id: str | None,
 ) -> None:
     """Record tool execution."""
 {recording_code}
@@ -77,9 +84,11 @@ def main() -> None:
     tool_input = hook_input.get("tool_input", {{}})
     tool_result = hook_input.get("tool_result")
     error = hook_input.get("error")
+    session_id = hook_input.get("session_id")
+    tool_use_id = hook_input.get("tool_use_id")
 
     # Record
-    record_tool_use(tool_name, tool_input, tool_result, error)
+    record_tool_use(tool_name, tool_input, tool_result, error, session_id, tool_use_id)
 
 
 if __name__ == "__main__":
@@ -98,8 +107,7 @@ class HookTemplate:
 
     # Observability
     observability_enabled: bool = True
-    observability_backend: str = "jsonl"  # "jsonl", "http", "timescaledb"
-    observability_endpoint: str | None = None
+    observability_backend: str = "events"  # "events" (recommended), "jsonl", "http"
     jsonl_path: str = ".agentic/analytics/events.jsonl"
 
     # Output
@@ -126,7 +134,7 @@ def _generate_security_code(template: HookTemplate) -> tuple[str, str, str]:
 
     policy_code = "\n".join(policy_lines)
 
-    validation = '''    result = policy.validate(tool_name, tool_input)
+    validation = """    result = policy.validate(tool_name, tool_input)
 
     if not result.safe:
         return {
@@ -134,7 +142,7 @@ def _generate_security_code(template: HookTemplate) -> tuple[str, str, str]:
             "reason": result.reason or "Security policy violation",
         }
 
-    return {"decision": "allow"}'''
+    return {"decision": "allow"}"""
 
     return imports, policy_code, validation
 
@@ -144,7 +152,32 @@ def _generate_observability_code(template: HookTemplate) -> tuple[str, str, str]
     if not template.observability_enabled:
         return "", "", "    pass  # Observability disabled"
 
-    if template.observability_backend == "jsonl":
+    if template.observability_backend == "events":
+        # agentic_events based observability (recommended)
+        imports = """import os
+from agentic_events import EventEmitter"""
+
+        setup = '''# Event emitter (writes JSONL to stdout, captured by agent runner)
+_emitter = None
+
+def _get_emitter(session_id: str | None = None):
+    global _emitter
+    if _emitter is None:
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+        )
+    return _emitter'''
+
+        recording = """    emitter = _get_emitter(session_id)
+    emitter.tool_completed(
+        tool_name=tool_name,
+        tool_use_id=tool_use_id or "unknown",
+        success=error is None,
+        error=error,
+    )"""
+
+    elif template.observability_backend == "jsonl":
         imports = """import os
 from pathlib import Path
 from datetime import datetime, UTC"""
@@ -153,7 +186,7 @@ from datetime import datetime, UTC"""
 EVENTS_PATH = Path("{template.jsonl_path}")
 EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)'''
 
-        recording = '''    event = {
+        recording = """    event = {
         "type": "tool_completed",
         "timestamp": datetime.now(UTC).isoformat(),
         "tool_name": tool_name,
@@ -162,17 +195,16 @@ EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)'''
     }
 
     with open(EVENTS_PATH, "a") as f:
-        f.write(json.dumps(event) + "\\n")'''
+        f.write(json.dumps(event) + "\\n")"""
 
     elif template.observability_backend == "http":
-        endpoint = template.observability_endpoint or "http://localhost:8080/events"
         imports = """import urllib.request
 from datetime import datetime, UTC"""
 
-        setup = f'''# HTTP endpoint
-ENDPOINT = "{endpoint}"'''
+        setup = '''# HTTP endpoint
+ENDPOINT = os.environ.get("AGENTIC_EVENTS_ENDPOINT", "http://localhost:8080/events")'''
 
-        recording = '''    event = {
+        recording = """    event = {
         "type": "tool_completed",
         "timestamp": datetime.now(UTC).isoformat(),
         "tool_name": tool_name,
@@ -189,7 +221,7 @@ ENDPOINT = "{endpoint}"'''
         )
         urllib.request.urlopen(req, timeout=5)
     except Exception:
-        pass  # Non-blocking'''
+        pass  # Non-blocking"""
 
     else:
         imports = ""
@@ -247,7 +279,7 @@ def generate_hooks(
     template: HookTemplate | None = None,
     security_enabled: bool = True,
     observability_enabled: bool = True,
-    observability_backend: str = "jsonl",
+    observability_backend: str = "events",
     **kwargs: Any,
 ) -> list[Path]:
     """Generate Claude CLI hook files.
@@ -257,7 +289,7 @@ def generate_hooks(
         template: Full configuration (or use params below)
         security_enabled: Generate security hooks
         observability_enabled: Generate observability hooks
-        observability_backend: Backend type ("jsonl", "http")
+        observability_backend: Backend type ("events", "jsonl", "http")
         **kwargs: Additional template options
 
     Returns:

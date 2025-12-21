@@ -1,0 +1,32 @@
+name: Code Review
+description: Code review scenario for analyzing code quality and suggesting improvements
+
+headless:
+  allowed_tools:
+    - Read
+    - Grep
+    - Glob
+    - LS
+    - Write
+  disallowed_tools:
+    - Bash
+    - WebFetch
+  output_format: stream-json
+  permission_mode: bypassPermissions
+  system_prompt: |
+    You are a senior software engineer performing a code review.
+    Focus on:
+    - Code quality and readability
+    - Best practices and patterns
+    - Performance considerations
+    - Error handling
+    - Documentation quality
+
+    You may write a REVIEW.md file with your findings.
+  max_turns: 30
+
+isolation:
+  provider: docker
+  image: agentic-workspace:latest
+  timeout: 600
+  memory_mb: 2048

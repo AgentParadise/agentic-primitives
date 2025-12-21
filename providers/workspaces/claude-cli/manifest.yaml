@@ -1,0 +1,105 @@
+# Claude CLI Workspace Provider Manifest
+# Defines the workspace image configuration for Claude CLI-based agents
+#
+# See ADR-027: Provider-Based Workspace Images
+
+name: claude-cli
+version: "1.0.0"
+description: Claude CLI workspace with native OpenTelemetry support
+
+# Image build configuration
+image:
+  dockerfile: ./Dockerfile
+  tag: agentic-workspace-claude-cli
+  # Build context is the agentic-primitives root
+  context: ../../..
+  # Build arguments (optional)
+  args: {}
+
+# Runtime configuration
+runtime:
+  # The agent binary/command
+  agent: claude
+  # Supported modes
+  modes:
+    - headless
+    - interactive
+  # Native OTel support
+  otel_native: true
+
+# Hook configuration
+hooks:
+  # Source directory relative to agentic-primitives root
+  source: ../../../primitives/v1/hooks/
+  # Hook handlers to include
+  handlers:
+    - pre-tool-use
+    - post-tool-use
+    - session-start
+    - session-end
+    - user-prompt
+    - notification
+    - stop
+  # Validators to include
+  validators:
+    - security/bash
+    - security/file
+    - prompt/pii
+  # Install location in the image
+  install_path: /opt/agentic/hooks
+
+# Default tool configuration
+defaults:
+  # Tools allowed by default (can be overridden per-workspace)
+  allowed_tools:
+    - Read
+    - Write
+    - Edit
+    - MultiEdit
+    - Bash
+    - Glob
+    - Grep
+    - LS
+    - Task
+    - TodoRead
+    - TodoWrite
+    - WebFetch
+    - WebSearch
+  # Tools that require explicit enablement
+  require_enablement:
+    - mcp__*
+    - computer
+  # OTel enabled by default
+  otel_enabled: true
+
+# Security configuration
+security:
+  # Run as non-root user
+  non_root: true
+  user: agent
+  uid: 1000
+  gid: 1000
+  # Remove setuid/setgid binaries
+  no_setuid: true
+  # Read-only hints (enforced at runtime)
+  read_only_paths:
+    - /opt/agentic
+  # Default network access
+  network:
+    enabled: true
+    # Empty means all hosts (restricted at runtime)
+    allowed_hosts: []
+
+# Health check configuration
+health:
+  interval: 30s
+  timeout: 3s
+  start_period: 5s
+  retries: 2
+
+# Labels for the image
+labels:
+  org.opencontainers.image.title: "Agentic Workspace - Claude CLI"
+  org.opencontainers.image.description: "Claude CLI with native OTel support"
+  org.opencontainers.image.vendor: "Agentic Primitives"
+  org.opencontainers.image.source: "https://github.com/agentparadise/agentic-primitives"

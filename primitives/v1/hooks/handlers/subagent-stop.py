@@ -1,35 +1,41 @@
 #!/usr/bin/env python3
 """
-SubagentStop Handler - Logs when a subagent completes.
+SubagentStop Handler - Logs when a subagent stops.
 
 This handler:
 1. Receives SubagentStop events from Claude
-2. Logs subagent completion metrics
-3. Always allows (no blocking)
+2. Emits subagent stopped event to stdout
+3. Always allows (no blocking on stop events)
+
+Events are emitted as JSONL to stdout, captured by the agent runner
+and stored in TimescaleDB for observability.
 """
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+
+# === EVENT EMITTER (lazy initialized) ===
+_emitter = None
 
 
-def log_analytics(event: dict[str, Any]) -> None:
-    """Log to analytics file. Fail-safe - never blocks."""
+def _get_emitter(session_id: str | None = None):
+    """Get event emitter, creating if needed."""
+    global _emitter
+    if _emitter is not None:
+        return _emitter
+
     try:
-        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
-            f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
+        from agentic_events import EventEmitter
+
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
+        )
+        return _emitter
+    except ImportError:
+        return None
 
 
 def main() -> None:
@@ -40,30 +46,21 @@ def main() -> None:
             input_data = sys.stdin.read()
 
         if not input_data:
-            print(json.dumps({"decision": "allow"}))
             return
 
         event = json.loads(input_data)
+        session_id = event.get("session_id")
 
-        log_analytics(
-            {
-                "event_type": "hook_decision",
-                "handler": "subagent-stop",
-                "hook_event": event.get("hook_event_name", "SubagentStop"),
-                "decision": "allow",
-                "session_id": event.get("session_id"),
-                "subagent_id": event.get("subagent_id"),
-                "audit": {
-                    "transcript_path": event.get("transcript_path"),
-                    "cwd": event.get("cwd"),
-                },
-            }
-        )
+        # Get emitter and emit subagent stopped event
+        emitter = _get_emitter(session_id)
+        if emitter:
+            emitter.subagent_stopped(
+                subagent_id=event.get("subagent_id", "unknown"),
+                reason=event.get("reason", "normal"),
+            )
 
-        print(json.dumps({"decision": "allow"}))
-
-    except Exception as e:
-        print(json.dumps({"decision": "allow", "error": str(e)}))
+    except Exception:
+        pass  # Silent fail
 
 
 if __name__ == "__main__":

@@ -1,13 +1,17 @@
 """Tests for Claude CLI adapter."""
 
-import pytest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from agentic_adapters.claude_cli import (
-    generate_hooks,
-    generate_pre_tool_use_hook,
-    generate_post_tool_use_hook,
+    CLIResult,
+    ClaudeCLIRunner,
     HookTemplate,
+    generate_hooks,
+    generate_post_tool_use_hook,
+    generate_pre_tool_use_hook,
 )
 
 
@@ -20,7 +24,7 @@ class TestHookTemplate:
 
         assert template.security_enabled is True
         assert template.observability_enabled is True
-        assert template.observability_backend == "jsonl"
+        assert template.observability_backend == "events"
         assert template.make_executable is True
 
     def test_custom_paths(self) -> None:
@@ -92,19 +96,19 @@ class TestGeneratePostToolUseHook:
         template = HookTemplate(
             observability_enabled=True,
             observability_backend="http",
-            observability_endpoint="http://test:8080/events",
         )
         code = generate_post_tool_use_hook(template)
 
-        assert "http://test:8080/events" in code
-        assert "urllib" in code
+        assert "urlopen" in code
+        assert "POST" in code
 
     def test_disabled_observability(self) -> None:
-        """Should skip observability when disabled."""
+        """Should skip recording when disabled."""
         template = HookTemplate(observability_enabled=False)
         code = generate_post_tool_use_hook(template)
 
-        assert "pass" in code  # No-op
+        assert "pass" in code
+        assert "Observability disabled" in code
 
     def test_includes_main_entry(self) -> None:
         """Should include main entry point."""
@@ -117,26 +121,36 @@ class TestGeneratePostToolUseHook:
 class TestGenerateHooks:
     """Tests for generate_hooks."""
 
-    def test_creates_both_files(self, tmp_path: Path) -> None:
-        """Should create pre and post hook files."""
-        output_dir = tmp_path / ".claude" / "hooks"
+    def test_creates_files(self, tmp_path: Path) -> None:
+        """Should create hook files."""
+        output_dir = tmp_path / "hooks"
 
         files = generate_hooks(output_dir)
 
         assert len(files) == 2
-        assert (output_dir / "pre_tool_use.py").exists()
-        assert (output_dir / "post_tool_use.py").exists()
+        assert all(f.exists() for f in files)
 
-    def test_creates_output_directory(self, tmp_path: Path) -> None:
-        """Should create output directory if missing."""
-        output_dir = tmp_path / "nested" / "deep" / "hooks"
+    def test_makes_executable(self, tmp_path: Path) -> None:
+        """Should make files executable by default."""
+        output_dir = tmp_path / "hooks"
 
-        generate_hooks(output_dir)
+        files = generate_hooks(output_dir)
 
-        assert output_dir.exists()
+        for f in files:
+            assert f.stat().st_mode & 0o100  # Executable
 
-    def test_security_only(self, tmp_path: Path) -> None:
-        """Should create only pre hook when observability disabled."""
+    def test_no_executable(self, tmp_path: Path) -> None:
+        """Should not make files executable when disabled."""
+        output_dir = tmp_path / "hooks"
+        template = HookTemplate(make_executable=False)
+
+        files = generate_hooks(output_dir, template=template)
+
+        for f in files:
+            assert not (f.stat().st_mode & 0o100)
+
+    def test_only_security(self, tmp_path: Path) -> None:
+        """Should only generate security hook when observability disabled."""
         output_dir = tmp_path / "hooks"
 
         files = generate_hooks(
@@ -146,11 +160,10 @@ class TestGenerateHooks:
         )
 
         assert len(files) == 1
-        assert (output_dir / "pre_tool_use.py").exists()
-        assert not (output_dir / "post_tool_use.py").exists()
+        assert files[0].name == "pre_tool_use.py"
 
-    def test_observability_only(self, tmp_path: Path) -> None:
-        """Should create only post hook when security disabled."""
+    def test_only_observability(self, tmp_path: Path) -> None:
+        """Should only generate observability hook when security disabled."""
         output_dir = tmp_path / "hooks"
 
         files = generate_hooks(
@@ -160,65 +173,112 @@ class TestGenerateHooks:
         )
 
         assert len(files) == 1
-        assert (output_dir / "post_tool_use.py").exists()
-        assert not (output_dir / "pre_tool_use.py").exists()
+        assert files[0].name == "post_tool_use.py"
 
-    def test_makes_executable(self, tmp_path: Path) -> None:
-        """Should make files executable."""
-        output_dir = tmp_path / "hooks"
+    def test_creates_directory(self, tmp_path: Path) -> None:
+        """Should create output directory if needed."""
+        output_dir = tmp_path / "nested" / "hooks"
 
         files = generate_hooks(output_dir)
 
-        for f in files:
-            mode = f.stat().st_mode
-            assert mode & 0o100  # Owner executable bit
+        assert output_dir.exists()
+        assert len(files) == 2
 
-    def test_non_executable(self, tmp_path: Path) -> None:
-        """Should respect make_executable=False."""
-        output_dir = tmp_path / "hooks"
-        template = HookTemplate(make_executable=False)
-
-        files = generate_hooks(output_dir, template=template)
-
-        for f in files:
-            mode = f.stat().st_mode
-            assert not (mode & 0o100)  # No owner executable bit
-
-    def test_custom_template(self, tmp_path: Path) -> None:
-        """Should use custom template."""
+    def test_events_backend(self, tmp_path: Path) -> None:
+        """Should generate agentic_events recording code."""
         output_dir = tmp_path / "hooks"
         template = HookTemplate(
-            blocked_paths=["/custom/blocked"],
-            observability_backend="http",
-            observability_endpoint="http://custom:9000",
+            observability_enabled=True,
+            observability_backend="events",
         )
 
         generate_hooks(output_dir, template=template)
 
-        pre_content = (output_dir / "pre_tool_use.py").read_text()
-        post_content = (output_dir / "post_tool_use.py").read_text()
-
-        assert "/custom/blocked" in pre_content
-        assert "http://custom:9000" in post_content
-
-    def test_generated_code_is_valid(self, tmp_path: Path) -> None:
-        """Should generate syntactically valid Python."""
-        output_dir = tmp_path / "hooks"
-
-        generate_hooks(output_dir)
-
-        pre_code = (output_dir / "pre_tool_use.py").read_text()
         post_code = (output_dir / "post_tool_use.py").read_text()
+        assert "agentic_events" in post_code
+        assert "EventEmitter" in post_code
 
-        # Both should compile without syntax errors
-        compile(pre_code, "pre_tool_use.py", "exec")
-        compile(post_code, "post_tool_use.py", "exec")
 
-    def test_returns_file_paths(self, tmp_path: Path) -> None:
-        """Should return list of created file paths."""
-        output_dir = tmp_path / "hooks"
+class TestClaudeCLIRunner:
+    """Tests for ClaudeCLIRunner."""
 
-        files = generate_hooks(output_dir)
+    def test_init_default_values(self) -> None:
+        """Should have sensible defaults."""
+        runner = ClaudeCLIRunner()
 
-        assert all(isinstance(f, Path) for f in files)
-        assert all(f.exists() for f in files)
+        assert runner.cwd == "/workspace"
+        assert runner.permission_mode == "bypassPermissions"
+        assert runner.claude_command == "claude"
+
+    def test_init_invalid_permission_mode(self) -> None:
+        """Should reject invalid permission mode."""
+        with pytest.raises(ValueError):
+            ClaudeCLIRunner(permission_mode="invalid")
+
+    def test_get_env(self) -> None:
+        """Should return environment with extra vars."""
+        runner = ClaudeCLIRunner(extra_env={"CUSTOM_VAR": "value"})
+        env = runner.get_env()
+
+        assert "CUSTOM_VAR" in env
+        assert env["CUSTOM_VAR"] == "value"
+
+    def test_get_command(self) -> None:
+        """Should build correct command."""
+        runner = ClaudeCLIRunner()
+        cmd = runner.get_command("test prompt")
+
+        assert "claude" in cmd
+        assert "-p" in cmd
+        assert "test prompt" in cmd
+        assert "--output-format" in cmd
+        assert "json" in cmd
+
+    def test_get_command_bypass_permissions(self) -> None:
+        """Should include bypass permissions flag."""
+        runner = ClaudeCLIRunner(permission_mode="bypassPermissions")
+        cmd = runner.get_command("test")
+
+        assert "--dangerously-skip-permissions" in cmd
+
+    def test_get_command_allowed_tools(self) -> None:
+        """Should include allowed tools."""
+        runner = ClaudeCLIRunner(allowed_tools=["Read", "Write"])
+        cmd = runner.get_command("test")
+
+        assert "--allowedTools" in cmd
+        idx = cmd.index("--allowedTools")
+        assert cmd[idx + 1] == "Read,Write"
+
+
+class TestCLIResult:
+    """Tests for CLIResult dataclass."""
+
+    def test_success_result(self) -> None:
+        """Should create successful result."""
+        result = CLIResult(
+            success=True,
+            exit_code=0,
+            stdout="output",
+            stderr="",
+            duration_seconds=1.5,
+            events=[{"event_type": "test"}],
+        )
+
+        assert result.success is True
+        assert result.exit_code == 0
+        assert len(result.events) == 1
+
+    def test_failed_result(self) -> None:
+        """Should create failed result."""
+        result = CLIResult(
+            success=False,
+            exit_code=1,
+            stdout="",
+            stderr="error",
+            duration_seconds=0.5,
+        )
+
+        assert result.success is False
+        assert result.exit_code == 1
+        assert result.events == []

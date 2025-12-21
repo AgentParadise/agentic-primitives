@@ -1,0 +1,70 @@
+# OTel Collector Config for Integration Testing
+# Exports all signals to files for test verification
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 200ms
+    send_batch_size: 1
+
+exporters:
+  # Log everything to console for debugging
+  debug:
+    verbosity: detailed
+
+  # Export traces to file for test verification
+  file/traces:
+    path: /output/traces.jsonl
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+      max_backups: 1
+      localtime: true
+
+  # Export metrics to file
+  file/metrics:
+    path: /output/metrics.jsonl
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+
+  # Export logs to file
+  file/logs:
+    path: /output/logs.jsonl
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, file/traces]
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, file/metrics]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, file/logs]
+
+  telemetry:
+    logs:
+      level: debug

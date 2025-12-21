@@ -1,35 +1,41 @@
 #!/usr/bin/env python3
 """
-SessionEnd Handler - Logs when a session ends gracefully.
+SessionEnd Handler - Logs when a session ends.
 
 This handler:
 1. Receives SessionEnd events from Claude
-2. Logs session completion metrics
+2. Emits session completed event to stdout
 3. Always allows (no blocking on session events)
+
+Events are emitted as JSONL to stdout, captured by the agent runner
+and stored in TimescaleDB for observability.
 """
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+
+# === EVENT EMITTER (lazy initialized) ===
+_emitter = None
 
 
-def log_analytics(event: dict[str, Any]) -> None:
-    """Log to analytics file. Fail-safe - never blocks."""
+def _get_emitter(session_id: str | None = None):
+    """Get event emitter, creating if needed."""
+    global _emitter
+    if _emitter is not None:
+        return _emitter
+
     try:
-        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
-            f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
+        from agentic_events import EventEmitter
+
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
+        )
+        return _emitter
+    except ImportError:
+        return None
 
 
 def main() -> None:
@@ -43,19 +49,15 @@ def main() -> None:
             return  # No response needed for non-blocking events
 
         event = json.loads(input_data)
+        session_id = event.get("session_id")
 
-        log_analytics(
-            {
-                "event_type": "session_end",
-                "handler": "session-end",
-                "hook_event": event.get("hook_event_name", "SessionEnd"),
-                "session_id": event.get("session_id"),
-                "audit": {
-                    "transcript_path": event.get("transcript_path"),
-                    "cwd": event.get("cwd"),
-                },
-            }
-        )
+        # Get emitter and emit session completed event
+        emitter = _get_emitter(session_id)
+        if emitter:
+            emitter.session_completed(
+                reason=event.get("reason", "normal"),
+                duration_ms=event.get("duration_ms"),
+            )
 
     except Exception:
         pass  # Silent fail - session events don't block

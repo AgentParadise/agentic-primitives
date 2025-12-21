@@ -1,35 +1,41 @@
 #!/usr/bin/env python3
 """
-Notification Handler - Logs various notifications.
+Notification Handler - Logs system notifications.
 
 This handler:
 1. Receives Notification events from Claude
-2. Logs notification events for analytics
-3. Always allows (no blocking on notifications)
+2. Emits notification event to stdout
+3. Always allows (no blocking on notification events)
+
+Events are emitted as JSONL to stdout, captured by the agent runner
+and stored in TimescaleDB for observability.
 """
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+
+# === EVENT EMITTER (lazy initialized) ===
+_emitter = None
 
 
-def log_analytics(event: dict[str, Any]) -> None:
-    """Log to analytics file. Fail-safe - never blocks."""
+def _get_emitter(session_id: str | None = None):
+    """Get event emitter, creating if needed."""
+    global _emitter
+    if _emitter is not None:
+        return _emitter
+
     try:
-        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
-            f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
+        from agentic_events import EventEmitter
+
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
+        )
+        return _emitter
+    except ImportError:
+        return None
 
 
 def main() -> None:
@@ -40,29 +46,20 @@ def main() -> None:
             input_data = sys.stdin.read()
 
         if not input_data:
-            return  # No response needed for non-blocking events
+            return
 
         event = json.loads(input_data)
+        session_id = event.get("session_id")
 
-        log_analytics(
-            {
-                "event_type": "notification",
-                "handler": "notification",
-                "hook_event": event.get("hook_event_name", "Notification"),
-                "session_id": event.get("session_id"),
-                "notification_type": event.get(
-                    "matcher"
-                ),  # permission_prompt, idle_prompt, error, warning
-                "message": event.get("message"),
-                "audit": {
-                    "transcript_path": event.get("transcript_path"),
-                    "cwd": event.get("cwd"),
-                },
-            }
-        )
+        # Get emitter and emit notification event
+        emitter = _get_emitter(session_id)
+        if emitter:
+            message = event.get("message", event.get("notification", ""))
+            level = event.get("level", "info")
+            emitter.notification(message=message, level=level)
 
     except Exception:
-        pass  # Silent fail - notification events don't block
+        pass  # Silent fail
 
 
 if __name__ == "__main__":

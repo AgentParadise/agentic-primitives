@@ -43,6 +43,14 @@ from agentic_isolation.providers import (
     LocalProvider,
     DockerProvider,
 )
+# Claude CLI specific components
+from agentic_isolation.providers.claude_cli import (
+    SessionOutputStream,
+    EventParser,
+    ObservabilityEvent,
+    SessionSummary,
+    TokenUsage,
+)
 
 __all__ = [
     # Main API
@@ -58,6 +66,12 @@ __all__ = [
     "ExecuteResult",
     "LocalProvider",
     "DockerProvider",
+    # Claude CLI (session output)
+    "SessionOutputStream",
+    "EventParser",
+    "ObservabilityEvent",
+    "SessionSummary",
+    "TokenUsage",
 ]
 
 __version__ = "0.1.0"
