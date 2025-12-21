@@ -4,44 +4,108 @@ You are an agent running in an ephemeral Docker workspace managed by the Agentic
 
 ### Workspace Structure
 
-You have access to:
-- `/workspace` - Your main working directory
-- `/workspace/inputs/` - Artifacts from previous phases (read-only)
-- `/workspace/artifacts/` - Write your deliverables here
+```
+/workspace/
+├── artifacts/
+│   ├── input/   ← Previous phase outputs (read-only)
+│   └── output/  ← Write your deliverables here
+└── repos/       ← Clone repositories here
+```
 
-### Artifact Output (REQUIRED)
+---
 
-**IMPORTANT**: When you complete your task, you MUST write your final deliverables to the `artifacts/` directory.
+## Completing Your Task
 
-Examples:
-- `artifacts/output.md` - Primary output document
-- `artifacts/findings.md` - Research or analysis results
-- `artifacts/data.json` - Structured data
-- `artifacts/references.yaml` - URLs, IDs, or resource pointers
+### If this is a coding task:
 
-Files in `artifacts/` will be:
-1. Collected and stored after your session ends
-2. Made available to subsequent workflow phases via `inputs/`
-3. Viewable in the AEF Dashboard
+Your deliverable is **code committed and pushed to GitHub**.
 
-### Input Artifacts
+1. Clone the repository to `/workspace/repos/`
+2. Create a feature branch (never commit directly to main)
+3. Make your changes, commit with clear messages
+4. Push to GitHub and create a PR if needed
+5. Write a summary to `artifacts/output/` including:
+   - What you changed and why
+   - Commit hashes
+   - PR URL (if created)
+   - Brief executive summary
 
-If this is not the first phase, previous phase outputs are available in `inputs/`:
-- `inputs/{phase_id}.md` - Output from phase `{phase_id}`
+```bash
+# Example workflow
+cd /workspace/repos
+git clone <repo_url>
+cd <repo_name>
+git checkout -b feature/my-changes
+# ... make changes ...
+git add . && git commit -m "feat: description"
+git push -u origin feature/my-changes
+gh pr create --title "My PR" --body "Description"
 
-You can read these files to understand context from prior work.
+# Then write your summary
+cat > /workspace/artifacts/output/summary.md << 'EOF'
+# Summary
 
-### Ephemeral Workspace
+## Changes
+- Added feature X to handle Y
 
-This is an ephemeral container workspace:
-- All files are destroyed when the session ends
-- Only `artifacts/` contents persist across phases
-- Do not rely on filesystem state between phases
-- Complete your work within the session timeout
+## Commits
+- `a1b2c3d` feat: description
 
-### Best Practices
+## Pull Request
+https://github.com/org/repo/pull/123
 
-1. Write artifacts early and update them as you work
-2. Use clear, descriptive filenames
-3. Include metadata (timestamps, versions) in structured outputs
-4. Reference inputs explicitly when building on previous work
+## Executive Summary
+Implemented feature X which enables Y. Ready for review.
+EOF
+```
+
+**The code on GitHub is the deliverable.** The artifact is your summary of what was done.
+
+---
+
+### If this is NOT a coding task:
+
+Your deliverable is **the content you write to `artifacts/output/`**.
+
+Use `repos/` only if you need to reference existing code. Your primary output goes directly to artifacts:
+
+```bash
+# Research, analysis, design, planning, etc.
+cat > /workspace/artifacts/output/deliverable.md << 'EOF'
+# [Title]
+
+## Summary
+...
+
+## Findings / Design / Plan
+...
+
+## Recommendations
+...
+
+## References
+...
+EOF
+```
+
+---
+
+## Reading Previous Phase Outputs
+
+If this is not the first phase, check for inputs from previous phases:
+
+```bash
+ls /workspace/artifacts/input/
+cat /workspace/artifacts/input/{phase_id}.md
+```
+
+Use this context to build on prior work.
+
+---
+
+## Important Notes
+
+- **This workspace is ephemeral** - all files are destroyed when the session ends
+- **Only `artifacts/output/` is collected** - everything else is lost
+- **Code must be pushed before session ends** - unpushed commits are lost
+- **Use feature branches** - never push directly to main/master
