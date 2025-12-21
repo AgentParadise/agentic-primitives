@@ -1,35 +1,41 @@
 #!/usr/bin/env python3
 """
-PreCompact Handler - Logs before context compaction.
+PreCompact Handler - Logs when context window is about to be compacted.
 
 This handler:
 1. Receives PreCompact events from Claude
-2. Logs compaction events for analytics
+2. Emits context compacted event to stdout
 3. Always allows (no blocking on compact events)
+
+Events are emitted as JSONL to stdout, captured by the agent runner
+and stored in TimescaleDB for observability.
 """
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+
+# === EVENT EMITTER (lazy initialized) ===
+_emitter = None
 
 
-def log_analytics(event: dict[str, Any]) -> None:
-    """Log to analytics file. Fail-safe - never blocks."""
+def _get_emitter(session_id: str | None = None):
+    """Get event emitter, creating if needed."""
+    global _emitter
+    if _emitter is not None:
+        return _emitter
+
     try:
-        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
-            f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
+        from agentic_events import EventEmitter
+
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
+        )
+        return _emitter
+    except ImportError:
+        return None
 
 
 def main() -> None:
@@ -40,26 +46,26 @@ def main() -> None:
             input_data = sys.stdin.read()
 
         if not input_data:
-            return  # No response needed for non-blocking events
+            return
 
         event = json.loads(input_data)
+        session_id = event.get("session_id")
 
-        log_analytics(
-            {
-                "event_type": "pre_compact",
-                "handler": "pre-compact",
-                "hook_event": event.get("hook_event_name", "PreCompact"),
-                "session_id": event.get("session_id"),
-                "compact_type": event.get("matcher"),  # manual, auto
-                "audit": {
-                    "transcript_path": event.get("transcript_path"),
-                    "cwd": event.get("cwd"),
-                },
-            }
-        )
+        # Get emitter and emit context compacted event
+        emitter = _get_emitter(session_id)
+        if emitter:
+            # Try to extract token counts from event
+            before_tokens = event.get("before_tokens", event.get("current_tokens", 0))
+            after_tokens = event.get("after_tokens", event.get("target_tokens", 0))
+
+            if before_tokens or after_tokens:
+                emitter.context_compacted(
+                    before_tokens=before_tokens,
+                    after_tokens=after_tokens,
+                )
 
     except Exception:
-        pass  # Silent fail - compact events don't block
+        pass  # Silent fail
 
 
 if __name__ == "__main__":

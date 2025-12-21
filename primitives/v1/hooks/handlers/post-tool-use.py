@@ -4,36 +4,42 @@ PostToolUse Handler - Logs tool execution results for analytics.
 
 This handler:
 1. Receives PostToolUse events from Claude
-2. Logs tool execution metadata (duration, success, output preview)
+2. Emits tool completion event to stdout
 3. Always allows (post-execution, can't block)
+
+Events are emitted as JSONL to stdout, captured by the agent runner
+and stored in TimescaleDB for observability.
 """
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
+# === EVENT EMITTER (lazy initialized) ===
+_emitter = None
 
-# === INLINE ANALYTICS ===
-def log_analytics(event: dict[str, Any]) -> None:
-    """Log to analytics file. Fail-safe - never blocks."""
+
+def _get_emitter(session_id: str | None = None):
+    """Get event emitter, creating if needed."""
+    global _emitter
+    if _emitter is not None:
+        return _emitter
+
     try:
-        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
-            f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
-            )
-    except Exception:
-        pass  # Never block on analytics failure
+        from agentic_events import EventEmitter
+
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
+        )
+        return _emitter
+    except ImportError:
+        return None
 
 
-def extract_output_preview(tool_result: Any, max_length: int = 200) -> str:
+def extract_output_preview(tool_result: Any, max_length: int = 500) -> str:
     """Extract a preview of the tool output for logging."""
     if tool_result is None:
         return ""
@@ -54,18 +60,6 @@ def extract_output_preview(tool_result: Any, max_length: int = 200) -> str:
     return output
 
 
-def extract_audit_context(event: dict[str, Any]) -> dict[str, Any]:
-    """Extract audit trail fields from Claude Code event."""
-    audit: dict[str, Any] = {}
-    if event.get("transcript_path"):
-        audit["transcript_path"] = event["transcript_path"]
-    if event.get("cwd"):
-        audit["cwd"] = event["cwd"]
-    if event.get("permission_mode"):
-        audit["permission_mode"] = event["permission_mode"]
-    return audit
-
-
 def main() -> None:
     """Main entry point."""
     try:
@@ -83,33 +77,27 @@ def main() -> None:
         # Extract fields
         tool_name = event.get("tool_name", "")
         tool_result = event.get("tool_result", {})
-        tool_input = event.get("tool_input", {})
-
-        # Extract audit context for traceability
-        audit = extract_audit_context(event)
+        session_id = event.get("session_id")
+        tool_use_id = event.get("tool_use_id", "unknown")
 
         # Determine success/failure
         is_error = False
+        error_msg = None
         if isinstance(tool_result, dict):
             is_error = tool_result.get("is_error", False) or "error" in tool_result
+            if is_error:
+                error_msg = str(tool_result.get("error", "Tool execution failed"))
 
-        # Log to analytics with audit trail
-        analytics_event = {
-            "event_type": "tool_execution",
-            "handler": "post-tool-use",
-            "hook_event": event.get(
-                "hook_event_name", "PostToolUse"
-            ),  # Claude's hook event
-            "tool_name": tool_name,
-            "session_id": event.get("session_id"),
-            "tool_use_id": event.get("tool_use_id"),
-            "success": not is_error,
-            "output_preview": extract_output_preview(tool_result),
-            "input_preview": json.dumps(tool_input)[:200] if tool_input else None,
-        }
-        if audit:
-            analytics_event["audit"] = audit
-        log_analytics(analytics_event)
+        # Get emitter and emit tool completed event
+        emitter = _get_emitter(session_id)
+        if emitter:
+            emitter.tool_completed(
+                tool_name=tool_name,
+                tool_use_id=tool_use_id,
+                success=not is_error,
+                output_preview=extract_output_preview(tool_result),
+                error=error_msg,
+            )
 
         # Always allow (post-execution)
         print(json.dumps({"decision": "allow"}))

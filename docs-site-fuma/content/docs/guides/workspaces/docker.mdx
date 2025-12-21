@@ -1,0 +1,290 @@
+---
+title: Docker Isolation
+description: Container-based security and isolation for AI agents
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Accordions, Accordion } from 'fumadocs-ui/components/accordion';
+
+Docker isolation provides a secure, sandboxed environment for running AI agents. Each agent session runs in its own container with resource limits and security hardening.
+
+## Workspace Images
+
+Provider images are defined as primitives in `providers/workspaces/`:
+
+```
+providers/workspaces/
+├── claude-cli/
+│   ├── manifest.yaml      # Build configuration
+│   ├── Dockerfile         # Image definition
+│   └── README.md
+├── base/
+│   └── Dockerfile         # Minimal Python image
+└── README.md
+```
+
+### Claude CLI Image
+
+The primary image for running Claude CLI agents:
+
+| Property | Value |
+|----------|-------|
+| **Image** | `agentic-workspace-claude-cli` |
+| **Base** | `node:22-slim` |
+| **Runtime** | Claude CLI (`@anthropic-ai/claude-code`) |
+| **Python** | 3.12 |
+| **OTel** | ✅ Native support |
+
+## Building Images
+
+Build the Claude CLI workspace image:
+
+```bash
+cd providers/workspaces/claude-cli
+docker build -t agentic-workspace-claude-cli:latest .
+```
+
+Or use the build script:
+
+```bash
+python scripts/build-provider.py --provider claude-cli
+```
+
+## Security Hardening
+
+All workspace images include security hardening by default:
+
+### Non-Root User
+
+Agents run as `agent` user (UID 1000), not root:
+
+```dockerfile
+RUN useradd -m -u 1000 agent
+USER agent
+WORKDIR /workspace
+```
+
+### Setuid Removal
+
+Setuid/setgid bits are removed to prevent privilege escalation:
+
+```dockerfile
+RUN find / -perm /6000 -exec chmod a-s {} \; 2>/dev/null || true
+```
+
+### Minimal Packages
+
+Images only include what's needed for the runtime:
+- Node.js (for Claude CLI)
+- Python 3.12 (for hooks)
+- Essential system libraries
+
+### No Embedded Secrets
+
+Credentials are injected at runtime via environment variables:
+
+```bash
+docker run -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  agentic-workspace-claude-cli claude -p "Hello"
+```
+
+## Resource Limits
+
+Configure CPU and memory limits for agent containers:
+
+```yaml
+# In scenario YAML
+isolation:
+  provider: docker
+  image: agentic-workspace-claude-cli:latest
+  timeout: 300      # 5 minute timeout
+  memory_mb: 2048   # 2 GB RAM limit
+  cpu_cores: 2.0    # 2 CPU cores
+```
+
+### Timeout Enforcement
+
+Containers are automatically killed after the timeout:
+
+```python
+config = WorkspaceConfig(
+    provider="docker",
+    image="agentic-workspace-claude-cli:latest",
+    timeout=300,  # 5 minutes
+)
+```
+
+## Python API (`agentic_isolation`)
+
+The `agentic_isolation` package provides a Python API for running agents in isolated workspaces.
+
+### Basic Usage
+
+```python
+from agentic_isolation import IsolatedWorkspace, WorkspaceConfig
+
+config = WorkspaceConfig(
+    provider="docker",
+    image="agentic-workspace-claude-cli:latest",
+    timeout=300,
+    memory_mb=2048,
+)
+
+async with IsolatedWorkspace.create(config) as workspace:
+    result = await workspace.execute(
+        "claude -p 'List files' --output-format stream-json"
+    )
+
+    print(f"Exit code: {result.exit_code}")
+    print(f"Output: {result.stdout}")
+```
+
+### Mounting Volumes
+
+Mount local directories into the container:
+
+```python
+config = WorkspaceConfig(
+    provider="docker",
+    image="agentic-workspace-claude-cli:latest",
+    mounts=[
+        ("/path/to/project", "/workspace"),
+        ("/path/to/data", "/data:ro"),  # Read-only
+    ],
+)
+```
+
+### Environment Variables
+
+Pass environment variables to the container:
+
+```python
+config = WorkspaceConfig(
+    provider="docker",
+    image="agentic-workspace-claude-cli:latest",
+    env={
+        "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY"),
+        "ANTHROPIC_MODEL": "claude-sonnet-4-5-20250929",
+    },
+)
+```
+
+### OTel Configuration
+
+Enable OpenTelemetry export:
+
+```python
+config = WorkspaceConfig(
+    provider="docker",
+    image="agentic-workspace-claude-cli:latest",
+    otel_endpoint="http://host.docker.internal:4317",
+)
+```
+
+<Callout type="info">
+Use `host.docker.internal` to connect from container to host machine.
+</Callout>
+
+## Docker Compose
+
+For development, use Docker Compose to run agents with sidecars:
+
+```yaml
+# docker-compose.yaml
+services:
+  agent:
+    image: agentic-workspace-claude-cli:latest
+    environment:
+      - ANTHROPIC_API_KEY
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+    volumes:
+      - ./workspace:/workspace
+    depends_on:
+      - otel-collector
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    ports:
+      - "4317:4317"
+```
+
+## Manifest Schema
+
+Each provider has a `manifest.yaml` defining build configuration:
+
+```yaml
+name: claude-cli
+version: "1.0.0"
+description: Claude CLI workspace with native OTel support
+
+image:
+  dockerfile: ./Dockerfile
+  tag: agentic-workspace-claude-cli
+  base: node:22-slim
+
+hooks:
+  source: ../../primitives/v1/hooks/
+  handlers:
+    - pre-tool-use
+    - post-tool-use
+    - user-prompt
+  validators:
+    - security/bash
+    - security/file
+
+defaults:
+  allowed_tools:
+    - Bash
+    - Read
+    - Write
+    - Glob
+    - Grep
+    - LS
+  otel_enabled: true
+  security:
+    remove_setuid: true
+    non_root_user: true
+```
+
+## Troubleshooting
+
+<Accordions>
+  <Accordion title="Container exits immediately">
+    Check the Claude CLI command is correct:
+
+    ```bash
+    docker run --rm agentic-workspace-claude-cli \
+      claude -p "Hello" --output-format stream-json
+    ```
+
+    Ensure `ANTHROPIC_API_KEY` is set.
+  </Accordion>
+  <Accordion title="Permission denied errors">
+    The agent user may not have access to mounted volumes. Fix permissions:
+
+    ```bash
+    chmod -R 755 ./workspace
+    ```
+  </Accordion>
+  <Accordion title="OTel events not reaching collector">
+    Use `host.docker.internal` instead of `localhost` from within containers:
+
+    ```bash
+    docker run -e OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317 ...
+    ```
+  </Accordion>
+  <Accordion title="Image not found">
+    Build the image first:
+
+    ```bash
+    docker build -t agentic-workspace-claude-cli:latest \
+      providers/workspaces/claude-cli/
+    ```
+  </Accordion>
+</Accordions>
+
+## Related
+
+- [ADR-027: Provider-Based Workspace Images](/docs/adrs/027-provider-workspace-images)
+- [Playground](./playground) — Interactive execution
+- [Session Recording](./recording) — Capture sessions for testing

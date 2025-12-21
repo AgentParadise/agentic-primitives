@@ -1,0 +1,62 @@
+# Base Workspace Provider Manifest
+# Minimal secure base for building custom workspace images
+#
+# See ADR-027: Provider-Based Workspace Images
+
+name: base
+version: "1.0.0"
+description: Minimal secure base image for custom workspaces
+
+# Image build configuration
+image:
+  dockerfile: ./Dockerfile
+  tag: agentic-base
+  context: ../../..
+  args: {}
+
+# Runtime configuration
+runtime:
+  # No agent included - base image only
+  agent: null
+  modes: []
+  otel_native: false
+
+# Hook configuration
+hooks:
+  # No hooks included by default
+  # Child images should copy hooks as needed
+  source: null
+  handlers: []
+  validators: []
+  install_path: /opt/agentic/hooks
+
+# Default tool configuration
+defaults:
+  allowed_tools: []
+  otel_enabled: false
+
+# Security configuration
+security:
+  non_root: true
+  user: agent
+  uid: 1000
+  gid: 1000
+  no_setuid: true
+  read_only_paths:
+    - /opt/agentic
+  network:
+    enabled: true
+    allowed_hosts: []
+
+# Health check configuration
+health:
+  interval: 30s
+  timeout: 3s
+  start_period: 5s
+  retries: 2
+
+# Labels for the image
+labels:
+  org.opencontainers.image.title: "Agentic Base"
+  org.opencontainers.image.description: "Minimal secure base for workspace images"
+  org.opencontainers.image.vendor: "Agentic Primitives"

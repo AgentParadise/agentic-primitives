@@ -430,10 +430,13 @@ just git-hooks-install
 - [ADR-008: Test-Driven Development](docs/adrs/008-test-driven-development.md)
 - [ADR-009: Versioned Primitives](docs/adrs/009-versioned-primitives.md)
 - [ADR-010: System-Level Versioning](docs/adrs/010-system-level-versioning.md)
+- [ADR-011: Analytics Middleware](docs/adrs/011-analytics-middleware.md) *(Rejected - see ADR-026)*
 - [ADR-019: File Naming Convention](docs/adrs/019-file-naming-convention.md)
 - [ADR-020: Agentic Prompt Taxonomy](docs/adrs/020-agentic-prompt-taxonomy.md)
 - [ADR-021: Primitives Directory Structure](docs/adrs/021-primitives-directory-structure.md)
 - [ADR-022: Git Hook Observability](docs/adrs/022-git-hook-observability.md)
+- [ADR-025: Universal Agent Integration Layer](docs/adrs/025-universal-agent-integration-layer.md) ✨ *CLI-first approach*
+- [ADR-026: OTel-First Observability](docs/adrs/026-otel-first-observability.md) ✨ *OTel-native architecture*
 
 ---
 
@@ -502,6 +505,69 @@ agentic-primitives/
 ### Versioning
 
 This repository uses system-level versioning (v1, v2, ...) for architectural evolution. The current active version is **v1**. For details, see `docs/versioning-guide.md`.
+
+---
+
+## 📦 Python Packages
+
+The `lib/python/` directory contains reusable Python packages for building agentic systems:
+
+### Core Packages (Active)
+
+| Package | Description | PyPI |
+|---------|-------------|------|
+| **agentic_otel** | OTel-first observability with HookOTelEmitter | `pip install agentic-otel` |
+| **agentic_adapters** | Claude CLI runner and hook generator | `pip install agentic-adapters` |
+| **agentic_security** | Declarative security policies (Bash, File, Content) | `pip install agentic-security` |
+| **agentic_isolation** | Docker/local workspace isolation | `pip install agentic-isolation` |
+| **agentic_settings** | Settings discovery and configuration | `pip install agentic-settings` |
+| **agentic_logging** | Structured logging utilities | `pip install agentic-logging` |
+
+### Deprecated Packages
+
+| Package | Status | Migration |
+|---------|--------|-----------|
+| **agentic_observability** | ❌ Removed | Use `agentic_otel` |
+| **agentic_analytics** | ❌ Removed | Use `agentic_otel` with OTel Collector |
+| **agentic_hooks** | ⚠️ Deprecated | Use `agentic_otel.HookOTelEmitter` |
+| **agentic_agent** | ⚠️ Deprecated | Use `ClaudeCLIRunner` from `agentic_adapters` |
+
+### OTel-First Architecture
+
+The recommended observability approach uses OpenTelemetry:
+
+```python
+from agentic_otel import OTelConfig, HookOTelEmitter
+
+# Configure OTel (endpoint is typically OTel Collector)
+config = OTelConfig(
+    endpoint="http://localhost:4317",
+    service_name="my-agent",
+    resource_attributes={
+        "deployment.environment": "production",
+    },
+)
+
+# Emit events via OTel
+emitter = HookOTelEmitter(config)
+
+# Emit security decisions (logs/events)
+emitter.emit_security_event(
+    hook_type="pre_tool_use",
+    decision="block",
+    tool_name="Bash",
+    tool_use_id="toolu_123",
+    reason="Dangerous command blocked",
+)
+```
+
+**Why OTel-first?**
+- ✅ Claude CLI has native OTel support (metrics exported automatically)
+- ✅ Industry-standard format (vendor-neutral, portable)
+- ✅ Rich correlation (traces, metrics, logs unified)
+- ✅ Powerful collectors (filtering, sampling, routing to any backend)
+
+See [ADR-026: OTel-First Observability](docs/adrs/026-otel-first-observability.md) for architecture details.
 
 ---
 

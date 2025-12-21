@@ -1,8 +1,69 @@
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
+# Agentic Primitives - Shared Library
+
+**This is a git submodule.** It provides reusable components for agentic systems.
+
+## What Lives Here
+
+```
+lib/python/
+├── agentic_events/      ← Session recording & playback
+│   ├── recorder.py      ← SessionRecorder: capture events to JSONL
+│   ├── player.py        ← SessionPlayer: replay recordings
+│   └── fixtures.py      ← load_recording(), list_recordings()
+│
+├── agentic_adapters/    ← Claude CLI/SDK integration
+│   ├── claude_cli/      ← ClaudeCLIRunner, hook generation
+│   └── claude_sdk/      ← SDK options builder
+│
+├── agentic_isolation/   ← Workspace providers
+│   └── providers/       ← DockerProvider, LocalProvider
+│
+└── agentic_security/    ← Security policies & validators
+
+providers/workspaces/claude-cli/
+├── Dockerfile           ← Build: agentic-workspace-claude-cli
+├── docker-compose.yaml  ← Run agent container
+├── docker-compose.record.yaml  ← Capture recordings via sidecar
+└── fixtures/recordings/ ← Captured session recordings
+```
+
+## Key Concept: External Event Capture
+
+Claude CLI emits JSONL events to **stderr**. To record:
+
+```bash
+# Container runs Claude, sidecar captures stderr
+cd providers/workspaces/claude-cli
+PROMPT="Hello" TASK="test" docker compose -f docker-compose.record.yaml up
+```
+
+Recording saved to `fixtures/recordings/v2.0.74_claude-sonnet-4-5_test.jsonl`
+
+## Using Recordings in Tests
+
+```python
+from agentic_events import load_recording, SessionPlayer
+
+# Load by task name (partial match)
+player = load_recording("simple-bash")
+
+# Iterate events
+for event in player:
+    print(event["type"])
+
+# Pytest fixture
+@pytest.mark.recording("simple-bash")
+def test_something(recording):
+    assert len(recording) > 0
+```
+
+---
+
 # 🔄 RIPER-5 MODE: STRICT OPERATIONAL PROTOCOL
 v2.0.5 - 20250810
 
@@ -42,7 +103,7 @@ DIRECT EXECUTE MODE or DEM // Used to bypass the plan and go straight to execute
 ```
 
 ## Meta-Instruction
-**BEGIN EVERY RESPONSE WITH YOUR CURRENT MODE IN BRACKETS.**  
+**BEGIN EVERY RESPONSE WITH YOUR CURRENT MODE IN BRACKETS.**
 **Format:** `[MODE: MODE_NAME]`
 
 ## The RIPER-5 Modes
