@@ -103,6 +103,21 @@ def stage_hooks(manifest: dict, build_context: Path) -> None:
                 shutil.copy2(init_src, dst_dir / "__init__.py")
 
 
+def stage_scripts(provider: str, build_context: Path) -> None:
+    """Copy scripts directory (e.g., entrypoint.sh) to build context."""
+    scripts_src = PROVIDERS_DIR / provider / "scripts"
+    if not scripts_src.exists():
+        return  # No scripts directory
+
+    scripts_dst = build_context / "scripts"
+    scripts_dst.mkdir(parents=True, exist_ok=True)
+
+    for script in scripts_src.iterdir():
+        if script.is_file():
+            shutil.copy2(script, scripts_dst / script.name)
+            print(f"  ✓ Script: {script.name}")
+
+
 def build_wheels(build_context: Path) -> None:
     """Build wheels for agentic packages."""
     packages_dir = build_context / "packages"
@@ -197,6 +212,7 @@ def main():
 
     # Stage files
     stage_dockerfile(provider, build_context)
+    stage_scripts(provider, build_context)
     stage_hooks(manifest, build_context)
     build_wheels(build_context)
 

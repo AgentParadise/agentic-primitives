@@ -41,6 +41,14 @@ Major additions for prompt primitives and improved install workflow.
 - Install command uses manifest diff to only update changed files
 - Prompt frontmatter uses model aliases (e.g., `sonnet`) instead of explicit versions
 
+### Fixed
+
+- **Claude CLI attribution in commits**: Updated `.claude/settings.json` format to v2.0.62+ standard
+  - Changed from deprecated `disableAttribution`/`includeAttribution` to `attribution: {commits: false, pullRequests: false}`
+  - Fixes issue where "Generated with Claude Code" and Co-Authored-By attribution appeared in commits
+  - Added regression test (`test_claude_cli_attribution.py`) to validate attribution is disabled
+  - See: https://github.com/AgentParadise/sandbox_aef-engineer-beta/pull/49
+
 ---
 
 ## [1.2.0] - 2025-11-26
@@ -386,4 +394,3 @@ Built with ❤️ for the AI agent community 🤖
 - ♻️ Refactoring
 - 🧪 Testing
 - 🎨 UI/UX
-
