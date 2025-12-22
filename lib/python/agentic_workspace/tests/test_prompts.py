@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from agentic_workspace import AEF_WORKSPACE_PROMPT, Prompt, load_prompt
 
 
@@ -29,16 +27,21 @@ class TestLoadPrompt:
         assert isinstance(prompt, str)
         assert len(prompt) > 100  # Should be substantial
 
-    def test_aef_workspace_prompt_contains_artifacts(self) -> None:
-        """AEF workspace prompt mentions artifacts directory."""
+    def test_aef_workspace_prompt_contains_artifacts_output(self) -> None:
+        """AEF workspace prompt mentions artifacts/output directory."""
         prompt = load_prompt(Prompt.AEF_WORKSPACE)
-        assert "artifacts/" in prompt
+        assert "artifacts/output/" in prompt
         assert "/workspace" in prompt
 
-    def test_aef_workspace_prompt_mentions_inputs(self) -> None:
-        """AEF workspace prompt mentions inputs directory."""
+    def test_aef_workspace_prompt_mentions_artifacts_input(self) -> None:
+        """AEF workspace prompt mentions artifacts/input directory."""
         prompt = load_prompt(Prompt.AEF_WORKSPACE)
-        assert "inputs/" in prompt
+        assert "artifacts/input/" in prompt
+
+    def test_aef_workspace_prompt_mentions_repos(self) -> None:
+        """AEF workspace prompt mentions repos directory."""
+        prompt = load_prompt(Prompt.AEF_WORKSPACE)
+        assert "repos/" in prompt
 
     def test_aef_workspace_prompt_mentions_ephemeral(self) -> None:
         """AEF workspace prompt mentions ephemeral nature."""
@@ -57,7 +60,7 @@ class TestPreloadedConstants:
     def test_preloaded_matches_loaded(self) -> None:
         """Pre-loaded constant matches load_prompt() result."""
         loaded = load_prompt(Prompt.AEF_WORKSPACE)
-        assert AEF_WORKSPACE_PROMPT == loaded
+        assert loaded == AEF_WORKSPACE_PROMPT
 
 
 class TestTypeChecking:

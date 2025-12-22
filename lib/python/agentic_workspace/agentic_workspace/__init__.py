@@ -1,7 +1,9 @@
-"""Workspace prompts and contracts for agentic systems.
+"""Workspace prompts, contracts, and utilities for agentic systems.
 
-This module provides type-safe access to system prompts that define the contract
-between orchestrators (like AEF) and agents running in containerized workspaces.
+This module provides:
+- Type-safe access to system prompts that define the contract
+  between orchestrators (like AEF) and agents running in containerized workspaces.
+- Shell utilities for safe command execution in Docker containers.
 
 Usage:
     from agentic_workspace import Prompt, load_prompt, AEF_WORKSPACE_PROMPT
@@ -11,6 +13,15 @@ Usage:
 
     # Pre-loaded constant
     print(AEF_WORKSPACE_PROMPT)
+
+    # Shell utilities for Docker execution
+    from agentic_workspace import build_bash_command, escape_for_bash
+
+    cmd = build_bash_command(
+        ["claude", "--append-system-prompt", AEF_WORKSPACE_PROMPT, "prompt"],
+        merge_stderr=True
+    )
+    # Returns: ["bash", "-c", "claude --append-system-prompt '...' prompt 2>&1"]
 """
 
 from __future__ import annotations
@@ -19,10 +30,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Final
 
+from agentic_workspace.shell import build_bash_command, escape_for_bash
+
 __all__ = [
-    "Prompt",
-    "load_prompt",
     "AEF_WORKSPACE_PROMPT",
+    # Prompts
+    "Prompt",
+    # Shell utilities
+    "build_bash_command",
+    "escape_for_bash",
+    "load_prompt",
 ]
 
 # Prompts directory relative to this module
