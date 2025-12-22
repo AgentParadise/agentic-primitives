@@ -68,7 +68,7 @@ jobs:
         working-directory: ./cli
       
       - name: Upload report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: outdated-dependencies
           path: cli/outdated.json
@@ -95,7 +95,7 @@ jobs:
         working-directory: ./cli
       
       - name: Upload SBOM artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: sbom
           path: |
