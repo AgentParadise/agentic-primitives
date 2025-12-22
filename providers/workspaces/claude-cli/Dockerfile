@@ -93,7 +93,13 @@ RUN usermod -l agent -d /home/agent -m node \
     && chown -R agent:agent /home/agent
 
 # Create directories
-RUN mkdir -p /workspace \
+# ADR-036: Workspace structure convention
+# - artifacts/input/  : Previous phase outputs (read-only, populated by framework)
+# - artifacts/output/ : Current phase deliverables (agent writes here)
+# - repos/            : Clone repositories here
+RUN mkdir -p /workspace/artifacts/input \
+    && mkdir -p /workspace/artifacts/output \
+    && mkdir -p /workspace/repos \
     && mkdir -p /opt/agentic/hooks \
     && mkdir -p /opt/agentic/config \
     && mkdir -p /home/agent/.claude \

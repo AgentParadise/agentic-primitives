@@ -1,19 +1,25 @@
-# Docker Compose for recording agent sessions
+# Docker Compose for recording agent sessions WITH workspace capture
 #
 # Usage:
-#   # Set your task and run
-#   TASK="git-status-check" docker compose -f docker-compose.record.yaml up
+#   # Set your task and prompt, then run
+#   TASK="artifact-test" PROMPT="Write a summary to /workspace/artifacts/output/summary.md" \
+#     docker compose -f docker-compose.record.yaml up
 #
-#   # Recording will be saved to fixtures/recordings/
+#   # Recording will be saved to fixtures/recordings/<task>/
+#   # with events.jsonl + workspace/ files
 #
 # See ADR-030: Session Recording for Testing
 
 services:
   agent:
     image: agentic-workspace-claude-cli:latest
+    container_name: claude-cli-agent
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5-20250929}
+    volumes:
+      # Mount workspace for file capture after execution
+      - agent-workspace:/workspace
     # Override entrypoint to run claude directly
     entrypoint: ["claude"]
     command:
@@ -23,12 +29,13 @@ services:
         "--verbose",
         "--output-format",
         "stream-json",
+        "--dangerously-skip-permissions",
       ]
     # Capture stderr where events are emitted
     tty: true
     stdin_open: true
 
-  # Sidecar that captures the agent's output
+  # Sidecar that captures the agent's output AND workspace files
   recorder:
     image: ghcr.io/astral-sh/uv:python3.12-alpine
     depends_on:
@@ -37,18 +44,56 @@ services:
       - ../../../scripts:/scripts:ro
       - ./fixtures/recordings:/recordings
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Access agent workspace for file capture
+      - agent-workspace:/agent-workspace:ro
     environment:
-      - CLI_VERSION=${CLI_VERSION:-unknown}
+      - CLI_VERSION=${CLI_VERSION:-2.0.74}
       - MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5-20250929}
       - TASK=${TASK:-session}
-    # Install docker CLI, wait for agent, capture logs
+      - CAPTURE_WORKSPACE=${CAPTURE_WORKSPACE:-true}
+    # Install docker CLI, wait for agent, capture logs + workspace
     command:
       [
         "sh",
         "-c",
-        "apk add --no-cache docker-cli > /dev/null 2>&1 && sleep 2 && docker logs -f claude-cli-agent-1 2>&1 | uv run python /scripts/capture_recording.py --output /recordings/v$${CLI_VERSION}_claude-sonnet-4-5_$${TASK}.jsonl --cli-version $${CLI_VERSION} --model claude-sonnet-4-5 --task $${TASK} --verbose",
+        |
+          set -e
+          apk add --no-cache docker-cli > /dev/null 2>&1
+
+          RECORDING_DIR="/recordings/$${TASK}"
+          mkdir -p "$${RECORDING_DIR}"
+
+          echo "Waiting for agent to start..."
+          sleep 2
+
+          echo "Capturing events to $${RECORDING_DIR}/events.jsonl..."
+          docker logs -f claude-cli-agent 2>&1 | uv run python /scripts/capture_recording.py \
+            --output "$${RECORDING_DIR}/events.jsonl" \
+            --cli-version "$${CLI_VERSION}" \
+            --model "claude-sonnet-4-5" \
+            --task "$${TASK}" \
+            --verbose
+
+          # After agent completes, capture workspace files
+          if [ "$${CAPTURE_WORKSPACE}" = "true" ]; then
+            echo "Capturing workspace files..."
+            if [ -d /agent-workspace/artifacts/output ]; then
+              mkdir -p "$${RECORDING_DIR}/workspace"
+              cp -r /agent-workspace/artifacts "$${RECORDING_DIR}/workspace/"
+              echo "Captured workspace files:"
+              find "$${RECORDING_DIR}/workspace" -type f
+            else
+              echo "No artifacts/output directory found in workspace"
+            fi
+          fi
+
+          echo "Recording complete: $${RECORDING_DIR}"
       ]
-# Alternative: Simple one-shot recording without sidecar
+
+volumes:
+  agent-workspace:
+
+# Alternative: Simple one-shot recording without workspace capture
 # Just pipe the output:
 #
 #   docker run --rm \
