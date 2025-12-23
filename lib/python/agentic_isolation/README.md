@@ -1,153 +1,187 @@
 # agentic-isolation
 
-Workspace isolation for AI agent execution.
+Workspace isolation for AI agent execution with security hardening and streaming.
 
 ## Installation
 
 ```bash
-# Core only (local provider)
 pip install agentic-isolation
-
-# With Docker provider
-pip install agentic-isolation[docker]
 ```
 
 ## Quick Start
 
 ```python
-from agentic_isolation import IsolatedWorkspace
+from agentic_isolation import AgenticWorkspace
 
-# Local provider (for development)
-async with IsolatedWorkspace.create(provider="local") as workspace:
+# Docker provider (production)
+async with AgenticWorkspace.create(provider="docker") as workspace:
     result = await workspace.execute("echo hello")
     print(result.stdout)  # "hello\n"
+
+# Local provider (development/testing)
+async with AgenticWorkspace.create(provider="local") as workspace:
+    result = await workspace.execute("echo hello")
+    print(result.stdout)
 ```
 
 ## Providers
 
-### Local Provider
+### WorkspaceDockerProvider
 
-For development and testing. Creates isolated directories but no real process isolation.
-
-```python
-async with IsolatedWorkspace.create(
-    provider="local",
-    working_dir="/workspace",
-) as workspace:
-    await workspace.write_file("test.py", "print('hi')")
-    result = await workspace.execute("python test.py")
-```
-
-### Docker Provider
-
-For production. Creates isolated Docker containers.
+Production-grade isolation with Docker containers and security hardening.
 
 ```python
-async with IsolatedWorkspace.create(
+from agentic_isolation import AgenticWorkspace, SecurityConfig
+
+# With production security hardening
+async with AgenticWorkspace.create(
     provider="docker",
     image="python:3.12-slim",
-    secrets={"API_KEY": "secret"},
-    mounts=[("/host/code", "/workspace/code", True)],  # read-only
+    security=SecurityConfig.production(),
 ) as workspace:
     result = await workspace.execute("python --version")
 ```
 
-## Features
+### WorkspaceLocalProvider
 
-### Secrets Injection
-
-Secrets are injected as environment variables:
+For development and testing. Creates isolated directories but no process isolation.
 
 ```python
-async with IsolatedWorkspace.create(
-    provider="docker",
-    secrets={
-        "GITHUB_TOKEN": "ghp_xxx",
-        "API_KEY": "sk-xxx",
-    },
+async with AgenticWorkspace.create(
+    provider="local",
+    working_dir="/workspace",
 ) as workspace:
-    # Secrets available as environment variables
-    result = await workspace.execute("echo $GITHUB_TOKEN")
+    await workspace.write_file("test.py", b"print('hi')")
+    result = await workspace.execute("python test.py")
 ```
 
-### Resource Limits
+## Security Hardening
+
+The `SecurityConfig` class provides production-grade Docker security:
 
 ```python
-from agentic_isolation import ResourceLimits
+from agentic_isolation import SecurityConfig
 
-async with IsolatedWorkspace.create(
-    provider="docker",
-    limits=ResourceLimits(
-        cpu="2",
-        memory="4G",
-        timeout_seconds=3600,
-    ),
-) as workspace:
-    # Workspace limited to 2 CPUs, 4GB RAM, 1 hour timeout
-    pass
+# Production profile (recommended)
+security = SecurityConfig.production()
+# - cap_drop_all: Drop ALL Linux capabilities
+# - no_new_privileges: Prevent privilege escalation
+# - read_only_root: Read-only root filesystem
+# - tmpfs_tmp: Ephemeral /tmp
+# - tmpfs_home: Ephemeral /home/agent
+# - pids_limit: 256 max processes
+# - gVisor runtime (if available)
+
+# Development profile (for local testing)
+security = SecurityConfig.development()
+# - Less restrictive for debugging
 ```
 
-### Volume Mounts
+## Real-Time Streaming
+
+Stream stdout line-by-line for observability dashboards:
 
 ```python
-async with IsolatedWorkspace.create(
-    provider="docker",
-    mounts=[
-        ("/host/data", "/workspace/data", True),   # read-only
-        ("/host/output", "/workspace/output", False),  # read-write
-    ],
-) as workspace:
-    pass
+async with AgenticWorkspace.create(provider="docker") as workspace:
+    async for line in workspace.stream(["python", "-u", "agent.py"]):
+        print(f"Agent output: {line}")
+        # Parse JSONL events, update dashboard, etc.
 ```
 
-### File Operations
+## File Operations
 
 ```python
-async with IsolatedWorkspace.create() as workspace:
+async with AgenticWorkspace.create() as workspace:
     # Write file
-    await workspace.write_file("test.py", "print('hello')")
+    await workspace.write_file("script.py", b"print('hello')")
 
     # Read file
-    content = await workspace.read_file("test.py")
+    content = await workspace.read_file("script.py")
 
     # Check existence
-    exists = await workspace.file_exists("test.py")
+    exists = await workspace.file_exists("script.py")
+
+    # Execute
+    result = await workspace.execute("python script.py")
 ```
 
-### Error Handling
+## Direct Provider Usage
+
+For more control, use providers directly:
 
 ```python
-async with IsolatedWorkspace.create(
-    auto_cleanup=True,      # Cleanup on normal exit
-    keep_on_error=True,     # Keep workspace on error for debugging
-) as workspace:
-    result = await workspace.execute("exit 1")
-    if not result.success:
-        print(f"Command failed: {result.stderr}")
+from agentic_isolation import WorkspaceDockerProvider, WorkspaceConfig, SecurityConfig
+
+provider = WorkspaceDockerProvider(
+    default_image="python:3.12-slim",
+    security=SecurityConfig.production(),
+)
+
+config = WorkspaceConfig(
+    provider="docker",
+    working_dir="/workspace",
+    environment={"API_KEY": "secret"},
+)
+
+workspace = await provider.create(config)
+try:
+    result = await provider.execute(workspace, "python --version")
+    print(result.stdout)
+finally:
+    await provider.destroy(workspace)
 ```
 
-## Custom Providers
+## API Reference
+
+### AgenticWorkspace
+
+Main entry point for workspace isolation.
 
 ```python
-from agentic_isolation import WorkspaceProvider, register_provider
+@classmethod
+async def create(
+    provider: str = "docker",  # "docker" or "local"
+    image: str | None = None,
+    working_dir: str = "/workspace",
+    environment: dict[str, str] | None = None,
+    security: SecurityConfig | None = None,
+) -> AgenticWorkspace
+```
 
-class MyProvider:
-    @property
-    def name(self) -> str:
-        return "my-provider"
+### SecurityConfig
 
-    async def create(self, config): ...
-    async def destroy(self, workspace): ...
-    async def execute(self, workspace, command, **kwargs): ...
-    async def write_file(self, workspace, path, content): ...
-    async def read_file(self, workspace, path): ...
-    async def file_exists(self, workspace, path): ...
+Security configuration for Docker containers.
 
-register_provider("my-provider", MyProvider)
+```python
+@dataclass
+class SecurityConfig:
+    cap_drop_all: bool = True
+    no_new_privileges: bool = True
+    read_only_root: bool = True
+    tmpfs_tmp: bool = True
+    tmpfs_home: bool = True
+    pids_limit: int | None = 256
+    use_gvisor: bool = False
 
-# Now use it
-async with IsolatedWorkspace.create(provider="my-provider"):
-    pass
+    @classmethod
+    def production(cls) -> SecurityConfig: ...
+    @classmethod
+    def development(cls) -> SecurityConfig: ...
+```
+
+### ExecuteResult
+
+Result of command execution.
+
+```python
+@dataclass
+class ExecuteResult:
+    exit_code: int
+    stdout: str
+    stderr: str
+    success: bool
+    duration_ms: float
+    timed_out: bool = False
 ```
 
 ## License
