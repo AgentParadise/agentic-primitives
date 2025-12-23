@@ -107,17 +107,20 @@ RUN mkdir -p /workspace/artifacts/input \
     && chown -R agent:agent /opt/agentic \
     && chown -R agent:agent /home/agent/.claude
 
-# Create Claude config to disable attribution
-RUN echo '{"disableAttribution": true, "includeAttribution": false}' > /home/agent/.claude/config.json \
-    && chown agent:agent /home/agent/.claude/config.json
+# NOTE: ~/.claude/settings.json is created by entrypoint.sh at runtime
+# because /home/agent is a tmpfs mount that wipes anything baked into the image.
+
+# Copy entrypoint script
+COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
 
 # Copy pre-staged hooks from build context
 COPY hooks/ /opt/agentic/hooks/
 
-# Set permissions on hooks
+# Set permissions on hooks and entrypoint
 RUN chmod -R 755 /opt/agentic/hooks \
     && find /opt/agentic/hooks -name "*.py" -exec chmod 755 {} \; \
-    && chown -R agent:agent /opt/agentic/hooks
+    && chmod 755 /opt/agentic/entrypoint.sh \
+    && chown -R agent:agent /opt/agentic
 
 # Verify installations (before security hardening)
 RUN claude --version && python3 --version && node --version && uv --version && gh --version
@@ -146,6 +149,10 @@ ENV HOME=/home/agent \
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \
     CMD [ "test", "-w", "/workspace" ]
+
+# Entrypoint configures the workspace from env vars, then execs to CMD
+# This runs AFTER tmpfs mounts, so configuration persists correctly
+ENTRYPOINT ["/opt/agentic/entrypoint.sh"]
 
 # Default command
 CMD ["bash"]
