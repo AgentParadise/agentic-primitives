@@ -508,5 +508,3 @@ class WorkspaceDockerProvider(BaseProvider):
             stderr=asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
-
-

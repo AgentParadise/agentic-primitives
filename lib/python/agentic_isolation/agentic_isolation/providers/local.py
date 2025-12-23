@@ -303,5 +303,3 @@ class WorkspaceLocalProvider(BaseProvider):
                     await asyncio.wait_for(proc.wait(), timeout=5.0)
                 except (TimeoutError, ProcessLookupError):
                     proc.kill()
-
-

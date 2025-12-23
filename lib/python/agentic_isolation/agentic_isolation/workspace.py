@@ -322,5 +322,3 @@ class AgenticWorkspace:
         if not self._workspace:
             return {"provider": self._config.provider, "status": "not_created"}
         return self._workspace.to_dict()
-
-
