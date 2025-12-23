@@ -260,7 +260,7 @@ class WorkspaceLocalProvider(BaseProvider):
         proc = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,  # Merge stderr into stdout
             cwd=str(work_dir),
             env=exec_env,
         )

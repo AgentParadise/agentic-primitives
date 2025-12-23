@@ -126,7 +126,7 @@ class WorkspaceDockerProvider(BaseProvider):
 
         # Build docker run command
         image = config.image or self._default_image
-        security = config.security if hasattr(config, "security") else self._security
+        security = config.security or self._security
 
         cmd = self._build_run_command(
             container_name=container_name,
@@ -214,6 +214,10 @@ class WorkspaceDockerProvider(BaseProvider):
         cmd.append(f"--memory={limits.memory}")
         cmd.append(f"--cpus={limits.cpu}")
 
+        # Network isolation (if limits.network is False)
+        if hasattr(limits, "network") and limits.network is False:
+            cmd.append("--network=none")
+
         # Workspace mount
         cmd.append(f"-v={workspace_dir}:/workspace:rw")
         cmd.append("-w=/workspace")
@@ -235,7 +239,14 @@ class WorkspaceDockerProvider(BaseProvider):
             ]
         )
         for key, value in config.labels.items():
-            cmd.append(f"--label={key}={value}")
+            # Validate label values to prevent command injection
+            label_value = str(value)
+            if "\n" in label_value or "\r" in label_value:
+                raise ValueError(
+                    f"Invalid Docker label value for key {key!r}: "
+                    "label values must not contain newline characters"
+                )
+            cmd.append(f"--label={key}={label_value}")
 
         # Image and keep-alive command
         cmd.append(image)
@@ -275,6 +286,7 @@ class WorkspaceDockerProvider(BaseProvider):
                 stdout="",
                 stderr="Container not available",
                 duration_ms=0,
+                success=False,
             )
 
         exec_cmd = ["docker", "exec"]
@@ -379,7 +391,7 @@ class WorkspaceDockerProvider(BaseProvider):
         proc = await asyncio.create_subprocess_exec(
             *exec_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,  # Avoid buffer blocking
         )
 
         start_time = time.perf_counter()

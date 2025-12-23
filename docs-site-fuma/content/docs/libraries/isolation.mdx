@@ -138,8 +138,8 @@ class SecurityConfig:
     read_only_root: bool = True
     tmpfs_tmp: bool = True
     tmpfs_home: bool = True
-    pids_limit: int | None = 256
-    use_gvisor: bool = False
+    pids_limit: int = 256
+    use_gvisor: bool | None = None  # None = auto-detect
 
     @classmethod
     def production(cls) -> SecurityConfig: ...

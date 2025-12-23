@@ -70,11 +70,23 @@ class SecurityConfig:
             use_gvisor=False,
         )
 
+    # Cache for gVisor detection to avoid repeated blocking subprocess calls
+    _gvisor_available: bool | None = None
+
     @classmethod
     def detect_gvisor(cls) -> bool:
-        """Detect if gVisor runtime is available."""
+        """Detect if gVisor runtime is available.
+
+        Result is cached to avoid repeated blocking subprocess calls.
+        """
+        # Return cached value if available
+        if cls._gvisor_available is not None:
+            return cls._gvisor_available
+
         if shutil.which("docker") is None:
+            cls._gvisor_available = False
             return False
+
         try:
             result = subprocess.run(
                 ["docker", "info", "--format", "{{json .Runtimes}}"],
@@ -83,10 +95,14 @@ class SecurityConfig:
                 timeout=10,
             )
             if result.returncode == 0:
-                return "runsc" in result.stdout or "gvisor" in result.stdout
+                cls._gvisor_available = "runsc" in result.stdout or "gvisor" in result.stdout
+            else:
+                cls._gvisor_available = False
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        return False
+            # Docker unavailable or timed out - assume no gVisor
+            cls._gvisor_available = False
+
+        return cls._gvisor_available
 
     def to_docker_run_args(self) -> list[str]:
         """Convert to docker run command line arguments."""
