@@ -26,7 +26,7 @@ from agentic_adapters.claude_cli.generator import (
     generate_post_tool_use_hook,
     generate_pre_tool_use_hook,
 )
-from agentic_adapters.claude_cli.runner import CLIResult, ClaudeCLIRunner
+from agentic_adapters.claude_cli.runner import ClaudeCLIRunner, CLIResult
 
 __all__ = [
     # Runner

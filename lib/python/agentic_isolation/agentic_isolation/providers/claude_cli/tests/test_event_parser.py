@@ -1,6 +1,5 @@
 """Tests for Claude CLI event parser."""
 
-import pytest
 from agentic_isolation.providers.claude_cli.event_parser import EventParser
 from agentic_isolation.providers.claude_cli.types import EventType
 
@@ -24,9 +23,9 @@ class TestEventParser:
         parser = EventParser(session_id="test-session")
 
         # Assistant message with tool_use
-        line = '''{"type": "assistant", "message": {"content": [
+        line = """{"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": "toolu_123", "name": "Bash", "input": {"command": "ls"}}
-        ]}}'''
+        ]}}"""
         event = parser.parse_line(line)
 
         assert event is not None
@@ -42,15 +41,15 @@ class TestEventParser:
         parser = EventParser(session_id="test-session")
 
         # First, parse tool_use to cache the name
-        tool_use_line = '''{"type": "assistant", "message": {"content": [
+        tool_use_line = """{"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": "toolu_abc", "name": "Read", "input": {}}
-        ]}}'''
+        ]}}"""
         parser.parse_line(tool_use_line)
 
         # Then parse tool_result (which doesn't have name)
-        tool_result_line = '''{"type": "user", "message": {"content": [
+        tool_result_line = """{"type": "user", "message": {"content": [
             {"type": "tool_result", "tool_use_id": "toolu_abc", "content": "file contents"}
-        ]}}'''
+        ]}}"""
         event = parser.parse_line(tool_result_line)
 
         assert event is not None
@@ -64,9 +63,9 @@ class TestEventParser:
         parser = EventParser(session_id="test-session")
 
         # Parse tool_result without prior tool_use
-        line = '''{"type": "user", "message": {"content": [
+        line = """{"type": "user", "message": {"content": [
             {"type": "tool_result", "tool_use_id": "toolu_missing", "content": "output"}
-        ]}}'''
+        ]}}"""
         event = parser.parse_line(line)
 
         assert event is not None
@@ -76,9 +75,9 @@ class TestEventParser:
         """Should set success=False when is_error=True."""
         parser = EventParser(session_id="test-session")
 
-        line = '''{"type": "user", "message": {"content": [
+        line = """{"type": "user", "message": {"content": [
             {"type": "tool_result", "tool_use_id": "toolu_err", "is_error": true}
-        ]}}'''
+        ]}}"""
         event = parser.parse_line(line)
 
         assert event is not None
@@ -88,9 +87,9 @@ class TestEventParser:
         """Should parse result as session_completed."""
         parser = EventParser(session_id="test-session")
 
-        line = '''{"type": "result", "is_error": false, "usage": {
+        line = """{"type": "result", "is_error": false, "usage": {
             "input_tokens": 100, "output_tokens": 50
-        }}'''
+        }}"""
         event = parser.parse_line(line)
 
         assert event is not None
@@ -121,15 +120,15 @@ class TestEventParser:
         parser = EventParser(session_id="test-session")
 
         # Parse multiple tool_use events
-        parser.parse_line('''{"type": "assistant", "message": {"content": [
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}
-        ]}}''')
-        parser.parse_line('''{"type": "assistant", "message": {"content": [
+        ]}}""")
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": "t2", "name": "Read", "input": {}}
-        ]}}''')
-        parser.parse_line('''{"type": "assistant", "message": {"content": [
+        ]}}""")
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": "t3", "name": "Bash", "input": {}}
-        ]}}''')
+        ]}}""")
 
         summary = parser.get_summary()
 

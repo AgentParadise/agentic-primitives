@@ -171,4 +171,3 @@ def is_in_workspace(path: Path | str) -> bool:
         return True
     except ValueError:
         return False
-

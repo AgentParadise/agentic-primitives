@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from agentic_isolation import IsolatedWorkspace, ResourceLimits
+from agentic_isolation import AgenticWorkspace, ResourceLimits
 
 from .config import ScenarioConfig
 
@@ -71,7 +71,7 @@ class ExecutionResult:
 class AgentExecutor:
     """Execute Claude CLI agents in isolated workspaces.
 
-    This executor wraps the IsolatedWorkspace to provide a simple
+    This executor wraps the AgenticWorkspace to provide a simple
     interface for running agents with event capture.
 
     Example:
@@ -188,7 +188,7 @@ class AgentExecutor:
             self.on_output(f"📋 Scenario: {self.config.name}")
             self.on_output(f"🐳 Provider: {iso_config.provider}")
 
-        async with IsolatedWorkspace.create(
+        async with AgenticWorkspace.create(
             provider=iso_config.provider,
             image=iso_config.image if iso_config.provider == "docker" else None,
             environment=self._get_environment(),

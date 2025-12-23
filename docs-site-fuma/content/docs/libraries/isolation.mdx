@@ -1,6 +1,18 @@
+---
+title: agentic-isolation
+description: Workspace isolation for AI agent execution with security hardening and streaming
+---
+
 # agentic-isolation
 
-Workspace isolation for AI agent execution with security hardening and streaming.
+Production-grade workspace isolation for AI agent execution.
+
+## Features
+
+- **Docker isolation** - Run agents in secure, ephemeral containers
+- **Security hardening** - Drop capabilities, read-only root, gVisor support
+- **Real-time streaming** - Stream stdout for live observability
+- **Simple API** - Async context manager with sensible defaults
 
 ## Installation
 
@@ -13,27 +25,20 @@ pip install agentic-isolation
 ```python
 from agentic_isolation import AgenticWorkspace
 
-# Docker provider (production)
 async with AgenticWorkspace.create(provider="docker") as workspace:
     result = await workspace.execute("echo hello")
     print(result.stdout)  # "hello\n"
-
-# Local provider (development/testing)
-async with AgenticWorkspace.create(provider="local") as workspace:
-    result = await workspace.execute("echo hello")
-    print(result.stdout)
 ```
 
 ## Providers
 
 ### WorkspaceDockerProvider
 
-Production-grade isolation with Docker containers and security hardening.
+Production-grade isolation with Docker containers.
 
 ```python
 from agentic_isolation import AgenticWorkspace, SecurityConfig
 
-# With production security hardening
 async with AgenticWorkspace.create(
     provider="docker",
     image="python:3.12-slim",
@@ -44,47 +49,50 @@ async with AgenticWorkspace.create(
 
 ### WorkspaceLocalProvider
 
-For development and testing. Creates isolated directories but no process isolation.
+For development and testing without Docker.
 
 ```python
 async with AgenticWorkspace.create(
     provider="local",
     working_dir="/workspace",
 ) as workspace:
-    await workspace.write_file("test.py", b"print('hi')")
-    result = await workspace.execute("python test.py")
+    result = await workspace.execute("echo hello")
 ```
 
 ## Security Hardening
 
-The `SecurityConfig` class provides production-grade Docker security:
+The `SecurityConfig` class provides Docker security options:
 
 ```python
 from agentic_isolation import SecurityConfig
 
-# Production profile (recommended)
+# Production (recommended)
 security = SecurityConfig.production()
-# - cap_drop_all: Drop ALL Linux capabilities
-# - no_new_privileges: Prevent privilege escalation
-# - read_only_root: Read-only root filesystem
-# - tmpfs_tmp: Ephemeral /tmp
-# - tmpfs_home: Ephemeral /home/agent
-# - pids_limit: 256 max processes
-# - gVisor runtime (if available)
 
-# Development profile (for local testing)
+# Development (less restrictive)
 security = SecurityConfig.development()
-# - Less restrictive for debugging
 ```
+
+### Production Security Features
+
+| Feature | Description |
+|---------|-------------|
+| `cap_drop_all` | Drop ALL Linux capabilities |
+| `no_new_privileges` | Prevent privilege escalation |
+| `read_only_root` | Read-only root filesystem |
+| `tmpfs_tmp` | Ephemeral /tmp mount |
+| `tmpfs_home` | Ephemeral /home/agent mount |
+| `pids_limit` | Max 256 processes |
+| `use_gvisor` | gVisor runtime (if available) |
 
 ## Real-Time Streaming
 
-Stream stdout line-by-line for observability dashboards:
+Stream stdout line-by-line for observability:
 
 ```python
 async with AgenticWorkspace.create(provider="docker") as workspace:
     async for line in workspace.stream(["python", "-u", "agent.py"]):
-        print(f"Agent output: {line}")
+        print(f"Agent: {line}")
         # Parse JSONL events, update dashboard, etc.
 ```
 
@@ -105,42 +113,14 @@ async with AgenticWorkspace.create() as workspace:
     result = await workspace.execute("python script.py")
 ```
 
-## Direct Provider Usage
-
-For more control, use providers directly:
-
-```python
-from agentic_isolation import WorkspaceDockerProvider, WorkspaceConfig, SecurityConfig
-
-provider = WorkspaceDockerProvider(
-    default_image="python:3.12-slim",
-    security=SecurityConfig.production(),
-)
-
-config = WorkspaceConfig(
-    provider="docker",
-    working_dir="/workspace",
-    environment={"API_KEY": "secret"},
-)
-
-workspace = await provider.create(config)
-try:
-    result = await provider.execute(workspace, "python --version")
-    print(result.stdout)
-finally:
-    await provider.destroy(workspace)
-```
-
 ## API Reference
 
-### AgenticWorkspace
-
-Main entry point for workspace isolation.
+### AgenticWorkspace.create()
 
 ```python
 @classmethod
 async def create(
-    provider: str = "docker",  # "docker" or "local"
+    provider: str = "docker",
     image: str | None = None,
     working_dir: str = "/workspace",
     environment: dict[str, str] | None = None,
@@ -149,8 +129,6 @@ async def create(
 ```
 
 ### SecurityConfig
-
-Security configuration for Docker containers.
 
 ```python
 @dataclass
@@ -165,13 +143,12 @@ class SecurityConfig:
 
     @classmethod
     def production(cls) -> SecurityConfig: ...
+
     @classmethod
     def development(cls) -> SecurityConfig: ...
 ```
 
 ### ExecuteResult
-
-Result of command execution.
 
 ```python
 @dataclass
@@ -184,6 +161,7 @@ class ExecuteResult:
     timed_out: bool = False
 ```
 
-## License
+## See Also
 
-MIT
+- [ADR-027: Provider Workspace Images](/docs/reference/adrs)
+- [Security Best Practices](/docs/concepts/providers)

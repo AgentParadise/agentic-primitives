@@ -1,10 +1,8 @@
 """Tests for security validators."""
 
-import pytest
-
 from agentic_security.validators.bash import validate_bash
-from agentic_security.validators.file import validate_file
 from agentic_security.validators.content import validate_content
+from agentic_security.validators.file import validate_file
 
 
 class TestBashValidator:

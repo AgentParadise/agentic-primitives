@@ -1,8 +1,8 @@
 """Tests for SessionOutputStream."""
 
 import pytest
+
 from agentic_isolation.providers.claude_cli.output_stream import (
-    SessionOutputStream,
     create_output_stream,
 )
 from agentic_isolation.providers.claude_cli.types import EventType
@@ -16,9 +16,9 @@ class TestSessionOutputStream:
         """Sample Claude CLI JSONL lines."""
         return [
             '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-5"}',
-            '{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}}',
-            '{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "file1.txt"}]}}',
-            '{"type": "result", "is_error": false, "usage": {"input_tokens": 100, "output_tokens": 50}}',
+            '{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}}',  # noqa: E501
+            '{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "file1.txt"}]}}',  # noqa: E501
+            '{"type": "result", "is_error": false, "usage": {"input_tokens": 100, "output_tokens": 50}}',  # noqa: E501
         ]
 
     async def test_tee_yields_lines_and_events(self, sample_lines: list[str]) -> None:

@@ -12,15 +12,11 @@ from typing import Any
 
 from agentic_security.constants import (
     BLOCKED_PATHS,
-    DANGEROUS_BASH_PATTERNS,
-    GIT_DANGEROUS_PATTERNS,
-    SENSITIVE_CONTENT_PATTERNS,
-    SENSITIVE_FILE_PATTERNS,
     ToolName,
 )
-from agentic_security.validators.bash import validate_bash, BashValidationResult
-from agentic_security.validators.file import validate_file, FileValidationResult
-from agentic_security.validators.content import validate_content, ContentValidationResult
+from agentic_security.validators.bash import BashValidationResult, validate_bash
+from agentic_security.validators.content import ContentValidationResult, validate_content
+from agentic_security.validators.file import FileValidationResult, validate_file
 
 
 @dataclass
@@ -53,7 +49,9 @@ class ValidationResult:
         )
 
     @classmethod
-    def from_content(cls, result: ContentValidationResult, tool_name: str = "Content") -> ValidationResult:
+    def from_content(
+        cls, result: ContentValidationResult, tool_name: str = "Content"
+    ) -> ValidationResult:
         """Create from content validation result."""
         return cls(
             safe=result.safe,
@@ -197,16 +195,13 @@ class SecurityPolicy:
             sensitive_paths=data.get("sensitive_paths", []),
             blocked_commands=data.get("blocked_commands", []),
             extra_bash_patterns=[
-                (p["pattern"], p["description"])
-                for p in data.get("extra_bash_patterns", [])
+                (p["pattern"], p["description"]) for p in data.get("extra_bash_patterns", [])
             ],
             extra_file_patterns=[
-                (p["pattern"], p["description"])
-                for p in data.get("extra_file_patterns", [])
+                (p["pattern"], p["description"]) for p in data.get("extra_file_patterns", [])
             ],
             extra_content_patterns=[
-                (p["pattern"], p["description"])
-                for p in data.get("extra_content_patterns", [])
+                (p["pattern"], p["description"]) for p in data.get("extra_content_patterns", [])
             ],
             block_git_add_all=data.get("block_git_add_all", True),
             allow_sensitive_read=data.get("allow_sensitive_read", True),
@@ -275,7 +270,9 @@ class SecurityPolicy:
                 tool_input,
                 operation=tool_name,
                 extra_blocked_paths=blocked_paths if blocked_paths else None,
-                extra_sensitive_patterns=self.extra_file_patterns if self.extra_file_patterns else None,
+                extra_sensitive_patterns=self.extra_file_patterns
+                if self.extra_file_patterns
+                else None,
                 allow_sensitive_read=self.allow_sensitive_read,
             )
 
@@ -284,7 +281,9 @@ class SecurityPolicy:
             if content and result.safe:
                 content_result = validate_content(
                     content,
-                    extra_patterns=self.extra_content_patterns if self.extra_content_patterns else None,
+                    extra_patterns=self.extra_content_patterns
+                    if self.extra_content_patterns
+                    else None,
                 )
                 if not content_result.safe:
                     return ValidationResult.from_content(content_result, tool_name)

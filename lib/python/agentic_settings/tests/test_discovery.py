@@ -206,4 +206,3 @@ class TestIsInWorkspace:
         result = is_in_workspace("/")
         # This might be True or False depending on workspace location
         assert isinstance(result, bool)
-

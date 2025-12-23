@@ -77,4 +77,3 @@ class EnvFileNotFoundError(ConfigurationError):
             "Create a .env file with your configuration, or set environment variables directly."
         )
         super().__init__(message)
-

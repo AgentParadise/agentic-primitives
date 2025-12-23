@@ -92,4 +92,3 @@ class TestEnvFileNotFoundError:
         """Test that EnvFileNotFoundError is a ConfigurationError."""
         error = EnvFileNotFoundError(["/path/.env"])
         assert isinstance(error, ConfigurationError)
-

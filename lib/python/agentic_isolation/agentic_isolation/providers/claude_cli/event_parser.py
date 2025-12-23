@@ -121,7 +121,9 @@ class EventParser:
             raw_event=raw,
         )
 
-    def _handle_assistant(self, raw: dict[str, Any], timestamp: datetime) -> ObservabilityEvent | None:
+    def _handle_assistant(
+        self, raw: dict[str, Any], timestamp: datetime
+    ) -> ObservabilityEvent | None:
         """Handle assistant message events.
 
         These contain tool_use items that we need to cache for later enrichment.

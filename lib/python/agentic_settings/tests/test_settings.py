@@ -192,4 +192,3 @@ class TestPathHelpers:
         abs_path = settings.get_absolute_path(Path("/absolute/path"))
 
         assert abs_path == Path("/absolute/path")
-

@@ -3,8 +3,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
-
 from agentic_security import SecurityPolicy, ToolName
 
 
@@ -63,10 +61,13 @@ class TestSecurityPolicy:
         """Should block writes with sensitive content."""
         policy = SecurityPolicy.with_defaults()
 
-        result = policy.validate("Write", {
-            "path": "config.txt",
-            "content": "aws_key=AKIAIOSFODNN7EXAMPLE",
-        })
+        result = policy.validate(
+            "Write",
+            {
+                "path": "config.txt",
+                "content": "aws_key=AKIAIOSFODNN7EXAMPLE",
+            },
+        )
         assert not result.safe
         assert "AWS access key" in (result.reason or "")
 
@@ -130,10 +131,13 @@ class TestSecurityPolicy:
 
     def test_from_env_toggles(self) -> None:
         """Should load toggle flags from environment."""
-        with patch.dict(os.environ, {
-            "AGENTIC_BLOCK_GIT_ADD_ALL": "false",
-            "AGENTIC_ALLOW_SENSITIVE_READ": "false",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "AGENTIC_BLOCK_GIT_ADD_ALL": "false",
+                "AGENTIC_ALLOW_SENSITIVE_READ": "false",
+            },
+        ):
             policy = SecurityPolicy.from_env()
             assert policy.block_git_add_all is False
             assert policy.allow_sensitive_read is False
