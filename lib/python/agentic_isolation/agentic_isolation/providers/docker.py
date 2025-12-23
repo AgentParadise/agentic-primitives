@@ -69,6 +69,7 @@ class WorkspaceDockerProvider(BaseProvider):
         default_network: str = DEFAULT_NETWORK,
         security: SecurityConfig | None = None,
         workspace_base_dir: Path | str | None = None,
+        workspace_host_dir: Path | str | None = None,
     ):
         """Initialize Docker provider.
 
@@ -76,12 +77,16 @@ class WorkspaceDockerProvider(BaseProvider):
             default_image: Default Docker image for workspaces
             default_network: Docker network for containers
             security: Security configuration (defaults to production)
-            workspace_base_dir: Base directory for workspace mounts
+            workspace_base_dir: Base directory for workspace files (this process)
+            workspace_host_dir: Base directory for Docker volume mounts (host path).
+                Required when running inside a container (Docker-in-Docker).
+                If not set, uses workspace_base_dir for mounts.
         """
         self._default_image = default_image
         self._default_network = default_network
         self._security = security or SecurityConfig.production()
         self._workspace_base_dir = Path(workspace_base_dir) if workspace_base_dir else None
+        self._workspace_host_dir = Path(workspace_host_dir) if workspace_host_dir else None
         self._workspaces: dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
 
@@ -101,13 +106,20 @@ class WorkspaceDockerProvider(BaseProvider):
         workspace_id = f"ws-{short_id}"
         container_name = f"agentic-ws-{short_id}"
 
-        # Create workspace directory for volume mount
+        # Create workspace directory for file I/O
         if self._workspace_base_dir:
             self._workspace_base_dir.mkdir(parents=True, exist_ok=True)
             workspace_dir = self._workspace_base_dir / workspace_id
         else:
             workspace_dir = Path(tempfile.mkdtemp(prefix=f"agentic-ws-{short_id}-"))
         workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine host path for Docker volume mount
+        # When running Docker-in-Docker, container path != host path
+        if self._workspace_host_dir:
+            host_mount_dir = self._workspace_host_dir / workspace_id
+        else:
+            host_mount_dir = workspace_dir
 
         # Ensure network exists
         await self._ensure_network(self._default_network)
@@ -119,7 +131,7 @@ class WorkspaceDockerProvider(BaseProvider):
         cmd = self._build_run_command(
             container_name=container_name,
             workspace_id=workspace_id,
-            workspace_dir=workspace_dir,
+            workspace_dir=host_mount_dir,  # Use HOST path for volume mount
             image=image,
             config=config,
             security=security,
