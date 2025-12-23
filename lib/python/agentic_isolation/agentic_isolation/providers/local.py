@@ -7,11 +7,13 @@ useful for development and testing without Docker overhead.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import tempfile
 import time
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from agentic_isolation.config import WorkspaceConfig
@@ -21,16 +23,21 @@ from agentic_isolation.providers.base import (
     Workspace,
 )
 
+logger = logging.getLogger(__name__)
 
-class LocalProvider(BaseProvider):
+
+class WorkspaceLocalProvider(BaseProvider):
     """Local filesystem workspace provider.
 
     Creates isolated directories in a temporary location.
     Suitable for development and testing, but provides
     no real isolation from the host system.
 
+    WARNING: No security isolation! Agent code runs with your permissions.
+    Use WorkspaceDockerProvider for untrusted workloads.
+
     Usage:
-        provider = LocalProvider()
+        provider = WorkspaceLocalProvider()
         workspace = await provider.create(config)
         result = await provider.execute(workspace, "echo hello")
         await provider.destroy(workspace)
@@ -211,3 +218,92 @@ class LocalProvider(BaseProvider):
         """Check if a file exists in the workspace."""
         file_path = workspace.path / path.lstrip("/")
         return file_path.exists()
+
+    async def stream(
+        self,
+        workspace: Workspace,
+        command: list[str],
+        *,
+        timeout_seconds: int | None = None,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream stdout lines from command execution.
+
+        Args:
+            workspace: Workspace to execute in
+            command: Command as list of strings
+            timeout_seconds: Max execution time
+            cwd: Working directory override
+            env: Additional environment variables
+
+        Yields:
+            Individual stdout lines as they are produced
+        """
+        # Determine working directory
+        if cwd:
+            work_dir = workspace.path / cwd.lstrip("/")
+        else:
+            work_dir = workspace.path / workspace.config.working_dir.lstrip("/")
+
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build environment
+        exec_env = os.environ.copy()
+        exec_env.update(workspace.config.environment)
+        exec_env.update(workspace.config.secrets)
+        if env:
+            exec_env.update(env)
+        exec_env["WORKSPACE_ID"] = workspace.id
+        exec_env["WORKSPACE_PATH"] = str(workspace.path)
+
+        proc = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(work_dir),
+            env=exec_env,
+        )
+
+        start_time = time.perf_counter()
+
+        try:
+            while True:
+                if proc.stdout is None:
+                    break
+
+                if timeout_seconds:
+                    elapsed = time.perf_counter() - start_time
+                    if elapsed > timeout_seconds:
+                        logger.warning("Stream timeout after %.1fs", elapsed)
+                        proc.kill()
+                        break
+
+                try:
+                    line_bytes = await asyncio.wait_for(
+                        proc.stdout.readline(),
+                        timeout=1.0,
+                    )
+                except TimeoutError:
+                    if proc.returncode is not None:
+                        break
+                    continue
+
+                if not line_bytes:
+                    break
+
+                line = line_bytes.decode("utf-8", errors="replace").rstrip("\n\r")
+                if line:
+                    yield line
+
+        finally:
+            if proc.returncode is None:
+                try:
+                    proc.terminate()
+                    await asyncio.wait_for(proc.wait(), timeout=5.0)
+                except (TimeoutError, ProcessLookupError):
+                    proc.kill()
+
+
+# Backward compatibility alias
+LocalProvider = WorkspaceLocalProvider

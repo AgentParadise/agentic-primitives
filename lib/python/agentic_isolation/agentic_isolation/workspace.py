@@ -1,4 +1,4 @@
-"""IsolatedWorkspace - Main entry point for workspace isolation.
+"""AgenticWorkspace - Main entry point for workspace isolation.
 
 Provides a high-level async context manager for creating and
 managing isolated execution environments.
@@ -6,17 +6,23 @@ managing isolated execution environments.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from agentic_isolation.config import WorkspaceConfig, ResourceLimits, MountConfig
+from agentic_isolation.config import (
+    WorkspaceConfig,
+    ResourceLimits,
+    MountConfig,
+    SecurityConfig,
+)
 from agentic_isolation.providers.base import (
     WorkspaceProvider,
     Workspace,
     ExecuteResult,
 )
-from agentic_isolation.providers.local import LocalProvider
-from agentic_isolation.providers.docker import DockerProvider
+from agentic_isolation.providers.local import WorkspaceLocalProvider
+from agentic_isolation.providers.docker import WorkspaceDockerProvider
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -24,8 +30,8 @@ if TYPE_CHECKING:
 
 # Provider registry
 _PROVIDERS: dict[str, type[WorkspaceProvider]] = {
-    "local": LocalProvider,
-    "docker": DockerProvider,
+    "local": WorkspaceLocalProvider,
+    "docker": WorkspaceDockerProvider,
 }
 
 
@@ -39,28 +45,34 @@ def register_provider(name: str, provider_class: type[WorkspaceProvider]) -> Non
     _PROVIDERS[name] = provider_class
 
 
-class IsolatedWorkspace:
+class AgenticWorkspace:
     """High-level async context manager for isolated workspaces.
 
     Provides a convenient interface for creating, using, and
-    cleaning up isolated execution environments.
+    cleaning up isolated execution environments with optional
+    real-time stdout streaming.
 
     Usage:
-        async with IsolatedWorkspace.create(
+        async with AgenticWorkspace.create(
             provider="docker",
-            image="python:3.12-slim",
-            secrets={"API_KEY": "secret"},
+            image="agentic-workspace-claude-cli:latest",
+            security=SecurityConfig.production(),
         ) as workspace:
             result = await workspace.execute("echo hello")
             await workspace.write_file("test.py", "print('hi')")
             content = await workspace.read_file("test.py")
+
+    With streaming (for real-time observability):
+        async with AgenticWorkspace.create(provider="docker") as workspace:
+            async for line in workspace.stream(["claude", "-p", "Hello"]):
+                print(line)  # Real-time output
 
     With configuration object:
         config = WorkspaceConfig(
             provider="local",
             working_dir="/workspace",
         )
-        async with IsolatedWorkspace(config) as workspace:
+        async with AgenticWorkspace(config) as workspace:
             await workspace.execute("ls -la")
     """
 
@@ -69,7 +81,7 @@ class IsolatedWorkspace:
         config: WorkspaceConfig,
         provider: WorkspaceProvider | None = None,
     ):
-        """Initialize IsolatedWorkspace.
+        """Initialize AgenticWorkspace.
 
         Args:
             config: Workspace configuration
@@ -90,10 +102,11 @@ class IsolatedWorkspace:
         environment: dict[str, str] | None = None,
         mounts: list[tuple[str, str, bool]] | None = None,
         limits: ResourceLimits | None = None,
+        security: SecurityConfig | None = None,
         auto_cleanup: bool = True,
         **kwargs: Any,
-    ) -> IsolatedWorkspace:
-        """Create an IsolatedWorkspace with common options.
+    ) -> AgenticWorkspace:
+        """Create an AgenticWorkspace with common options.
 
         Args:
             provider: Provider name ("local", "docker", "e2b")
@@ -103,11 +116,12 @@ class IsolatedWorkspace:
             environment: Non-secret environment variables
             mounts: List of (host_path, container_path, read_only) tuples
             limits: Resource limits
+            security: Security configuration (docker provider only)
             auto_cleanup: Whether to cleanup on exit
             **kwargs: Additional config options
 
         Returns:
-            IsolatedWorkspace instance (use as async context manager)
+            AgenticWorkspace instance (use as async context manager)
         """
         # Build mounts list
         mount_configs = []
@@ -126,13 +140,14 @@ class IsolatedWorkspace:
             environment=environment or {},
             mounts=mount_configs,
             limits=limits or ResourceLimits(),
+            security=security or SecurityConfig(),
             auto_cleanup=auto_cleanup,
             **kwargs,
         )
 
         return cls(config)
 
-    async def __aenter__(self) -> IsolatedWorkspace:
+    async def __aenter__(self) -> AgenticWorkspace:
         """Enter the async context and create the workspace."""
         # Get or create provider
         if self._provider is None:
@@ -213,6 +228,51 @@ class IsolatedWorkspace:
             env=env,
         )
 
+    async def stream(
+        self,
+        command: list[str],
+        *,
+        timeout_seconds: int | None = None,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream stdout lines from command execution in real-time.
+
+        This is the key method for observability - yields lines as they
+        are produced, enabling real-time dashboard updates.
+
+        Args:
+            command: Command as list of strings
+            timeout_seconds: Max execution time
+            cwd: Working directory override
+            env: Additional environment variables
+
+        Yields:
+            Individual stdout lines as they are produced
+
+        Example:
+            async for line in workspace.stream(["claude", "-p", "Hello"]):
+                # Each line is yielded as soon as it's available
+                await event_store.insert(parse_event(line))
+        """
+        if not self._workspace or not self._provider:
+            raise RuntimeError("Workspace not created. Use as async context manager.")
+
+        # Check if provider supports streaming
+        if not hasattr(self._provider, "stream"):
+            raise NotImplementedError(
+                f"Provider {self._provider.name} does not support streaming"
+            )
+
+        async for line in self._provider.stream(
+            self._workspace,
+            command,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env=env,
+        ):
+            yield line
+
     async def write_file(
         self,
         path: str,
@@ -262,3 +322,7 @@ class IsolatedWorkspace:
         if not self._workspace:
             return {"provider": self._config.provider, "status": "not_created"}
         return self._workspace.to_dict()
+
+
+# Backward compatibility alias
+IsolatedWorkspace = AgenticWorkspace
