@@ -1,13 +1,12 @@
 """Tests for Claude CLI adapter."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from agentic_adapters.claude_cli import (
-    CLIResult,
     ClaudeCLIRunner,
+    CLIResult,
     HookTemplate,
     generate_hooks,
     generate_post_tool_use_hook,

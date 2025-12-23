@@ -3,7 +3,6 @@
 Verifies all providers implement the required interface correctly.
 """
 
-
 import pytest
 
 from agentic_isolation import (
@@ -22,9 +21,7 @@ class TestProviderContracts:
         "provider_class",
         [WorkspaceDockerProvider, WorkspaceLocalProvider],
     )
-    def test_provider_implements_workspace_provider(
-        self, provider_class: type
-    ) -> None:
+    def test_provider_implements_workspace_provider(self, provider_class: type) -> None:
         """All providers should implement WorkspaceProvider protocol."""
         provider = provider_class()
         assert isinstance(provider, WorkspaceProvider)

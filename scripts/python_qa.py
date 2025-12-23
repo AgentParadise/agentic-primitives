@@ -97,11 +97,27 @@ def test(integration: bool = False) -> bool:
     return all_passed
 
 
+def sync() -> bool:
+    """Sync all package dependencies (required before testing)."""
+    print("\n📦 Syncing Python package dependencies...")
+    all_passed = True
+
+    for pkg in PACKAGES:
+        if not pkg.exists():
+            print(f"⚠️  Skipping {pkg} (not found)")
+            continue
+
+        if not run_cmd(["uv", "sync", "--all-extras"], pkg):
+            all_passed = False
+
+    return all_passed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Python QA runner")
     parser.add_argument(
         "command",
-        choices=["lint", "test", "check"],
+        choices=["lint", "test", "check", "sync"],
         help="Command to run",
     )
     parser.add_argument(
@@ -118,7 +134,9 @@ def main() -> int:
 
     success = True
 
-    if args.command == "lint":
+    if args.command == "sync":
+        success = sync()
+    elif args.command == "lint":
         success = lint(fix=args.fix)
     elif args.command == "test":
         success = test(integration=args.integration)

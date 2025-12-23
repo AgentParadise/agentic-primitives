@@ -260,9 +260,7 @@ class AgenticWorkspace:
 
         # Check if provider supports streaming
         if not hasattr(self._provider, "stream"):
-            raise NotImplementedError(
-                f"Provider {self._provider.name} does not support streaming"
-            )
+            raise NotImplementedError(f"Provider {self._provider.name} does not support streaming")
 
         async for line in self._provider.stream(
             self._workspace,

@@ -1,7 +1,6 @@
 """Unit tests for provider naming."""
 
 
-
 class TestProviderNaming:
     """Tests for provider class naming conventions."""
 

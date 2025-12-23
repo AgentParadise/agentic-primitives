@@ -1,6 +1,5 @@
 """Tests for provider base types."""
 
-
 from agentic_isolation import WorkspaceLocalProvider
 from agentic_isolation.config import WorkspaceConfig
 from agentic_isolation.providers.base import (

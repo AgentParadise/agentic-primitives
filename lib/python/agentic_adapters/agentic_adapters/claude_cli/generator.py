@@ -157,7 +157,7 @@ def _generate_observability_code(template: HookTemplate) -> tuple[str, str, str]
         imports = """import os
 from agentic_events import EventEmitter"""
 
-        setup = '''# Event emitter (writes JSONL to stdout, captured by agent runner)
+        setup = """# Event emitter (writes JSONL to stdout, captured by agent runner)
 _emitter = None
 
 def _get_emitter(session_id: str | None = None):
@@ -167,7 +167,7 @@ def _get_emitter(session_id: str | None = None):
             session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
             provider="claude",
         )
-    return _emitter'''
+    return _emitter"""
 
         recording = """    emitter = _get_emitter(session_id)
     emitter.tool_completed(
@@ -201,8 +201,8 @@ EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)'''
         imports = """import urllib.request
 from datetime import datetime, UTC"""
 
-        setup = '''# HTTP endpoint
-ENDPOINT = os.environ.get("AGENTIC_EVENTS_ENDPOINT", "http://localhost:8080/events")'''
+        setup = """# HTTP endpoint
+ENDPOINT = os.environ.get("AGENTIC_EVENTS_ENDPOINT", "http://localhost:8080/events")"""
 
         recording = """    event = {
         "type": "tool_completed",

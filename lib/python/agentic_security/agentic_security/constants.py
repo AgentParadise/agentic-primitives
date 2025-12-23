@@ -145,6 +145,7 @@ SENSITIVE_CONTENT_PATTERNS: list[tuple[str, str]] = [
 # Canonical tool names used by Claude and other agents
 # =============================================================================
 
+
 class ToolName:
     """Canonical tool names for agent operations."""
 
@@ -169,6 +170,7 @@ class ToolName:
 # =============================================================================
 # RISK LEVELS
 # =============================================================================
+
 
 class RiskLevel:
     """Risk levels for security findings."""

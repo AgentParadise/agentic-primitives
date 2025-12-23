@@ -112,9 +112,7 @@ class TestSecurityConfigGVisorDetection:
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_detect_gvisor_with_runsc(
-        self, mock_run: MagicMock, mock_which: MagicMock
-    ) -> None:
+    def test_detect_gvisor_with_runsc(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
         """Should return True if runsc runtime is available."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = MagicMock(
@@ -128,9 +126,7 @@ class TestSecurityConfigGVisorDetection:
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_detect_gvisor_without_runsc(
-        self, mock_run: MagicMock, mock_which: MagicMock
-    ) -> None:
+    def test_detect_gvisor_without_runsc(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
         """Should return False if runsc runtime is not available."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = MagicMock(
@@ -144,9 +140,7 @@ class TestSecurityConfigGVisorDetection:
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_detect_gvisor_docker_error(
-        self, mock_run: MagicMock, mock_which: MagicMock
-    ) -> None:
+    def test_detect_gvisor_docker_error(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
         """Should return False if docker info fails."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = MagicMock(returncode=1, stdout="")

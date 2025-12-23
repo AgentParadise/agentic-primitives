@@ -40,9 +40,7 @@ class TestDockerProviderLifecycle:
         )
 
     @pytest.mark.asyncio
-    async def test_create_and_destroy_workspace(
-        self, provider: WorkspaceDockerProvider
-    ) -> None:
+    async def test_create_and_destroy_workspace(self, provider: WorkspaceDockerProvider) -> None:
         """Should create and destroy Docker container."""
         config = WorkspaceConfig(
             provider="docker",
@@ -74,9 +72,7 @@ class TestDockerProviderLifecycle:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_execute_with_environment(
-        self, provider: WorkspaceDockerProvider
-    ) -> None:
+    async def test_execute_with_environment(self, provider: WorkspaceDockerProvider) -> None:
         """Should pass environment variables to command."""
         config = WorkspaceConfig(
             provider="docker",
@@ -124,9 +120,7 @@ class TestDockerProviderStreaming:
         )
 
     @pytest.mark.asyncio
-    async def test_stream_yields_lines_realtime(
-        self, provider: WorkspaceDockerProvider
-    ) -> None:
+    async def test_stream_yields_lines_realtime(self, provider: WorkspaceDockerProvider) -> None:
         """Should yield lines as they are produced, not buffered."""
         config = WorkspaceConfig(provider="docker", image="python:3.12-slim")
         workspace = await provider.create(config)
@@ -153,9 +147,7 @@ class TestDockerProviderStreaming:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_stream_handles_many_lines(
-        self, provider: WorkspaceDockerProvider
-    ) -> None:
+    async def test_stream_handles_many_lines(self, provider: WorkspaceDockerProvider) -> None:
         """Should handle many lines of output."""
         config = WorkspaceConfig(provider="docker", image="python:3.12-slim")
         workspace = await provider.create(config)
@@ -189,9 +181,7 @@ class TestDockerSecurityHardening:
 
         try:
             # Check effective capabilities are zero
-            result = await provider.execute(
-                workspace, "cat /proc/self/status | grep CapEff"
-            )
+            result = await provider.execute(workspace, "cat /proc/self/status | grep CapEff")
             # CapEff should be 0000000000000000 (no effective capabilities)
             assert "0000000000000000" in result.stdout, (
                 f"Expected no capabilities, got: {result.stdout}"
@@ -211,9 +201,7 @@ class TestDockerSecurityHardening:
 
         try:
             # Try to write to root filesystem (should fail)
-            result = await provider.execute(
-                workspace, "touch /etc/test 2>&1 || echo READONLY"
-            )
+            result = await provider.execute(workspace, "touch /etc/test 2>&1 || echo READONLY")
             assert "READONLY" in result.stdout or "Read-only" in result.stdout
         finally:
             await provider.destroy(workspace)

@@ -216,10 +216,12 @@ class WorkspaceDockerProvider(BaseProvider):
             cmd.extend(["-e", f"{key}={value}"])
 
         # Labels
-        cmd.extend([
-            f"--label=agentic.workspace.id={workspace_id}",
-            f"--label=agentic.provider={self.name}",
-        ])
+        cmd.extend(
+            [
+                f"--label=agentic.workspace.id={workspace_id}",
+                f"--label=agentic.provider={self.name}",
+            ]
+        )
         for key, value in config.labels.items():
             cmd.append(f"--label={key}={value}")
 
@@ -460,7 +462,10 @@ class WorkspaceDockerProvider(BaseProvider):
     async def _ensure_network(self, network_name: str) -> None:
         """Ensure Docker network exists."""
         proc = await asyncio.create_subprocess_exec(
-            "docker", "network", "inspect", network_name,
+            "docker",
+            "network",
+            "inspect",
+            network_name,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -468,7 +473,10 @@ class WorkspaceDockerProvider(BaseProvider):
 
         if proc.returncode != 0:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "network", "create", network_name,
+                "docker",
+                "network",
+                "create",
+                network_name,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
@@ -479,7 +487,11 @@ class WorkspaceDockerProvider(BaseProvider):
         start = time.perf_counter()
         while time.perf_counter() - start < timeout:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "inspect", "-f", "{{.State.Running}}", container_name,
+                "docker",
+                "inspect",
+                "-f",
+                "{{.State.Running}}",
+                container_name,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -494,7 +506,11 @@ class WorkspaceDockerProvider(BaseProvider):
         """Stop and remove a container."""
         # Stop
         proc = await asyncio.create_subprocess_exec(
-            "docker", "stop", "-t", "5", container_name,
+            "docker",
+            "stop",
+            "-t",
+            "5",
+            container_name,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -502,7 +518,10 @@ class WorkspaceDockerProvider(BaseProvider):
 
         # Remove
         proc = await asyncio.create_subprocess_exec(
-            "docker", "rm", "-f", container_name,
+            "docker",
+            "rm",
+            "-f",
+            container_name,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )

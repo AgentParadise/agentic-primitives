@@ -137,6 +137,13 @@ rust-doc:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Format Python code
+# Sync all Python package dependencies (required before testing)
+[group('python')]
+python-sync:
+    @echo '{{ YELLOW }}Syncing Python package dependencies...{{ NORMAL }}'
+    uv run python scripts/python_qa.py sync
+    @echo '{{ GREEN }}✓ Python dependencies synced{{ NORMAL }}'
+
 [group('python')]
 python-fmt:
     @echo '{{ YELLOW }}Formatting Python code...{{ NORMAL }}'

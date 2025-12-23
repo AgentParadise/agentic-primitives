@@ -14,8 +14,8 @@ from typing import Any
 
 from agentic_security.constants import (
     BLOCKED_PATHS,
-    SENSITIVE_PATHS,
     SENSITIVE_FILE_PATTERNS,
+    SENSITIVE_PATHS,
     RiskLevel,
 )
 

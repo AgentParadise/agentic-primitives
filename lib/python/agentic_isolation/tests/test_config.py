@@ -1,6 +1,5 @@
 """Tests for configuration types."""
 
-
 from agentic_isolation.config import (
     MountConfig,
     ResourceLimits,
