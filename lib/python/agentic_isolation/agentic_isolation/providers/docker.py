@@ -510,5 +510,3 @@ class WorkspaceDockerProvider(BaseProvider):
         await proc.wait()
 
 
-# Backward compatibility alias
-DockerProvider = WorkspaceDockerProvider

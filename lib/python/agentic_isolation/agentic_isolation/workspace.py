@@ -324,5 +324,3 @@ class AgenticWorkspace:
         return self._workspace.to_dict()
 
 
-# Backward compatibility alias
-IsolatedWorkspace = AgenticWorkspace

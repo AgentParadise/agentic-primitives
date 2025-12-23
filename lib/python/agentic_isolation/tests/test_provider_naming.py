@@ -1,4 +1,4 @@
-"""Unit tests for provider naming and backward compatibility."""
+"""Unit tests for provider naming."""
 
 import pytest
 
@@ -25,36 +25,6 @@ class TestProviderNaming:
         from agentic_isolation import AgenticWorkspace
 
         assert AgenticWorkspace is not None
-
-
-class TestBackwardCompatibility:
-    """Tests for backward compatibility aliases."""
-
-    def test_docker_provider_alias(self) -> None:
-        """DockerProvider should be an alias for WorkspaceDockerProvider."""
-        from agentic_isolation import DockerProvider, WorkspaceDockerProvider
-
-        assert DockerProvider is WorkspaceDockerProvider
-
-    def test_local_provider_alias(self) -> None:
-        """LocalProvider should be an alias for WorkspaceLocalProvider."""
-        from agentic_isolation import LocalProvider, WorkspaceLocalProvider
-
-        assert LocalProvider is WorkspaceLocalProvider
-
-    def test_isolated_workspace_alias(self) -> None:
-        """IsolatedWorkspace should be an alias for AgenticWorkspace."""
-        from agentic_isolation import IsolatedWorkspace, AgenticWorkspace
-
-        assert IsolatedWorkspace is AgenticWorkspace
-
-    def test_old_import_pattern_works(self) -> None:
-        """Old import patterns should still work."""
-        # This is how playground/src/executor.py imports
-        from agentic_isolation import IsolatedWorkspace, ResourceLimits
-
-        assert IsolatedWorkspace is not None
-        assert ResourceLimits is not None
 
 
 class TestSecurityConfigExports:

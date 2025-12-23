@@ -9,7 +9,7 @@ from agentic_isolation.providers.base import (
     WorkspaceProvider,
 )
 from agentic_isolation.config import WorkspaceConfig
-from agentic_isolation import LocalProvider
+from agentic_isolation import WorkspaceLocalProvider
 
 
 class TestExecuteResult:
@@ -92,11 +92,11 @@ class TestWorkspaceProviderProtocol:
     """Tests for WorkspaceProvider protocol."""
 
     def test_local_provider_is_workspace_provider(self) -> None:
-        """LocalProvider should implement WorkspaceProvider."""
-        provider = LocalProvider()
+        """WorkspaceLocalProvider should implement WorkspaceProvider."""
+        provider = WorkspaceLocalProvider()
         assert isinstance(provider, WorkspaceProvider)
 
     def test_provider_has_name(self) -> None:
         """Provider should have a name."""
-        provider = LocalProvider()
+        provider = WorkspaceLocalProvider()
         assert provider.name == "local"

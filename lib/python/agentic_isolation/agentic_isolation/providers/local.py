@@ -305,5 +305,3 @@ class WorkspaceLocalProvider(BaseProvider):
                     proc.kill()
 
 
-# Backward compatibility alias
-LocalProvider = WorkspaceLocalProvider
