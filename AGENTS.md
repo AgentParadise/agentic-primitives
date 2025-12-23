@@ -26,18 +26,18 @@ lib/python/
 └── agentic_security/    ← Security policies & validators
 
 providers/workspaces/claude-cli/
-├── Dockerfile           ← Build: agentic-workspace-claude-cli
-├── docker-compose.yaml  ← Run agent container
-├── docker-compose.record.yaml  ← Capture recordings via sidecar
-└── fixtures/recordings/ ← Captured session recordings
+├── Dockerfile                   ← Build: agentic-workspace-claude-cli
+├── docker-compose.yaml          ← Run agent container
+├── docker-compose.record.yaml   ← Capture recordings
+└── fixtures/recordings/         ← Captured session recordings (7 available)
 ```
 
 ## Key Concept: External Event Capture
 
-Claude CLI emits JSONL events to **stderr**. To record:
+Claude CLI emits JSONL events to **stdout**. To record:
 
 ```bash
-# Container runs Claude, sidecar captures stderr
+# Container runs Claude, recording captures stdout
 cd providers/workspaces/claude-cli
 PROMPT="Hello" TASK="test" docker compose -f docker-compose.record.yaml up
 ```
