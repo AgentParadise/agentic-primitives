@@ -7,12 +7,12 @@ Available providers:
 """
 
 from agentic_isolation.providers.base import (
-    WorkspaceProvider,
-    Workspace,
     ExecuteResult,
+    Workspace,
+    WorkspaceProvider,
 )
-from agentic_isolation.providers.local import WorkspaceLocalProvider
 from agentic_isolation.providers.docker import WorkspaceDockerProvider
+from agentic_isolation.providers.local import WorkspaceLocalProvider
 
 __all__ = [
     # Base types

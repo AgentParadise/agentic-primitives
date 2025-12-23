@@ -1,7 +1,6 @@
 """Unit tests for SecurityConfig."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from agentic_isolation.config import SecurityConfig
 

@@ -35,28 +35,29 @@ Features:
     - Automatic cleanup
 """
 
-from agentic_isolation.workspace import AgenticWorkspace, register_provider
 from agentic_isolation.config import (
-    WorkspaceConfig,
-    ResourceLimits,
     MountConfig,
+    ResourceLimits,
     SecurityConfig,
+    WorkspaceConfig,
 )
 from agentic_isolation.providers import (
-    WorkspaceProvider,
-    Workspace,
     ExecuteResult,
-    WorkspaceLocalProvider,
+    Workspace,
     WorkspaceDockerProvider,
+    WorkspaceLocalProvider,
+    WorkspaceProvider,
 )
+
 # Claude CLI specific components
 from agentic_isolation.providers.claude_cli import (
-    SessionOutputStream,
     EventParser,
     ObservabilityEvent,
+    SessionOutputStream,
     SessionSummary,
     TokenUsage,
 )
+from agentic_isolation.workspace import AgenticWorkspace, register_provider
 
 __all__ = [
     # Main API

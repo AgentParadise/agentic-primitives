@@ -1,6 +1,5 @@
 """Tests for Claude CLI event parser."""
 
-import pytest
 from agentic_isolation.providers.claude_cli.event_parser import EventParser
 from agentic_isolation.providers.claude_cli.types import EventType
 

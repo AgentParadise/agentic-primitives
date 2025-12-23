@@ -4,16 +4,15 @@ These tests require Docker to be installed and running.
 Run with: pytest tests/integration/ -v --tb=short
 """
 
-import asyncio
 import time
 
 import pytest
 
 from agentic_isolation import (
     AgenticWorkspace,
-    WorkspaceDockerProvider,
-    WorkspaceConfig,
     SecurityConfig,
+    WorkspaceConfig,
+    WorkspaceDockerProvider,
 )
 
 

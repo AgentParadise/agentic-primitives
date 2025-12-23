@@ -1,6 +1,5 @@
 """Unit tests for provider naming."""
 
-import pytest
 
 
 class TestProviderNaming:
@@ -40,7 +39,7 @@ class TestSecurityConfigExports:
 
     def test_security_config_in_workspace_config(self) -> None:
         """WorkspaceConfig should have security field."""
-        from agentic_isolation import WorkspaceConfig, SecurityConfig
+        from agentic_isolation import SecurityConfig, WorkspaceConfig
 
         config = WorkspaceConfig()
         assert hasattr(config, "security")

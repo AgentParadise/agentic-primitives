@@ -4,9 +4,8 @@ import pytest
 
 from agentic_isolation import (
     AgenticWorkspace,
-    WorkspaceLocalProvider,
     WorkspaceConfig,
-    ExecuteResult,
+    WorkspaceLocalProvider,
 )
 
 

@@ -207,7 +207,7 @@ class WorkspaceLocalProvider(BaseProvider):
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {path}")
 
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             return f.read()
 
     async def file_exists(

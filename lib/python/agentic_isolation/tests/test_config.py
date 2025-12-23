@@ -1,10 +1,9 @@
 """Tests for configuration types."""
 
-import pytest
 
 from agentic_isolation.config import (
-    ResourceLimits,
     MountConfig,
+    ResourceLimits,
     WorkspaceConfig,
 )
 

@@ -3,15 +3,14 @@
 Verifies all providers implement the required interface correctly.
 """
 
+
 import pytest
-from typing import get_type_hints
 
 from agentic_isolation import (
+    AgenticWorkspace,
+    SecurityConfig,
     WorkspaceDockerProvider,
     WorkspaceLocalProvider,
-    AgenticWorkspace,
-    WorkspaceConfig,
-    SecurityConfig,
 )
 from agentic_isolation.providers.base import WorkspaceProvider
 

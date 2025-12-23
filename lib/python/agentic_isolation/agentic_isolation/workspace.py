@@ -8,21 +8,21 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agentic_isolation.config import (
-    WorkspaceConfig,
-    ResourceLimits,
     MountConfig,
+    ResourceLimits,
     SecurityConfig,
+    WorkspaceConfig,
 )
 from agentic_isolation.providers.base import (
-    WorkspaceProvider,
-    Workspace,
     ExecuteResult,
+    Workspace,
+    WorkspaceProvider,
 )
-from agentic_isolation.providers.local import WorkspaceLocalProvider
 from agentic_isolation.providers.docker import WorkspaceDockerProvider
+from agentic_isolation.providers.local import WorkspaceLocalProvider
 
 if TYPE_CHECKING:
     from types import TracebackType

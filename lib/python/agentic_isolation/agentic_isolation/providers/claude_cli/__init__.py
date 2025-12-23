@@ -34,13 +34,13 @@ Usage:
     summary = await stream.summary()
 """
 
+from agentic_isolation.providers.claude_cli.event_parser import EventParser
+from agentic_isolation.providers.claude_cli.output_stream import SessionOutputStream
 from agentic_isolation.providers.claude_cli.types import (
     ObservabilityEvent,
     SessionSummary,
     TokenUsage,
 )
-from agentic_isolation.providers.claude_cli.event_parser import EventParser
-from agentic_isolation.providers.claude_cli.output_stream import SessionOutputStream
 
 __all__ = [
     "SessionOutputStream",

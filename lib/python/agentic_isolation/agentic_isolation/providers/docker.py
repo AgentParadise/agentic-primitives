@@ -20,7 +20,6 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
 
 from agentic_isolation.config import SecurityConfig, WorkspaceConfig
 from agentic_isolation.providers.base import (
