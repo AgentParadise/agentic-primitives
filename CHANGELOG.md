@@ -43,11 +43,11 @@ Major additions for prompt primitives and improved install workflow.
 
 ### Fixed
 
-- **Claude CLI attribution in commits**: Updated `.claude/settings.json` format to v2.0.62+ standard
-  - Changed from deprecated `disableAttribution`/`includeAttribution` to `attribution: {commits: false, pullRequests: false}`
+- **Claude CLI attribution in commits**: Updated `.claude/settings.json` format per official docs
+  - Changed to `attribution: {commit: "", pr: ""}` (empty strings disable attribution)
   - Fixes issue where "Generated with Claude Code" and Co-Authored-By attribution appeared in commits
   - Added regression test (`test_claude_cli_attribution.py`) to validate attribution is disabled
-  - See: https://github.com/AgentParadise/sandbox_aef-engineer-beta/pull/49
+  - See: https://code.claude.com/docs/en/settings#attribution-settings
 
 ---
 

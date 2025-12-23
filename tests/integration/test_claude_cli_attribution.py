@@ -38,13 +38,13 @@ git config --global user.name "Test Bot"
 git config --global user.email "test@example.com"
 git config --global init.defaultBranch main
 
-# Disable Claude Code attribution (v2.0.62+ format)
+# Disable Claude Code attribution (empty strings = disabled)
 mkdir -p ~/.claude
 cat > ~/.claude/settings.json << 'EOF'
 {
   "attribution": {
-    "commits": false,
-    "pullRequests": false
+    "commit": "",
+    "pr": ""
   }
 }
 EOF
@@ -143,8 +143,8 @@ def test_settings_json_format_current():
             cat > ~/.claude/settings.json << 'EOF'
 {
   "attribution": {
-    "commits": false,
-    "pullRequests": false
+    "commit": "",
+    "pr": ""
   }
 }
 EOF
@@ -163,12 +163,14 @@ EOF
     settings = json.loads(result.stdout.strip())
 
     assert "attribution" in settings, "Missing 'attribution' key"
-    assert settings["attribution"]["commits"] is False, "commits should be false"
-    assert settings["attribution"]["pullRequests"] is False, "pullRequests should be false"
+    assert settings["attribution"]["commit"] == "", "commit should be empty string"
+    assert settings["attribution"]["pr"] == "", "pr should be empty string"
 
     # Ensure deprecated fields are NOT present
     assert "disableAttribution" not in settings, "Deprecated 'disableAttribution' found"
     assert "includeAttribution" not in settings, "Deprecated 'includeAttribution' found"
+    assert "commits" not in settings.get("attribution", {}), "Deprecated 'commits' found"
+    assert "pullRequests" not in settings.get("attribution", {}), "Deprecated 'pullRequests' found"
 
     print("✅ Settings format validation passed")
 
