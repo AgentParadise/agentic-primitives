@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::fs;
+use std::hint::black_box;
 use tempfile::TempDir;
 
 fn setup_build_test(prim_count: usize) -> TempDir {
