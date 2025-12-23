@@ -7,7 +7,7 @@ Pure function - no side effects, no analytics, no stdin/stdout handling.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from agentic_security.constants import (

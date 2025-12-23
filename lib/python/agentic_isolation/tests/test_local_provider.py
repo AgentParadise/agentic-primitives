@@ -1,25 +1,24 @@
-"""Tests for LocalProvider."""
+"""Tests for WorkspaceLocalProvider."""
 
 import pytest
 
 from agentic_isolation import (
-    IsolatedWorkspace,
-    LocalProvider,
+    AgenticWorkspace,
     WorkspaceConfig,
-    ExecuteResult,
+    WorkspaceLocalProvider,
 )
 
 
-class TestLocalProvider:
-    """Tests for LocalProvider."""
+class TestWorkspaceLocalProvider:
+    """Tests for WorkspaceLocalProvider."""
 
     @pytest.fixture
-    def provider(self) -> LocalProvider:
+    def provider(self) -> WorkspaceLocalProvider:
         """Create a local provider."""
-        return LocalProvider()
+        return WorkspaceLocalProvider()
 
     @pytest.mark.asyncio
-    async def test_create_workspace(self, provider: LocalProvider) -> None:
+    async def test_create_workspace(self, provider: WorkspaceLocalProvider) -> None:
         """Should create workspace directory."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -32,7 +31,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_destroy_workspace(self, provider: LocalProvider) -> None:
+    async def test_destroy_workspace(self, provider: WorkspaceLocalProvider) -> None:
         """Should remove workspace directory."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -43,7 +42,7 @@ class TestLocalProvider:
         assert not path.exists()
 
     @pytest.mark.asyncio
-    async def test_execute_command(self, provider: LocalProvider) -> None:
+    async def test_execute_command(self, provider: WorkspaceLocalProvider) -> None:
         """Should execute command and return result."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -58,7 +57,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_execute_with_env(self, provider: LocalProvider) -> None:
+    async def test_execute_with_env(self, provider: WorkspaceLocalProvider) -> None:
         """Should pass environment variables."""
         config = WorkspaceConfig(
             provider="local",
@@ -74,7 +73,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_execute_with_secrets(self, provider: LocalProvider) -> None:
+    async def test_execute_with_secrets(self, provider: WorkspaceLocalProvider) -> None:
         """Should inject secrets as environment variables."""
         config = WorkspaceConfig(
             provider="local",
@@ -90,7 +89,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_execute_failing_command(self, provider: LocalProvider) -> None:
+    async def test_execute_failing_command(self, provider: WorkspaceLocalProvider) -> None:
         """Should capture failed command exit code."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -104,7 +103,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_write_and_read_file(self, provider: LocalProvider) -> None:
+    async def test_write_and_read_file(self, provider: WorkspaceLocalProvider) -> None:
         """Should write and read files."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -118,7 +117,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_write_file_creates_directories(self, provider: LocalProvider) -> None:
+    async def test_write_file_creates_directories(self, provider: WorkspaceLocalProvider) -> None:
         """Should create parent directories."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -132,7 +131,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_file_exists(self, provider: LocalProvider) -> None:
+    async def test_file_exists(self, provider: WorkspaceLocalProvider) -> None:
         """Should check file existence."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -146,7 +145,7 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
     @pytest.mark.asyncio
-    async def test_read_nonexistent_file_raises(self, provider: LocalProvider) -> None:
+    async def test_read_nonexistent_file_raises(self, provider: WorkspaceLocalProvider) -> None:
         """Should raise FileNotFoundError for missing files."""
         config = WorkspaceConfig(provider="local")
         workspace = await provider.create(config)
@@ -158,20 +157,20 @@ class TestLocalProvider:
             await provider.destroy(workspace)
 
 
-class TestIsolatedWorkspaceLocal:
-    """Tests for IsolatedWorkspace with local provider."""
+class TestAgenticWorkspaceLocal:
+    """Tests for AgenticWorkspace with local provider."""
 
     @pytest.mark.asyncio
     async def test_context_manager(self) -> None:
         """Should work as async context manager."""
-        async with IsolatedWorkspace.create(provider="local") as workspace:
+        async with AgenticWorkspace.create(provider="local") as workspace:
             assert workspace.id is not None
             assert workspace.path.exists()
 
     @pytest.mark.asyncio
     async def test_auto_cleanup(self) -> None:
         """Should cleanup workspace on exit."""
-        async with IsolatedWorkspace.create(provider="local") as workspace:
+        async with AgenticWorkspace.create(provider="local") as workspace:
             path = workspace.path
             assert path.exists()
 
@@ -180,14 +179,14 @@ class TestIsolatedWorkspaceLocal:
     @pytest.mark.asyncio
     async def test_execute_shorthand(self) -> None:
         """Should provide execute shorthand."""
-        async with IsolatedWorkspace.create(provider="local") as workspace:
+        async with AgenticWorkspace.create(provider="local") as workspace:
             result = await workspace.execute("echo test")
             assert "test" in result.stdout
 
     @pytest.mark.asyncio
     async def test_file_operations(self) -> None:
         """Should provide file operation shorthands."""
-        async with IsolatedWorkspace.create(provider="local") as workspace:
+        async with AgenticWorkspace.create(provider="local") as workspace:
             await workspace.write_file("test.py", "print('hello')")
             assert await workspace.file_exists("test.py")
 
@@ -197,7 +196,7 @@ class TestIsolatedWorkspaceLocal:
     @pytest.mark.asyncio
     async def test_secrets_injection(self) -> None:
         """Should inject secrets."""
-        async with IsolatedWorkspace.create(
+        async with AgenticWorkspace.create(
             provider="local",
             secrets={"MY_SECRET": "secret_value"},
         ) as workspace:
@@ -207,7 +206,7 @@ class TestIsolatedWorkspaceLocal:
     @pytest.mark.asyncio
     async def test_to_dict(self) -> None:
         """Should convert to dictionary."""
-        async with IsolatedWorkspace.create(provider="local") as workspace:
+        async with AgenticWorkspace.create(provider="local") as workspace:
             data = workspace.to_dict()
             assert "id" in data
             assert "provider" in data

@@ -132,7 +132,7 @@ class AgenticSettings(BaseSettings):
     # ═══════════════════════════════════════════════════════════════════════════
 
     @model_validator(mode="after")
-    def set_project_root(self) -> "AgenticSettings":
+    def set_project_root(self) -> AgenticSettings:
         """Auto-detect project root if not explicitly set."""
         if self.project_root is None:
             detected = find_project_root()
@@ -174,8 +174,7 @@ class AgenticSettings(BaseSettings):
         provider_lower = provider.lower()
         if provider_lower not in provider_map:
             raise ValueError(
-                f"Unknown provider: {provider}. "
-                f"Valid providers: {list(provider_map.keys())}"
+                f"Unknown provider: {provider}. Valid providers: {list(provider_map.keys())}"
             )
 
         attr_name, env_var = provider_map[provider_lower]
@@ -313,4 +312,3 @@ def reset_settings() -> None:
     """
     global _settings_instance
     _settings_instance = None
-

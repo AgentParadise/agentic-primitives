@@ -6,7 +6,6 @@ AEF uses this without knowing Claude CLI internals.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 

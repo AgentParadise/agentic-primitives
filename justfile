@@ -137,6 +137,13 @@ rust-doc:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Format Python code
+# Sync all Python package dependencies (required before testing)
+[group('python')]
+python-sync:
+    @echo '{{ YELLOW }}Syncing Python package dependencies...{{ NORMAL }}'
+    uv run python scripts/python_qa.py sync
+    @echo '{{ GREEN }}✓ Python dependencies synced{{ NORMAL }}'
+
 [group('python')]
 python-fmt:
     @echo '{{ YELLOW }}Formatting Python code...{{ NORMAL }}'
@@ -151,20 +158,18 @@ python-fmt-check:
     cd services/analytics && uv run ruff format --check .
     cd lib/python/agentic_logging && uv run ruff format --check .
 
-# Lint Python code
+# Lint Python code (all packages via cross-platform script)
 [group('python')]
 python-lint:
     @echo '{{ YELLOW }}Linting Python code...{{ NORMAL }}'
-    cd services/analytics && uv run ruff check .
-    cd lib/python/agentic_logging && uv run ruff check .
+    uv run python scripts/python_qa.py lint
     @echo '{{ GREEN }}✓ Python linting complete{{ NORMAL }}'
 
-# Lint and auto-fix Python code
+# Lint and auto-fix Python code (all packages)
 [group('python')]
 python-lint-fix:
     @echo '{{ YELLOW }}Linting and fixing Python code...{{ NORMAL }}'
-    cd services/analytics && uv run ruff check --fix .
-    cd lib/python/agentic_logging && uv run ruff check --fix .
+    uv run python scripts/python_qa.py lint --fix
     @echo '{{ GREEN }}✓ Python lint fixes applied{{ NORMAL }}'
 
 # Type check Python code
@@ -174,14 +179,19 @@ python-typecheck:
     cd services/analytics && uv run mypy . || true
     @echo '{{ GREEN }}✓ Python type checking complete{{ NORMAL }}'
 
-# Run Python tests
+# Run Python tests (all packages via cross-platform script)
 [group('python')]
 python-test:
     @echo '{{ YELLOW }}Running Python tests...{{ NORMAL }}'
-    cd services/analytics && uv run pytest -x -q
-    cd lib/python/agentic_logging && uv run pytest -x -q
-    cd tests/unit/claude/hooks && uv run pytest -x -q
+    uv run python scripts/python_qa.py test
     @echo '{{ GREEN }}✓ Python tests passed{{ NORMAL }}'
+
+# Run Python integration tests (requires Docker)
+[group('python')]
+python-test-integration:
+    @echo '{{ YELLOW }}Running Python integration tests...{{ NORMAL }}'
+    uv run python scripts/python_qa.py test --integration
+    @echo '{{ GREEN }}✓ Python integration tests passed{{ NORMAL }}'
 
 # Run Python tests with coverage
 [group('python')]
