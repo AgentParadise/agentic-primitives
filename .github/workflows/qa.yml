@@ -189,7 +189,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Type check
-        if: ${{ matrix.package.typecheck }}
+        if: matrix.package.typecheck
         working-directory: ./${{ matrix.package.path }}
         run: uv run mypy .
 
