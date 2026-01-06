@@ -571,3 +571,66 @@ fix-all: fmt lint-fix
 [group('advanced')]
 verify: clean check build
     @echo '{{ GREEN }}✓ Full verification complete!{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EVALUATION / PLAYGROUND
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Run playground eval with a specific scenario and task
+[group('eval')]
+[unix]
+eval scenario task:
+    @echo '{{ YELLOW }}Running eval: {{ scenario }}{{ NORMAL }}'
+    cd playground && uv run python run.py "{{ task }}" --scenario {{ scenario }} --live
+
+[group('eval')]
+[windows]
+eval scenario task:
+    Write-Host "Running eval: {{ scenario }}" -ForegroundColor Yellow
+    Set-Location playground; uv run python run.py "{{ task }}" --scenario {{ scenario }} --live; Set-Location ..
+
+# Run subagent concurrency test
+[group('eval')]
+[unix]
+eval-subagent:
+    @echo '{{ YELLOW }}Running subagent concurrency test...{{ NORMAL }}'
+    cd playground && uv run python run.py "$$(cat prompts/subagent-test.md)" --scenario subagent-concurrent --live
+
+[group('eval')]
+[windows]
+eval-subagent:
+    Write-Host "Running subagent concurrency test..." -ForegroundColor Yellow
+    Set-Location playground; uv run python run.py (Get-Content prompts/subagent-test.md -Raw) --scenario subagent-concurrent --live; Set-Location ..
+
+# Run a quick task with Haiku model
+[group('eval')]
+[unix]
+eval-quick task:
+    @echo '{{ YELLOW }}Running quick eval with Haiku...{{ NORMAL }}'
+    cd playground && uv run python run.py "{{ task }}" --scenario quick-haiku --live
+
+[group('eval')]
+[windows]
+eval-quick task:
+    Write-Host "Running quick eval with Haiku..." -ForegroundColor Yellow
+    Set-Location playground; uv run python run.py "{{ task }}" --scenario quick-haiku --live; Set-Location ..
+
+# List available eval scenarios
+[group('eval')]
+[unix]
+eval-list:
+    @echo '{{ YELLOW }}Available eval scenarios:{{ NORMAL }}'
+    cd playground && uv run python run.py scenarios
+
+[group('eval')]
+[windows]
+eval-list:
+    Write-Host "Available eval scenarios:" -ForegroundColor Yellow
+    Set-Location playground; uv run python run.py scenarios; Set-Location ..
+
+# Run playground tests
+[group('eval')]
+eval-test:
+    @echo '{{ YELLOW }}Running playground tests...{{ NORMAL }}'
+    cd playground && uv run pytest tests/ -v
+    @echo '{{ GREEN }}✓ Playground tests passed{{ NORMAL }}'

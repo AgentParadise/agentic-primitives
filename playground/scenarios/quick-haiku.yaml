@@ -1,0 +1,34 @@
+# Quick Haiku Scenario
+# Fast, cost-effective testing with Haiku model
+#
+# Use with:
+#   uv run python run.py "Your task here" --scenario quick-haiku --live
+
+name: Quick Haiku
+description: Fast testing with Haiku model - ideal for iteration
+
+headless:
+  # Use Haiku for fast, cost-effective testing (version-agnostic alias)
+  model: claude-haiku
+
+  # Standard tool set
+  allowed_tools:
+    - Bash
+    - Read
+    - Write
+    - Glob
+    - Grep
+    - LS
+
+  output_format: stream-json
+  permission_mode: bypassPermissions
+
+  # Short session for quick iteration
+  max_turns: 10
+
+isolation:
+  provider: docker
+  image: agentic-workspace-claude-cli:latest
+  timeout: 60
+  memory_mb: 1024
+  cpu_cores: 1.0

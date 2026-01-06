@@ -21,6 +21,9 @@ class EventType(StrEnum):
     TOOL_EXECUTION_COMPLETED = "tool_execution_completed"
     TOKEN_USAGE = "token_usage"
     ERROR = "error"
+    # Subagent lifecycle events
+    SUBAGENT_STARTED = "subagent_started"
+    SUBAGENT_STOPPED = "subagent_stopped"
 
 
 @dataclass
@@ -66,6 +69,12 @@ class ObservabilityEvent:
     tool_input: dict[str, Any] | None = None
     success: bool | None = None
 
+    # Subagent-specific fields (set for subagent events)
+    parent_tool_use_id: str | None = None  # Links tool to spawning Task
+    agent_name: str | None = None  # Subagent name from Task input
+    subagent_tool_use_id: str | None = None  # The Task tool_use_id
+    duration_ms: int | None = None  # Subagent execution duration
+
     # Token usage (set for token_usage events)
     tokens: TokenUsage | None = None
 
@@ -88,6 +97,14 @@ class ObservabilityEvent:
             result["tool_input"] = self.tool_input
         if self.success is not None:
             result["success"] = self.success
+        if self.parent_tool_use_id:
+            result["parent_tool_use_id"] = self.parent_tool_use_id
+        if self.agent_name:
+            result["agent_name"] = self.agent_name
+        if self.subagent_tool_use_id:
+            result["subagent_tool_use_id"] = self.subagent_tool_use_id
+        if self.duration_ms is not None:
+            result["duration_ms"] = self.duration_ms
         if self.tokens:
             result["tokens"] = {
                 "input": self.tokens.input_tokens,
@@ -121,6 +138,13 @@ class SessionSummary:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
 
+    # Subagent metrics
+    subagent_count: int = 0
+    subagent_names: list[str] = field(default_factory=list)
+    tools_by_subagent: dict[str, dict[str, int]] = field(
+        default_factory=dict
+    )  # {"subagent-1": {"Bash": 2, "Read": 1}}
+
     # Outcome
     success: bool = True
     error_message: str | None = None
@@ -150,6 +174,9 @@ class SessionSummary:
             "total_tool_calls": self.total_tool_calls,
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
+            "subagent_count": self.subagent_count,
+            "subagent_names": self.subagent_names,
+            "tools_by_subagent": self.tools_by_subagent,
             "success": self.success,
             "error_message": self.error_message,
         }

@@ -6,15 +6,17 @@ A universal framework for building and deploying agentic primitives (prompts, to
 **Vision (2026)**: This repo is the composable foundation for an **IDE-less agentic engineering system** where AI agents perform all coding work, enabling 100% observability and explicit rework detection.
 
 ## Current Milestone
-**🚧 Pre-Execution: Merge & Branch**
-1. Merge `feat/examples-002-observability` to main
-2. Create new branch `feat/event-schema-consolidation`
-3. Execute Event Schema Consolidation plan
+**✅ Subagent Observability - COMPLETE**
+- Model alias support (`claude-haiku` → version-agnostic)
+- `SUBAGENT_STARTED` / `SUBAGENT_STOPPED` events with concurrent tracking
+- Eval library with cross-platform justfile recipes
+- QA passing, ready to commit
 
 ### Upcoming Milestones
 - **🚧 Event Schema Consolidation** - Define canonical event schemas in `agentic_analytics` library
 
 ### Previous Milestones
+- **✅ Subagent Observability** - EventParser tracks subagent lifecycle, tools, concurrency
 - **✅ Full Build System** - Build generates all 9 Claude Code event handlers + validators
 - **✅ Audit Trail Enhancement** - Added full audit trail fields and security test scenarios
 - **✅ Atomic Hook Architecture** - Replaced wrapper+impl pattern with atomic handlers + pure validators
@@ -50,6 +52,8 @@ A universal framework for building and deploying agentic primitives (prompts, to
 - **Model Pricing**: Loaded from `providers/models/` YAML configs for cost estimation
 - **Full Audit Trail**: Every hook decision includes `audit.transcript_path` linking to Claude Code's conversation log
 - **Event Schema Scatter**: Events currently defined in examples, need consolidation to library
+- **Subagent Correlation**: Use `parent_tool_use_id` to link subagent tool calls to their spawning `Task` tool
+- **Concurrent Subagents**: Claude CLI can spawn multiple subagents in parallel; track via dict keyed by `tool_use_id`
 
 ## Strategic Direction
 
@@ -89,7 +93,9 @@ A universal framework for building and deploying agentic primitives (prompts, to
 - Validator Templates: `/primitives/v1/hooks/validators/`
 - Example 001: `/examples/001-claude-agent-sdk-integration/`
 - Example 002: `/examples/002-observability-dashboard/`
-- Library: `/lib/python/agentic_analytics/`
+- Library (Analytics): `/lib/python/agentic_analytics/`
+- Library (Isolation): `/lib/python/agentic_isolation/`
+- Playground/Eval: `/playground/`
 - Model Configs: `/providers/models/anthropic/`
 - ADRs: `/docs/adrs/`
 - Event Sourcing Platform: `https://github.com/NeuralEmpowerment/event-sourcing-platform`
@@ -99,6 +105,9 @@ A universal framework for building and deploying agentic primitives (prompts, to
 ✅ **CI/CD** - Parallelized QA workflows for Rust + Python validation
 ✅ **Build System** - Auto-discovers handlers/, generates settings.json for all 9 events
 ✅ **9 Event Handlers** - PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, SessionStart, SessionEnd, PreCompact, Notification
+✅ **Subagent Observability** - EventParser tracks SUBAGENT_STARTED/STOPPED with concurrent tracking
+✅ **Model Aliases** - Version-agnostic aliases (`claude-haiku`, `claude-sonnet`)
+✅ **Eval Library** - Cross-platform justfile recipes + scenarios + prompts
 ✅ **Example 000** - Updated with atomic hooks + audit trail
 ✅ **Example 001** - Claude Agent SDK with metrics collection + security scenarios
 ✅ **Example 002** - Observability Dashboard (FastAPI + React)

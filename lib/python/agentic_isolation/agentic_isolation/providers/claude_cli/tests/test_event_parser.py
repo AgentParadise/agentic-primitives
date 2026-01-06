@@ -134,3 +134,158 @@ class TestEventParser:
 
         assert summary.tool_calls == {"Bash": 2, "Read": 1}
         assert summary.total_tool_calls == 3
+
+
+class TestSubagentTracking:
+    """Tests for subagent lifecycle tracking."""
+
+    def test_task_tool_emits_subagent_started(self) -> None:
+        """Task tool usage should emit SUBAGENT_STARTED event."""
+        parser = EventParser(session_id="test-session")
+
+        line = """{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_123", "name": "Task", "input": {
+                "description": "List all files",
+                "prompt": "Run ls -la"
+            }}
+        ]}}"""
+        event = parser.parse_line(line)
+
+        assert event is not None
+        assert event.event_type == EventType.SUBAGENT_STARTED
+        assert event.tool_name == "Task"
+        assert event.tool_use_id == "task_123"
+        assert event.agent_name == "List all files"
+        assert event.subagent_tool_use_id == "task_123"
+
+    def test_task_result_emits_subagent_stopped(self) -> None:
+        """Task tool_result should emit SUBAGENT_STOPPED event."""
+        parser = EventParser(session_id="test-session")
+
+        # First, start the subagent
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_456", "name": "Task", "input": {
+                "description": "Check status"
+            }}
+        ]}}""")
+
+        # Then complete it
+        line = """{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_456", "content": "done"}
+        ]}}"""
+        event = parser.parse_line(line)
+
+        assert event is not None
+        assert event.event_type == EventType.SUBAGENT_STOPPED
+        assert event.agent_name == "Check status"
+        assert event.subagent_tool_use_id == "task_456"
+        assert event.duration_ms is not None
+        assert event.duration_ms >= 0
+
+    def test_concurrent_subagents_tracked_independently(self) -> None:
+        """Multiple concurrent subagents should be tracked independently."""
+        parser = EventParser(session_id="test-session")
+
+        # Start two subagents
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_a", "name": "Task", "input": {"description": "Task A"}}
+        ]}}""")
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_b", "name": "Task", "input": {"description": "Task B"}}
+        ]}}""")
+
+        assert parser.get_active_subagent_count() == 2
+
+        # Complete first subagent
+        event_a = parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_a", "content": "done"}
+        ]}}""")
+
+        assert event_a is not None
+        assert event_a.agent_name == "Task A"
+        assert parser.get_active_subagent_count() == 1
+
+        # Complete second subagent
+        event_b = parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_b", "content": "done"}
+        ]}}""")
+
+        assert event_b is not None
+        assert event_b.agent_name == "Task B"
+        assert parser.get_active_subagent_count() == 0
+
+    def test_subagent_name_from_prompt_if_no_description(self) -> None:
+        """Should extract name from prompt if description not provided."""
+        parser = EventParser(session_id="test-session")
+
+        line = """{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_789", "name": "Task", "input": {
+                "prompt": "List all Python files in the current directory"
+            }}
+        ]}}"""
+        event = parser.parse_line(line)
+
+        assert event is not None
+        assert event.agent_name == "List all Python files in the current directory"
+
+    def test_summary_includes_subagent_metrics(self) -> None:
+        """Summary should include subagent count and names."""
+        parser = EventParser(session_id="test-session")
+
+        # Start and complete two subagents
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Task", "input": {"description": "First task"}}
+        ]}}""")
+        parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "done"}
+        ]}}""")
+
+        parser.parse_line(
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "tool_use", "id": "t2", "name": "Task", '
+            '"input": {"description": "Second task"}}]}}'
+        )
+        parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t2", "content": "done"}
+        ]}}""")
+
+        summary = parser.get_summary()
+
+        assert summary.subagent_count == 2
+        assert "First task" in summary.subagent_names
+        assert "Second task" in summary.subagent_names
+
+    def test_subagent_tools_tracked_via_parent_id(self) -> None:
+        """Tools used by subagent should be tracked via parent_tool_use_id."""
+        parser = EventParser(session_id="test-session")
+
+        # Start subagent
+        parser.parse_line(
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "tool_use", "id": "task_sub", "name": "Task", '
+            '"input": {"description": "Sub task"}}]}}'
+        )
+
+        # Subagent uses Bash tool (with parent_tool_use_id)
+        parser.parse_line(
+            '{"type": "assistant", "parent_tool_use_id": "task_sub", '
+            '"message": {"content": [{"type": "tool_use", "id": "bash_1", '
+            '"name": "Bash", "input": {"command": "ls"}}]}}'
+        )
+
+        # Subagent uses Read tool
+        parser.parse_line(
+            '{"type": "assistant", "parent_tool_use_id": "task_sub", '
+            '"message": {"content": [{"type": "tool_use", "id": "read_1", '
+            '"name": "Read", "input": {"file": "test.txt"}}]}}'
+        )
+
+        # Complete subagent
+        parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_sub", "content": "done"}
+        ]}}""")
+
+        summary = parser.get_summary()
+
+        assert "Sub task" in summary.tools_by_subagent
+        assert summary.tools_by_subagent["Sub task"] == {"Bash": 1, "Read": 1}

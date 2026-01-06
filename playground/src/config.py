@@ -22,6 +22,9 @@ class HeadlessConfig:
     https://docs.anthropic.com/en/docs/claude-code/headless
     """
 
+    # Model selection (supports aliases like "claude-haiku")
+    model: str | None = None
+
     # Tool control
     allowed_tools: list[str] = field(
         default_factory=lambda: ["Bash", "Read", "Write", "Glob", "Grep"]
@@ -42,10 +45,19 @@ class HeadlessConfig:
     def to_cli_args(self) -> list[str]:
         """Convert to Claude CLI command line arguments.
 
+        Model aliases (e.g., "claude-haiku") are resolved to full API names.
+
         Returns:
             List of CLI arguments
         """
         args: list[str] = []
+
+        # Model selection (resolve aliases to full API names)
+        if self.model:
+            from src.models import resolve_model
+
+            api_name = resolve_model(self.model)
+            args.extend(["--model", api_name])
 
         # Tool control
         if self.allowed_tools:
@@ -57,6 +69,8 @@ class HeadlessConfig:
         if self.output_format == "json":
             args.append("--output-format=json")
         elif self.output_format == "stream-json":
+            # stream-json requires --verbose when using -p (print mode)
+            args.append("--verbose")
             args.append("--output-format=stream-json")
 
         # Permission mode
@@ -138,6 +152,7 @@ class ScenarioConfig:
         )
 
         headless = HeadlessConfig(
+            model=headless_data.get("model"),
             allowed_tools=headless_data.get("allowed_tools", default_tools),
             disallowed_tools=headless_data.get("disallowed_tools", []),
             output_format=headless_data.get("output_format", "stream-json"),
