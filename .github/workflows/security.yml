@@ -87,11 +87,11 @@ jobs:
         run: cargo install cargo-sbom
       
       - name: Generate SBOM (SPDX format)
-        run: cargo sbom --output-format spdx > sbom-spdx.json
+        run: cargo sbom --output-format spdx_json_2_3 > sbom-spdx.json
         working-directory: ./cli
       
       - name: Generate SBOM (CycloneDX format)
-        run: cargo sbom --output-format cyclonedx > sbom-cyclonedx.json
+        run: cargo sbom --output-format cyclone_dx_json_1_6 > sbom-cyclonedx.json
         working-directory: ./cli
       
       - name: Upload SBOM artifacts
