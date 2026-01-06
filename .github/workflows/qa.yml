@@ -29,7 +29,7 @@ jobs:
       - name: Install Just
         uses: extractions/setup-just@v3
         with:
-          just-version: '1.37.0'
+          just-version: "1.37.0"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -63,7 +63,7 @@ jobs:
       - name: Install Just
         uses: extractions/setup-just@v3
         with:
-          just-version: '1.37.0'
+          just-version: "1.37.0"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -95,7 +95,7 @@ jobs:
       - name: Install Just
         uses: extractions/setup-just@v3
         with:
-          just-version: '1.37.0'
+          just-version: "1.37.0"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -110,12 +110,58 @@ jobs:
         run: just rust-test
 
   #############################################################################
-  # PYTHON JOBS - All run in parallel with full QA checks
+  # PYTHON JOBS - Matrix strategy for all packages
   #############################################################################
 
-  python-analytics:
-    name: Python Analytics Service
+  python-packages:
+    name: Python ${{ matrix.package.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - name: "Adapters"
+            path: "lib/python/agentic_adapters"
+            python: "3.11"
+            pytest-args: "-x -q"
+
+          - name: "Events"
+            path: "lib/python/agentic_events"
+            python: "3.11"
+            pytest-args: "-x -q"
+
+          - name: "Isolation"
+            path: "lib/python/agentic_isolation"
+            python: "3.11"
+            pytest-args: "-x -q --ignore=tests/integration"
+
+          - name: "Logging"
+            path: "lib/python/agentic_logging"
+            python: "3.11"
+            pytest-args: "-x -q --cov-fail-under=90"
+            typecheck: true
+
+          - name: "Security"
+            path: "lib/python/agentic_security"
+            python: "3.11"
+            pytest-args: "-x -q"
+
+          - name: "Settings"
+            path: "lib/python/agentic_settings"
+            python: "3.11"
+            pytest-args: "-x -q"
+
+          - name: "Workspace"
+            path: "lib/python/agentic_workspace"
+            python: "3.11"
+            pytest-args: "-x -q"
+
+          - name: "Analytics Service"
+            path: "services/analytics"
+            python: "3.11"
+            pytest-args: "-x -q --cov-fail-under=80"
+            typecheck: true
+
     steps:
       - uses: actions/checkout@v6
 
@@ -123,46 +169,33 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "services/analytics/uv.lock"
+          cache-dependency-glob: "${{ matrix.package.path }}/uv.lock"
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.package.python }}
 
-      - name: Install & Check
-        working-directory: ./services/analytics
-        run: |
-          uv sync --all-extras
-          uv run ruff format --check .
-          uv run ruff check .
-          uv run mypy .
-          uv run pytest -x -q --cov-fail-under=80
+      - name: Install dependencies
+        working-directory: ./${{ matrix.package.path }}
+        run: uv sync --all-extras
 
-  python-logging:
-    name: Python Logging Library
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
+      - name: Check formatting
+        working-directory: ./${{ matrix.package.path }}
+        run: uv run ruff format --check .
 
-      - name: Setup UV
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
+      - name: Lint
+        working-directory: ./${{ matrix.package.path }}
+        run: uv run ruff check .
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
+      - name: Type check
+        if: ${{ matrix.package.typecheck }}
+        working-directory: ./${{ matrix.package.path }}
+        run: uv run mypy .
 
-      - name: Install & Check
-        working-directory: ./lib/python/agentic_logging
-        run: |
-          uv sync --all-extras
-          uv run ruff format --check .
-          uv run ruff check .
-          uv run mypy .
-          uv run pytest -x -q --cov-fail-under=90
+      - name: Run tests
+        working-directory: ./${{ matrix.package.path }}
+        run: uv run pytest ${{ matrix.package.pytest-args }}
 
   python-hooks:
     name: Python Hooks & Unit Tests
@@ -205,7 +238,7 @@ jobs:
       - name: Install Just
         uses: extractions/setup-just@v3
         with:
-          just-version: '1.37.0'
+          just-version: "1.37.0"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -229,8 +262,7 @@ jobs:
     needs:
       - rust-checks
       - rust-test
-      - python-analytics
-      - python-logging
+      - python-packages
       - python-hooks
       - validate-primitives
     runs-on: ubuntu-latest
@@ -240,25 +272,23 @@ jobs:
           # Check for failures
           if [[ "${{ needs.rust-checks.result }}" == "failure" ]] || \
              [[ "${{ needs.rust-test.result }}" == "failure" ]] || \
-             [[ "${{ needs.python-analytics.result }}" == "failure" ]] || \
-             [[ "${{ needs.python-logging.result }}" == "failure" ]] || \
+             [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
              [[ "${{ needs.validate-primitives.result }}" == "failure" ]]; then
             echo "❌ QA checks failed"
             exit 1
           fi
-          
+
           # Check for cancellations
           if [[ "${{ needs.rust-checks.result }}" == "cancelled" ]] || \
              [[ "${{ needs.rust-test.result }}" == "cancelled" ]] || \
-             [[ "${{ needs.python-analytics.result }}" == "cancelled" ]] || \
-             [[ "${{ needs.python-logging.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.python-packages.result }}" == "cancelled" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
              [[ "${{ needs.validate-primitives.result }}" == "cancelled" ]]; then
             echo "⚠️ QA checks were cancelled"
             exit 1
           fi
-          
+
           echo "✅ All QA checks passed!"
 
       - name: Write summary
@@ -269,7 +299,6 @@ jobs:
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Rust Checks | ${{ needs.rust-checks.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Rust Tests | ${{ needs.rust-test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Python Analytics | ${{ needs.python-analytics.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Python Logging | ${{ needs.python-logging.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python Packages | ${{ needs.python-packages.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Validate Primitives | ${{ needs.validate-primitives.result }} |" >> $GITHUB_STEP_SUMMARY
