@@ -101,6 +101,10 @@ class TestSecurityConfig:
 class TestSecurityConfigGVisorDetection:
     """Tests for gVisor auto-detection."""
 
+    def setup_method(self) -> None:
+        """Reset gVisor detection cache before each test."""
+        SecurityConfig._gvisor_available = None
+
     @patch("shutil.which")
     def test_detect_gvisor_no_docker(self, mock_which: MagicMock) -> None:
         """Should return False if docker is not installed."""

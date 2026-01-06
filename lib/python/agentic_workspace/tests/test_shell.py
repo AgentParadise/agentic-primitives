@@ -66,7 +66,9 @@ class TestEscapeForBash:
 
     def test_real_workspace_prompt(self) -> None:
         """The actual AEF workspace prompt escapes correctly."""
-        result = escape_for_bash(["claude", "--append-system-prompt", AEF_WORKSPACE_PROMPT])
+        result = escape_for_bash(
+            ["claude", "--append-system-prompt", AEF_WORKSPACE_PROMPT]
+        )
 
         # Should contain the prompt (escaped)
         assert "artifacts/output" in result
