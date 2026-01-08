@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from agentic_isolation.providers.claude_cli.types import (
@@ -96,6 +96,28 @@ class EventParser:
         self._success = True
         self._error_message: str | None = None
 
+        # Recording playback support
+        self._base_time: datetime | None = None  # Base timestamp for offset calculation
+
+        # Cost and duration from result event
+        self._total_cost_usd: float | None = None
+        self._result_duration_ms: int | None = None
+        self._result_duration_api_ms: int | None = None
+        self._num_turns: int = 0
+
+    def set_base_time(self, base_time: datetime) -> None:
+        """Set base timestamp for recording playback.
+
+        When parsing recordings, events have `_offset_ms` relative to
+        the recording start. Call this with the recording's `recorded_at`
+        timestamp to enable accurate duration calculation.
+
+        Args:
+            base_time: The recording's start timestamp
+        """
+        self._base_time = base_time
+        logger.debug("Base time set to: %s", base_time.isoformat())
+
     def parse_line(self, line: str) -> ObservabilityEvent | None:
         """Parse a single JSONL line into an ObservabilityEvent.
 
@@ -115,8 +137,15 @@ class EventParser:
             logger.debug("Non-JSON line: %s", line[:50])
             return None
 
-        # Skip recording metadata
+        # Handle recording metadata - extract base time and skip
         if "_recording" in raw:
+            recording_meta = raw["_recording"]
+            if recorded_at := recording_meta.get("recorded_at"):
+                try:
+                    # Parse ISO format timestamp
+                    self.set_base_time(datetime.fromisoformat(recorded_at))
+                except ValueError:
+                    logger.warning("Invalid recorded_at timestamp: %s", recorded_at)
             return None
 
         event_type = raw.get("type", "")
@@ -138,9 +167,23 @@ class EventParser:
             return None
 
     def _parse_timestamp(self, raw: dict[str, Any]) -> datetime:
-        """Extract timestamp from event or use now."""
-        # Claude CLI doesn't always include timestamps
-        # Use _offset_ms from recordings if available
+        """Extract timestamp from event.
+
+        For recordings with `_offset_ms`, calculates timestamp from base_time.
+        For live events, uses current time.
+
+        Args:
+            raw: Raw event dict
+
+        Returns:
+            Timestamp for this event
+        """
+        # Use _offset_ms from recordings if base_time is set
+        if self._base_time is not None:
+            if (offset_ms := raw.get("_offset_ms")) is not None:
+                return self._base_time + timedelta(milliseconds=offset_ms)
+
+        # Live event or no offset - use current time
         return datetime.now(UTC)
 
     def _extract_subagent_name(self, tool_input: dict[str, Any]) -> str:
@@ -332,9 +375,18 @@ class EventParser:
         return None
 
     def _handle_result(self, raw: dict[str, Any], timestamp: datetime) -> ObservabilityEvent:
-        """Handle result events (session completion)."""
+        """Handle result events (session completion).
+
+        Extracts cost, duration, and token metrics from the result event.
+        """
         self._completed_at = timestamp
         self._success = not raw.get("is_error", False)
+
+        # Extract cost and duration metrics
+        self._total_cost_usd = raw.get("total_cost_usd")
+        self._result_duration_ms = raw.get("duration_ms")
+        self._result_duration_api_ms = raw.get("duration_api_ms")
+        self._num_turns = raw.get("num_turns", 0)
 
         # Extract final token counts
         usage = raw.get("usage", {})
@@ -377,8 +429,12 @@ class EventParser:
             completed_at=self._completed_at,
             event_count=self._event_count,
             tool_calls=self._tool_calls.copy(),
+            num_turns=self._num_turns,
             total_input_tokens=self._total_tokens.input_tokens,
             total_output_tokens=self._total_tokens.output_tokens,
+            total_cost_usd=self._total_cost_usd,
+            result_duration_ms=self._result_duration_ms,
+            result_duration_api_ms=self._result_duration_api_ms,
             subagent_count=len(self._subagent_names),
             subagent_names=self._subagent_names.copy(),
             tools_by_subagent=self._tools_by_subagent.copy(),

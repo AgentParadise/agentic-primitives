@@ -133,10 +133,16 @@ class SessionSummary:
     # Counts
     event_count: int = 0
     tool_calls: dict[str, int] = field(default_factory=dict)  # {"Bash": 5, "Read": 3}
+    num_turns: int = 0  # Number of conversation turns
 
     # Token totals
     total_input_tokens: int = 0
     total_output_tokens: int = 0
+
+    # Cost and timing from result event (accurate values from Claude CLI)
+    total_cost_usd: float | None = None  # Total cost in USD
+    result_duration_ms: int | None = None  # Wall clock duration from result
+    result_duration_api_ms: int | None = None  # API latency from result
 
     # Subagent metrics
     subagent_count: int = 0
@@ -151,7 +157,15 @@ class SessionSummary:
 
     @property
     def duration_ms(self) -> int | None:
-        """Duration in milliseconds."""
+        """Duration in milliseconds.
+
+        Prefers the accurate duration from result event if available,
+        otherwise calculates from timestamps.
+        """
+        # Prefer result event duration (more accurate)
+        if self.result_duration_ms is not None:
+            return self.result_duration_ms
+        # Fall back to calculated duration
         if self.completed_at is None:
             return None
         delta = self.completed_at - self.started_at
@@ -169,11 +183,14 @@ class SessionSummary:
             "started_at": self.started_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_ms": self.duration_ms,
+            "duration_api_ms": self.result_duration_api_ms,
+            "num_turns": self.num_turns,
             "event_count": self.event_count,
             "tool_calls": self.tool_calls,
             "total_tool_calls": self.total_tool_calls,
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
+            "total_cost_usd": self.total_cost_usd,
             "subagent_count": self.subagent_count,
             "subagent_names": self.subagent_names,
             "tools_by_subagent": self.tools_by_subagent,

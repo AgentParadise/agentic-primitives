@@ -37,6 +37,7 @@ Usage:
 from agentic_isolation.providers.claude_cli.event_parser import EventParser
 from agentic_isolation.providers.claude_cli.output_stream import SessionOutputStream
 from agentic_isolation.providers.claude_cli.types import (
+    EventType,
     ObservabilityEvent,
     SessionSummary,
     TokenUsage,
@@ -45,6 +46,7 @@ from agentic_isolation.providers.claude_cli.types import (
 __all__ = [
     "SessionOutputStream",
     "EventParser",
+    "EventType",
     "ObservabilityEvent",
     "SessionSummary",
     "TokenUsage",
