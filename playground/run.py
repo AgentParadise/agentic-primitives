@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -28,7 +29,9 @@ from rich.console import Console
 from src.config import list_scenarios, load_scenario
 from src.display import EventDisplay, create_output_callback
 from src.executor import AgentExecutor
-from src.receiver import OTLPReceiver, create_receiver_callback
+
+if TYPE_CHECKING:
+    from src.receiver import OTLPReceiver
 
 app = typer.Typer(
     name="playground",
@@ -138,6 +141,16 @@ async def _run_async(
     console.print()
 
     if live:
+        # Lazy import for --live mode (requires grpc dependencies)
+        try:
+            from src.receiver import OTLPReceiver, create_receiver_callback
+        except ImportError as e:
+            console.print(
+                "[red]Error:[/red] --live mode requires grpc dependencies.\n"
+                "Install with: uv pip install grpcio opentelemetry-proto"
+            )
+            raise typer.Exit(1) from e
+
         # Start OTLP receiver and live display
         receiver_callback = create_receiver_callback(display.add_event)
 

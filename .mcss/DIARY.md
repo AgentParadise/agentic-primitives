@@ -2,6 +2,78 @@
 
 ---
 
+## 2026-01-06 — Subagent Observability & Eval Library ✅ COMPLETE
+
+### Objective
+Enable observability for subagent lifecycle (start/stop/duration/tools) and create a lightweight eval library using the playground.
+
+### What Was Built
+
+#### 1. Model Alias Support
+- Version-agnostic aliases: `claude-haiku` → `claude-haiku-4-5-20251001`
+- Created `playground/src/models.py` with resolver
+- Supports 3 formats: alias, model ID, full API name
+- 12 tests passing
+
+#### 2. Subagent Event Types
+- Added `SUBAGENT_STARTED` and `SUBAGENT_STOPPED` to `EventType` enum
+- Extended `ObservabilityEvent` with `parent_tool_use_id`, `agent_name`, `duration_ms`
+- Extended `SessionSummary` with `subagent_count`, `subagent_names`, `tools_by_subagent`
+
+#### 3. EventParser Subagent Tracking
+- Detects `tool_use.name == "Task"` as subagent start
+- Tracks concurrent subagents via dict keyed by `tool_use_id`
+- Correlates tool events using `parent_tool_use_id`
+- Emits `SUBAGENT_STOPPED` on Task tool_result
+- 15 tests passing (9 existing + 6 new)
+
+#### 4. Hook Configuration
+- Added `subagent-stop` to `manifest.yaml` handlers
+- Updated `entrypoint.sh` with `Stop` and `SubagentStop` hooks
+- Rebuilt workspace image with new hooks
+
+#### 5. Eval Library
+- Created `playground/scenarios/subagent-concurrent.yaml` - Tests concurrent subagents
+- Created `playground/scenarios/quick-haiku.yaml` - Fast iteration with Haiku
+- Created `playground/prompts/subagent-test.md` - 3-subagent test prompt
+
+#### 6. Justfile Recipes (Cross-Platform)
+- `just eval <scenario> <task>` - Run any scenario
+- `just eval-subagent` - Run subagent test
+- `just eval-quick <task>` - Fast Haiku test
+- `just eval-list` - List scenarios
+- `just eval-test` - Run playground tests
+
+### Integration Verified
+```
+🚀 STARTED: "Run date command" (active: 1)
+🚀 STARTED: "Run whoami command" (active: 2)
+🚀 STARTED: "Run pwd command" (active: 3)   ← 3 concurrent!
+🛑 STOPPED: "Run date command" (active: 2)
+🛑 STOPPED: "Run pwd command" (active: 1)
+🛑 STOPPED: "Run whoami command" (active: 0)
+
+SESSION SUMMARY
+Total subagents: 3
+Names: ['Run date command', 'Run pwd command', 'Run whoami command']
+```
+
+### Files Changed
+| Category | Files |
+|----------|-------|
+| Model Aliases | `providers/models/anthropic/config.yaml`, `playground/src/models.py` |
+| Event Types | `agentic_isolation/.../types.py` |
+| EventParser | `agentic_isolation/.../event_parser.py` |
+| Tests | `playground/tests/test_models.py`, `agentic_isolation/.../tests/test_event_parser.py` |
+| Hooks | `manifest.yaml`, `entrypoint.sh` |
+| Scenarios | `playground/scenarios/`, `playground/prompts/` |
+| Justfile | `justfile` (eval recipes) |
+
+### Branch
+`feat/subagent-observability` - Ready for commit
+
+---
+
 ## 2025-11-28 — Strategic Planning Session
 
 ### Objectives

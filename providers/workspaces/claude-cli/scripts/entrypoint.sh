@@ -65,6 +65,20 @@ cat > ~/.claude/settings.json << 'EOF'
         "command": "/opt/agentic/hooks/handlers/session-end.py",
         "timeout": 5
       }]
+    }],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "/opt/agentic/hooks/handlers/stop.py",
+        "timeout": 5
+      }]
+    }],
+    "SubagentStop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "/opt/agentic/hooks/handlers/subagent-stop.py",
+        "timeout": 5
+      }]
     }]
   }
 }

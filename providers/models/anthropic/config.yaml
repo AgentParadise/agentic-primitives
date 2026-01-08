@@ -19,11 +19,16 @@ model_families:
   - claude-3
 
 # Current recommended models by type
-# These map simple aliases (sonnet, opus, haiku) to the latest model in each family.
+# Version-agnostic aliases (claude-haiku, claude-sonnet, claude-opus) map to current models.
 # When new model versions are released, update these pointers - aliases auto-resolve.
 current_models:
-  sonnet: claude-4-5-sonnet
+  # Version-agnostic aliases (recommended)
+  claude-haiku: claude-4-5-haiku
+  claude-sonnet: claude-4-5-sonnet
+  claude-opus: claude-4-5-opus
+  # Legacy short aliases (deprecated, kept for backwards compatibility)
   haiku: claude-4-5-haiku
+  sonnet: claude-4-5-sonnet
   opus: claude-4-5-opus
 
 # Migration paths for legacy families

@@ -1,5 +1,7 @@
 """Tests for Claude CLI event parser."""
 
+from datetime import UTC, datetime, timedelta
+
 from agentic_isolation.providers.claude_cli.event_parser import EventParser
 from agentic_isolation.providers.claude_cli.types import EventType
 
@@ -134,3 +136,275 @@ class TestEventParser:
 
         assert summary.tool_calls == {"Bash": 2, "Read": 1}
         assert summary.total_tool_calls == 3
+
+
+class TestSubagentTracking:
+    """Tests for subagent lifecycle tracking."""
+
+    def test_task_tool_emits_subagent_started(self) -> None:
+        """Task tool usage should emit SUBAGENT_STARTED event."""
+        parser = EventParser(session_id="test-session")
+
+        line = """{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_123", "name": "Task", "input": {
+                "description": "List all files",
+                "prompt": "Run ls -la"
+            }}
+        ]}}"""
+        event = parser.parse_line(line)
+
+        assert event is not None
+        assert event.event_type == EventType.SUBAGENT_STARTED
+        assert event.tool_name == "Task"
+        assert event.tool_use_id == "task_123"
+        assert event.agent_name == "List all files"
+        assert event.subagent_tool_use_id == "task_123"
+
+    def test_task_result_emits_subagent_stopped(self) -> None:
+        """Task tool_result should emit SUBAGENT_STOPPED event."""
+        parser = EventParser(session_id="test-session")
+
+        # First, start the subagent
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_456", "name": "Task", "input": {
+                "description": "Check status"
+            }}
+        ]}}""")
+
+        # Then complete it
+        line = """{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_456", "content": "done"}
+        ]}}"""
+        event = parser.parse_line(line)
+
+        assert event is not None
+        assert event.event_type == EventType.SUBAGENT_STOPPED
+        assert event.agent_name == "Check status"
+        assert event.subagent_tool_use_id == "task_456"
+        assert event.duration_ms is not None
+        assert event.duration_ms >= 0
+
+    def test_concurrent_subagents_tracked_independently(self) -> None:
+        """Multiple concurrent subagents should be tracked independently."""
+        parser = EventParser(session_id="test-session")
+
+        # Start two subagents
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_a", "name": "Task", "input": {"description": "Task A"}}
+        ]}}""")
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_b", "name": "Task", "input": {"description": "Task B"}}
+        ]}}""")
+
+        assert parser.get_active_subagent_count() == 2
+
+        # Complete first subagent
+        event_a = parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_a", "content": "done"}
+        ]}}""")
+
+        assert event_a is not None
+        assert event_a.agent_name == "Task A"
+        assert parser.get_active_subagent_count() == 1
+
+        # Complete second subagent
+        event_b = parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_b", "content": "done"}
+        ]}}""")
+
+        assert event_b is not None
+        assert event_b.agent_name == "Task B"
+        assert parser.get_active_subagent_count() == 0
+
+    def test_subagent_name_from_prompt_if_no_description(self) -> None:
+        """Should extract name from prompt if description not provided."""
+        parser = EventParser(session_id="test-session")
+
+        line = """{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "task_789", "name": "Task", "input": {
+                "prompt": "List all Python files in the current directory"
+            }}
+        ]}}"""
+        event = parser.parse_line(line)
+
+        assert event is not None
+        assert event.agent_name == "List all Python files in the current directory"
+
+    def test_summary_includes_subagent_metrics(self) -> None:
+        """Summary should include subagent count and names."""
+        parser = EventParser(session_id="test-session")
+
+        # Start and complete two subagents
+        parser.parse_line("""{"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Task", "input": {"description": "First task"}}
+        ]}}""")
+        parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "done"}
+        ]}}""")
+
+        parser.parse_line(
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "tool_use", "id": "t2", "name": "Task", '
+            '"input": {"description": "Second task"}}]}}'
+        )
+        parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t2", "content": "done"}
+        ]}}""")
+
+        summary = parser.get_summary()
+
+        assert summary.subagent_count == 2
+        assert "First task" in summary.subagent_names
+        assert "Second task" in summary.subagent_names
+
+    def test_subagent_tools_tracked_via_parent_id(self) -> None:
+        """Tools used by subagent should be tracked via parent_tool_use_id."""
+        parser = EventParser(session_id="test-session")
+
+        # Start subagent
+        parser.parse_line(
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "tool_use", "id": "task_sub", "name": "Task", '
+            '"input": {"description": "Sub task"}}]}}'
+        )
+
+        # Subagent uses Bash tool (with parent_tool_use_id)
+        parser.parse_line(
+            '{"type": "assistant", "parent_tool_use_id": "task_sub", '
+            '"message": {"content": [{"type": "tool_use", "id": "bash_1", '
+            '"name": "Bash", "input": {"command": "ls"}}]}}'
+        )
+
+        # Subagent uses Read tool
+        parser.parse_line(
+            '{"type": "assistant", "parent_tool_use_id": "task_sub", '
+            '"message": {"content": [{"type": "tool_use", "id": "read_1", '
+            '"name": "Read", "input": {"file": "test.txt"}}]}}'
+        )
+
+        # Complete subagent
+        parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "task_sub", "content": "done"}
+        ]}}""")
+
+        summary = parser.get_summary()
+
+        assert "Sub task" in summary.tools_by_subagent
+        assert summary.tools_by_subagent["Sub task"] == {"Bash": 1, "Read": 1}
+
+
+class TestRecordingPlayback:
+    """Tests for recording timestamp handling."""
+
+    def test_recording_metadata_sets_base_time(self) -> None:
+        """Recording metadata should set base time for offset calculation."""
+        parser = EventParser(session_id="test-session")
+
+        # Parse recording metadata
+        metadata_line = (
+            '{"_recording": {"version": 1, "cli_version": "2.0.76", '
+            '"recorded_at": "2026-01-08T10:00:00+00:00"}}'
+        )
+        event = parser.parse_line(metadata_line)
+
+        assert event is None  # Metadata is skipped
+        assert parser._base_time is not None
+        assert parser._base_time.year == 2026
+        assert parser._base_time.month == 1
+        assert parser._base_time.day == 8
+
+    def test_offset_ms_used_for_timestamp(self) -> None:
+        """Events with _offset_ms should use base_time + offset."""
+        parser = EventParser(session_id="test-session")
+
+        # Set base time
+        base = datetime(2026, 1, 8, 10, 0, 0, tzinfo=UTC)
+        parser.set_base_time(base)
+
+        # Parse event with offset
+        line = '{"type": "system", "subtype": "init", "_offset_ms": 1500}'
+        event = parser.parse_line(line)
+
+        assert event is not None
+        # Timestamp should be base + 1.5 seconds
+        expected = base + timedelta(milliseconds=1500)
+        assert event.timestamp == expected
+
+    def test_subagent_duration_from_offsets(self) -> None:
+        """Subagent duration should be calculated from recording offsets."""
+        parser = EventParser(session_id="test-session")
+
+        # Set base time
+        base = datetime(2026, 1, 8, 10, 0, 0, tzinfo=UTC)
+        parser.set_base_time(base)
+
+        # Start subagent at offset 1000ms
+        parser.parse_line(
+            '{"type": "assistant", "_offset_ms": 1000, "message": {"content": ['
+            '{"type": "tool_use", "id": "task_1", "name": "Task", '
+            '"input": {"description": "Test task"}}]}}'
+        )
+
+        # Complete subagent at offset 3500ms (2.5 seconds later)
+        event = parser.parse_line(
+            '{"type": "user", "_offset_ms": 3500, "message": {"content": ['
+            '{"type": "tool_result", "tool_use_id": "task_1", "content": "done"}]}}'
+        )
+
+        assert event is not None
+        assert event.event_type == EventType.SUBAGENT_STOPPED
+        assert event.duration_ms == 2500  # 3500 - 1000 = 2500ms
+
+
+class TestCostAndDuration:
+    """Tests for cost and duration extraction from result event."""
+
+    def test_result_extracts_cost(self) -> None:
+        """Result event should extract total_cost_usd."""
+        parser = EventParser(session_id="test-session")
+
+        line = (
+            '{"type": "result", "is_error": false, "total_cost_usd": 0.064721, '
+            '"duration_ms": 7423, "duration_api_ms": 8135, "num_turns": 3}'
+        )
+        parser.parse_line(line)
+
+        summary = parser.get_summary()
+
+        assert summary.total_cost_usd == 0.064721
+        assert summary.result_duration_ms == 7423
+        assert summary.result_duration_api_ms == 8135
+        assert summary.num_turns == 3
+
+    def test_summary_duration_prefers_result(self) -> None:
+        """Summary duration_ms should prefer result event value."""
+        parser = EventParser(session_id="test-session")
+
+        # Parse system init (sets started_at)
+        parser.parse_line('{"type": "system", "subtype": "init"}')
+
+        # Parse result with explicit duration
+        parser.parse_line('{"type": "result", "is_error": false, "duration_ms": 5000}')
+
+        summary = parser.get_summary()
+
+        # Should use result duration, not calculated
+        assert summary.duration_ms == 5000
+
+    def test_summary_to_dict_includes_cost(self) -> None:
+        """Summary to_dict should include cost and duration fields."""
+        parser = EventParser(session_id="test-session")
+
+        parser.parse_line('{"type": "system", "subtype": "init"}')
+        parser.parse_line(
+            '{"type": "result", "total_cost_usd": 0.05, '
+            '"duration_ms": 3000, "duration_api_ms": 4000, "num_turns": 2}'
+        )
+
+        summary = parser.get_summary()
+        d = summary.to_dict()
+
+        assert d["total_cost_usd"] == 0.05
+        assert d["duration_ms"] == 3000
+        assert d["duration_api_ms"] == 4000
+        assert d["num_turns"] == 2

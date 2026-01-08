@@ -40,6 +40,7 @@ hooks:
     - user-prompt
     - notification
     - stop
+    - subagent-stop
   # Validators to include
   validators:
     - security/bash
