@@ -11,7 +11,6 @@ keywords = ["agent", "claude", "opentelemetry", "playground", "testing"]
 
 dependencies = [
     # Local packages (editable installs via workspace)
-    "agentic-otel",
     "agentic-adapters",
     "agentic-isolation",
     "agentic-security",
@@ -20,9 +19,6 @@ dependencies = [
     "typer>=0.9",
     # Configuration
     "pyyaml>=6.0",
-    # OTel receiver
-    "opentelemetry-proto>=1.20",
-    "grpcio>=1.60",
 ]
 
 [project.optional-dependencies]
@@ -44,7 +40,6 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.uv.sources]
-agentic-otel = { path = "../lib/python/agentic_otel", editable = true }
 agentic-adapters = { path = "../lib/python/agentic_adapters", editable = true }
 agentic-isolation = { path = "../lib/python/agentic_isolation", editable = true }
 agentic-security = { path = "../lib/python/agentic_security", editable = true }

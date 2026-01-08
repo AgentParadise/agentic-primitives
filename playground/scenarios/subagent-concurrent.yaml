@@ -1,0 +1,35 @@
+# Subagent Concurrent Test Scenario
+# Tests concurrent subagent spawning and tracking
+#
+# Use with:
+#   uv run python run.py "Spawn three subagents..." --scenario subagent-concurrent --live
+
+name: Subagent Concurrent Test
+description: Tests concurrent subagent spawning and observability tracking
+
+headless:
+  # Use Haiku for fast, cost-effective testing (version-agnostic alias)
+  model: claude-haiku
+
+  # Allow Task tool for subagent spawning
+  allowed_tools:
+    - Task
+    - Bash
+    - Read
+    - Write
+    - Glob
+    - Grep
+    - LS
+
+  output_format: stream-json
+  permission_mode: bypassPermissions
+
+  # Limit turns to avoid runaway execution
+  max_turns: 20
+
+isolation:
+  provider: docker
+  image: agentic-workspace-claude-cli:latest
+  timeout: 120
+  memory_mb: 2048
+  cpu_cores: 2.0

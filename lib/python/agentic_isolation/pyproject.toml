@@ -1,6 +1,6 @@
 [project]
 name = "agentic-isolation"
-version = "0.1.0"
+version = "0.3.0"
 description = "Workspace isolation for AI agent execution"
 readme = "README.md"
 license = { text = "MIT" }

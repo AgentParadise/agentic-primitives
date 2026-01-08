@@ -178,8 +178,8 @@ class AgentExecutor:
 
         # Resource limits
         limits = ResourceLimits(
-            memory_mb=iso_config.memory_mb,
-            cpu_cores=iso_config.cpu_cores,
+            memory=f"{iso_config.memory_mb}M",
+            cpu=str(int(iso_config.cpu_cores)),
             timeout_seconds=iso_config.timeout,
         )
 

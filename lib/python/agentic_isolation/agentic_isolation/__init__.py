@@ -52,6 +52,7 @@ from agentic_isolation.providers import (
 # Claude CLI specific components
 from agentic_isolation.providers.claude_cli import (
     EventParser,
+    EventType,
     ObservabilityEvent,
     SessionOutputStream,
     SessionSummary,
@@ -77,9 +78,10 @@ __all__ = [
     # Claude CLI (session output)
     "SessionOutputStream",
     "EventParser",
+    "EventType",
     "ObservabilityEvent",
     "SessionSummary",
     "TokenUsage",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

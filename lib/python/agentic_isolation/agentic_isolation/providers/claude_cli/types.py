@@ -21,6 +21,9 @@ class EventType(StrEnum):
     TOOL_EXECUTION_COMPLETED = "tool_execution_completed"
     TOKEN_USAGE = "token_usage"
     ERROR = "error"
+    # Subagent lifecycle events
+    SUBAGENT_STARTED = "subagent_started"
+    SUBAGENT_STOPPED = "subagent_stopped"
 
 
 @dataclass
@@ -66,6 +69,12 @@ class ObservabilityEvent:
     tool_input: dict[str, Any] | None = None
     success: bool | None = None
 
+    # Subagent-specific fields (set for subagent events)
+    parent_tool_use_id: str | None = None  # Links tool to spawning Task
+    agent_name: str | None = None  # Subagent name from Task input
+    subagent_tool_use_id: str | None = None  # The Task tool_use_id
+    duration_ms: int | None = None  # Subagent execution duration
+
     # Token usage (set for token_usage events)
     tokens: TokenUsage | None = None
 
@@ -88,6 +97,14 @@ class ObservabilityEvent:
             result["tool_input"] = self.tool_input
         if self.success is not None:
             result["success"] = self.success
+        if self.parent_tool_use_id:
+            result["parent_tool_use_id"] = self.parent_tool_use_id
+        if self.agent_name:
+            result["agent_name"] = self.agent_name
+        if self.subagent_tool_use_id:
+            result["subagent_tool_use_id"] = self.subagent_tool_use_id
+        if self.duration_ms is not None:
+            result["duration_ms"] = self.duration_ms
         if self.tokens:
             result["tokens"] = {
                 "input": self.tokens.input_tokens,
@@ -116,10 +133,23 @@ class SessionSummary:
     # Counts
     event_count: int = 0
     tool_calls: dict[str, int] = field(default_factory=dict)  # {"Bash": 5, "Read": 3}
+    num_turns: int = 0  # Number of conversation turns
 
     # Token totals
     total_input_tokens: int = 0
     total_output_tokens: int = 0
+
+    # Cost and timing from result event (accurate values from Claude CLI)
+    total_cost_usd: float | None = None  # Total cost in USD
+    result_duration_ms: int | None = None  # Wall clock duration from result
+    result_duration_api_ms: int | None = None  # API latency from result
+
+    # Subagent metrics
+    subagent_count: int = 0
+    subagent_names: list[str] = field(default_factory=list)
+    tools_by_subagent: dict[str, dict[str, int]] = field(
+        default_factory=dict
+    )  # {"subagent-1": {"Bash": 2, "Read": 1}}
 
     # Outcome
     success: bool = True
@@ -127,7 +157,15 @@ class SessionSummary:
 
     @property
     def duration_ms(self) -> int | None:
-        """Duration in milliseconds."""
+        """Duration in milliseconds.
+
+        Prefers the accurate duration from result event if available,
+        otherwise calculates from timestamps.
+        """
+        # Prefer result event duration (more accurate)
+        if self.result_duration_ms is not None:
+            return self.result_duration_ms
+        # Fall back to calculated duration
         if self.completed_at is None:
             return None
         delta = self.completed_at - self.started_at
@@ -145,11 +183,17 @@ class SessionSummary:
             "started_at": self.started_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_ms": self.duration_ms,
+            "duration_api_ms": self.result_duration_api_ms,
+            "num_turns": self.num_turns,
             "event_count": self.event_count,
             "tool_calls": self.tool_calls,
             "total_tool_calls": self.total_tool_calls,
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
+            "total_cost_usd": self.total_cost_usd,
+            "subagent_count": self.subagent_count,
+            "subagent_names": self.subagent_names,
+            "tools_by_subagent": self.tools_by_subagent,
             "success": self.success,
             "error_message": self.error_message,
         }
