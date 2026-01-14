@@ -153,6 +153,10 @@ enum Commands {
         #[arg(long)]
         only: Option<String>,
 
+        /// Primitives version to build (v1 or v2)
+        #[arg(long, default_value = "v1")]
+        primitives_version: String,
+
         /// Clean output directory before build
         #[arg(long)]
         clean: bool,
@@ -404,6 +408,7 @@ fn main() {
             type_filter,
             kind,
             only,
+            primitives_version,
             clean,
             verbose,
         } => {
@@ -416,6 +421,7 @@ fn main() {
                 only,
                 clean,
                 verbose,
+                primitives_version: Some(primitives_version),
             };
             commands::build::execute(&args, &config)
         }
