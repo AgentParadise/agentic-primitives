@@ -79,7 +79,7 @@ coverage/
 .agentic/
 
 # Project-specific
-# NOTE: These SHOULD NOT be committed, but are not ignored so it can be installed with the agent 
+# NOTE: These SHOULD NOT be committed, but are not ignored so it can be installed with the agent
 # PROJECT-PLAN_*.md
 .env
 .env.local
@@ -127,3 +127,4 @@ PROJECT-PLAN_*.md
 
 # Cursor config
 .cursorignore
+.context-docs/
