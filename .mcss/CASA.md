@@ -106,7 +106,7 @@ Phase 1.5 delivers a **production-ready V2 authoring experience**:
 - **Latest commits**: 5 logical commits (pushed)
 - **PR**: #51 - https://github.com/AgentParadise/agentic-primitives/pull/51
 - **Mode**: EXECUTE → PAUSE (take a break!)
-- **Project Plans**: 
+- **Project Plans**:
   - `PROJECT-PLAN_20260113_v2-simplification.md` (Phase 1)
   - `PROJECT-PLAN_20260114_v2-authoring-workflow.md` (Phase 1.5)
 
