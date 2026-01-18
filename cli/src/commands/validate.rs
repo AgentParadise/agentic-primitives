@@ -511,12 +511,15 @@ default_version: 1
         let result = validate_primitive_with_layers(
             SpecVersion::V1,
             &primitive_path,
-            ValidationLayers::Structural
+            ValidationLayers::Structural,
         );
-        
+
         // V1 validation not supported in transitional CLI - expect error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]

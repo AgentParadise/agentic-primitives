@@ -208,7 +208,10 @@ default_version: 1
         let result = validate_primitive(SpecVersion::V1, &primitive_path);
         // V1 validation not supported in transitional CLI - expect error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -223,7 +226,10 @@ default_version: 1
         );
         // V1 validation not supported in transitional CLI - expect error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -238,7 +244,10 @@ default_version: 1
         );
         // V1 validation not supported in transitional CLI - expect error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -253,7 +262,10 @@ default_version: 1
         );
         // V1 validation not supported in transitional CLI - expect error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -272,7 +284,10 @@ default_version: 1
         let result = validate_primitive(SpecVersion::Experimental, &primitive_path);
         // Experimental validation not supported in transitional CLI - expect error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -289,7 +304,10 @@ default_version: 1
         let result = validate_primitive(SpecVersion::V1, &primitive_path);
         // V1 validation not supported in transitional CLI - expect error (not structural validation error)
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -324,6 +342,9 @@ default_version: 1
             validate_primitive_with_layers(SpecVersion::V1, &primitive_path, ValidationLayers::All);
         // V1 validation not supported in transitional CLI - expect error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 }
