@@ -1,0 +1,131 @@
+schema_version: "1.0.0"
+id: firecrawl-scraper
+version: "1.0.0"
+name: Firecrawl Web Scraper
+description: Scrape web pages using Firecrawl API and save content as markdown with metadata frontmatter
+
+interface:
+  function: scrape
+  parameters:
+    url:
+      type: string
+      required: true
+      description: URL of the web page to scrape
+      pattern: "^https?://.+"
+    output_path:
+      type: string
+      required: true
+      description: Output file path for the scraped markdown content
+    title:
+      type: string
+      required: false
+      description: Optional title override for the document frontmatter
+    version:
+      type: string
+      required: false
+      description: Version tag for the documentation (e.g. '2.5.0', 'latest')
+    session_id:
+      type: string
+      required: false
+      description: Session ID for log correlation with agentic_logging
+    formats:
+      type: array
+      required: false
+      description: Output formats to request from Firecrawl
+      default: ["markdown"]
+      items:
+        type: string
+  returns:
+    type: object
+    description: Scrape result with file path, content size, and source metadata
+    properties:
+      path:
+        type: string
+        required: true
+        description: Path to the saved file
+      bytes:
+        type: integer
+        required: true
+        description: Size of the content in bytes
+      source_url:
+        type: string
+        required: true
+        description: Original URL that was scraped
+      title:
+        type: string
+        required: true
+        description: Document title
+      scraped_at:
+        type: string
+        required: true
+        description: ISO timestamp when the page was scraped
+
+implementation:
+  language: python
+  runtime: uv
+  entry_point: impl.py
+  function: scrape
+  requires:
+    python: ">=3.11"
+    packages:
+      - firecrawl-py>=1.0.0
+      - typer>=0.9.0
+      - pydantic>=2.0.0
+      - rich>=13.0.0
+
+execution:
+  timeout_seconds: 120
+  requires_network: true
+  requires_filesystem: true
+  stateless: true
+  idempotent: false
+
+generators:
+  mcp:
+    framework: fastmcp
+    server_name: firecrawl-scraper
+    transport: stdio
+    context_retention: false
+  langchain:
+    tool_type: StructuredTool
+    return_direct: false
+  openai:
+    function_name: scrape_web_page
+    strict: true
+
+tags:
+  - web-scraping
+  - documentation
+  - markdown
+  - firecrawl
+
+examples:
+  - description: Scrape Pydantic documentation
+    input:
+      url: "https://docs.pydantic.dev/latest/concepts/models/"
+      output_path: "docs/deps/pydantic-models.md"
+      version: "2.5.0"
+    output:
+      path: "docs/deps/pydantic-models.md"
+      bytes: 15234
+      source_url: "https://docs.pydantic.dev/latest/concepts/models/"
+      title: "Pydantic Models"
+      scraped_at: "2026-01-13T10:30:00Z"
+  - description: Scrape with session tracking
+    input:
+      url: "https://example.com/api-docs"
+      output_path: "docs/api-reference.md"
+      session_id: "abc-123-def"
+    output:
+      path: "docs/api-reference.md"
+      bytes: 8192
+      source_url: "https://example.com/api-docs"
+      title: "API Reference"
+      scraped_at: "2026-01-13T10:31:00Z"
+
+author:
+  name: Agentic Primitives
+  url: "https://github.com/codevalley/agentic-primitives"
+
+license: Apache-2.0
+repository: "https://github.com/codevalley/agentic-primitives"

@@ -1,0 +1,13 @@
+id: hash-mismatch
+kind: agent
+category: testing
+summary: Agent with mismatched BLAKE3 hash
+versions:
+  - version: 1
+    file: hash-mismatch.v1.md
+    status: active
+    hash: blake3:0000000000000000000000000000000000000000000000000000000000000000
+    created: "2025-01-01"
+    notes: Hash doesn't match actual content
+default_version: 1
+
