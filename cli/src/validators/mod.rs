@@ -206,8 +206,9 @@ default_version: 1
         let primitive_path = create_valid_test_primitive(temp_dir.path());
 
         let result = validate_primitive(SpecVersion::V1, &primitive_path);
-        // Result depends on schema availability - may fail semantic validation without full setup
-        let _ = result;
+        // V1 validation not supported in transitional CLI - expect error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -220,11 +221,9 @@ default_version: 1
             &primitive_path,
             ValidationLayers::Structural,
         );
-        assert!(result.is_ok());
-        let report = result.unwrap();
-        assert!(report.structural_passed);
-        assert!(!report.schema_passed);
-        assert!(!report.semantic_passed);
+        // V1 validation not supported in transitional CLI - expect error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -237,12 +236,9 @@ default_version: 1
             &primitive_path,
             ValidationLayers::Schema,
         );
-        // Result depends on schema availability
-        if let Ok(report) = result {
-            assert!(!report.structural_passed);
-            assert!(report.schema_passed);
-            assert!(!report.semantic_passed);
-        }
+        // V1 validation not supported in transitional CLI - expect error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -255,11 +251,9 @@ default_version: 1
             &primitive_path,
             ValidationLayers::Semantic,
         );
-        assert!(result.is_ok());
-        let report = result.unwrap();
-        assert!(!report.structural_passed);
-        assert!(!report.schema_passed);
-        assert!(report.semantic_passed);
+        // V1 validation not supported in transitional CLI - expect error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -276,8 +270,9 @@ default_version: 1
         fs::write(primitive_path.join("test-exp.v1.md"), "# Test").unwrap();
 
         let result = validate_primitive(SpecVersion::Experimental, &primitive_path);
-        // Experimental only validates structural
-        assert!(result.is_ok());
+        // Experimental validation not supported in transitional CLI - expect error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -292,11 +287,9 @@ default_version: 1
         .unwrap();
 
         let result = validate_primitive(SpecVersion::V1, &primitive_path);
+        // V1 validation not supported in transitional CLI - expect error (not structural validation error)
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Structural validation failed"));
+        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
     }
 
     #[test]
@@ -329,7 +322,8 @@ default_version: 1
 
         let result =
             validate_primitive_with_layers(SpecVersion::V1, &primitive_path, ValidationLayers::All);
-        // Result depends on full environment setup
-        let _ = result;
+        // V1 validation not supported in transitional CLI - expect error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("V1/Experimental validation not supported"));
     }
 }
