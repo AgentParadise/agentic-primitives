@@ -6,29 +6,49 @@ A universal framework for building and deploying agentic primitives (prompts, to
 **Vision (2026)**: This repo is the composable foundation for an **IDE-less agentic engineering system** where AI agents perform all coding work, enabling 100% observability and explicit rework detection.
 
 ## Current Milestone (v2-simplification worktree)
-**🔄 V2 Architecture Simplification - Phase 1 Complete**
+**✅ V2 Architecture Simplification - Phase 1.5 Complete**
 
-**✅ Milestone 1.1: Clean Up Source Structure** - COMPLETE
+**✅ Milestone 1.0: CLI Restructure** - COMPLETE
+- Separated CLI into `cli/v1/` (maintenance) and `cli/v2/` (active)
+- V1 binary: `agentic-p-v1`, V2 binary: `agentic-p`
+- Clean separation for independent evolution
+
+**✅ Milestone 1.1: Source Structure** - COMPLETE
 - Created `primitives/v2/` with simplified flat structure
 - Migrated 4 example primitives (2 commands, 1 skill, 1 tool)
 - Category organization preserved, unnecessary nesting removed
 
-**✅ Milestone 1.2: Simple Build System** - COMPLETE
+**✅ Milestone 1.2: Build System** - COMPLETE
 - V2 discovery logic (`build_v2.rs`)
 - V2 transformer (`claude_v2.rs`)
 - `--primitives-version v2` CLI flag
 - Successfully builds to `build/claude/` with correct structure
 
-**📋 Milestone 1.3: Build Output Compatibility** - PENDING
-- Fix manifest path inconsistencies
-- Test with actual Claude Code
-- Verify .claude/ structure matches v1
+**✅ Milestone 1.5.1: Schemas & Validation** - COMPLETE
+- JSON schemas for command and skill frontmatter
+- `agentic-p validate` command with `--all` flag
+- Automatic validation during build
+- All primitives pass validation
+
+**✅ Milestone 1.5.2: CLI Generators** - COMPLETE
+- `agentic-p new command/skill/tool` commands
+- Handlebars templates for all primitive types
+- Interactive mode with dialoguer prompts
+- Non-interactive mode with flags
+- Automatic validation after generation
+
+**✅ Milestone 1.5.3: Documentation** - COMPLETE
+- `docs/v2/` with comprehensive V2 documentation
+- Quick start guide (5-minute tutorial)
+- Authoring guides for commands, skills, tools
+- CLI reference, frontmatter reference
+- Migration guide from V1 to V2
 
 ### Upcoming (Phase 2)
 - **Granular Install Commands** - `install command <name>`, `install skill <name>`
 - **MCP Adapter Generation** - Auto-generate FastMCP servers from tool.yaml
-- **V2 CLI Generator** - Commands to create new v2 primitives
-- **Documentation** - Migration guide, architecture docs
+- **Full Migration** - Convert remaining high-value primitives to v2
+- **Testing** - Integration tests for v2 build system
 
 ### Main Branch Milestones (completed in main, not in this worktree)
 - **✅ Subagent Observability** - EventParser tracks subagent lifecycle
