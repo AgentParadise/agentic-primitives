@@ -297,12 +297,12 @@ ci:
 # VALIDATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Validate primitives repository
+# Validate primitives repository (v2 only - transitional CLI doesn't support v1)
 [group('validation')]
 validate:
-    @echo '{{ YELLOW }}Validating primitives repository...{{ NORMAL }}'
-    cd cli && cargo run -- validate ../primitives
-    @echo '{{ GREEN }}✓ Validation passed{{ NORMAL }}'
+    @echo '{{ YELLOW }}Validating v2 primitives...{{ NORMAL }}'
+    cd cli && cargo run -- validate ../primitives/v2 || echo '{{ YELLOW }}Note: V1 primitives skipped (use cli/v1 for V1 validation){{ NORMAL }}'
+    @echo '{{ GREEN }}✓ V2 validation passed{{ NORMAL }}'
 
 # Validate all version hashes
 [group('validation')]

@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentic-primitives.dev/schemas/skill-frontmatter.v1.json",
+  "title": "Skill Frontmatter Schema",
+  "description": "JSON Schema for v2 skill primitive frontmatter validation",
+  "type": "object",
+  "required": ["description", "model"],
+  "properties": {
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 200,
+      "description": "Brief description of this skill's expertise (10-200 characters)"
+    },
+    "model": {
+      "type": "string",
+      "enum": ["haiku", "sonnet", "opus"],
+      "description": "Default Claude model to use for this skill"
+    },
+    "allowed-tools": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_, ]+$",
+      "description": "Comma-separated list of allowed tools (e.g., 'Read, Bash, Grep')"
+    },
+    "expertise": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Areas of expertise covered by this skill"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "uniqueItems": true,
+      "description": "Optional tags for categorization (lowercase-with-dashes)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version (optional, for tracking changes)"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Expert knowledge for analyzing testing architecture and planning improvements",
+      "model": "sonnet",
+      "allowed-tools": "Read, Grep, Glob, Bash",
+      "expertise": [
+        "Test-Driven Development",
+        "Test Architecture",
+        "Coverage Analysis",
+        "Agent Verification"
+      ]
+    }
+  ]
+}
