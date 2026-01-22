@@ -1,6 +1,6 @@
 mod e2e;
 
-use e2e::{assert_build_output, assert_primitive_exists, run_cli_command, setup_test_repo};
+use e2e::{run_cli_command, setup_test_repo};
 use predicates::prelude::*;
 
 #[test]

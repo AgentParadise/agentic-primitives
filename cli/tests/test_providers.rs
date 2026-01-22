@@ -1,8 +1,6 @@
 mod e2e;
 
 use e2e::{run_cli_command, setup_test_repo};
-use predicates::prelude::*;
-use std::fs;
 
 #[test]
 fn test_provider_transformations() {
