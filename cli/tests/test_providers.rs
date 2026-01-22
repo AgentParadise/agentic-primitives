@@ -45,19 +45,19 @@ fn test_provider_transformations() {
         &["build", "--provider", "claude", "--verbose"],
         Some(repo_path),
     );
-    
+
     // Allow either successful build or "No primitives found" for experimental primitives
     if claude_result.try_success().is_ok() {
         let claude_build = repo_path.join("build/claude");
         assert!(claude_build.exists());
     }
 
-    // Build for OpenAI (experimental primitives)  
+    // Build for OpenAI (experimental primitives)
     let openai_result = run_cli_command(
         &["build", "--provider", "openai", "--verbose"],
         Some(repo_path),
     );
-    
+
     // Allow either successful build or "No primitives found" for experimental primitives
     if openai_result.try_success().is_ok() {
         let openai_build = repo_path.join("build/openai");
@@ -85,7 +85,13 @@ fn test_provider_filtering() {
     .success();
 
     run_cli_command(
-        &["new", "tool", "testing", "filter-test-tool", "--experimental"],
+        &[
+            "new",
+            "tool",
+            "testing",
+            "filter-test-tool",
+            "--experimental",
+        ],
         Some(repo_path),
     )
     .success();

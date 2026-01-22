@@ -93,14 +93,14 @@ fn test_full_primitive_lifecycle() {
 
     // Note: Version bumping and promotion are V1-specific features
     // Transitional CLI focuses on experimental primitives which don't use versioning
-    
+
     // Step 9: Build for Claude (experimental primitives)
     // Note: Experimental primitives may not produce complete builds
     let _build_result = run_cli_command(&["build", "--provider", "claude"], Some(repo_path));
-    
+
     // Step 10: Build for OpenAI (experimental primitives)
     let _build_result = run_cli_command(&["build", "--provider", "openai"], Some(repo_path));
-    
+
     // Build outputs may not be complete for experimental primitives
     // The transitional CLI is meant to bridge to v2, not fully support v1 lifecycle
 }
