@@ -251,7 +251,7 @@ fn execute_hook_implementation(
         } else {
             None
         },
-        exit_code: Some(output.status.code().unwrap_or(-1)),
+        exit_code: Some(output.status.code().unwrap_or(1)),
     })
 }
 

@@ -1,6 +1,6 @@
 # V2 Simplification Worktree
 
-**Location**: `/Users/codedev/Code/ai/agentic-primitives_worktrees/v2-simplification/`
+**Location**: `<your-repo-path>_worktrees/v2-simplification/`
 **Branch**: `v2-simplification`
 **Status**: Ready for implementation
 

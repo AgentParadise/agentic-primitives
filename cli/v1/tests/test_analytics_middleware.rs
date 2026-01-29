@@ -1,4 +1,11 @@
 //! Integration tests for analytics middleware in the hook system
+//!
+//! TODO: These tests currently validate YAML parsing and type deserialization.
+//! Future enhancements should add tests that:
+//! 1. Execute hooks with analytics middleware enabled
+//! 2. Verify analytics data is collected and formatted correctly
+//! 3. Test middleware pipeline execution order
+//! See: https://github.com/AgentParadise/agentic-primitives/issues/TBD
 
 use std::fs;
 use tempfile::TempDir;

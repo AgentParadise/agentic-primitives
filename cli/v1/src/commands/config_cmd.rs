@@ -287,6 +287,8 @@ fn list_primitives(kind_filter: Option<&str>, config: &PrimitivesConfig) -> Resu
         };
 
         // Apply kind filter
+        // NOTE: Simple pluralization (add "s") works for current primitive types
+        // (command, skill, tool, hook) but won't handle irregular plurals.
         if let Some(filter) = kind_filter {
             let filter_plural = if filter.ends_with('s') {
                 filter.to_string()
