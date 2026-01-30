@@ -506,17 +506,20 @@ default_version: 1
         let temp_dir = TempDir::new().unwrap();
         let primitive_path = create_valid_prompt(temp_dir.path(), "test", "test-agent");
 
-        let args = ValidateArgs {
-            path: primitive_path,
-            spec_version: Some(SpecVersion::V1),
-            layer: ValidationLayers::Structural,
-            json: false,
-        };
+        // Test the underlying validation logic directly instead of the validate() function
+        // which calls std::process::exit(1) and would kill the test process
+        let result = validate_primitive_with_layers(
+            SpecVersion::V1,
+            &primitive_path,
+            ValidationLayers::Structural,
+        );
 
-        // Should not panic - validation will check structure
-        let result = validate(args);
-        // May succeed or fail depending on full validation environment
-        let _ = result;
+        // V1 validation not supported in transitional CLI - expect error
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("V1/Experimental validation not supported"));
     }
 
     #[test]

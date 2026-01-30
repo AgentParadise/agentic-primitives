@@ -1,0 +1,9 @@
+id: invalid-schema-test
+kind: agent
+category: testing
+summary: Test with invalid schema
+# tags should be array, not string
+tags: invalid-string-instead-of-array
+# versions should be array, not object
+versions: { bad: format }
+

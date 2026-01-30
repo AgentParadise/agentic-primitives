@@ -1,0 +1,61 @@
+#!/usr/bin/env bun
+/**
+ * {{description}}
+ *
+ * Hook Event: {{event}}
+ * Type: {{middleware_type}}
+ */
+
+interface HookInput {
+  session_id: string;
+  transcript_path: string;
+  cwd: string;
+  permission_mode: string;
+  hook_event_name: string;
+  [key: string]: any;
+}
+
+interface HookOutput {
+  decision?: "allow" | "deny" | "block" | "ask";
+  reason?: string;
+  hookSpecificOutput?: {
+    hookEventName: string;
+    additionalContext?: string;
+    [key: string]: any;
+  };
+}
+
+async function processHook(input: HookInput): Promise<HookOutput> {
+  const { session_id, hook_event_name } = input;
+  
+  // TODO: Implement your hook logic here
+  
+  return {
+    decision: "allow",
+    reason: "Hook processed successfully",
+    hookSpecificOutput: {
+      hookEventName: hook_event_name,
+      additionalContext: "Optional context for Claude",
+    },
+  };
+}
+
+async function main() {
+  try {
+    // Read JSON from stdin
+    const input = await Bun.stdin.json();
+    
+    // Process the hook
+    const output = await processHook(input);
+    
+    // Write JSON to stdout
+    console.log(JSON.stringify(output));
+    process.exit(0);
+  } catch (error) {
+    console.error(`Error: ${error}`, { cause: error });
+    process.exit(1);
+  }
+}
+
+main();
+
