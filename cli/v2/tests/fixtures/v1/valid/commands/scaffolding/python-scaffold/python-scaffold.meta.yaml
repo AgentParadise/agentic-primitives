@@ -1,0 +1,30 @@
+id: python-scaffold
+kind: command
+category: scaffolding
+domain: development
+summary: Scaffold a new Python project with best practices
+
+context_usage:
+  as_system: false
+  as_user: true
+  as_overlay: false
+
+tags:
+  - python
+  - scaffolding
+  - project-setup
+
+tools:
+  - file-writer
+  - shell-runner
+
+versions:
+  - version: 1
+    file: python-scaffold.v1.md
+    status: active
+    hash: blake3:e8e8a5f5c0e3a2f1b8e8a5f5c0e3a2f1b8e8a5f5c0e3a2f1b8e8a5f5c0e3a2f1
+    created: "2025-01-15"
+    notes: Initial scaffold command
+
+default_version: 1
+

@@ -1,0 +1,27 @@
+id: {{id}}
+kind: agent
+category: {{category}}
+domain: {{#if domain}}{{domain}}{{else}}general{{/if}}
+summary: "{{summary}}"
+{{#if tags}}
+tags:
+{{#each tags}}
+  - {{this}}
+{{/each}}
+{{/if}}
+
+defaults:
+  preferred_models:
+    - claude/sonnet
+{{#if max_iterations}}
+  max_iterations: {{max_iterations}}
+{{/if}}
+
+context_usage:
+  as_system: true
+  as_user: false
+  as_overlay: false
+
+tools: []
+
+inputs: {}

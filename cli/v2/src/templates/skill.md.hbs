@@ -1,0 +1,43 @@
+---
+description: {{description}}
+model: {{model}}
+{{#if allowed_tools}}
+allowed-tools: {{allowed_tools}}
+{{/if}}
+{{#if expertise}}
+expertise:
+{{#each expertise}}
+  - {{this}}
+{{/each}}
+{{/if}}
+---
+
+# {{title}}
+
+{{description}}
+
+## Expertise
+
+{{#if expertise}}
+{{#each expertise}}
+- **{{this}}**
+{{/each}}
+{{else}}
+- Domain expertise goes here
+{{/if}}
+
+## Approach
+
+<!-- Describe your methodology and approach -->
+
+## Best Practices
+
+<!-- List best practices and guidelines -->
+
+## Common Patterns
+
+<!-- Document common patterns and solutions -->
+
+## References
+
+<!-- Add references and resources -->

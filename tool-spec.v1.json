@@ -1,0 +1,444 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentic-primitives.dev/schemas/tool-spec.v1.json",
+  "title": "Agentic Tool Specification",
+  "description": "Standard specification format for agentic tool primitives with auto-generated adapter support",
+  "type": "object",
+  "required": ["id", "version", "name", "description", "interface", "implementation"],
+  "additionalProperties": false,
+  
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this schema specification",
+      "const": "1.0.0"
+    },
+    
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this tool (kebab-case)",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 64,
+      "examples": ["firecrawl-scraper", "docker-isolation", "ast-parser"]
+    },
+    
+    "version": {
+      "type": "string",
+      "description": "Semantic version of this tool",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "examples": ["1.0.0", "2.1.3-beta.1", "0.1.0"]
+    },
+    
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this tool",
+      "minLength": 3,
+      "maxLength": 128,
+      "examples": ["Firecrawl Web Scraper", "Docker Isolation Runner"]
+    },
+    
+    "description": {
+      "type": "string",
+      "description": "Clear description of what this tool does",
+      "minLength": 10,
+      "maxLength": 500,
+      "examples": [
+        "Scrape web pages and convert to markdown using Firecrawl API",
+        "Run code in isolated Docker containers with resource limits"
+      ]
+    },
+    
+    "interface": {
+      "type": "object",
+      "description": "Framework-agnostic interface definition",
+      "required": ["function", "parameters", "returns"],
+      "additionalProperties": false,
+      "properties": {
+        "function": {
+          "type": "string",
+          "description": "Name of the entry point function",
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "examples": ["scrape", "run_isolated", "parse_ast"]
+        },
+        
+        "parameters": {
+          "type": "object",
+          "description": "Input parameters for the function",
+          "additionalProperties": {
+            "$ref": "#/definitions/parameter"
+          }
+        },
+        
+        "returns": {
+          "$ref": "#/definitions/return_type",
+          "description": "Return value schema"
+        }
+      }
+    },
+    
+    "implementation": {
+      "type": "object",
+      "description": "Implementation details and dependencies",
+      "required": ["language", "runtime", "entry_point", "function", "requires"],
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "type": "string",
+          "description": "Implementation language",
+          "enum": ["python", "rust", "typescript", "javascript", "bun", "go"],
+          "examples": ["python", "rust"]
+        },
+        
+        "runtime": {
+          "type": "string",
+          "description": "Runtime environment",
+          "enum": ["uv", "cargo", "bun", "node", "deno", "go"],
+          "examples": ["uv", "cargo"]
+        },
+        
+        "entry_point": {
+          "type": "string",
+          "description": "File containing the implementation",
+          "examples": ["impl.py", "main.rs", "index.ts"]
+        },
+        
+        "function": {
+          "type": "string",
+          "description": "Function name to call (should match interface.function)",
+          "pattern": "^[a-z_][a-z0-9_]*$"
+        },
+        
+        "requires": {
+          "type": "object",
+          "description": "Runtime and package dependencies",
+          "additionalProperties": false,
+          "properties": {
+            "python": {
+              "type": "string",
+              "description": "Python version requirement",
+              "pattern": "^>=?\\d+\\.\\d+(\\.\\d+)?$",
+              "examples": [">=3.11", ">=3.10.0"]
+            },
+            "rust": {
+              "type": "string",
+              "description": "Rust version requirement",
+              "pattern": "^>=?\\d+\\.\\d+(\\.\\d+)?$",
+              "examples": [">=1.75", ">=1.70.0"]
+            },
+            "node": {
+              "type": "string",
+              "description": "Node.js version requirement",
+              "pattern": "^>=?\\d+\\.\\d+(\\.\\d+)?$",
+              "examples": [">=18.0.0", ">=20.0"]
+            },
+            "packages": {
+              "type": "array",
+              "description": "Language-specific package dependencies",
+              "items": {
+                "type": "string",
+                "description": "Package requirement (name>=version format)",
+                "examples": ["fastmcp>=0.2.0", "pydantic>=2.0", "tokio>=1.0"]
+              },
+              "minItems": 0
+            }
+          }
+        }
+      }
+    },
+    
+    "execution": {
+      "type": "object",
+      "description": "Execution metadata and constraints",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_seconds": {
+          "type": "integer",
+          "description": "Maximum execution time in seconds",
+          "minimum": 1,
+          "maximum": 3600,
+          "default": 60,
+          "examples": [60, 120, 300]
+        },
+        
+        "requires_network": {
+          "type": "boolean",
+          "description": "Does this tool need network access?",
+          "default": false
+        },
+        
+        "requires_filesystem": {
+          "type": "boolean",
+          "description": "Does this tool need file I/O?",
+          "default": true
+        },
+        
+        "stateless": {
+          "type": "boolean",
+          "description": "Does this tool maintain no persistent state?",
+          "default": true
+        },
+        
+        "idempotent": {
+          "type": "boolean",
+          "description": "Does this tool produce the same output for the same input?",
+          "default": true
+        }
+      }
+    },
+    
+    "generators": {
+      "type": "object",
+      "description": "Hints for adapter generators",
+      "additionalProperties": false,
+      "properties": {
+        "mcp": {
+          "$ref": "#/definitions/mcp_generator_hints"
+        },
+        "langchain": {
+          "$ref": "#/definitions/langchain_generator_hints"
+        },
+        "openai": {
+          "$ref": "#/definitions/openai_generator_hints"
+        }
+      }
+    },
+    
+    "tags": {
+      "type": "array",
+      "description": "Tags for categorization and discovery",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$",
+        "minLength": 2,
+        "maxLength": 32
+      },
+      "uniqueItems": true,
+      "examples": [["web-scraping", "documentation"], ["docker", "isolation"]]
+    },
+    
+    "examples": {
+      "type": "array",
+      "description": "Usage examples",
+      "items": {
+        "type": "object",
+        "required": ["description", "input", "output"],
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "What this example demonstrates"
+          },
+          "input": {
+            "type": "object",
+            "description": "Example input parameters"
+          },
+          "output": {
+            "description": "Expected output"
+          }
+        }
+      }
+    },
+    
+    "author": {
+      "type": "object",
+      "description": "Tool author information",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Author name"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Author website or profile"
+        }
+      }
+    },
+    
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier",
+      "examples": ["Apache-2.0", "MIT", "GPL-3.0", "BSD-3-Clause"]
+    },
+    
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "Source code repository URL",
+      "examples": ["https://github.com/user/repo"]
+    },
+    
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "Documentation homepage URL"
+    }
+  },
+  
+  "definitions": {
+    "parameter": {
+      "type": "object",
+      "required": ["type", "required", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "integer", "boolean", "object", "array", "null"],
+          "description": "Parameter data type"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Is this parameter required?"
+        },
+        "description": {
+          "type": "string",
+          "description": "Parameter purpose and usage",
+          "minLength": 5
+        },
+        "default": {
+          "description": "Default value if not provided"
+        },
+        "enum": {
+          "type": "array",
+          "description": "Allowed values (for enumerated types)",
+          "minItems": 1
+        },
+        "minimum": {
+          "type": "number",
+          "description": "Minimum value (for numbers)"
+        },
+        "maximum": {
+          "type": "number",
+          "description": "Maximum value (for numbers)"
+        },
+        "minLength": {
+          "type": "integer",
+          "description": "Minimum length (for strings)",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "description": "Maximum length (for strings)",
+          "minimum": 1
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern (for strings)",
+          "format": "regex"
+        },
+        "items": {
+          "$ref": "#/definitions/parameter",
+          "description": "Array item schema (if type=array)"
+        },
+        "properties": {
+          "type": "object",
+          "description": "Object properties (if type=object)",
+          "additionalProperties": {
+            "$ref": "#/definitions/parameter"
+          }
+        }
+      }
+    },
+    
+    "return_type": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "integer", "boolean", "object", "array", "null", "void"],
+          "description": "Return value data type"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of return value"
+        },
+        "properties": {
+          "type": "object",
+          "description": "Object properties (if type=object)",
+          "additionalProperties": {
+            "$ref": "#/definitions/parameter"
+          }
+        },
+        "items": {
+          "$ref": "#/definitions/parameter",
+          "description": "Array item schema (if type=array)"
+        }
+      }
+    },
+    
+    "mcp_generator_hints": {
+      "type": "object",
+      "description": "FastMCP generator configuration",
+      "additionalProperties": false,
+      "properties": {
+        "framework": {
+          "type": "string",
+          "description": "MCP framework to use",
+          "const": "fastmcp"
+        },
+        "server_name": {
+          "type": "string",
+          "description": "MCP server name",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "transport": {
+          "type": "string",
+          "description": "Transport mechanism",
+          "enum": ["stdio", "http", "sse"],
+          "default": "stdio"
+        },
+        "context_retention": {
+          "type": "boolean",
+          "description": "Does this tool need stateful context?",
+          "default": false
+        }
+      }
+    },
+    
+    "langchain_generator_hints": {
+      "type": "object",
+      "description": "LangChain generator configuration",
+      "additionalProperties": false,
+      "properties": {
+        "tool_type": {
+          "type": "string",
+          "description": "LangChain tool class",
+          "enum": ["StructuredTool", "Tool", "BaseTool"],
+          "default": "StructuredTool"
+        },
+        "return_direct": {
+          "type": "boolean",
+          "description": "Should tool output go directly to user?",
+          "default": false
+        }
+      }
+    },
+    
+    "openai_generator_hints": {
+      "type": "object",
+      "description": "OpenAI function calling configuration",
+      "additionalProperties": false,
+      "properties": {
+        "function_name": {
+          "type": "string",
+          "description": "OpenAI function name (if different from tool id)",
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "strict": {
+          "type": "boolean",
+          "description": "Use strict schema validation mode?",
+          "default": true
+        }
+      }
+    }
+  }
+}
