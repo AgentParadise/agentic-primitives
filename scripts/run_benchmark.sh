@@ -8,7 +8,7 @@
 #
 # Requires: yq (brew install yq)
 #
-# See fixtures/benchmarks.yaml for available benchmarks
+# See providers/workspaces/claude-cli/fixtures/benchmarks.yaml for available benchmarks
 
 set -e
 
@@ -33,8 +33,8 @@ if [ -z "$BENCHMARK" ]; then
     exit 1
 fi
 
-# Check if benchmark exists
-if ! yq -e ".benchmarks.$BENCHMARK" "$BENCHMARKS_FILE" > /dev/null 2>&1; then
+# Check if benchmark exists (use bracket notation for hyphenated keys)
+if ! yq -e ".benchmarks[\"$BENCHMARK\"]" "$BENCHMARKS_FILE" > /dev/null 2>&1; then
     echo "Error: Benchmark '$BENCHMARK' not found"
     echo ""
     echo "Available benchmarks:"
@@ -42,10 +42,10 @@ if ! yq -e ".benchmarks.$BENCHMARK" "$BENCHMARKS_FILE" > /dev/null 2>&1; then
     exit 1
 fi
 
-# Extract benchmark details
-PROMPT=$(yq -r ".benchmarks.$BENCHMARK.prompt" "$BENCHMARKS_FILE")
-DESCRIPTION=$(yq -r ".benchmarks.$BENCHMARK.description" "$BENCHMARKS_FILE")
-EXPECTED_COST=$(yq -r ".benchmarks.$BENCHMARK.expected_cost" "$BENCHMARKS_FILE")
+# Extract benchmark details (use bracket notation for hyphenated keys)
+PROMPT=$(yq -r ".benchmarks[\"$BENCHMARK\"].prompt" "$BENCHMARKS_FILE")
+DESCRIPTION=$(yq -r ".benchmarks[\"$BENCHMARK\"].description" "$BENCHMARKS_FILE")
+EXPECTED_COST=$(yq -r ".benchmarks[\"$BENCHMARK\"].expected_cost" "$BENCHMARKS_FILE")
 
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║  Running Benchmark: $BENCHMARK"
