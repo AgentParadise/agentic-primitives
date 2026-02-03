@@ -109,17 +109,23 @@ class SessionOutputStream:
             # Store raw line
             self._raw_lines.append(line)
 
-            # Parse to event
-            event = self._parser.parse_line(line)
-            self._events.append(event)  # type: ignore
+            # Parse to events (may return multiple for assistant messages with tool_use)
+            events = self._parser.parse_line(line)
+            self._events.extend(events)
 
-            yield line, event
+            # Yield each event with the line (first event gets the line, rest get None indicator)
+            if events:
+                yield line, events[0]
+                for event in events[1:]:
+                    yield "", event  # Empty string indicates continuation event
+            else:
+                yield line, None
 
     async def events(self) -> AsyncIterator[ObservabilityEvent]:
         """Stream parsed observability events.
 
         Yields:
-            ObservabilityEvent for each parseable line
+            ObservabilityEvent for each parseable line (may yield multiple per line)
         """
         async for _, event in self.tee():
             if event is not None:
