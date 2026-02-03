@@ -42,6 +42,7 @@ def test_something(recording):
 | v2.0.74_claude-sonnet-4-5_multi-tool.jsonl | 2.0.74 | claude-sonnet-4-5 | 8 | 3.7s | Multiple tools in sequence |
 | v2.0.74_claude-sonnet-4-5_simple-question.jsonl | 2.0.74 | claude-sonnet-4-5 | 3 | <1s | Simple math (no tools) |
 | v2.0.74_claude-sonnet-4-5_list-files.jsonl | 2.0.74 | claude-sonnet-4-5 | 6 | 7.7s | List directory contents |
+| v2.1.29_claude-sonnet-4-5_context-tracking.jsonl | 2.1.29 | claude-sonnet-4-5 | 19 | ~30s | Context window tracking with modelUsage breakdown |
 
 ## Naming Convention
 
