@@ -74,6 +74,7 @@ class ObservabilityEvent:
     agent_name: str | None = None  # Subagent name from Task input
     subagent_tool_use_id: str | None = None  # The Task tool_use_id
     duration_ms: int | None = None  # Subagent execution duration
+    tools_used: dict[str, int] | None = None  # Tools used by subagent: {tool_name: count}
 
     # Token usage (set for token_usage events)
     tokens: TokenUsage | None = None
@@ -105,6 +106,8 @@ class ObservabilityEvent:
             result["subagent_tool_use_id"] = self.subagent_tool_use_id
         if self.duration_ms is not None:
             result["duration_ms"] = self.duration_ms
+        if self.tools_used:
+            result["tools_used"] = self.tools_used
         if self.tokens:
             result["tokens"] = {
                 "input": self.tokens.input_tokens,
