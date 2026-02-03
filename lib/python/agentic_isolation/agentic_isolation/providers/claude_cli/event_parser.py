@@ -372,6 +372,7 @@ class EventParser:
                         agent_name=subagent.name,
                         subagent_tool_use_id=tool_use_id,
                         duration_ms=duration_ms,
+                        tools_used=subagent.tools_used.copy() if subagent.tools_used else None,
                         parent_tool_use_id=parent_tool_use_id,
                     ))
                 else:
