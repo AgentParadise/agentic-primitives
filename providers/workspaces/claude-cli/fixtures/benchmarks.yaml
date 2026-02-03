@@ -56,15 +56,12 @@ benchmarks:
       - tool_calls
       - file_creation
 
-  # Context compaction - explicitly triggers /compact command
-  context-compaction:
-    description: "Explicitly triggers /compact command to capture compaction events"
+  # Multi-model usage - shows Sonnet + Haiku in modelUsage
+  # NOTE: /compact is an INTERACTIVE slash command - it does NOT work in print mode (-p)
+  # To capture actual compaction events, need interactive session or naturally hit 190K+ tokens
+  multi-model-usage:
+    description: "Multi-language task showing multi-model usage (Sonnet + Haiku)"
     prompt: |
-      I need you to help me with a multi-language implementation task.
-      IMPORTANT: After completing each PART, run the /compact command to compress
-      the conversation history before moving to the next part.
-
-      PART 1 - Python:
       Write a Python script (h2o_lightyear.py) to calculate how many H2O molecules
       are needed when stacked end-to-end to span one light year.
       - Water molecule diameter: 2.75 angstroms (2.75e-10 meters)
@@ -74,32 +71,14 @@ benchmarks:
       - Water density: 1 g/mL
       Calculate: molecules needed, moles, grams, liters of water.
       Save as h2o_lightyear.py and run it to verify the output.
-
-      After Python is complete and verified, run: /compact
-
-      PART 2 - TypeScript:
-      Write the exact same calculation in TypeScript (h2o_lightyear.ts).
-      Run it and compare outputs to Python.
-
-      After TypeScript is complete and verified, run: /compact
-
-      PART 3 - Rust:
-      Write the exact same calculation in Rust (h2o_lightyear.rs).
-      Compile and run it, compare to Python and TypeScript outputs.
-
-      After Rust is complete and verified, run: /compact
-
-      PART 4 - Summary:
-      Create a brief COMPARISON.md showing all three outputs match.
-    expected_events: 80
-    expected_cost: 0.20
+    expected_events: 16
+    expected_cost: 0.10
     triggers:
-      - context_compaction
-      - context_management_event
-      - context_window_growth
       - multi_model_usage
+      - context_window_growth
       - tool_calls
       - file_creation
+      - workspace_files
 
   # Multi-tool sequence
   multi-tool:
