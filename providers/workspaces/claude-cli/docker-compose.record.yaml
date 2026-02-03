@@ -53,46 +53,43 @@ services:
       - CAPTURE_WORKSPACE=${CAPTURE_WORKSPACE:-true}
     # Install docker CLI, wait for agent, capture logs + workspace
     command:
-      [
-        "sh",
-        "-c",
-        |
-          set -e
-          apk add --no-cache docker-cli > /dev/null 2>&1
+      - sh
+      - -c
+      - |
+        set -e
+        apk add --no-cache docker-cli > /dev/null 2>&1
 
-          RECORDING_DIR="/recordings/$${TASK}"
-          mkdir -p "$${RECORDING_DIR}"
+        RECORDING_DIR="/recordings/$${TASK}"
+        mkdir -p "$${RECORDING_DIR}"
 
-          echo "Waiting for agent to start..."
-          sleep 2
+        echo "Waiting for agent to start..."
+        sleep 2
 
-          echo "Capturing events to $${RECORDING_DIR}/events.jsonl..."
-          docker logs -f claude-cli-agent 2>&1 | uv run python /scripts/capture_recording.py \
-            --output "$${RECORDING_DIR}/events.jsonl" \
-            --cli-version "$${CLI_VERSION}" \
-            --model "claude-sonnet-4-5" \
-            --task "$${TASK}" \
-            --verbose
+        echo "Capturing events to $${RECORDING_DIR}/events.jsonl..."
+        docker logs -f claude-cli-agent 2>&1 | uv run python /scripts/capture_recording.py \
+          --output "$${RECORDING_DIR}/events.jsonl" \
+          --cli-version "$${CLI_VERSION}" \
+          --model "claude-sonnet-4-5" \
+          --task "$${TASK}" \
+          --verbose
 
-          # After agent completes, capture workspace files
-          if [ "$${CAPTURE_WORKSPACE}" = "true" ]; then
-            echo "Capturing workspace files..."
-            if [ -d /agent-workspace/artifacts/output ]; then
-              mkdir -p "$${RECORDING_DIR}/workspace"
-              cp -r /agent-workspace/artifacts "$${RECORDING_DIR}/workspace/"
-              echo "Captured workspace files:"
-              find "$${RECORDING_DIR}/workspace" -type f
-            else
-              echo "No artifacts/output directory found in workspace"
-            fi
+        # After agent completes, capture workspace files
+        if [ "$${CAPTURE_WORKSPACE}" = "true" ]; then
+          echo "Capturing workspace files..."
+          if [ -d /agent-workspace/artifacts/output ]; then
+            mkdir -p "$${RECORDING_DIR}/workspace"
+            cp -r /agent-workspace/artifacts "$${RECORDING_DIR}/workspace/"
+            echo "Captured workspace files:"
+            find "$${RECORDING_DIR}/workspace" -type f
+          else
+            echo "No artifacts/output directory found in workspace"
           fi
+        fi
 
-          echo "Recording complete: $${RECORDING_DIR}"
-      ]
+        echo "Recording complete: $${RECORDING_DIR}"
 
 volumes:
   agent-workspace:
-
 # Alternative: Simple one-shot recording without workspace capture
 # Just pipe the output:
 #
