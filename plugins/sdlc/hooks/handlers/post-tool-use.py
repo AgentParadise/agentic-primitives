@@ -39,21 +39,21 @@ def _get_emitter(session_id: str | None = None):
         return None
 
 
-def extract_output_preview(tool_result: Any, max_length: int = 500) -> str:
+def extract_output_preview(tool_response: Any, max_length: int = 500) -> str:
     """Extract a preview of the tool output for logging."""
-    if tool_result is None:
+    if tool_response is None:
         return ""
 
-    if isinstance(tool_result, str):
-        output = tool_result
-    elif isinstance(tool_result, dict):
+    if isinstance(tool_response, str):
+        output = tool_response
+    elif isinstance(tool_response, dict):
         # Try common output fields
         result = (
-            tool_result.get("output") or tool_result.get("stdout") or str(tool_result)
+            tool_response.get("output") or tool_response.get("stdout") or str(tool_response)
         )
         output = str(result)
     else:
-        output = str(tool_result)
+        output = str(tool_response)
 
     if len(output) > max_length:
         return output[:max_length] + "..."
@@ -69,24 +69,23 @@ def main() -> None:
             input_data = sys.stdin.read()
 
         if not input_data:
-            print(json.dumps({"decision": "allow"}))
             return
 
         event = json.loads(input_data)
 
         # Extract fields
         tool_name = event.get("tool_name", "")
-        tool_result = event.get("tool_result", {})
+        tool_response = event.get("tool_response", {})
         session_id = event.get("session_id")
         tool_use_id = event.get("tool_use_id", "unknown")
 
         # Determine success/failure
         is_error = False
         error_msg = None
-        if isinstance(tool_result, dict):
-            is_error = tool_result.get("is_error", False) or "error" in tool_result
+        if isinstance(tool_response, dict):
+            is_error = tool_response.get("is_error", False) or "error" in tool_response
             if is_error:
-                error_msg = str(tool_result.get("error", "Tool execution failed"))
+                error_msg = str(tool_response.get("error", "Tool execution failed"))
 
         # Get emitter and emit tool completed event
         emitter = _get_emitter(session_id)
@@ -95,16 +94,14 @@ def main() -> None:
                 tool_name=tool_name,
                 tool_use_id=tool_use_id,
                 success=not is_error,
-                output_preview=extract_output_preview(tool_result),
+                output_preview=extract_output_preview(tool_response),
                 error=error_msg,
             )
 
         # Always allow (post-execution)
-        print(json.dumps({"decision": "allow"}))
 
     except Exception as e:
         # Fail open
-        print(json.dumps({"decision": "allow", "error": str(e)}))
 
 
 if __name__ == "__main__":

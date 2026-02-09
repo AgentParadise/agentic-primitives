@@ -1,49 +1,67 @@
 {
-  "hooks": [
-    {
-      "type": "PreToolUse",
-      "handler": "handlers/pre-tool-use.py",
-      "description": "Routes tool validation to atomic validators (bash, file, PII)"
-    },
-    {
-      "type": "PostToolUse",
-      "handler": "handlers/post-tool-use.py",
-      "description": "Logs tool execution results for analytics"
-    },
-    {
-      "type": "Notification",
-      "handler": "handlers/notification.py",
-      "description": "Logs system notifications"
-    },
-    {
-      "type": "PreCompact",
-      "handler": "handlers/pre-compact.py",
-      "description": "Logs context window compaction events"
-    },
-    {
-      "type": "SessionStart",
-      "handler": "handlers/session-start.py",
-      "description": "Logs session start events"
-    },
-    {
-      "type": "SessionEnd",
-      "handler": "handlers/session-end.py",
-      "description": "Logs session end events"
-    },
-    {
-      "type": "Stop",
-      "handler": "handlers/stop.py",
-      "description": "Logs agent stop events"
-    },
-    {
-      "type": "SubagentStop",
-      "handler": "handlers/subagent-stop.py",
-      "description": "Logs subagent stop events"
-    },
-    {
-      "type": "UserPromptSubmit",
-      "handler": "handlers/user-prompt.py",
-      "description": "Logs user prompt submissions"
-    }
-  ]
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/pre-tool-use.py"
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/post-tool-use.py"
+      }]
+    }],
+    "Notification": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/notification.py"
+      }]
+    }],
+    "SessionStart": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/session-start.py"
+      }]
+    }],
+    "SessionEnd": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/session-end.py"
+      }]
+    }],
+    "PreCompact": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/pre-compact.py"
+      }]
+    }],
+    "Stop": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/stop.py"
+      }]
+    }],
+    "SubagentStop": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/subagent-stop.py"
+      }]
+    }],
+    "UserPromptSubmit": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/user-prompt.py"
+      }]
+    }]
+  }
 }

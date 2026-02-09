@@ -85,10 +85,11 @@ Bad examples:
 ### 5. Stage Changes
 
 ```bash
-# If nothing staged, stage all changes
+# If nothing staged, selectively stage tracked file changes
 if [ -z "$(git diff --cached --name-only)" ]; then
-  echo "=== Staging All Changes ==="
-  git add -A
+  echo "=== Staging Changes ==="
+  # Use git add -u for tracked files, or explicitly add specific paths
+  git add -u
   git status --short
 fi
 ```
