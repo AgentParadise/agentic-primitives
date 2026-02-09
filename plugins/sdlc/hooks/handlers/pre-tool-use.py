@@ -104,7 +104,7 @@ def main() -> None:
             input_data = sys.stdin.read()
 
         if not input_data:
-            print(json.dumps({"decision": "allow"}))
+            print(json.dumps({"hookSpecificOutput": {"permissionDecision": "allow"}}))
             return
 
         event = json.loads(input_data)
@@ -145,15 +145,16 @@ def main() -> None:
             )
 
         # Output response
-        response: dict[str, Any] = {"decision": decision}
-        if result.get("reason"):
-            response["reason"] = result["reason"]
+        if decision == "block":
+            response = {"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": result.get("reason", "Blocked by validator")}}
+        else:
+            response = {"hookSpecificOutput": {"permissionDecision": "allow"}}
 
         print(json.dumps(response))
 
     except Exception as e:
         # Fail open - allow on error
-        print(json.dumps({"decision": "allow", "error": str(e)}))
+        print(json.dumps({"hookSpecificOutput": {"permissionDecision": "allow"}}))
 
 
 if __name__ == "__main__":

@@ -30,24 +30,24 @@ On Windows, these hooks require **Git Bash** (included with Git for Windows) to 
 cd /path/to/your/repo
 
 # Run the installer (Python 3.8+ required)
-python /path/to/primitives/v1/hooks/git/install.py
+python /path/to/plugins/sdlc/hooks/git/install.py
 ```
 
 ### Global (All Repositories)
 
 ```bash
 # Install globally
-python /path/to/primitives/v1/hooks/git/install.py --global
+python /path/to/plugins/sdlc/hooks/git/install.py --global
 ```
 
 ### Uninstall
 
 ```bash
 # Remove from current repo
-python /path/to/primitives/v1/hooks/git/install.py --uninstall
+python /path/to/plugins/sdlc/hooks/git/install.py --uninstall
 
 # Remove global hooks
-python /path/to/primitives/v1/hooks/git/install.py --global --uninstall
+python /path/to/plugins/sdlc/hooks/git/install.py --global --uninstall
 ```
 
 ### Windows

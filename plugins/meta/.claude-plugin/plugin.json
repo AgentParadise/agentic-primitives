@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Primitive generators — tools that create commands, skills, prompts, and other agentic primitives",
   "author": {
-    "name": "NeuralE"
+    "name": "NeuralEmpowerment"
   },
   "repository": "https://github.com/AgentParadise/agentic-primitives"
 }
