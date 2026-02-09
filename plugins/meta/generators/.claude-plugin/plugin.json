@@ -1,0 +1,9 @@
+{
+  "name": "meta-generators",
+  "version": "1.0.0",
+  "description": "Meta-primitives for generating commands, prompts, and documentation",
+  "author": {
+    "name": "NeuralE"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}

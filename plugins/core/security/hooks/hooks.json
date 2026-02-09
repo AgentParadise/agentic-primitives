@@ -1,0 +1,49 @@
+{
+  "hooks": [
+    {
+      "type": "PreToolUse",
+      "handler": "handlers/pre-tool-use.py",
+      "description": "Routes tool validation to atomic validators (bash, file, PII)"
+    },
+    {
+      "type": "PostToolUse",
+      "handler": "handlers/post-tool-use.py",
+      "description": "Logs tool execution results for analytics"
+    },
+    {
+      "type": "Notification",
+      "handler": "handlers/notification.py",
+      "description": "Logs system notifications"
+    },
+    {
+      "type": "PreCompact",
+      "handler": "handlers/pre-compact.py",
+      "description": "Logs context window compaction events"
+    },
+    {
+      "type": "SessionStart",
+      "handler": "handlers/session-start.py",
+      "description": "Logs session start events"
+    },
+    {
+      "type": "SessionEnd",
+      "handler": "handlers/session-end.py",
+      "description": "Logs session end events"
+    },
+    {
+      "type": "Stop",
+      "handler": "handlers/stop.py",
+      "description": "Logs agent stop events"
+    },
+    {
+      "type": "SubagentStop",
+      "handler": "handlers/subagent-stop.py",
+      "description": "Logs subagent stop events"
+    },
+    {
+      "type": "UserPromptSubmit",
+      "handler": "handlers/user-prompt.py",
+      "description": "Logs user prompt submissions"
+    }
+  ]
+}

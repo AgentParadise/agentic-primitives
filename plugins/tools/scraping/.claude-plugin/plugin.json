@@ -1,0 +1,9 @@
+{
+  "name": "tools-scraping",
+  "version": "1.0.0",
+  "description": "Web scraping tools using Firecrawl API",
+  "author": {
+    "name": "NeuralE"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}
