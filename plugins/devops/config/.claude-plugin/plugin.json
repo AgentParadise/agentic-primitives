@@ -1,9 +1,0 @@
-{
-  "name": "devops-config",
-  "version": "1.0.0",
-  "description": "Centralized configuration management with type-safe environment variables",
-  "author": {
-    "name": "NeuralE"
-  },
-  "repository": "https://github.com/AgentParadise/agentic-primitives"
-}

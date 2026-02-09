@@ -1,9 +1,0 @@
-{
-  "name": "qa-quality",
-  "version": "1.0.0",
-  "description": "Quality assurance primitives for pre-commit checks and QA setup",
-  "author": {
-    "name": "NeuralE"
-  },
-  "repository": "https://github.com/AgentParadise/agentic-primitives"
-}

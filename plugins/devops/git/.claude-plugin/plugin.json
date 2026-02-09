@@ -1,9 +1,0 @@
-{
-  "name": "devops-git",
-  "version": "1.0.0",
-  "description": "Git workflow automation for commits, merges, pushes, and reviews",
-  "author": {
-    "name": "NeuralE"
-  },
-  "repository": "https://github.com/AgentParadise/agentic-primitives"
-}

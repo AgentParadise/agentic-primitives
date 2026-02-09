@@ -1,0 +1,9 @@
+{
+  "name": "sdlc",
+  "version": "1.0.0",
+  "description": "Software Development Lifecycle — commit, review, QA, testing, security hooks, git hooks, and infrastructure configuration for Claude Code agents",
+  "author": {
+    "name": "NeuralE"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}
