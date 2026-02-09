@@ -1,9 +1,0 @@
-{
-  "name": "review-prioritize",
-  "version": "1.0.0",
-  "description": "Review comment prioritization by severity",
-  "author": {
-    "name": "NeuralE"
-  },
-  "repository": "https://github.com/AgentParadise/agentic-primitives"
-}

@@ -1,0 +1,9 @@
+{
+  "name": "research",
+  "version": "1.0.0",
+  "description": "Information gathering — web scraping, documentation extraction, and research tools",
+  "author": {
+    "name": "NeuralE"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}

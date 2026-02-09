@@ -1,9 +1,0 @@
-{
-  "name": "docs-scraper",
-  "version": "1.0.0",
-  "description": "Documentation scraping with semantic versioning",
-  "author": {
-    "name": "NeuralE"
-  },
-  "repository": "https://github.com/AgentParadise/agentic-primitives"
-}
