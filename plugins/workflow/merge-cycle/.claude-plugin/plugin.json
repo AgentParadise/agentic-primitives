@@ -1,0 +1,9 @@
+{
+  "name": "workflow-merge-cycle",
+  "version": "1.0.0",
+  "description": "Full merge cycle orchestrator with QA, CI, and review gates",
+  "author": {
+    "name": "NeuralE"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}

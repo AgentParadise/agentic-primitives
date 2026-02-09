@@ -1,0 +1,9 @@
+{
+  "name": "core-security",
+  "version": "1.0.0",
+  "description": "Security hooks, validators, and git observability for Claude Code agents",
+  "author": {
+    "name": "NeuralE"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}
