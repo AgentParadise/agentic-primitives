@@ -40,9 +40,8 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.uv.sources]
-agentic-adapters = { path = "../lib/python/agentic_adapters", editable = true }
-agentic-isolation = { path = "../lib/python/agentic_isolation", editable = true }
-agentic-security = { path = "../lib/python/agentic_security", editable = true }
+agentic-isolation = { path = "../packages/isolation", editable = true }
+agentic-security = { path = "../packages/security", editable = true }
 
 [tool.ruff]
 line-length = 100
