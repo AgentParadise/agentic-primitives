@@ -11,104 +11,7 @@ concurrency:
   group: qa-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-
 jobs:
-  #############################################################################
-  # RUST JOBS - Optimized for speed with sccache
-  #############################################################################
-
-  rust-checks:
-    name: Rust Checks (format + lint + typecheck)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Just
-        uses: extractions/setup-just@v3
-        with:
-          just-version: "1.37.0"
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: cli -> target
-          cache-on-failure: true
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Check formatting
-        run: just rust-fmt-check
-
-      - name: Run clippy
-        run: just rust-lint
-
-      - name: Run cargo check
-        run: just rust-check
-
-  rust-test:
-    name: Rust Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Just
-        uses: extractions/setup-just@v3
-        with:
-          just-version: "1.37.0"
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: cli -> target
-          cache-on-failure: true
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Run tests
-        run: just rust-test
-
-  # Windows/macOS tests - only on PRs to main or manual trigger
-  rust-test-platforms:
-    name: Rust Tests (${{ matrix.os }})
-    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Just
-        uses: extractions/setup-just@v3
-        with:
-          just-version: "1.37.0"
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: cli -> target
-          cache-on-failure: true
-
-      - name: Run tests
-        run: just rust-test
-
   #############################################################################
   # PYTHON JOBS - Matrix strategy for all packages
   #############################################################################
@@ -120,39 +23,34 @@ jobs:
       fail-fast: false
       matrix:
         package:
-          - name: "Adapters"
-            path: "lib/python/agentic_adapters"
-            python: "3.11"
-            pytest-args: "-x -q"
-
           - name: "Events"
-            path: "lib/python/agentic_events"
+            path: "packages/events"
             python: "3.11"
             pytest-args: "-x -q"
 
           - name: "Isolation"
-            path: "lib/python/agentic_isolation"
+            path: "packages/isolation"
             python: "3.11"
             pytest-args: "-x -q --ignore=tests/integration"
 
           - name: "Logging"
-            path: "lib/python/agentic_logging"
+            path: "packages/logging"
             python: "3.11"
             pytest-args: "-x -q --cov-fail-under=90"
             typecheck: true
 
           - name: "Security"
-            path: "lib/python/agentic_security"
+            path: "packages/security"
             python: "3.11"
             pytest-args: "-x -q"
 
           - name: "Settings"
-            path: "lib/python/agentic_settings"
+            path: "packages/settings"
             python: "3.11"
             pytest-args: "-x -q"
 
           - name: "Workspace"
-            path: "lib/python/agentic_workspace"
+            path: "packages/workspace"
             python: "3.11"
             pytest-args: "-x -q"
 
@@ -226,7 +124,7 @@ jobs:
           uv run pytest -x -q
 
   #############################################################################
-  # VALIDATION JOB - Validates primitives repository
+  # VALIDATION JOB - Validates plugin schemas
   #############################################################################
 
   validate-primitives:
@@ -235,25 +133,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Just
-        uses: extractions/setup-just@v3
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          just-version: "1.37.0"
+          python-version: "3.12"
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: cli -> target
-          cache-on-failure: true
-
-      - name: Validate primitives
+      - name: Validate plugin schemas
         run: |
-          echo "⚠️  Validation temporarily disabled - transitional CLI doesn't support V1 primitives"
-          echo "Use cli/v1 for V1 validation or cli/v2 for V2 validation"
-          exit 0
+          if [ -f "scripts/validate_plugins.py" ]; then
+            uv run python scripts/validate_plugins.py
+          else
+            echo "Plugin validation script not yet available, skipping"
+            exit 0
+          fi
 
   #############################################################################
   # SUMMARY JOB - Required status check for PRs
@@ -263,8 +158,6 @@ jobs:
     name: QA Success
     if: always()
     needs:
-      - rust-checks
-      - rust-test
       - python-packages
       - python-hooks
       - validate-primitives
@@ -273,26 +166,22 @@ jobs:
       - name: Check all jobs
         run: |
           # Check for failures
-          if [[ "${{ needs.rust-checks.result }}" == "failure" ]] || \
-             [[ "${{ needs.rust-test.result }}" == "failure" ]] || \
-             [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
+          if [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
              [[ "${{ needs.validate-primitives.result }}" == "failure" ]]; then
-            echo "❌ QA checks failed"
+            echo "QA checks failed"
             exit 1
           fi
 
           # Check for cancellations
-          if [[ "${{ needs.rust-checks.result }}" == "cancelled" ]] || \
-             [[ "${{ needs.rust-test.result }}" == "cancelled" ]] || \
-             [[ "${{ needs.python-packages.result }}" == "cancelled" ]] || \
+          if [[ "${{ needs.python-packages.result }}" == "cancelled" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
              [[ "${{ needs.validate-primitives.result }}" == "cancelled" ]]; then
-            echo "⚠️ QA checks were cancelled"
+            echo "QA checks were cancelled"
             exit 1
           fi
 
-          echo "✅ All QA checks passed!"
+          echo "All QA checks passed!"
 
       - name: Write summary
         run: |
@@ -300,8 +189,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Rust Checks | ${{ needs.rust-checks.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Rust Tests | ${{ needs.rust-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Packages | ${{ needs.python-packages.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Validate Primitives | ${{ needs.validate-primitives.result }} |" >> $GITHUB_STEP_SUMMARY
