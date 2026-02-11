@@ -77,6 +77,7 @@ class SessionOutputStream:
         # Buffer for replay if needed
         self._raw_lines: list[str] = []
         self._events: list[ObservabilityEvent] = []
+        self._replay_buffer: list[tuple[str, ObservabilityEvent | None]] = []
 
         # State
         self._consumed = False
@@ -97,10 +98,9 @@ class SessionOutputStream:
             Tuple of (raw_line, parsed_event_or_none)
         """
         if self._consumed:
-            # Replay from buffer
-            for i, line in enumerate(self._raw_lines):
-                event = self._events[i] if i < len(self._events) else None
-                yield line, event
+            # Replay from buffer (preserves multi-event-per-line structure)
+            for item in self._replay_buffer:
+                yield item
             return
 
         self._consumed = True
@@ -115,11 +115,17 @@ class SessionOutputStream:
 
             # Yield each event with the line (first event gets the line, rest get None indicator)
             if events:
-                yield line, events[0]
+                pair = (line, events[0])
+                self._replay_buffer.append(pair)
+                yield pair
                 for event in events[1:]:
-                    yield "", event  # Empty string indicates continuation event
+                    pair = ("", event)  # Empty string indicates continuation event
+                    self._replay_buffer.append(pair)
+                    yield pair
             else:
-                yield line, None
+                pair = (line, None)
+                self._replay_buffer.append(pair)
+                yield pair
 
     async def events(self) -> AsyncIterator[ObservabilityEvent]:
         """Stream parsed observability events.

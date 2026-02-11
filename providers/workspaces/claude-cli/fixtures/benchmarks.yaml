@@ -117,7 +117,7 @@ benchmarks:
 version: 1
 last_updated: "2026-02-03"
 notes: |
-  Context compaction requires ~190K+ tokens to trigger.
+  Context compaction requires ~190K+ tokens to trigger naturally.
   This typically means a very long session or analyzing a large codebase.
-  The "context-compaction" benchmark may not always trigger compaction
-  depending on Claude's context window size at the time.
+  The "context-window-growth" benchmark may trigger compaction if the
+  multi-language task generates enough tokens.

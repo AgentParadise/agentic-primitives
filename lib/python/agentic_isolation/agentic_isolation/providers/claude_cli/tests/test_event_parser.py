@@ -156,7 +156,8 @@ class TestEventParser:
 
         # Assistant message with BOTH tool_use content AND usage data
         line = """{"type": "assistant", "message": {
-            "content": [{"type": "tool_use", "id": "toolu_xyz", "name": "Bash", "input": {"cmd": "ls"}}],
+            "content": [{"type": "tool_use", "id": "toolu_xyz",
+                "name": "Bash", "input": {"cmd": "ls"}}],
             "usage": {"input_tokens": 100, "output_tokens": 50}
         }}"""
         events = parser.parse_line(line)

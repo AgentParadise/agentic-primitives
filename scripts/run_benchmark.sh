@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Run a benchmark recording
 #
 # Usage:
 #   ./scripts/run_benchmark.sh <benchmark-name>
 #   ./scripts/run_benchmark.sh context-window-growth
-#   ./scripts/run_benchmark.sh context-compaction
+#   ./scripts/run_benchmark.sh multi-model-usage
 #
 # Requires: yq (brew install yq)
 #
@@ -43,7 +43,7 @@ if ! yq -e ".benchmarks[\"$BENCHMARK\"]" "$BENCHMARKS_FILE" > /dev/null 2>&1; th
 fi
 
 # Extract benchmark details (use bracket notation for hyphenated keys)
-PROMPT=$(yq -r ".benchmarks[\"$BENCHMARK\"].prompt" "$BENCHMARKS_FILE")
+PROMPT="$(yq -r ".benchmarks[\"$BENCHMARK\"].prompt" "$BENCHMARKS_FILE")"
 DESCRIPTION=$(yq -r ".benchmarks[\"$BENCHMARK\"].description" "$BENCHMARKS_FILE")
 EXPECTED_COST=$(yq -r ".benchmarks[\"$BENCHMARK\"].expected_cost" "$BENCHMARKS_FILE")
 

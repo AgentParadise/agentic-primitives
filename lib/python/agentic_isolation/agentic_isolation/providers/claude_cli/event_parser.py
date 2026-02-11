@@ -252,14 +252,16 @@ class EventParser:
             )
             self._total_tokens = self._total_tokens + tokens
 
-            events.append(ObservabilityEvent(
-                event_type=EventType.TOKEN_USAGE,
-                session_id=self.session_id,
-                timestamp=timestamp,
-                raw_event=raw,
-                tokens=tokens,
-                parent_tool_use_id=parent_tool_use_id,
-            ))
+            events.append(
+                ObservabilityEvent(
+                    event_type=EventType.TOKEN_USAGE,
+                    session_id=self.session_id,
+                    timestamp=timestamp,
+                    raw_event=raw,
+                    tokens=tokens,
+                    parent_tool_use_id=parent_tool_use_id,
+                )
+            )
 
         # Then handle tool_use items
         for item in content:
@@ -295,30 +297,34 @@ class EventParser:
 
                     logger.debug("Subagent started: %s (%s)", subagent_name, tool_use_id)
 
-                    events.append(ObservabilityEvent(
-                        event_type=EventType.SUBAGENT_STARTED,
-                        session_id=self.session_id,
-                        timestamp=timestamp,
-                        raw_event=raw,
-                        tool_name=tool_name,
-                        tool_use_id=tool_use_id,
-                        tool_input=tool_input,
-                        agent_name=subagent_name,
-                        subagent_tool_use_id=tool_use_id,
-                        parent_tool_use_id=parent_tool_use_id,
-                    ))
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.SUBAGENT_STARTED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            tool_input=tool_input,
+                            agent_name=subagent_name,
+                            subagent_tool_use_id=tool_use_id,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
+                    )
                 else:
                     # Regular tool execution
-                    events.append(ObservabilityEvent(
-                        event_type=EventType.TOOL_EXECUTION_STARTED,
-                        session_id=self.session_id,
-                        timestamp=timestamp,
-                        raw_event=raw,
-                        tool_name=tool_name,
-                        tool_use_id=tool_use_id,
-                        tool_input=tool_input,
-                        parent_tool_use_id=parent_tool_use_id,
-                    ))
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.TOOL_EXECUTION_STARTED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            tool_input=tool_input,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
+                    )
 
         return events
 
@@ -361,32 +367,36 @@ class EventParser:
                         duration_ms,
                     )
 
-                    events.append(ObservabilityEvent(
-                        event_type=EventType.SUBAGENT_STOPPED,
-                        session_id=self.session_id,
-                        timestamp=timestamp,
-                        raw_event=raw,
-                        tool_name=tool_name,
-                        tool_use_id=tool_use_id,
-                        success=not is_error,
-                        agent_name=subagent.name,
-                        subagent_tool_use_id=tool_use_id,
-                        duration_ms=duration_ms,
-                        tools_used=subagent.tools_used.copy() if subagent.tools_used else None,
-                        parent_tool_use_id=parent_tool_use_id,
-                    ))
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.SUBAGENT_STOPPED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            success=not is_error,
+                            agent_name=subagent.name,
+                            subagent_tool_use_id=tool_use_id,
+                            duration_ms=duration_ms,
+                            tools_used=subagent.tools_used.copy() if subagent.tools_used else None,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
+                    )
                 else:
                     # Regular tool completion
-                    events.append(ObservabilityEvent(
-                        event_type=EventType.TOOL_EXECUTION_COMPLETED,
-                        session_id=self.session_id,
-                        timestamp=timestamp,
-                        raw_event=raw,
-                        tool_name=tool_name,
-                        tool_use_id=tool_use_id,
-                        success=not is_error,
-                        parent_tool_use_id=parent_tool_use_id,
-                    ))
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.TOOL_EXECUTION_COMPLETED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            success=not is_error,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
+                    )
 
         return events
 
