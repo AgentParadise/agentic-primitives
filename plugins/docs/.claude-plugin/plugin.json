@@ -1,0 +1,9 @@
+{
+  "name": "docs",
+  "version": "1.0.0",
+  "description": "Documentation tools — Fumadocs integration and documentation management",
+  "author": {
+    "name": "NeuralEmpowerment"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}

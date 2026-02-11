@@ -115,6 +115,60 @@ agentic-p validate
 agentic-p inspect python/python-pro
 ```
 
+### Install Plugins
+
+Plugins are installed via the Claude Code plugin marketplace. Each plugin can be installed independently.
+
+```bash
+# Add the marketplace (one-time setup)
+/plugin marketplace add AgentParadise/agentic-primitives
+
+# Install individual plugins
+/plugin install sdlc@agentic-primitives        # Commit, review, QA, security hooks, git hooks
+/plugin install workspace@agentic-primitives    # Session lifecycle & observability hooks
+/plugin install meta@agentic-primitives         # Primitive generators (create commands, skills)
+/plugin install research@agentic-primitives     # Doc scraping & web research tools
+/plugin install docs@agentic-primitives         # Fumadocs integration
+```
+
+#### Available Plugins
+
+| Plugin | What it provides | Primitives |
+|--------|-----------------|------------|
+| **sdlc** | Software Development Lifecycle | 5 commands (`push`, `merge`, `review`, `fetch`, `merge-cycle`), 7 skills (`commit`, `review`, `pre-commit-qa`, `qa-setup`, `testing-expert`, `prioritize`, `centralized-configuration`), security hooks & validators, git hooks |
+| **workspace** | Observable agent workspaces | 8 hooks (`SessionStart`, `SessionEnd`, `PostToolUse`, `PreCompact`, `Notification`, `Stop`, `SubagentStop`, `UserPromptSubmit`) |
+| **meta** | Primitive generators | 3 commands (`create-command`, `create-prime`, `create-doc-sync`) |
+| **research** | Information gathering | 1 command (`doc-scraper`), 1 tool (`firecrawl`) |
+| **docs** | Documentation tools | 1 skill (`fuma`) |
+
+#### SDLC Git Hooks (Optional)
+
+The `sdlc` plugin includes git hooks for commit/push observability. After installing the plugin, enable them with:
+
+```bash
+# Install for current repo
+python plugins/sdlc/hooks/git/install.py
+
+# Or install globally
+python plugins/sdlc/hooks/git/install.py --global
+```
+
+#### Python Libraries
+
+Plugins depend on shared Python libraries from `lib/python/`. These are installed automatically as dependencies but can also be used standalone:
+
+| Package | Description |
+|---------|-------------|
+| `agentic_events` | Structured JSONL event emitter |
+| `agentic_security` | Declarative security policies (bash, file, content) |
+| `agentic_settings` | Settings discovery and configuration |
+| `agentic_logging` | Structured logging utilities |
+| `agentic_adapters` | Claude CLI runner and hook generator |
+| `agentic_isolation` | Docker/local workspace isolation |
+| `agentic_workspace` | Workspace management |
+
+---
+
 ### Configure Per-Project (Optional)
 
 ```bash

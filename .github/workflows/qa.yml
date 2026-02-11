@@ -216,8 +216,8 @@ jobs:
       - name: Check Hook Files
         run: |
           uv tool install ruff
-          uv tool run ruff format --check primitives/v1/hooks/**/*.py || true
-          uv tool run ruff check primitives/v1/hooks/**/*.py || true
+          uv tool run ruff format --check plugins/sdlc/hooks/**/*.py plugins/workspace/hooks/handlers/*.py
+          uv tool run ruff check plugins/sdlc/hooks/**/*.py plugins/workspace/hooks/handlers/*.py
 
       - name: Run Unit Tests
         working-directory: ./tests/unit/claude/hooks
