@@ -62,8 +62,7 @@ class EventParser:
         parser = EventParser(session_id="session-123")
 
         for line in jsonl_lines:
-            event = parser.parse_line(line)
-            if event:
+            for event in parser.parse_line(line):
                 yield event
 
         summary = parser.get_summary()
@@ -118,24 +117,29 @@ class EventParser:
         self._base_time = base_time
         logger.debug("Base time set to: %s", base_time.isoformat())
 
-    def parse_line(self, line: str) -> ObservabilityEvent | None:
-        """Parse a single JSONL line into an ObservabilityEvent.
+    def parse_line(self, line: str) -> list[ObservabilityEvent]:
+        """Parse a single JSONL line into ObservabilityEvents.
+
+        A single Claude CLI event may produce multiple ObservabilityEvents.
+        For example, an assistant message with tool_use produces both:
+        - TOKEN_USAGE (from message.usage)
+        - TOOL_EXECUTION_STARTED (from tool_use content)
 
         Args:
             line: Raw JSONL line from Claude CLI
 
         Returns:
-            ObservabilityEvent if parseable, None otherwise
+            List of ObservabilityEvents (may be empty)
         """
         line = line.strip()
         if not line:
-            return None
+            return []
 
         try:
             raw = json.loads(line)
         except json.JSONDecodeError:
             logger.debug("Non-JSON line: %s", line[:50])
-            return None
+            return []
 
         # Handle recording metadata - extract base time and skip
         if "_recording" in raw:
@@ -146,7 +150,7 @@ class EventParser:
                     self.set_base_time(datetime.fromisoformat(recorded_at))
                 except ValueError:
                     logger.warning("Invalid recorded_at timestamp: %s", recorded_at)
-            return None
+            return []
 
         event_type = raw.get("type", "")
         timestamp = self._parse_timestamp(raw)
@@ -155,16 +159,18 @@ class EventParser:
 
         # Handle different event types
         if event_type == "system":
-            return self._handle_system(raw, timestamp)
+            event = self._handle_system(raw, timestamp)
+            return [event] if event else []
         elif event_type == "assistant":
             return self._handle_assistant(raw, timestamp)
         elif event_type == "user":
             return self._handle_user(raw, timestamp)
         elif event_type == "result":
-            return self._handle_result(raw, timestamp)
+            event = self._handle_result(raw, timestamp)
+            return [event] if event else []
         else:
             # Unknown type - skip
-            return None
+            return []
 
     def _parse_timestamp(self, raw: dict[str, Any]) -> datetime:
         """Extract timestamp from event.
@@ -216,18 +222,48 @@ class EventParser:
 
     def _handle_assistant(
         self, raw: dict[str, Any], timestamp: datetime
-    ) -> ObservabilityEvent | None:
+    ) -> list[ObservabilityEvent]:
         """Handle assistant message events.
 
         These contain tool_use items that we need to cache for later enrichment.
         Also detects Task tool usage for subagent tracking.
+
+        IMPORTANT: Assistant messages may contain BOTH:
+        - message.usage (token counts for this turn)
+        - message.content with tool_use items
+
+        We emit separate events for each to ensure token tracking is complete.
         """
+        events: list[ObservabilityEvent] = []
         message = raw.get("message", {})
         content = message.get("content", [])
 
         # Check for parent_tool_use_id (indicates this is from a subagent)
         parent_tool_use_id = raw.get("parent_tool_use_id")
 
+        # ALWAYS extract token usage first (even if there are tool_use items)
+        usage = message.get("usage", {})
+        if usage:
+            tokens = TokenUsage(
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+                cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+            )
+            self._total_tokens = self._total_tokens + tokens
+
+            events.append(
+                ObservabilityEvent(
+                    event_type=EventType.TOKEN_USAGE,
+                    session_id=self.session_id,
+                    timestamp=timestamp,
+                    raw_event=raw,
+                    tokens=tokens,
+                    parent_tool_use_id=parent_tool_use_id,
+                )
+            )
+
+        # Then handle tool_use items
         for item in content:
             if not isinstance(item, dict):
                 continue
@@ -261,59 +297,44 @@ class EventParser:
 
                     logger.debug("Subagent started: %s (%s)", subagent_name, tool_use_id)
 
-                    return ObservabilityEvent(
-                        event_type=EventType.SUBAGENT_STARTED,
-                        session_id=self.session_id,
-                        timestamp=timestamp,
-                        raw_event=raw,
-                        tool_name=tool_name,
-                        tool_use_id=tool_use_id,
-                        tool_input=tool_input,
-                        agent_name=subagent_name,
-                        subagent_tool_use_id=tool_use_id,
-                        parent_tool_use_id=parent_tool_use_id,
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.SUBAGENT_STARTED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            tool_input=tool_input,
+                            agent_name=subagent_name,
+                            subagent_tool_use_id=tool_use_id,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
+                    )
+                else:
+                    # Regular tool execution
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.TOOL_EXECUTION_STARTED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            tool_input=tool_input,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
                     )
 
-                # Regular tool execution
-                return ObservabilityEvent(
-                    event_type=EventType.TOOL_EXECUTION_STARTED,
-                    session_id=self.session_id,
-                    timestamp=timestamp,
-                    raw_event=raw,
-                    tool_name=tool_name,
-                    tool_use_id=tool_use_id,
-                    tool_input=tool_input,
-                    parent_tool_use_id=parent_tool_use_id,
-                )
+        return events
 
-        # Text-only assistant message - extract tokens if available
-        usage = message.get("usage", {})
-        if usage:
-            tokens = TokenUsage(
-                input_tokens=usage.get("input_tokens", 0),
-                output_tokens=usage.get("output_tokens", 0),
-                cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
-                cache_read_tokens=usage.get("cache_read_input_tokens", 0),
-            )
-            self._total_tokens = self._total_tokens + tokens
-
-            return ObservabilityEvent(
-                event_type=EventType.TOKEN_USAGE,
-                session_id=self.session_id,
-                timestamp=timestamp,
-                raw_event=raw,
-                tokens=tokens,
-                parent_tool_use_id=parent_tool_use_id,
-            )
-
-        return None
-
-    def _handle_user(self, raw: dict[str, Any], timestamp: datetime) -> ObservabilityEvent | None:
+    def _handle_user(self, raw: dict[str, Any], timestamp: datetime) -> list[ObservabilityEvent]:
         """Handle user message events (contains tool_result).
 
         Enriches tool_result with tool_name from cache.
         Detects Task tool_result as subagent completion.
         """
+        events: list[ObservabilityEvent] = []
         message = raw.get("message", {})
         content = message.get("content", [])
 
@@ -346,33 +367,38 @@ class EventParser:
                         duration_ms,
                     )
 
-                    return ObservabilityEvent(
-                        event_type=EventType.SUBAGENT_STOPPED,
-                        session_id=self.session_id,
-                        timestamp=timestamp,
-                        raw_event=raw,
-                        tool_name=tool_name,
-                        tool_use_id=tool_use_id,
-                        success=not is_error,
-                        agent_name=subagent.name,
-                        subagent_tool_use_id=tool_use_id,
-                        duration_ms=duration_ms,
-                        parent_tool_use_id=parent_tool_use_id,
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.SUBAGENT_STOPPED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            success=not is_error,
+                            agent_name=subagent.name,
+                            subagent_tool_use_id=tool_use_id,
+                            duration_ms=duration_ms,
+                            tools_used=subagent.tools_used.copy() if subagent.tools_used else None,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
+                    )
+                else:
+                    # Regular tool completion
+                    events.append(
+                        ObservabilityEvent(
+                            event_type=EventType.TOOL_EXECUTION_COMPLETED,
+                            session_id=self.session_id,
+                            timestamp=timestamp,
+                            raw_event=raw,
+                            tool_name=tool_name,
+                            tool_use_id=tool_use_id,
+                            success=not is_error,
+                            parent_tool_use_id=parent_tool_use_id,
+                        )
                     )
 
-                # Regular tool completion
-                return ObservabilityEvent(
-                    event_type=EventType.TOOL_EXECUTION_COMPLETED,
-                    session_id=self.session_id,
-                    timestamp=timestamp,
-                    raw_event=raw,
-                    tool_name=tool_name,
-                    tool_use_id=tool_use_id,
-                    success=not is_error,
-                    parent_tool_use_id=parent_tool_use_id,
-                )
-
-        return None
+        return events
 
     def _handle_result(self, raw: dict[str, Any], timestamp: datetime) -> ObservabilityEvent:
         """Handle result events (session completion).

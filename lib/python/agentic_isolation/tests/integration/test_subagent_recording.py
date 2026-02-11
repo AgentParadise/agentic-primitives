@@ -42,8 +42,8 @@ class TestSubagentRecording:
 
         with RECORDING_PATH.open() as f:
             for line in f:
-                event = parser.parse_line(line)
-                if event:
+                events = parser.parse_line(line)
+                for event in events:
                     if event.event_type == EventType.SUBAGENT_STARTED:
                         started_count += 1
                     elif event.event_type == EventType.SUBAGENT_STOPPED:
@@ -108,9 +108,10 @@ class TestSubagentRecording:
 
         with RECORDING_PATH.open() as f:
             for line in f:
-                event = parser.parse_line(line)
-                if event and event.event_type == EventType.SUBAGENT_STOPPED:
-                    stopped_events.append(event)
+                events = parser.parse_line(line)
+                for event in events:
+                    if event.event_type == EventType.SUBAGENT_STOPPED:
+                        stopped_events.append(event)
 
         assert len(stopped_events) == 2
 
@@ -123,15 +124,14 @@ class TestSubagentRecording:
         """Should correctly parse full session: start → subagents → complete."""
         parser = EventParser("integration-test")
 
-        events = []
+        all_events = []
         with RECORDING_PATH.open() as f:
             for line in f:
-                event = parser.parse_line(line)
-                if event:
-                    events.append(event)
+                events = parser.parse_line(line)
+                all_events.extend(events)
 
         # Check event sequence
-        event_types = [e.event_type for e in events]
+        event_types = [e.event_type for e in all_events]
 
         # Should start with session_started
         assert EventType.SESSION_STARTED in event_types
