@@ -1,0 +1,123 @@
+# Benchmark prompts for recording agent sessions
+#
+# Usage:
+#   # Run a specific benchmark
+#   ./scripts/run_benchmark.sh context-window-growth
+#
+#   # Or manually:
+#   cd providers/workspaces/claude-cli
+#   TASK="context-window-growth" \
+#   PROMPT="$(yq '.benchmarks["context-window-growth"].prompt' fixtures/benchmarks.yaml)" \
+#   docker compose -f docker-compose.record.yaml up
+#
+# Each benchmark defines:
+#   - prompt: The task prompt for Claude
+#   - description: What this benchmark tests
+#   - expected_events: Approximate event count (for validation)
+#   - expected_cost: Approximate cost in USD (for budgeting)
+#   - triggers: What behaviors this should demonstrate
+#
+# See ADR-030: Session Recording for Testing
+
+benchmarks:
+  # Simple baseline - math without tools
+  simple-math:
+    description: "Simple calculation, no tool use"
+    prompt: "What is 2+2? Just answer with the number."
+    expected_events: 3
+    expected_cost: 0.001
+    triggers:
+      - assistant_response
+
+  # Context window growth - multi-language implementation
+  context-window-growth:
+    description: "Multi-language task showing context window growth over turns"
+    prompt: |
+      Write a Python script to calculate how many H2O molecules are needed when
+      stacked end-to-end to span exactly one light year. Include:
+      1. The diameter of a water molecule (use 2.75 angstroms)
+      2. Convert light year to meters
+      3. Calculate the number of molecules
+      4. Also calculate how many liters of water this represents
+      5. Verify your math step by step
+      6. Save as h2o_lightyear.py and run it to verify
+
+      After the Python script works, write the exact same calculation in TypeScript
+      (h2o_lightyear.ts) and run it.
+
+      Then write the exact same calculation in Rust (h2o_lightyear.rs), compile and run it.
+
+      Finally, compare all three outputs to ensure they match.
+    expected_events: 50
+    expected_cost: 0.15
+    triggers:
+      - context_window_growth
+      - multi_model_usage
+      - tool_calls
+      - file_creation
+
+  # Multi-model usage - shows Sonnet + Haiku in modelUsage
+  # NOTE: /compact is an INTERACTIVE slash command - it does NOT work in print mode (-p)
+  # To capture actual compaction events, need interactive session or naturally hit 190K+ tokens
+  multi-model-usage:
+    description: "Multi-language task showing multi-model usage (Sonnet + Haiku)"
+    prompt: |
+      Write a Python script (h2o_lightyear.py) to calculate how many H2O molecules
+      are needed when stacked end-to-end to span one light year.
+      - Water molecule diameter: 2.75 angstroms (2.75e-10 meters)
+      - Light year: 9.461e15 meters
+      - Avogadro's number: 6.022e23
+      - Water molecular weight: 18.015 g/mol
+      - Water density: 1 g/mL
+      Calculate: molecules needed, moles, grams, liters of water.
+      Save as h2o_lightyear.py and run it to verify the output.
+    expected_events: 16
+    expected_cost: 0.10
+    triggers:
+      - multi_model_usage
+      - context_window_growth
+      - tool_calls
+      - file_creation
+      - workspace_files
+
+  # Multi-tool sequence
+  multi-tool:
+    description: "Multiple tool calls in sequence"
+    prompt: |
+      1. List all files in the current directory
+      2. Create a file called test.py with a simple hello world
+      3. Read the file back
+      4. Run the file
+      5. Delete the file
+    expected_events: 15
+    expected_cost: 0.02
+    triggers:
+      - tool_calls
+      - file_creation
+      - file_read
+      - bash_execution
+
+  # Subagent spawning
+  subagent-demo:
+    description: "Task that spawns subagents"
+    prompt: |
+      I need you to analyze a codebase. Use subagents to parallelize the work:
+      1. One subagent should find all Python files
+      2. Another subagent should count lines of code
+      3. A third subagent should look for TODO comments
+      Combine the results into a summary.
+    expected_events: 30
+    expected_cost: 0.10
+    triggers:
+      - subagent_spawn
+      - multi_model_usage
+      - tool_calls
+
+# Metadata
+version: 1
+last_updated: "2026-02-03"
+notes: |
+  Context compaction requires ~190K+ tokens to trigger naturally.
+  This typically means a very long session or analyzing a large codebase.
+  The "context-window-growth" benchmark may trigger compaction if the
+  multi-language task generates enough tokens.
