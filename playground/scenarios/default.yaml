@@ -14,7 +14,7 @@ headless:
 
 isolation:
   provider: docker
-  image: agentic-workspace:latest
+  image: agentic-workspace-claude-cli:latest
   timeout: 300
   memory_mb: 2048
   cpu_cores: 2.0
