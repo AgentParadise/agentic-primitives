@@ -49,7 +49,9 @@ def extract_output_preview(tool_response: Any, max_length: int = 500) -> str:
     elif isinstance(tool_response, dict):
         # Try common output fields
         result = (
-            tool_response.get("output") or tool_response.get("stdout") or str(tool_response)
+            tool_response.get("output")
+            or tool_response.get("stdout")
+            or str(tool_response)
         )
         output = str(result)
     else:
@@ -100,8 +102,8 @@ def main() -> None:
 
         # Always allow (post-execution)
 
-    except Exception as e:
-        # Fail open
+    except Exception:
+        pass  # Fail open
 
 
 if __name__ == "__main__":

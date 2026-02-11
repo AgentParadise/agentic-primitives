@@ -17,7 +17,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 # === VALIDATOR COMPOSITION ===
 # Map tool names to validator modules
@@ -145,12 +144,18 @@ def main() -> None:
 
         # Only output when blocking - no output means allow
         if decision == "block":
-            print(json.dumps({
-                "hookSpecificOutput": {
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": result.get("reason", "Blocked by security validator"),
-                }
-            }))
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": result.get(
+                                "reason", "Blocked by security validator"
+                            ),
+                        }
+                    }
+                )
+            )
 
     except Exception:
         pass  # Fail open - no output means allow

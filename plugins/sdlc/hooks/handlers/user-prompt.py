@@ -13,7 +13,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 # === VALIDATOR COMPOSITION ===
 # Validators to run on user prompts
@@ -122,10 +121,14 @@ def main() -> None:
 
         # Only output when blocking - no output means allow
         if decision == "block":
-            print(json.dumps({
-                "decision": "block",
-                "reason": result.get("reason", "Blocked by prompt validator"),
-            }))
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": result.get("reason", "Blocked by prompt validator"),
+                    }
+                )
+            )
 
     except Exception:
         pass  # Fail open - no output means allow
