@@ -122,8 +122,13 @@ docs/_reference/agentic-tools/
 docs/_reference/tac-12_multi-agent-orchestration/
 docs/_reference/*.md
 
-# Temporary planning files
+# Planning & Research files (generally local only)
 PROJECT-PLAN_*.md
+**/RESEARCH*.md
+
+# Explicitly UNIGNORE these for Claude Code context
+!PROJECT-PLAN_20260130_v2-restructure.md
+!docs/specs/RESEARCH-v2-restructure.md
 
 # Cursor config
 .cursorignore

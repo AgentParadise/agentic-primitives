@@ -6,8 +6,13 @@ requires-python = ">=3.11"
 dependencies = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-cov>=6.0.0",
     "pydantic>=2.0.0",
+    "agentic-events",
 ]
+
+[tool.uv.sources]
+agentic-events = { path = "../../../../lib/python/agentic_events" }
 
 [tool.pytest.ini_options]
 testpaths = ["."]
@@ -24,4 +29,13 @@ markers = [
     "integration: Integration tests",
 ]
 
+[tool.coverage.run]
+branch = true
 
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "except ImportError",
+]

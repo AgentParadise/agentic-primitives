@@ -1,0 +1,32 @@
+#!/bin/bash
+# Pre-push hook - emit push_started event
+#
+# Args: $1=remote_name, $2=remote_url
+#
+# This hook is called before a push operation. It tracks push attempts
+# for observability. Always exits 0 to allow the push.
+
+REMOTE_NAME="$1"
+REMOTE_URL="$2"
+
+ANALYTICS_PATH="${ANALYTICS_PATH:-.agentic/analytics/events.jsonl}"
+mkdir -p "$(dirname "$ANALYTICS_PATH")"
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SESSION_ID="${CLAUDE_SESSION_ID:-${AEF_SESSION_ID:-unknown}}"
+
+# Count commits being pushed (approximate)
+UPSTREAM=$(git rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || echo "")
+if [[ -n "$UPSTREAM" ]]; then
+  COMMITS_TO_PUSH=$(git log --oneline "$UPSTREAM..HEAD" 2>/dev/null | wc -l | tr -d ' ')
+else
+  # For new branches without upstream, count all commits on the branch
+  COMMITS_TO_PUSH=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+fi
+COMMITS_TO_PUSH="${COMMITS_TO_PUSH:-0}"
+
+# Emit JSONL event
+echo "{\"timestamp\":\"$TIMESTAMP\",\"event_type\":\"git_push_started\",\"session_id\":\"$SESSION_ID\",\"remote\":\"$REMOTE_NAME\",\"branch\":\"$BRANCH\",\"commits_to_push\":$COMMITS_TO_PUSH}" >> "$ANALYTICS_PATH"
+
+exit 0  # Always allow push
