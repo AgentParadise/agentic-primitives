@@ -1,5 +1,5 @@
 ---
-description: Generate a new command - auto-detects library vs repo context
+description: Generate a new command for the current repo
 argument-hint: <description> [category] [id]
 model: opus
 allowed-tools: Read, Write, Bash, Glob, Grep
@@ -7,13 +7,11 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 
 # Create Command
 
-Generate a new command primitive with proper structure. Auto-detects whether to create a library primitive or a repo-specific command.
+Generate a new Claude Code command with proper structure for the current repository.
 
 ## Purpose
 
-Create a spec-compliant command that either:
-- **Library Mode**: Adds to `primitives/v1/commands/` (when in agentic-primitives repo)
-- **Consumer Mode**: Creates `.claude/commands/` file (when in any other repo)
+Create a spec-compliant command in `.claude/commands/` that is specific to the current repo's conventions, paths, and tooling.
 
 ## Variables
 
@@ -54,66 +52,11 @@ Commands should be **token-efficient**:
 4. **Smart context loading** - Only read files when necessary
 5. **Summarize large outputs** - Truncate or summarize verbose results
 
-Example of progressive summarization:
-```
-Phase 1: Quick scan → summary only
-Phase 2: If issues found → load detailed context
-Phase 3: If complex → read specific files
-```
+## Workflow
 
-## Phase 0: Context Detection
-
-First, detect which mode to use:
+### Phase 1: Analyze Repo Context
 
 ```bash
-echo "=== Context Detection ==="
-
-# Check for library structure
-if [ -d "primitives/v1" ] && [ -f "primitives.config.yaml" ]; then
-  echo "MODE: library"
-  echo "  → Detected agentic-primitives repository"
-  echo "  → Output: primitives/v1/commands/{category}/{id}/"
-elif [ -d "primitives/v1" ]; then
-  echo "MODE: library"
-  echo "  → Detected primitives structure"
-  echo "  → Output: primitives/v1/commands/{category}/{id}/"
-else
-  echo "MODE: consumer"
-  echo "  → Detected consumer repository"
-  echo "  → Output: .claude/commands/{id}.md"
-fi
-```
-
-## Phase 1: Analyze Existing Commands
-
-Learn from existing commands for style consistency.
-
-### If Library Mode
-
-```bash
-echo ""
-echo "=== Analyzing Existing Library Commands ==="
-
-# List existing categories
-echo "Categories:"
-ls -d primitives/v1/commands/*/ 2>/dev/null | xargs -n1 basename
-
-# Find example commands to learn from
-echo ""
-echo "Example commands:"
-find primitives/v1/commands -name "*.prompt.v1.md" | head -5
-```
-
-Read 1-2 existing commands to match their style:
-- Look at section ordering
-- Note the verbosity level
-- Observe workflow step format
-- Check report structure
-
-### If Consumer Mode
-
-```bash
-echo ""
 echo "=== Analyzing Repo Context ==="
 
 # Check for existing commands
@@ -135,7 +78,9 @@ echo "Key files:"
 ls README.md AGENTS.md CLAUDE.md pyproject.toml package.json Cargo.toml justfile 2>/dev/null
 ```
 
-## Phase 2: Derive Metadata
+Read 1-2 existing commands (if any) to match their style.
+
+### Phase 2: Derive Metadata
 
 From the DESCRIPTION, derive:
 
@@ -162,107 +107,9 @@ From the DESCRIPTION, derive:
 
 4. **Title**: Title Case from ID
 
-## Phase 3: Generate Command
+### Phase 3: Generate Command
 
-### Library Mode Output
-
-Create TWO files in `primitives/v1/commands/{category}/{id}/`:
-
-**File 1: `{id}.yaml`**
-
-```yaml
-id: {id}
-kind: command
-category: {category}
-domain: {domain}
-summary: "{one-line summary}"
-tags:
-  - {category}
-
-defaults:
-  preferred_models:
-    - claude/sonnet
-
-context_usage:
-  as_user: true
-
-tools:
-  - {Tool1}
-  - {Tool2}
-
-versions:
-  - version: 1
-    file: {id}.prompt.v1.md
-    hash: "blake3:{calculated}"
-    status: active
-    created: "{YYYY-MM-DD}"
-    notes: "Initial version"
-
-default_version: 1
-```
-
-**File 2: `{id}.prompt.v1.md`**
-
-```markdown
----
-description: {short description}
-argument-hint: [{args}]
-model: sonnet
-allowed-tools: {tools}
----
-
-# {Title}
-
-{One sentence explaining what this command does.}
-
-## Purpose
-
-{Direct statement. Be specific and actionable.}
-
-## Variables
-
-{VAR}: $ARGUMENTS    # Description
-
-## Workflow
-
-### Phase 1: {Name}
-
-{Brief description}
-
-```bash
-# Commands
-```
-
-### Phase 2: {Name}
-
-1. **{Step}** - {Action}
-2. **{Step}** - {Action}
-
-## Report
-
-## {Title} Results
-
-**Status:** ✅ Complete / ❌ Issues Found
-
-### Summary
-{Key outcomes}
-
-### Next Steps
-{What to do next}
-
-## Examples
-
-### Basic usage
-```
-/{id}
-```
-```
-
-### Consumer Mode Output
-
-Create ONE file: `.claude/commands/{id}.md`
-
-This file should be **repo-specific** - reference actual paths and patterns from THIS repository.
+Create `.claude/commands/{id}.md` — the command should be **repo-specific**, referencing actual paths and patterns from the current repository.
 
 ```markdown
 ---
@@ -278,7 +125,7 @@ allowed-tools: {tools}
 
 ## Purpose
 
-{What this does FOR THIS SPECIFIC REPO.}
+{What this does for this specific repo.}
 
 ## Variables
 
@@ -295,27 +142,7 @@ allowed-tools: {tools}
 {Output format for this repo}
 ```
 
-## Phase 4: Create Files
-
-### Library Mode
-
-```bash
-mkdir -p primitives/v1/commands/{category}/{id}
-
-# Write files
-cat > primitives/v1/commands/{category}/{id}/{id}.yaml << 'EOF'
-{yaml content}
-EOF
-
-cat > primitives/v1/commands/{category}/{id}/{id}.prompt.v1.md << 'EOF'
-{prompt content}
-EOF
-
-echo "Created:"
-ls -la primitives/v1/commands/{category}/{id}/
-```
-
-### Consumer Mode
+### Phase 4: Create File
 
 ```bash
 mkdir -p .claude/commands
@@ -327,19 +154,7 @@ EOF
 echo "Created: .claude/commands/{id}.md"
 ```
 
-## Phase 5: Validation
-
-### Library Mode
-
-```bash
-if command -v agentic-p &> /dev/null; then
-  agentic-p validate primitives/v1/commands/{category}/{id}/
-else
-  echo "Manual validation required"
-fi
-```
-
-### Consumer Mode
+### Phase 5: Validation
 
 ```bash
 head -10 .claude/commands/{id}.md
@@ -351,24 +166,20 @@ grep -E "^## (Purpose|Workflow|Report)" .claude/commands/{id}.md
 Before finalizing:
 
 - [ ] ID is kebab-case
-- [ ] ID matches folder/filename
+- [ ] ID matches filename
 - [ ] Has Purpose, Workflow, Report sections
 - [ ] Tools in metadata match frontmatter
 - [ ] Workflow has actionable steps
+- [ ] Content references actual repo paths/conventions
 - [ ] Content is token-efficient (no filler)
 
 ## Report
 
 ## Command Generated
 
-**Mode:** {library | consumer}
 **ID:** {id}
 **Category:** {category}
-**Location:** {path}
-
-| File | Purpose |
-|------|---------|
-| {path1} | {desc} |
+**Location:** `.claude/commands/{id}.md`
 
 ### Next Steps
 

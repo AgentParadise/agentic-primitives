@@ -56,7 +56,7 @@ The installer is cross-platform and works on Windows, macOS, and Linux:
 
 ```powershell
 # PowerShell
-python C:\path\to\primitives\v1\hooks\git\install.py
+python C:\path\to\plugins\sdlc\hooks\git\install.py
 ```
 
 ## Hooks Included
