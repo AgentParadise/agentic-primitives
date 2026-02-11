@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 
 use crate::spec_version::SpecVersion;
 use crate::templates::render::TemplateRenderer;
-use crate::validators::{validate_primitive_with_layers, ValidationLayers};
+// V2: Use simple frontmatter validation instead of layers
+// use crate::validators::{validate_command_frontmatter, validate_skill_frontmatter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimitiveType {
@@ -115,18 +116,10 @@ pub fn new_primitive(args: NewPrimitiveArgs) -> Result<()> {
         PrimitiveType::Hook => create_hook_primitive(&output_path, &args)?,
     }
 
-    // 6. Run structural validation (skip full validation for experimental)
-    if !args.experimental {
-        let report = validate_primitive_with_layers(
-            args.spec_version,
-            &output_path,
-            ValidationLayers::Structural,
-        )?;
-
-        if !report.is_valid() {
-            anyhow::bail!("Created primitive failed validation: {:?}", report.errors);
-        }
-    }
+    // 6. Validation (V2: TODO - implement after milestone 1.5.2)
+    // if !args.experimental {
+    //     // TODO: Add v2 validation after primitive creation
+    // }
 
     // 7. Print success message
     print_success_message(&output_path, &args)?;

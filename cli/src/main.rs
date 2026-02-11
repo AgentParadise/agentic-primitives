@@ -3,12 +3,14 @@ use agentic_primitives::commands::config_cmd::ConfigCommand;
 use agentic_primitives::commands::inspect::{InspectArgs, OutputFormat as InspectFormat};
 use agentic_primitives::commands::list::{ListArgs, OutputFormat as ListFormat};
 use agentic_primitives::commands::migrate::MigrateArgs;
-use agentic_primitives::commands::new::{NewPrimitiveArgs, PrimitiveType, PromptKind};
+use agentic_primitives::commands::new::{PrimitiveType, PromptKind};
+use agentic_primitives::commands::new_v2::NewCommandArgs;
 use agentic_primitives::commands::validate::ValidateArgs;
 use agentic_primitives::commands::version::VersionCommand;
 use agentic_primitives::config::PrimitivesConfig;
 use agentic_primitives::spec_version::SpecVersion;
-use agentic_primitives::validators::ValidationLayers;
+// V2: Old validation system not used
+// use agentic_primitives::validators::ValidationLayers;
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use std::path::PathBuf;
@@ -35,40 +37,11 @@ enum Commands {
         path: PathBuf,
     },
 
-    /// Create a new primitive
-    New {
-        /// Primitive type: prompt, tool, hook
-        #[arg(value_enum)]
-        prim_type: PrimType,
+    /// Create a new V2 primitive
+    New(NewCommandArgs),
 
-        /// Category (kebab-case)
-        category: String,
-
-        /// Primitive ID (kebab-case)
-        id: String,
-
-        /// Prompt kind (required for prompts: agent, command, skill, meta-prompt)
-        #[arg(short, long, value_enum)]
-        kind: Option<PrimKind>,
-
-        /// Output to experimental directory
-        #[arg(long)]
-        experimental: bool,
-    },
-
-    /// Validate primitives
-    Validate {
-        /// Path to primitive or directory
-        path: PathBuf,
-
-        /// Validation layer to run
-        #[arg(long, value_enum, default_value = "all")]
-        layer: ValidationLayer,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
+    /// Validate v2 primitives against schemas
+    Validate(ValidateArgs),
 
     /// List primitives with filtering
     List {
@@ -152,6 +125,10 @@ enum Commands {
         /// Only include primitives matching patterns (comma-separated globs, e.g., "qa/*,devops/commit")
         #[arg(long)]
         only: Option<String>,
+
+        /// Primitives version to build (v1 or v2)
+        #[arg(long, default_value = "v1")]
+        primitives_version: String,
 
         /// Clean output directory before build
         #[arg(long)]
@@ -262,16 +239,17 @@ enum ValidationLayer {
     Semantic,
 }
 
-impl From<ValidationLayer> for ValidationLayers {
-    fn from(val: ValidationLayer) -> Self {
-        match val {
-            ValidationLayer::All => ValidationLayers::All,
-            ValidationLayer::Structural => ValidationLayers::Structural,
-            ValidationLayer::Schema => ValidationLayers::Schema,
-            ValidationLayer::Semantic => ValidationLayers::Semantic,
-        }
-    }
-}
+// V2: Old validation system not used
+// impl From<ValidationLayer> for ValidationLayers {
+//     fn from(val: ValidationLayer) -> Self {
+//         match val {
+//             ValidationLayer::All => ValidationLayers::All,
+//             ValidationLayer::Structural => ValidationLayers::Structural,
+//             ValidationLayer::Schema => ValidationLayers::Schema,
+//             ValidationLayer::Semantic => ValidationLayers::Semantic,
+//         }
+//     }
+// }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum ListOutputFormat {
@@ -310,8 +288,8 @@ impl From<InspectOutputFormat> for InspectFormat {
 fn main() {
     let cli = Cli::parse();
 
-    // Parse spec version
-    let spec_version: SpecVersion = match cli.spec_version.parse() {
+    // Parse spec version (V2 CLI ignores this, but kept for compatibility)
+    let _spec_version: SpecVersion = match cli.spec_version.parse() {
         Ok(v) => v,
         Err(e) => {
             eprintln!("{} {}", "Error:".red(), e);
@@ -329,32 +307,10 @@ fn main() {
     let result = match cli.command {
         Commands::Init { path } => commands::init::init(&path),
 
-        Commands::New {
-            prim_type,
-            category,
-            id,
-            kind,
-            experimental,
-        } => {
-            let args = NewPrimitiveArgs {
-                prim_type: prim_type.into(),
-                category,
-                id,
-                kind: kind.map(|k| k.into()),
-                spec_version,
-                experimental,
-            };
-            commands::new::new_primitive(args)
-        }
+        Commands::New(args) => commands::new_v2::execute(args),
 
-        Commands::Validate { path, layer, json } => {
-            let args = ValidateArgs {
-                path,
-                spec_version: Some(spec_version),
-                layer: layer.into(),
-                json,
-            };
-            commands::validate::validate(args)
+        Commands::Validate(args) => {
+            commands::validate::execute(args)
         }
 
         Commands::List {
@@ -404,6 +360,7 @@ fn main() {
             type_filter,
             kind,
             only,
+            primitives_version,
             clean,
             verbose,
         } => {
@@ -416,6 +373,7 @@ fn main() {
                 only,
                 clean,
                 verbose,
+                primitives_version: Some(primitives_version),
             };
             commands::build::execute(&args, &config)
         }
