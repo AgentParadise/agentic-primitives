@@ -5,13 +5,13 @@ UserPromptSubmit Handler - Validates user prompts before submission.
 This handler:
 1. Receives UserPromptSubmit events from Claude
 2. Runs prompt validators (PII detection, etc.)
-3. Returns allow/block decision
+3. Emits events to stderr (captured by agent runner)
+4. Returns allow/block decision
 """
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,22 +21,31 @@ PROMPT_VALIDATORS: list[str] = [
     "prompt.pii",
 ]
 
+# === EVENT EMITTER (lazy initialized) ===
+_emitter = None
 
-# === INLINE ANALYTICS ===
-def log_analytics(event: dict[str, Any]) -> None:
-    """Log to analytics file. Fail-safe - never blocks."""
+
+def _get_emitter(session_id: str | None = None):
+    """Get event emitter, creating if needed.
+
+    Events are emitted to STDERR so they don't interfere with the
+    hook decision output (which goes to STDOUT for Claude CLI).
+    """
+    global _emitter
+    if _emitter is not None:
+        return _emitter
+
     try:
-        path = Path(os.getenv("ANALYTICS_PATH", ".agentic/analytics/events.jsonl"))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
-            f.write(
-                json.dumps(
-                    {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
-                )
-                + "\n"
-            )
-    except Exception:
-        pass  # Never block on analytics failure
+        from agentic_events import EventEmitter
+
+        _emitter = EventEmitter(
+            session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
+            provider="claude",
+            output=sys.stderr,  # Events to stderr, decision to stdout
+        )
+        return _emitter
+    except ImportError:
+        return None
 
 
 def load_validator(validator_name: str, validators_dir: Path):
@@ -74,18 +83,6 @@ def run_validators(prompt: str, context: dict) -> dict:
     return {"safe": True, "reason": None, "validators_run": validators_run}
 
 
-def extract_audit_context(event: dict[str, Any]) -> dict[str, Any]:
-    """Extract audit trail fields from Claude Code event."""
-    audit: dict[str, Any] = {}
-    if event.get("transcript_path"):
-        audit["transcript_path"] = event["transcript_path"]
-    if event.get("cwd"):
-        audit["cwd"] = event["cwd"]
-    if event.get("permission_mode"):
-        audit["permission_mode"] = event["permission_mode"]
-    return audit
-
-
 def main() -> None:
     """Main entry point."""
     try:
@@ -95,51 +92,43 @@ def main() -> None:
             input_data = sys.stdin.read()
 
         if not input_data:
-            print(json.dumps({"decision": "allow"}))
-            return
+            return  # No output = allow
 
         event = json.loads(input_data)
 
         # Extract prompt - could be in different fields
         prompt = event.get("prompt", event.get("message", event.get("content", "")))
+        session_id = event.get("session_id")
         context = {
-            "session_id": event.get("session_id"),
+            "session_id": session_id,
             "hook_event_name": event.get("hook_event_name", "UserPromptSubmit"),
         }
 
-        # Extract audit context for traceability
-        audit = extract_audit_context(event)
+        # Get emitter
+        emitter = _get_emitter(session_id)
 
         # Run validators
         result = run_validators(prompt, context)
         decision = "block" if not result.get("safe", True) else "allow"
 
-        # Log to analytics with audit trail
-        analytics_event = {
-            "event_type": "hook_decision",
-            "handler": "user-prompt",
-            "hook_event": context.get("hook_event_name"),  # Claude's hook event type
-            "decision": decision,
-            "reason": result.get("reason"),
-            "session_id": context.get("session_id"),
-            "validators_run": result.get("validators_run", []),
-            "prompt_length": len(prompt) if prompt else 0,
-            "prompt_preview": prompt[:100] if prompt else None,  # First 100 chars
-        }
-        if audit:
-            analytics_event["audit"] = audit
-        log_analytics(analytics_event)
+        # Emit security decision
+        if emitter:
+            emitter.security_decision(
+                tool_name="UserPromptSubmit",
+                decision=decision,
+                reason=result.get("reason", ""),
+                validators=result.get("validators_run", []),
+            )
 
-        # Output response
-        response: dict[str, Any] = {"decision": decision}
-        if result.get("reason"):
-            response["reason"] = result["reason"]
+        # Only output when blocking - no output means allow
+        if decision == "block":
+            print(json.dumps({
+                "decision": "block",
+                "reason": result.get("reason", "Blocked by prompt validator"),
+            }))
 
-        print(json.dumps(response))
-
-    except Exception as e:
-        # Fail open - allow on error
-        print(json.dumps({"decision": "allow", "error": str(e)}))
+    except Exception:
+        pass  # Fail open - no output means allow
 
 
 if __name__ == "__main__":
