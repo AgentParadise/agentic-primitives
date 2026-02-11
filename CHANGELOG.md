@@ -7,47 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [2.0.0] - 2026-02-11
 
-### 🎯 Agentic Prompts & Smart Sync
+### 🏗️ Plugin-First Architecture & Packages Restructure
 
-Major additions for prompt primitives and improved install workflow.
+Breaking restructure: plugins are the primary distribution format, Python packages
+consolidated under `packages/`, Rust CLI archived.
 
 ### Added
 
-- **Prompt primitives**: New prompt types with full taxonomy
-  - `commands/` - Task execution prompts (e.g., `/review`, `/pre-commit-qa`, `/qa-setup`)
-  - `meta-prompts/` - Prompt generators (e.g., `/create-prime`, `/create-doc-sync`, `/prompt-generator`)
-  - `agents/` and `skills/` - Directory structure for future expansion
+- **Plugin-first architecture**: 4 focused plugins (sdlc, workspace, meta, docs)
+  - Consolidated from 11 granular plugins into 4 coherent units
+  - Each plugin has `.claude-plugin/`, hooks, skills, and commands
+  - Plugins are self-contained and distributable
 
-- **Manifest-based smart sync**: `build` and `install` commands now track managed files
-  - `.agentic-manifest.yaml` generated during build with primitive metadata
-  - Install shows sync preview (new/updated/unchanged primitives)
-  - **Local files preserved** - files not in manifest (e.g., generated `/doc-sync`) are not overwritten
+- **Hook consolidation**: Plugins as single source of truth
+  - `.claude/settings.json` dogfoods own plugins via `${CLAUDE_PROJECT_DIR}` paths
+  - sdlc plugin: PreToolUse (security validation) + UserPromptSubmit (PII detection)
+  - workspace plugin: observability hooks for all lifecycle events
+  - All hooks use EventEmitter pattern with stderr events, stdout decisions
+  - Timeouts on all hook commands
 
-- **Per-project configuration**: `agentic.yaml` for version overrides
-  - `agentic-p config init` - Generate config template (tsconfig-style with commented options)
-  - `agentic-p config show` - Display current configuration
-  - `agentic-p config list` - List available primitives
+- **Comprehensive hook test coverage**: 207 tests, 99% validator coverage
+  - Full validator tests: bash patterns, file patterns, PII detection
+  - Handler integration tests: all sdlc + workspace handlers
+  - Edge cases: empty input, malformed JSON, missing fields, fail-open behavior
 
-- **agentic_settings package**: Centralized configuration management
-  - Pydantic-settings based API key management
-  - Auto-discovery of `.env` files
-  - Type-safe settings with validation
+- **LSP language servers in Docker image**: pyright, typescript-language-server, rust-analyzer
+
+- **Benchmark infrastructure**: benchmark definitions + runner script for recording sessions
 
 ### Changed
 
-- Build command now outputs manifest for tracking installed primitives
-- Install command uses manifest diff to only update changed files
-- Prompt frontmatter uses model aliases (e.g., `sonnet`) instead of explicit versions
+- **BREAKING**: `lib/python/` → `packages/` (events, isolation, logging, security, settings, workspace)
+- **BREAKING**: `cli/` → `archive/cli-legacy/` (Rust CLI archived, being replaced)
+- **BREAKING**: `specs/` → `schemas/` (consolidated schema directory)
+- **BREAKING**: Rust CI jobs removed (Python-only pipeline)
+- Plugin validators now import from `agentic_security` package (thin wrappers)
+- CI pipeline updated: `packages/*` paths, no Rust jobs, plugin schema validation
+- Justfile stripped of all Rust commands, Python-only workflow
 
-### Fixed
+### Removed
 
-- **Claude CLI attribution in commits**: Updated `.claude/settings.json` format per official docs
-  - Changed to `attribution: {commit: "", pr: ""}` (empty strings disable attribution)
-  - Fixes issue where "Generated with Claude Code" and Co-Authored-By attribution appeared in commits
-  - Added regression test (`test_claude_cli_attribution.py`) to validate attribution is disabled
-  - See: https://code.claude.com/docs/en/settings#attribution-settings
+- `.claude/hooks/` handlers (superseded by plugin references)
+- `primitives/v1/hooks/validators/` (dead .pyc bytecache)
+- `examples/` → `archive/examples-legacy/`
+- `scripts/stacks/` → `archive/scripts-legacy/`
+- Adapters package dropped from CI (archived, only used by playground)
 
 ---
 

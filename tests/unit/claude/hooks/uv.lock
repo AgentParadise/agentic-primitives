@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 [[package]]
 name = "agentic-events"
 version = "0.1.0"
-source = { directory = "../../../../lib/python/agentic_events" }
+source = { directory = "../../../../packages/events" }
 
 [package.metadata]
 requires-dist = [
@@ -157,7 +157,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentic-events", directory = "../../../../lib/python/agentic_events" },
+    { name = "agentic-events", directory = "../../../../packages/events" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
