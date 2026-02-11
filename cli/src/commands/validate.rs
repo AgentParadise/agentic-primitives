@@ -51,7 +51,10 @@ fn validate_single_primitive(path: &Path, verbose: bool) -> Result<()> {
     } else if path_str.contains("/tools/") {
         "tool"
     } else {
-        anyhow::bail!("Cannot determine primitive type from path: {}", path.display());
+        anyhow::bail!(
+            "Cannot determine primitive type from path: {}",
+            path.display()
+        );
     };
 
     // Validate based on type
@@ -93,7 +96,10 @@ fn validate_all_primitives(args: &ValidateArgs) -> Result<()> {
     };
 
     if !primitives_base.exists() {
-        anyhow::bail!("Primitives directory not found: {}", primitives_base.display());
+        anyhow::bail!(
+            "Primitives directory not found: {}",
+            primitives_base.display()
+        );
     }
 
     // Discover all v2 primitives
@@ -132,7 +138,15 @@ fn validate_all_primitives(args: &ValidateArgs) -> Result<()> {
     println!("{}", "═".repeat(50).cyan());
     println!("Total:  {}", total);
     println!("Passed: {} {}", passed, "✓".green());
-    println!("Failed: {} {}", failed, if failed > 0 { "✗".red() } else { "✓".green() });
+    println!(
+        "Failed: {} {}",
+        failed,
+        if failed > 0 {
+            "✗".red()
+        } else {
+            "✓".green()
+        }
+    );
 
     if !errors.is_empty() {
         println!();
@@ -225,8 +239,8 @@ fn validate_tool_directory(path: &Path, verbose: bool) -> Result<()> {
 
     // Read and validate tool.yaml (using existing tool spec validation)
     let content = fs::read_to_string(&tool_yaml)?;
-    let _: serde_yaml::Value = serde_yaml::from_str(&content)
-        .context("Failed to parse tool.yaml")?;
+    let _: serde_yaml::Value =
+        serde_yaml::from_str(&content).context("Failed to parse tool.yaml")?;
 
     if verbose {
         println!("  {} tool.yaml is valid YAML", "✓".green());

@@ -532,21 +532,21 @@ mod tests {
 
     #[test]
     fn test_get_transformer_claude() {
-        let transformer = get_transformer("claude");
+        let transformer = get_transformer("claude", None);
         assert!(transformer.is_ok());
         assert_eq!(transformer.unwrap().provider_name(), "claude");
     }
 
     #[test]
     fn test_get_transformer_openai() {
-        let transformer = get_transformer("openai");
+        let transformer = get_transformer("openai", None);
         assert!(transformer.is_ok());
         assert_eq!(transformer.unwrap().provider_name(), "openai");
     }
 
     #[test]
     fn test_get_transformer_unknown() {
-        match get_transformer("unknown") {
+        match get_transformer("unknown", None) {
             Ok(_) => panic!("Expected error for unknown provider"),
             Err(e) => assert!(e.to_string().contains("Unknown provider")),
         }
@@ -564,6 +564,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -580,6 +581,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -596,6 +598,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(!should_include_primitive(path, &args).unwrap());
     }
@@ -612,6 +615,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -628,6 +632,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(!should_include_primitive(path, &args).unwrap());
     }
@@ -644,6 +649,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).is_err());
     }
@@ -677,6 +683,7 @@ mod tests {
             only: Some("qa/*".to_string()),
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -693,6 +700,7 @@ mod tests {
             only: Some("qa/*".to_string()),
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(!should_include_primitive(path, &args).unwrap());
     }

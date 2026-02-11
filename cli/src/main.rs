@@ -309,9 +309,7 @@ fn main() {
 
         Commands::New(args) => commands::new_v2::execute(args),
 
-        Commands::Validate(args) => {
-            commands::validate::execute(args)
-        }
+        Commands::Validate(args) => commands::validate::execute(args),
 
         Commands::List {
             path,
