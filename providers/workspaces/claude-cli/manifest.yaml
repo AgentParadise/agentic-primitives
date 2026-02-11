@@ -4,7 +4,7 @@
 # See ADR-027: Provider-Based Workspace Images
 
 name: claude-cli
-version: "1.0.0"
+version: "1.1.0"
 description: Claude CLI workspace with native OpenTelemetry support
 
 # Image build configuration
@@ -90,6 +90,33 @@ security:
     enabled: true
     # Empty means all hosts (restricted at runtime)
     allowed_hosts: []
+
+# Capabilities: language servers and runtimes available in the image
+#
+# LSP servers are pre-installed and plugins pre-enabled in settings.json.
+# Servers are LAZY: they only start when Claude encounters files in the matching
+# language. Safe for multi-agent orchestration — only active languages consume memory.
+capabilities:
+  lsp_servers:
+    - name: typescript-language-server
+      languages: [typescript, javascript]
+      binary: typescript-language-server
+      plugin: typescript-lsp@claude-plugins-official
+    - name: pyright
+      languages: [python]
+      binary: pyright-langserver
+      plugin: pyright-lsp@claude-plugins-official
+    - name: rust-analyzer
+      languages: [rust]
+      binary: rust-analyzer
+      plugin: rust-analyzer-lsp@claude-plugins-official
+  runtimes:
+    - name: node
+      version: "22"
+    - name: python
+      version: "3.12"
+    - name: rust
+      version: stable
 
 # Health check configuration
 health:
