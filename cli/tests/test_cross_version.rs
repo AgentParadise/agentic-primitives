@@ -7,23 +7,15 @@ fn test_cross_version_compatibility() {
     let temp_repo = setup_test_repo();
     let repo_path = temp_repo.path();
 
-    // Create experimental primitive (V1 primitives not supported in transitional CLI)
+    // Create v1 primitive using CLI command
     run_cli_command(
-        &[
-            "new",
-            "prompt",
-            "testing",
-            "exp-agent",
-            "--kind",
-            "agent",
-            "--experimental",
-        ],
+        &["new", "prompt", "testing", "v1-agent", "--kind", "agent"],
         Some(repo_path),
     )
     .success();
 
-    // Note: V1 validation not supported in transitional CLI
-    // This test creates experimental primitives which don't require full validation
+    // Validate with spec-version v1
+    run_cli_command(&["validate", "primitives/v1/"], Some(repo_path)).success();
 
     // Build for both providers
     run_cli_command(&["build", "--provider", "claude"], Some(repo_path)).success();
