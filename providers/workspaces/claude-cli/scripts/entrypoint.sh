@@ -150,6 +150,11 @@ mkdir -p /workspace/artifacts/input
 mkdir -p /workspace/artifacts/output
 mkdir -p /workspace/repos
 
+# Create writable CARGO_HOME for the agent user
+# The Rust toolchain binaries live in /usr/local/cargo/bin (read-only, on PATH),
+# but cargo needs a writable CARGO_HOME for registry index, git checkouts, etc.
+mkdir -p ~/.cargo
+
 # -----------------------------------------------------------------------------
 # 5. Execute CMD
 # -----------------------------------------------------------------------------

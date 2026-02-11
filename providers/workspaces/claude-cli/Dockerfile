@@ -168,7 +168,7 @@ RUN claude --version && python3 --version && node --version && uv --version && g
 
 # Verify LSP server installations
 RUN typescript-language-server --version \
-    && pyright --version \
+    && pyright-langserver --version \
     && rust-analyzer --version \
     && rustc --version \
     && cargo --version
@@ -193,9 +193,12 @@ ENV HOME=/home/agent \
     ANTHROPIC_NO_ATTRIBUTION=1 \
     # Use uv for Python execution (faster, better caching)
     UV_SYSTEM_PYTHON=1 \
-    # Rust toolchain paths (must match build stage)
+    # Rust toolchain paths
+    # RUSTUP_HOME: read-only toolchain installed during build
+    # CARGO_HOME: writable location for agent user (registry index, git checkouts)
+    # /usr/local/cargo/bin stays on PATH for pre-installed binaries (cargo, rustc, rust-analyzer)
     RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
+    CARGO_HOME=/home/agent/.cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
 # Health check
