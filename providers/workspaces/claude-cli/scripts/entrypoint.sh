@@ -23,9 +23,14 @@ set -e
 # -----------------------------------------------------------------------------
 # 1. Claude CLI Configuration
 # -----------------------------------------------------------------------------
-# Create ~/.claude/settings.json with attribution disabled.
+# Create ~/.claude/settings.json with attribution disabled and LSP plugins enabled.
 # This must be done HERE because /home/agent is a tmpfs mount that wipes
 # anything baked into the Docker image.
+#
+# LSP plugins (pyright-lsp, typescript-lsp, rust-analyzer-lsp) are enabled by
+# default. The LSP servers are LAZY — they only start when Claude encounters
+# files in the matching language, so enabling all three does not waste memory
+# when only a subset of languages is present in the workspace.
 
 mkdir -p ~/.claude
 
@@ -80,6 +85,11 @@ cat > ~/.claude/settings.json << 'EOF'
         "timeout": 5
       }]
     }]
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true
   }
 }
 EOF
