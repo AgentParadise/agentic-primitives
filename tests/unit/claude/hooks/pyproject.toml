@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-agentic-events = { path = "../../../../lib/python/agentic_events" }
+agentic-events = { path = "../../../../packages/events" }
 
 [tool.pytest.ini_options]
 testpaths = ["."]
