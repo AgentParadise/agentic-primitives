@@ -99,7 +99,9 @@ def install_hooks(target_dir: Path, script_dir: Path) -> bool:
     if success:
         print("Done! Git hooks installed.")
         print()
-        print("Events will be written to: $ANALYTICS_PATH or .agentic/analytics/events.jsonl")
+        print(
+            "Events will be written to: $ANALYTICS_PATH or .agentic/analytics/events.jsonl"
+        )
 
     return success
 
