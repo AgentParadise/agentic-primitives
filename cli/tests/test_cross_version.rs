@@ -7,29 +7,46 @@ fn test_cross_version_compatibility() {
     let temp_repo = setup_test_repo();
     let repo_path = temp_repo.path();
 
-    // Create v1 primitive using CLI command
+    // Create v2 primitive using CLI command
     run_cli_command(
-        &["new", "prompt", "testing", "v1-agent", "--kind", "agent"],
+        &[
+            "new",
+            "command",
+            "testing",
+            "v1-agent",
+            "--description",
+            "A test command primitive",
+            "--model",
+            "sonnet",
+            "--non-interactive",
+        ],
         Some(repo_path),
     )
     .success();
 
-    // Validate with spec-version v1
-    run_cli_command(&["validate", "primitives/v1/"], Some(repo_path)).success();
+    // Validate the created primitive
+    run_cli_command(
+        &["validate", "primitives/v2/commands/testing/v1-agent.md"],
+        Some(repo_path),
+    )
+    .success();
 
-    // Build for both providers
-    run_cli_command(&["build", "--provider", "claude"], Some(repo_path)).success();
+    // Build for Claude (v2 only supports claude currently)
+    run_cli_command(
+        &[
+            "build",
+            "--provider",
+            "claude",
+            "--primitives-version",
+            "v2",
+        ],
+        Some(repo_path),
+    )
+    .success();
 
     assert_build_output(repo_path, "claude");
 
-    run_cli_command(&["build", "--provider", "openai"], Some(repo_path)).success();
-
-    assert_build_output(repo_path, "openai");
-
-    // Verify outputs exist
+    // Verify output exists
     let claude_build = repo_path.join("build/claude");
-    let openai_build = repo_path.join("build/openai");
-
     assert!(claude_build.exists());
-    assert!(openai_build.exists());
 }

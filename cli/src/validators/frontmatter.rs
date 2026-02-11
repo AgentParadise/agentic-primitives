@@ -1,11 +1,11 @@
-use anyhow::Result;
 use super::schema::validate_against_schema;
+use anyhow::Result;
 
 /// Command frontmatter schema (embedded at compile time)
-const COMMAND_SCHEMA: &str = include_str!("../../../../schemas/command-frontmatter.v1.json");
+const COMMAND_SCHEMA: &str = include_str!("../../../schemas/command-frontmatter.v1.json");
 
 /// Skill frontmatter schema (embedded at compile time)
-const SKILL_SCHEMA: &str = include_str!("../../../../schemas/skill-frontmatter.v1.json");
+const SKILL_SCHEMA: &str = include_str!("../../../schemas/skill-frontmatter.v1.json");
 
 /// Validate command frontmatter against schema
 pub fn validate_command_frontmatter(yaml_str: &str) -> Result<()> {

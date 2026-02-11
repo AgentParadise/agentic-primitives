@@ -286,23 +286,23 @@ fn copy_embedded_schemas(base: &Path) -> Result<()> {
     let schemas = vec![
         (
             "prompt-meta.schema.json",
-            include_str!("../../../../specs/v1/prompt-meta.schema.json"),
+            include_str!("../../../specs/v1/prompt-meta.schema.json"),
         ),
         (
             "tool-meta.schema.json",
-            include_str!("../../../../specs/v1/tool-meta.schema.json"),
+            include_str!("../../../specs/v1/tool-meta.schema.json"),
         ),
         (
             "hook-meta.schema.json",
-            include_str!("../../../../specs/v1/hook-meta.schema.json"),
+            include_str!("../../../specs/v1/hook-meta.schema.json"),
         ),
         (
             "model-config.schema.json",
-            include_str!("../../../../specs/v1/model-config.schema.json"),
+            include_str!("../../../specs/v1/model-config.schema.json"),
         ),
         (
             "provider-impl.schema.json",
-            include_str!("../../../../specs/v1/provider-impl.schema.json"),
+            include_str!("../../../specs/v1/provider-impl.schema.json"),
         ),
     ];
 

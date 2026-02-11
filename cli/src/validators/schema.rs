@@ -4,19 +4,19 @@ use serde_json::Value as JsonValue;
 /// Validate YAML content against a JSON Schema
 pub fn validate_against_schema(yaml_str: &str, schema_json: &str) -> Result<()> {
     // Parse YAML to JSON Value
-    let yaml_value: JsonValue = serde_yaml::from_str(yaml_str)
-        .context("Failed to parse YAML")?;
+    let yaml_value: JsonValue = serde_yaml::from_str(yaml_str).context("Failed to parse YAML")?;
 
     // Parse schema
-    let schema_value: JsonValue = serde_json::from_str(schema_json)
-        .context("Failed to parse JSON Schema")?;
+    let schema_value: JsonValue =
+        serde_json::from_str(schema_json).context("Failed to parse JSON Schema")?;
 
     // Compile schema
     let compiled_schema = jsonschema::validator_for(&schema_value)
         .map_err(|e| anyhow::anyhow!("Failed to compile schema: {}", e))?;
 
     // Validate
-    compiled_schema.validate(&yaml_value)
+    compiled_schema
+        .validate(&yaml_value)
         .map_err(|e| anyhow::anyhow!("Validation failed:\n{}", e))?;
 
     Ok(())
