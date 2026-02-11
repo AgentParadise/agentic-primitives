@@ -92,7 +92,7 @@ class IsolationConfig:
     provider: Literal["docker", "local"] = "docker"
 
     # Docker-specific
-    image: str = "agentic-workspace:latest"
+    image: str = "agentic-workspace-claude-cli:latest"
 
     # Resource limits
     timeout: int = 300  # seconds
@@ -148,7 +148,7 @@ class ScenarioConfig:
         # Use environment variable or fallback to agentic-primitives default
         default_image = os.environ.get(
             "PLAYGROUND_WORKSPACE_IMAGE",
-            "agentic-workspace:latest"
+            "agentic-workspace-claude-cli:latest"
         )
 
         headless = HeadlessConfig(

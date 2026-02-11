@@ -9,7 +9,17 @@
 #   - Python 3.12 + uv (for hooks and agentic packages)
 #   - Claude CLI with JSONL event emission to stdout
 #   - Pre-bundled primitive hooks with agentic_events
+#   - LSP language servers (pyright, typescript-language-server, rust-analyzer)
 #   - Security hardening (non-root, no setuid)
+#
+# LSP Architecture:
+#   The image bundles LSP binaries and pre-enables the official Claude Code LSP
+#   plugins (pyright-lsp, typescript-lsp, rust-analyzer-lsp) in settings.json.
+#   LSP servers are LAZY — they only start when Claude encounters files in the
+#   matching language. An agent working on a Python-only repo will NOT start
+#   rust-analyzer or typescript-language-server. This means the image is safe
+#   for multi-agent orchestration: only the LSP servers actually needed per-task
+#   consume memory at runtime.
 #
 # Events are emitted as JSONL to stdout, captured by the agent runner.
 #
@@ -67,6 +77,37 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 RUN npm install -g @anthropic-ai/claude-code
 
 # =============================================================================
+# LSP: Language Servers for code intelligence
+# Plugins: pyright-lsp, typescript-lsp, rust-analyzer-lsp (claude-plugins-official)
+# =============================================================================
+
+# TypeScript + Python LSP servers (via npm, same PATH as Claude CLI)
+# Provides: typescript-language-server, pyright-langserver
+RUN npm install -g typescript typescript-language-server pyright
+
+# Rust: build deps for toolchain and cargo builds at runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Rust toolchain + rust-analyzer
+# Installed to /usr/local (not /home) to survive tmpfs mounts at runtime
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
+    -y \
+    --default-toolchain stable \
+    --profile minimal \
+    --no-modify-path \
+    && rustup component add rust-analyzer \
+    && chmod -R a+rX /usr/local/rustup /usr/local/cargo
+
+# =============================================================================
 # Stage 3: Install Python packages from staged wheels
 # =============================================================================
 FROM tooling AS packages
@@ -122,8 +163,15 @@ RUN chmod -R 755 /opt/agentic/hooks \
     && chmod 755 /opt/agentic/entrypoint.sh \
     && chown -R agent:agent /opt/agentic
 
-# Verify installations (before security hardening)
+# Verify core installations (before security hardening)
 RUN claude --version && python3 --version && node --version && uv --version && gh --version
+
+# Verify LSP server installations
+RUN typescript-language-server --version \
+    && pyright-langserver --version \
+    && rust-analyzer --version \
+    && rustc --version \
+    && cargo --version
 
 # Security: Remove setuid/setgid binaries (exclude /usr/local)
 RUN find / -path /usr/local -prune -o -perm /6000 -type f -exec chmod a-s {} \; 2>/dev/null || true
@@ -144,7 +192,14 @@ ENV HOME=/home/agent \
     # Disable Claude Code attribution in commits/PRs
     ANTHROPIC_NO_ATTRIBUTION=1 \
     # Use uv for Python execution (faster, better caching)
-    UV_SYSTEM_PYTHON=1
+    UV_SYSTEM_PYTHON=1 \
+    # Rust toolchain paths
+    # RUSTUP_HOME: read-only toolchain installed during build
+    # CARGO_HOME: writable location for agent user (registry index, git checkouts)
+    # /usr/local/cargo/bin stays on PATH for pre-installed binaries (cargo, rustc, rust-analyzer)
+    RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/home/agent/.cargo \
+    PATH=/usr/local/cargo/bin:$PATH
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \
