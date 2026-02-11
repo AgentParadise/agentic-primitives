@@ -1,11 +1,11 @@
-# Agentic Primitives CLI - V2
+# Agentic Primitives CLI
 
-**Status:** ✨ **Active Development** - All new features
+**Status:** ✨ **Active Development**
 
 ## Overview
 
-This is the V2 CLI for agentic-primitives. It supports the simplified V2 primitive structure with:
-- Flat directory organization
+The unified CLI for agentic-primitives. Supports both V1 and V2 primitive structures with:
+- Flat directory organization (V2) and legacy nested structure (V1)
 - Frontmatter-based metadata
 - JSON Schema validation
 - CLI generators for rapid development
@@ -16,7 +16,7 @@ This is the V2 CLI for agentic-primitives. It supports the simplified V2 primiti
 ## Installation
 
 ```bash
-cd cli/v2
+cd cli
 cargo build --release
 # Binary: target/release/agentic-p
 ```
@@ -67,11 +67,10 @@ agentic-p build --provider claude --primitives-version v2
 
 ## Documentation
 
-- [Quick Start Guide](../../docs/v2/quick-start.md)
-- [Creating Commands](../../docs/v2/authoring/commands.md)
-- [Creating Skills](../../docs/v2/authoring/skills.md)
-- [Creating Tools](../../docs/v2/authoring/tools.md)
-- [CLI Reference](../../docs/v2/reference/cli.md)
+- [Docs Site](../docs-site-fuma/content/docs/)
+- [Migration Guide](../docs-site-fuma/content/docs/guides/migration.mdx)
+- [CLI Reference](../docs-site-fuma/content/docs/cli/)
+- [Frontmatter Reference](../docs-site-fuma/content/docs/reference/frontmatter.mdx)
 
 ## Development
 
@@ -89,8 +88,4 @@ cargo clippy
 cargo build
 ```
 
-## V1 CLI
-
-For legacy V1 primitive support, use [`cli/v1/`](../v1/README.md)
-
-**Last Updated:** 2026-01-14
+**Last Updated:** 2026-02-11
