@@ -42,6 +42,9 @@ comfy-table = "7.1"
 # Templating
 handlebars = "6.3"
 
+# Interactive prompts
+dialoguer = "0.11"
+
 # Hashing (for versioning)
 blake3 = "1.5"
 

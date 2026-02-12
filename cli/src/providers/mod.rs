@@ -1,9 +1,11 @@
 pub mod claude;
+pub mod claude_v2;
 pub mod openai;
 pub mod registry;
 
 // Re-export for convenience
 pub use claude::ClaudeTransformer;
+pub use claude_v2::ClaudeV2Transformer;
 pub use openai::OpenAITransformer;
 pub use registry::{AgentProvider, ModelProvider, ProviderRegistry};
 

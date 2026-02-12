@@ -83,10 +83,11 @@ fn discover_tool_primitives(
         let path = entry.path();
 
         // Look for directories containing tool.yaml
-        if path.is_dir() && path.join("tool.yaml").exists() {
-            if should_include_v2_primitive(path, args, base_dir)? {
-                primitives.push(path.to_path_buf());
-            }
+        if path.is_dir()
+            && path.join("tool.yaml").exists()
+            && should_include_v2_primitive(path, args, base_dir)?
+        {
+            primitives.push(path.to_path_buf());
         }
     }
 

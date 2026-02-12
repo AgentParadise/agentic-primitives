@@ -11,8 +11,10 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::config::PrimitivesConfig;
-use crate::spec_version::SpecVersion;
-use crate::validators::{validate_primitive_with_layers, ValidationLayers};
+// V2: SpecVersion not used in v2-only CLI
+// use crate::spec_version::SpecVersion;
+// V2: Validation updated - old layers system not used
+// use crate::validators::{validate_primitive_with_layers, ValidationLayers};
 
 #[derive(Debug, Args)]
 pub struct MigrateArgs {
@@ -153,26 +155,11 @@ fn migrate_primitive(
             move_to_experimental(primitive_path, config)?;
         }
 
-        // Validate after migration (only for v1, as v2+ schemas don't exist yet)
-        if target_spec == "v1" {
-            let layers = if args.auto_fix {
-                ValidationLayers::Structural
-            } else {
-                ValidationLayers::All
-            };
-
-            if let Err(e) = validate_primitive_with_layers(SpecVersion::V1, primitive_path, layers)
-            {
-                return Ok(MigrationReport {
-                    primitive: primitive_path.to_path_buf(),
-                    from_spec,
-                    to_spec: target_spec.to_string(),
-                    changes,
-                    success: false,
-                    error: Some(format!("Post-migration validation failed: {e}")),
-                });
-            }
-        }
+        // V2: Validation not yet implemented for migrate
+        // TODO: Add v2 validation after migration
+        // if target_spec == "v1" {
+        //     // validate the migrated primitive
+        // }
         // Note: Skip validation for v2/experimental as those schemas don't exist yet
     }
 
