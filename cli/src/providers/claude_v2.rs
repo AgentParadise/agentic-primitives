@@ -203,7 +203,8 @@ impl ProviderTransformer for ClaudeV2Transformer {
         output_dir: &Path,
     ) -> Result<TransformResult> {
         // Detect primitive type by path structure
-        let path_str = primitive_path.to_string_lossy();
+        // Use both separators to handle Windows backslash paths
+        let path_str = primitive_path.to_string_lossy().replace('\\', "/");
 
         let (id, prim_type, files) = if path_str.contains("/commands/") {
             let filename = primitive_path

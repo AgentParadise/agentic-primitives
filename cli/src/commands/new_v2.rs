@@ -1,4 +1,4 @@
-///! Generate new V2 primitives with templates and validation
+//! Generate new V2 primitives with templates and validation
 use anyhow::{Context, Result};
 use clap::Args;
 use colored::Colorize;

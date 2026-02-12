@@ -247,10 +247,8 @@ fn validate_tool_directory(path: &Path, verbose: bool) -> Result<()> {
     }
 
     // Check for impl.py
-    if path.join("impl.py").exists() {
-        if verbose {
-            println!("  {} impl.py found", "✓".green());
-        }
+    if path.join("impl.py").exists() && verbose {
+        println!("  {} impl.py found", "✓".green());
     }
 
     Ok(())
@@ -290,7 +288,7 @@ fn discover_v2_primitives(primitives_base: &Path) -> Result<Vec<PathBuf>> {
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
             primitives.push(path.to_path_buf());
         }
     }
@@ -303,7 +301,7 @@ fn discover_v2_primitives(primitives_base: &Path) -> Result<Vec<PathBuf>> {
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
             primitives.push(path.to_path_buf());
         }
     }
