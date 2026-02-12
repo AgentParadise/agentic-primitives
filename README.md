@@ -117,18 +117,47 @@ agentic-p inspect python/python-pro
 
 ### Install Plugins
 
-Plugins are installed via the Claude Code plugin marketplace. Each plugin can be installed independently.
+Plugins can be installed three ways: locally via `just`, globally via `just`, or remotely via Claude Code's plugin marketplace.
+
+#### Option A: Local Install (via `just`)
+
+```bash
+# List available plugins with versions
+just plugin-list
+
+# Install to current project (.claude/plugins/cache/ + .claude/settings.json)
+just plugin-install sdlc
+just plugin-install workspace
+
+# Install globally (~/.claude/plugins/cache/ + ~/.claude/settings.json)
+just plugin-install sdlc --global
+
+# Uninstall
+just plugin-uninstall sdlc
+just plugin-uninstall sdlc --global
+
+# Validate all plugin manifests
+just plugin-validate
+```
+
+**What happens on install:**
+1. Plugin files are copied to `.claude/plugins/cache/agentic-primitives/{name}/local/`
+2. Hooks from the plugin's `hooks/hooks.json` are merged into `settings.json` (tagged with `_plugin` for clean removal)
+3. The plugin is added to `enabledPlugins` in `settings.json`
+4. Reinstalling is idempotent — hooks are not duplicated
+
+#### Option B: Remote Install (via Claude Code marketplace)
 
 ```bash
 # Add the marketplace (one-time setup)
 /plugin marketplace add AgentParadise/agentic-primitives
 
 # Install individual plugins
-/plugin install sdlc@agentic-primitives        # Commit, review, QA, security hooks, git hooks
-/plugin install workspace@agentic-primitives    # Session lifecycle & observability hooks
-/plugin install meta@agentic-primitives         # Primitive generators (create commands, skills)
-/plugin install research@agentic-primitives     # Doc scraping & web research tools
-/plugin install docs@agentic-primitives         # Fumadocs integration
+/plugin install sdlc@agentic-primitives
+/plugin install workspace@agentic-primitives
+/plugin install meta@agentic-primitives
+/plugin install research@agentic-primitives
+/plugin install docs@agentic-primitives
 ```
 
 #### Available Plugins
@@ -140,6 +169,27 @@ Plugins are installed via the Claude Code plugin marketplace. Each plugin can be
 | **meta** | Primitive generators | 3 commands (`create-command`, `create-prime`, `create-doc-sync`) |
 | **research** | Information gathering | 1 command (`doc-scraper`), 1 tool (`firecrawl`) |
 | **docs** | Documentation tools | 1 skill (`fuma`) |
+
+#### How Plugin Hooks Work
+
+Each plugin can define hooks in `hooks/hooks.json` using `${CLAUDE_PLUGIN_ROOT}` for portable paths:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/handlers/pre-tool-use.py",
+        "timeout": 10
+      }]
+    }]
+  }
+}
+```
+
+On install, `${CLAUDE_PLUGIN_ROOT}` is rewritten to the actual cache path, and hooks are merged into the target `settings.json`. Plugins without hooks (like `meta`, `research`, `docs`) install their commands and skills only.
 
 #### SDLC Git Hooks (Optional)
 
@@ -442,6 +492,11 @@ just qa
 
 # Auto-fix issues and run QA
 just qa-fix
+
+# Plugin management
+just plugin-list           # List available plugins
+just plugin-install sdlc   # Install a plugin (project scope)
+just plugin-validate       # Validate all plugin manifests
 
 # Build debug version
 just build

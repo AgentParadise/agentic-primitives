@@ -193,8 +193,6 @@ class TestBashSuspiciousPatterns:
     @pytest.mark.parametrize(
         "cmd,expected_desc",
         [
-            ("sudo rm file.txt", "sudo usage"),
-            ("su - root", "switch user"),
             ("eval $USER_INPUT", "eval usage"),
             ("exec /bin/sh", "exec usage"),
             ("echo data > /etc/config", "write to /etc"),
@@ -256,7 +254,7 @@ class TestBashEdgeCases:
 
     def test_multiple_suspicious_patterns(self, validator):
         """Multiple suspicious patterns in one command"""
-        result = validator.validate({"command": "sudo eval $INPUT"})
+        result = validator.validate({"command": "eval $(exec /bin/sh)"})
         assert result["safe"] is True
         assert len(result["metadata"]["suspicious_patterns"]) >= 2
 

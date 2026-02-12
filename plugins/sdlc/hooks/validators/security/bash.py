@@ -33,19 +33,40 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bcurl.*\|\s*(ba)?sh", "curl pipe to shell"),
     (r"\bwget.*\|\s*(ba)?sh", "wget pipe to shell"),
     (r"\bcurl.*\|\s*python", "curl pipe to python"),
+    (r"\bwget.*\|\s*python", "wget pipe to python"),
+    # Privilege escalation (hard block)
+    (r"\bsudo\s+", "sudo usage (privilege escalation)"),
+    (r"\bsu\s+-", "su - (switch user)"),
+    (r"\bsu\s+root\b", "su root (switch to root)"),
     # Git dangers
     (r"\bgit\s+push\s+.*--force", "force push"),
-    (r"\bgit\s+reset\s+--hard\s+origin", "hard reset to origin"),
+    (r"\bgit\s+reset\s+--hard(?:\s|$)", "hard reset (discards uncommitted work)"),
     (r"\bgit\s+clean\s+-fdx", "git clean all"),
+    (r"\bgit\s+checkout\s+--\s+\.(?:\s|$)", "git checkout -- . (discards all changes)"),
+    (r"\bgit\s+restore\s+\.(?:\s|$)", "git restore . (discards all changes)"),
+    # Package publishing (irreversible)
+    (r"\bnpm\s+publish(?:\s|$)", "npm publish (public package publish)"),
+    (r"\bcargo\s+publish(?:\s|$)", "cargo publish (public crate publish)"),
+    (r"\btwine\s+upload(?:\s|$)", "twine upload (public PyPI publish)"),
     # Network dangers
     (r"\bnc\s+-l.*-e\s*/bin/(ba)?sh", "netcat shell"),
     (r"\biptables\s+-F", "flush firewall"),
+    # Shell expansion / secret exfiltration
+    (r"\$\(.*cat\s+.*\.env", "command substitution reading .env"),
+    (r"`.*cat\s+.*\.env", "backtick substitution reading .env"),
+    (r"\$\(.*cat\s+.*id_rsa", "command substitution reading SSH key"),
+    (r"`.*cat\s+.*id_rsa", "backtick substitution reading SSH key"),
+    (r"\$\(.*cat\s+.*/\.ssh/", "command substitution reading .ssh"),
+    (r"`.*cat\s+.*/\.ssh/", "backtick substitution reading .ssh"),
+    (r"\$\(.*cat\s+.*/\.aws/", "command substitution reading AWS creds"),
+    (r"`.*cat\s+.*/\.aws/", "backtick substitution reading AWS creds"),
+    (r"\bcurl\b.*\$\(", "curl with command substitution (data exfiltration)"),
+    (r"\bwget\b.*\$\(", "wget with command substitution (data exfiltration)"),
+    (r"\bcurl\b.*`", "curl with backtick substitution (data exfiltration)"),
 ]
 
 # Patterns that warrant a warning but aren't blocked
 SUSPICIOUS_PATTERNS: list[tuple[str, str]] = [
-    (r"\bsudo\s+", "sudo usage"),
-    (r"\bsu\s+-", "switch user"),
     (r"\beval\s+", "eval usage"),
     (r"\bexec\s+", "exec usage"),
     (r">\s*/etc/", "write to /etc"),
@@ -58,6 +79,7 @@ SUSPICIOUS_PATTERNS: list[tuple[str, str]] = [
 GIT_DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bgit\s+add\s+-A(?:\s|$)", "git add -A (adds all files including secrets)"),
     (r"\bgit\s+add\s+\.(?:\s|$)", "git add . (adds all files including secrets)"),
+    (r"\bgit\s+branch\s+(?:-d|-D|--delete)\s+", "git branch delete (destructive)"),
 ]
 
 

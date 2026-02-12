@@ -21,7 +21,7 @@ from pathlib import Path
 # === VALIDATOR COMPOSITION ===
 # Map tool names to validator modules
 TOOL_VALIDATORS: dict[str, list[str]] = {
-    "Bash": ["security.bash"],
+    "Bash": ["security.bash", "security.python"],
     "Write": ["security.file"],
     "Edit": ["security.file"],
     "Read": ["security.file"],

@@ -154,6 +154,65 @@ brew install agentic-p
 cargo install agentic-p
 ```
 
+## Installing Plugins
+
+Plugins provide commands, skills, and hooks for Claude Code agents. There are three installation methods.
+
+### Local Install (via Just)
+
+The fastest way to install plugins for the current project or globally:
+
+```bash
+# List available plugins with versions
+just plugin-list
+
+# Install to current project
+just plugin-install sdlc
+just plugin-install workspace
+
+# Install globally (available in all projects)
+just plugin-install sdlc --global
+
+# Uninstall
+just plugin-uninstall sdlc
+just plugin-uninstall workspace --global
+
+# Validate all plugin manifests
+just plugin-validate
+```
+
+<Callout type="info" title="What happens on install?">
+1. Plugin files are copied to `.claude/plugins/cache/agentic-primitives/{name}/local/`
+2. Hooks from `hooks/hooks.json` are merged into the target `settings.json`
+3. The plugin is added to `enabledPlugins`
+4. Reinstalling is idempotent — no duplicate hooks
+</Callout>
+
+### Remote Install (via Claude Code Marketplace)
+
+If the repo is pushed to GitHub, users can install plugins directly from Claude Code:
+
+```bash
+# Add the marketplace (one-time)
+/plugin marketplace add AgentParadise/agentic-primitives
+
+# Install plugins
+/plugin install sdlc@agentic-primitives
+/plugin install workspace@agentic-primitives
+```
+
+### Available Plugins
+
+| Plugin | Description | Primitives |
+|--------|-------------|------------|
+| **sdlc** | Software Development Lifecycle | 5 commands, 7 skills, security hooks, git hooks |
+| **workspace** | Observable agent workspaces | 8 lifecycle hooks |
+| **meta** | Primitive generators | 3 commands |
+| **research** | Information gathering | 1 command, 1 tool |
+| **docs** | Documentation tools | 1 skill |
+
+For full details on each plugin's hooks and how they compose, see the [Plugin Guide](/docs/guides/plugins).
+
 ## Post-Installation Setup
 
 ### Shell Completions
@@ -222,6 +281,10 @@ just test
 | `just lint` | Run linters |
 | `just qa` | Full QA suite |
 | `just docs` | Launch documentation site |
+| `just plugin-list` | List available plugins |
+| `just plugin-install <name>` | Install a plugin |
+| `just plugin-uninstall <name>` | Uninstall a plugin |
+| `just plugin-validate` | Validate plugin manifests |
 
 ## Troubleshooting
 

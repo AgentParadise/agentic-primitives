@@ -43,9 +43,10 @@ SENSITIVE_PATHS: list[str] = [
 
 # File patterns that should never be read/written by AI
 SENSITIVE_FILE_PATTERNS: list[tuple[str, str]] = [
-    (r"\.env(?:\.local|\.production|\.staging)?$", "environment file"),
+    (r"\.env(?:\.(?!example|template|test|sample|defaults)\w+)?$", "environment file"),
     (r"\.pem$", "PEM certificate/key"),
-    (r"\.key$", "private key"),
+    (r"(?:private|server|signing|tls|ssl|ca|root|intermediate|client|apikey)\.key$", "private key"),
+    (r"id_(?:rsa|dsa|ecdsa|ed25519)\.key$", "SSH private key"),
     (r"id_rsa(?:\.pub)?$", "SSH key"),
     (r"id_ed25519(?:\.pub)?$", "SSH key"),
     (r"\.p12$", "PKCS12 certificate"),
@@ -74,9 +75,26 @@ def hash_content(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
+def _resolve_path(file_path: str) -> str:
+    """Resolve a file path, expanding user home and following symlinks.
+
+    This ensures symlink-based bypass attacks are caught by normalizing
+    all paths to their real filesystem location before checking.
+    """
+    try:
+        return str(Path(file_path).expanduser().resolve(strict=False))
+    except (OSError, ValueError):
+        # If resolution fails, fall back to basic expansion
+        return str(Path(file_path).expanduser())
+
+
 def check_path_blocked(file_path: str) -> tuple[bool, str | None]:
-    """Check if a path is in the blocked list."""
-    normalized = str(Path(file_path).expanduser().resolve())
+    """Check if a path is in the blocked list.
+
+    Resolves symlinks to prevent bypass via indirect paths
+    (e.g., ln -s /etc/shadow /tmp/safe && cat /tmp/safe).
+    """
+    normalized = _resolve_path(file_path)
 
     for blocked in BLOCKED_PATHS:
         if normalized.startswith(blocked) or normalized == blocked.rstrip("/"):
@@ -86,8 +104,11 @@ def check_path_blocked(file_path: str) -> tuple[bool, str | None]:
 
 
 def check_path_sensitive(file_path: str) -> tuple[bool, str | None]:
-    """Check if a path is sensitive (warn but don't block)."""
-    normalized = str(Path(file_path).expanduser().resolve())
+    """Check if a path is sensitive (warn but don't block).
+
+    Resolves symlinks to prevent bypass via indirect paths.
+    """
+    normalized = _resolve_path(file_path)
 
     for sensitive in SENSITIVE_PATHS:
         expanded = str(Path(sensitive).expanduser())
@@ -98,16 +119,30 @@ def check_path_sensitive(file_path: str) -> tuple[bool, str | None]:
 
 
 def check_file_pattern(file_path: str) -> tuple[bool, str | None]:
-    """Check if filename or path matches sensitive patterns."""
+    """Check if filename or path matches sensitive patterns.
+
+    Checks both the original path and the resolved real path to catch
+    symlink-based bypass attempts.
+    """
+    resolved = _resolve_path(file_path)
     filename = Path(file_path).name
+    resolved_filename = Path(resolved).name
 
     for pattern, description in SENSITIVE_FILE_PATTERNS:
-        # Check filename first
+        # Check original filename
         if re.search(pattern, filename, re.IGNORECASE):
             return True, f"Sensitive file type: {description}"
-        # Also check full path for directory-based patterns (e.g., .aws/)
+        # Check resolved filename (catches symlinks with different names)
+        if resolved_filename != filename and re.search(
+            pattern, resolved_filename, re.IGNORECASE
+        ):
+            return True, f"Sensitive file type: {description} (via symlink)"
+        # Check full original path for directory-based patterns (e.g., .aws/)
         if re.search(pattern, file_path, re.IGNORECASE):
             return True, f"Sensitive file type: {description}"
+        # Check full resolved path
+        if resolved != file_path and re.search(pattern, resolved, re.IGNORECASE):
+            return True, f"Sensitive file type: {description} (via symlink)"
 
     return False, None
 

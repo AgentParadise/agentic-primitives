@@ -1,0 +1,37 @@
+{
+  "name": "agentic-primitives",
+  "description": "Production-grade plugins for Claude Code agents — SDLC, workspace observability, research tools, documentation, and meta-generators",
+  "version": "1.0.0",
+  "author": {
+    "name": "NeuralEmpowerment",
+    "url": "https://github.com/AgentParadise"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives",
+  "plugins": {
+    "sdlc": {
+      "version": "1.0.0",
+      "description": "Software Development Lifecycle — commit, review, QA, testing, security hooks, git hooks, and infrastructure configuration",
+      "source": "./plugins/sdlc"
+    },
+    "workspace": {
+      "version": "1.0.0",
+      "description": "Observable isolated workspaces — lifecycle and observability hooks emitting structured JSONL events",
+      "source": "./plugins/workspace"
+    },
+    "research": {
+      "version": "1.0.0",
+      "description": "Information gathering — web scraping, documentation extraction, and research tools",
+      "source": "./plugins/research"
+    },
+    "meta": {
+      "version": "1.0.0",
+      "description": "Primitive generators — tools that create commands, skills, prompts, and other agentic primitives",
+      "source": "./plugins/meta"
+    },
+    "docs": {
+      "version": "1.0.0",
+      "description": "Documentation tools — Fumadocs integration and documentation management",
+      "source": "./plugins/docs"
+    }
+  }
+}
