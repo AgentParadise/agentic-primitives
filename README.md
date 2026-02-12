@@ -33,19 +33,17 @@ Reusable prompts deployed as **Claude Code plugins** — commands, skills, hooks
 ### Install a Plugin
 
 ```bash
-# Clone the repo
-git clone https://github.com/AgentParadise/agentic-primitives.git
-cd agentic-primitives
+# Add the marketplace (one-time)
+claude plugin marketplace add AgentParadise/agentic-primitives
 
-# Install a plugin to your project
-just plugin-install sdlc
+# Install a plugin globally
+claude plugin install sdlc@agentic-primitives --scope user
 
-# Or install globally
-just plugin-install sdlc --global
-
-# List available plugins
-just plugin-list
+# Or install to current project only
+claude plugin install sdlc@agentic-primitives --scope project
 ```
+
+Or use the interactive UI: type `/plugin` inside Claude Code.
 
 ---
 
@@ -106,7 +104,7 @@ agentic-primitives/
 │   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace
 │   ├── models/                 #   Model cards (pricing, context windows)
 │   └── agents/                 #   Agent configuration templates
-├── scripts/                    # Plugin installer, QA runner, benchmark tools
+├── scripts/                    # QA runner, benchmark tools
 ├── tests/                      # Integration & unit tests
 ├── docs/adrs/                  # Architecture Decision Records (32 ADRs)
 ├── VERSION                     # Repo version (3.0.0)
@@ -132,16 +130,6 @@ just qa-fix
 
 # Run full CI pipeline
 just ci
-```
-
-### Plugin Development
-
-```bash
-# Validate plugin manifests
-just plugin-validate
-
-# Install plugin locally for testing
-just plugin-install <name>
 ```
 
 ### Docker Workspace Images
