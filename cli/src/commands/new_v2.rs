@@ -59,15 +59,7 @@ pub enum PrimitiveType {
     Tool,
 }
 
-impl PrimitiveType {
-    fn subdir(&self) -> &str {
-        match self {
-            PrimitiveType::Command => "commands",
-            PrimitiveType::Skill => "skills",
-            PrimitiveType::Tool => "tools",
-        }
-    }
-}
+impl PrimitiveType {}
 
 pub fn execute(mut args: NewCommandArgs) -> Result<()> {
     println!("{}", "Creating New V2 Primitive".cyan().bold());
