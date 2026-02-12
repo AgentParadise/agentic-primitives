@@ -330,6 +330,58 @@ uninstall:
     @echo '{{ GREEN }}✓ Uninstalled{{ NORMAL }}'
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PLUGINS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# List available plugins with versions
+[group('plugins')]
+[unix]
+plugin-list:
+    @python3 scripts/install_plugin.py list
+
+[group('plugins')]
+[windows]
+plugin-list:
+    python scripts/install_plugin.py list
+
+# Install a plugin (use --global for global scope)
+[group('plugins')]
+[unix]
+plugin-install name *FLAGS:
+    @python3 scripts/install_plugin.py install {{ name }} {{ FLAGS }}
+
+[group('plugins')]
+[windows]
+plugin-install name *FLAGS:
+    python scripts/install_plugin.py install {{ name }} {{ FLAGS }}
+
+# Uninstall a plugin (use --global for global scope)
+[group('plugins')]
+[unix]
+plugin-uninstall name *FLAGS:
+    @python3 scripts/install_plugin.py uninstall {{ name }} {{ FLAGS }}
+
+[group('plugins')]
+[windows]
+plugin-uninstall name *FLAGS:
+    python scripts/install_plugin.py uninstall {{ name }} {{ FLAGS }}
+
+# Validate all plugin manifests and structure
+[group('plugins')]
+[unix]
+plugin-validate:
+    @echo '{{ YELLOW }}Validating plugins...{{ NORMAL }}'
+    @python3 scripts/validate_plugins.py
+    @echo '{{ GREEN }}✓ Plugin validation complete{{ NORMAL }}'
+
+[group('plugins')]
+[windows]
+plugin-validate:
+    Write-Host "Validating plugins..." -ForegroundColor Yellow
+    python scripts/validate_plugins.py
+    Write-Host "Plugin validation complete" -ForegroundColor Green
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DOCUMENTATION
 # ═══════════════════════════════════════════════════════════════════════════════
 

@@ -1,6 +1,7 @@
 {
   "title": "Guides",
   "pages": [
+    "plugins",
     "create-agent",
     "create-command",
     "create-skill",
