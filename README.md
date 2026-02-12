@@ -2,6 +2,7 @@
 
 > Atomic building blocks for AI agent systems
 
+[![Version](https://img.shields.io/badge/version-3.0.0-purple.svg)](VERSION)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
@@ -101,11 +102,14 @@ agentic-primitives/
 │   ├── agentic_logging/        #   Structured logging
 │   ├── agentic_adapters/       #   Claude SDK/CLI adapters
 │   └── agentic_settings/       #   Configuration management
-├── providers/                  # Workspace provider images
-│   └── workspaces/claude-cli/  #   Claude CLI Docker workspace
-├── scripts/                    # Plugin installer, QA runner, build tools
+├── providers/                  # Workspace providers & model data
+│   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace
+│   ├── models/                 #   Model cards (pricing, context windows)
+│   └── agents/                 #   Agent configuration templates
+├── scripts/                    # Plugin installer, QA runner, benchmark tools
 ├── tests/                      # Integration & unit tests
 ├── docs/adrs/                  # Architecture Decision Records (32 ADRs)
+├── VERSION                     # Repo version (3.0.0)
 └── justfile                    # Task runner (just --list)
 ```
 
