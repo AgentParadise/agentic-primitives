@@ -385,10 +385,10 @@ Use Lucide React icons throughout:
 5. **Group related CTAs** - Use ButtonGroup for multiple buttons
 6. **Use grids for features** - FeatureGrid/PrimitiveGrid maintain consistent spacing
 
-## File Structure
+## Recommended File Structure
 
 ```
-docs-site-fuma/
+<project-root>/
 ├── app/
 │   ├── (home)/
 │   │   ├── layout.tsx      # Home layout with navbar
@@ -495,7 +495,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs-site-fuma/**'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
@@ -512,16 +512,16 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: docs-site-fuma/package-lock.json
+          cache-dependency-path: docs/package-lock.json
       - run: npm ci
-        working-directory: ./docs-site-fuma
+        working-directory: ./docs
       - run: npm run build
-        working-directory: ./docs-site-fuma
+        working-directory: ./docs
         env:
           NEXT_PUBLIC_BASE_PATH: /repo-name
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ./docs-site-fuma/out
+          path: ./docs/out
 
   deploy:
     needs: build

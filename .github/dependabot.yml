@@ -3,46 +3,6 @@
 
 version: 2
 updates:
-  # Rust dependencies (Cargo)
-  - package-ecosystem: "cargo"
-    directory: "/cli"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "chore(deps)"
-    labels:
-      - "dependencies"
-      - "rust"
-    groups:
-      rust-minor:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Python dependencies (pip/uv) - Analytics Service
-  - package-ecosystem: "pip"
-    directory: "/services/analytics"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 3
-    commit-message:
-      prefix: "chore(deps)"
-    labels:
-      - "dependencies"
-      - "python"
-    groups:
-      python-analytics:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
   # Python dependencies (pip/uv) - Logging Library
   - package-ecosystem: "pip"
     directory: "/lib/python/agentic_logging"

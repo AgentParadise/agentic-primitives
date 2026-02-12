@@ -9,7 +9,7 @@
   "window.titleSeparator": " │ ",
   // ─────────────────────────────────────────────────────────────────────────────
   // WORKBENCH COLOR CUSTOMIZATIONS
-  // Deep space aesthetic with purple/indigo accents (matching docs-site-fuma)
+  // Deep space aesthetic with purple/indigo accents
   // Primary: #818CF8 (Light Indigo) | Accent: #A78BFA (Light Purple)
   // ─────────────────────────────────────────────────────────────────────────────
   "workbench.colorCustomizations": {
