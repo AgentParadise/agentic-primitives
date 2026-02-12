@@ -61,6 +61,28 @@ Before you begin, ensure you have:
   </Tab>
 </Tabs>
 
+## Quick Start: Install Plugins
+
+Already have the repo cloned? Install plugins directly:
+
+```bash
+cd agentic-primitives
+
+# See what's available
+just plugin-list
+
+# Install plugins globally (available in all projects)
+just plugin-install sdlc --global        # Security hooks, commit, review, QA skills
+just plugin-install workspace --global   # Session lifecycle & observability hooks
+
+# Or install to current project only
+just plugin-install sdlc
+```
+
+That's it — hooks are active immediately in Claude Code. See the [Plugin Guide](/docs/guides/plugins) for details on what each plugin provides.
+
+---
+
 ## Step 1: Install agentic-p
 
 <Tabs items={['Clone & Build', 'From Release (Coming Soon)']}>
