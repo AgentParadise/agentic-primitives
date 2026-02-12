@@ -17,6 +17,8 @@ Software Development Lifecycle primitives for Claude Code agents.
 - **review** — Code review command
 - **fetch** — Fetch and prioritize PRs/issues
 - **merge-cycle** — Full merge cycle workflow
+- **worktree** — Manage git worktrees in isolated sibling directory
+- **validate-install** — Validate plugin installation, hooks, and security protections
 
 ## Hooks
 Security hooks, validators (bash, file, PII), and git hooks (pre-push, post-commit, etc.)
