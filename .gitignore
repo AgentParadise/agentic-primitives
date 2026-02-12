@@ -19,6 +19,9 @@ ENV/
 pip-log.txt
 pip-delete-this-directory.txt
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.refcache/
 .coverage
 htmlcov/
 *.egg-info/
