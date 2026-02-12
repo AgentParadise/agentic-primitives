@@ -1,4 +1,0 @@
-[tool.uv.workspace]
-members = [
-    "lib/python/agentic_logging",
-]
