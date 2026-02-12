@@ -1,5 +1,4 @@
-///! Generate new V2 primitives with templates and validation
-
+//! Generate new V2 primitives with templates and validation
 use anyhow::{Context, Result};
 use clap::Args;
 use colored::Colorize;
@@ -60,15 +59,7 @@ pub enum PrimitiveType {
     Tool,
 }
 
-impl PrimitiveType {
-    fn subdir(&self) -> &str {
-        match self {
-            PrimitiveType::Command => "commands",
-            PrimitiveType::Skill => "skills",
-            PrimitiveType::Tool => "tools",
-        }
-    }
-}
+impl PrimitiveType {}
 
 pub fn execute(mut args: NewCommandArgs) -> Result<()> {
     println!("{}", "Creating New V2 Primitive".cyan().bold());
@@ -98,7 +89,10 @@ pub fn execute(mut args: NewCommandArgs) -> Result<()> {
 
 /// Validate name format (kebab-case)
 fn validate_name(name: &str) -> Result<()> {
-    if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
         anyhow::bail!(
             "Name must be lowercase alphanumeric with hyphens only (kebab-case): {}",
             name
@@ -191,7 +185,10 @@ fn ensure_required_fields(args: &NewCommandArgs) -> Result<()> {
     // Validate description length
     let desc = args.description.as_ref().unwrap();
     if desc.len() < 10 || desc.len() > 200 {
-        anyhow::bail!("Description must be between 10 and 200 characters (got {})", desc.len());
+        anyhow::bail!(
+            "Description must be between 10 and 200 characters (got {})",
+            desc.len()
+        );
     }
 
     // Validate model
@@ -231,29 +228,37 @@ fn create_command(args: &NewCommandArgs) -> Result<()> {
     }
 
     // Parse tags if provided
-    let tags: Option<Vec<String>> = args.tags.as_ref().map(|t| {
-        t.split(',').map(|s| s.trim().to_string()).collect()
-    });
+    let tags: Option<Vec<String>> = args
+        .tags
+        .as_ref()
+        .map(|t| t.split(',').map(|s| s.trim().to_string()).collect());
 
     // Render template
     let template = include_str!("../templates/command.md.hbs");
     let mut hb = Handlebars::new();
     hb.register_template_string("command", template)?;
 
-    let content = hb.render("command", &json!({
-        "description": data.get("description").unwrap(),
-        "argument_hint": data.get("argument_hint"),
-        "model": data.get("model").unwrap(),
-        "allowed_tools": data.get("allowed_tools"),
-        "tags": tags,
-        "title": data.get("title").unwrap(),
-        "slug": data.get("slug").unwrap(),
-    }))?;
+    let content = hb.render(
+        "command",
+        &json!({
+            "description": data.get("description").unwrap(),
+            "argument_hint": data.get("argument_hint"),
+            "model": data.get("model").unwrap(),
+            "allowed_tools": data.get("allowed_tools"),
+            "tags": tags,
+            "title": data.get("title").unwrap(),
+            "slug": data.get("slug").unwrap(),
+        }),
+    )?;
 
     fs::write(&output_file, content)
         .with_context(|| format!("Failed to write file: {}", output_file.display()))?;
 
-    println!("{} Created command: {}", "✓".green().bold(), output_file.display());
+    println!(
+        "{} Created command: {}",
+        "✓".green().bold(),
+        output_file.display()
+    );
 
     // Validate the generated file
     validate_generated(&output_file)?;
@@ -285,28 +290,36 @@ fn create_skill(args: &NewCommandArgs) -> Result<()> {
     }
 
     // Parse expertise if provided
-    let expertise: Option<Vec<String>> = args.expertise.as_ref().map(|e| {
-        e.split(',').map(|s| s.trim().to_string()).collect()
-    });
+    let expertise: Option<Vec<String>> = args
+        .expertise
+        .as_ref()
+        .map(|e| e.split(',').map(|s| s.trim().to_string()).collect());
 
     // Render template
     let template = include_str!("../templates/skill.md.hbs");
     let mut hb = Handlebars::new();
     hb.register_template_string("skill", template)?;
 
-    let content = hb.render("skill", &json!({
-        "description": data.get("description").unwrap(),
-        "model": data.get("model").unwrap(),
-        "allowed_tools": data.get("allowed_tools"),
-        "expertise": expertise,
-        "title": data.get("title").unwrap(),
-        "slug": data.get("slug").unwrap(),
-    }))?;
+    let content = hb.render(
+        "skill",
+        &json!({
+            "description": data.get("description").unwrap(),
+            "model": data.get("model").unwrap(),
+            "allowed_tools": data.get("allowed_tools"),
+            "expertise": expertise,
+            "title": data.get("title").unwrap(),
+            "slug": data.get("slug").unwrap(),
+        }),
+    )?;
 
     fs::write(&output_file, content)
         .with_context(|| format!("Failed to write file: {}", output_file.display()))?;
 
-    println!("{} Created skill: {}", "✓".green().bold(), output_file.display());
+    println!(
+        "{} Created skill: {}",
+        "✓".green().bold(),
+        output_file.display()
+    );
 
     // Validate the generated file
     validate_generated(&output_file)?;
@@ -338,46 +351,62 @@ fn create_tool(args: &NewCommandArgs) -> Result<()> {
     // Render tool.yaml
     let tool_yaml_template = include_str!("../templates/tool/tool.yaml.hbs");
     hb.register_template_string("tool_yaml", tool_yaml_template)?;
-    let tool_yaml_content = hb.render("tool_yaml", &json!({
-        "tool_id": tool_id,
-        "name": to_title_case(&args.name),
-        "description": args.description.as_ref().unwrap(),
-        "function_name": function_name,
-        "package_name": package_name,
-    }))?;
+    let tool_yaml_content = hb.render(
+        "tool_yaml",
+        &json!({
+            "tool_id": tool_id,
+            "name": to_title_case(&args.name),
+            "description": args.description.as_ref().unwrap(),
+            "function_name": function_name,
+            "package_name": package_name,
+        }),
+    )?;
     fs::write(output_dir.join("tool.yaml"), tool_yaml_content)?;
 
     // Render impl.py
     let impl_template = include_str!("../templates/tool/impl.py.hbs");
     hb.register_template_string("impl", impl_template)?;
-    let impl_content = hb.render("impl", &json!({
-        "description": args.description.as_ref().unwrap(),
-        "function_name": function_name,
-    }))?;
+    let impl_content = hb.render(
+        "impl",
+        &json!({
+            "description": args.description.as_ref().unwrap(),
+            "function_name": function_name,
+        }),
+    )?;
     fs::write(output_dir.join("impl.py"), impl_content)?;
 
     // Render pyproject.toml
     let pyproject_template = include_str!("../templates/tool/pyproject.toml.hbs");
     hb.register_template_string("pyproject", pyproject_template)?;
-    let pyproject_content = hb.render("pyproject", &json!({
-        "package_name": package_name,
-        "description": args.description.as_ref().unwrap(),
-    }))?;
+    let pyproject_content = hb.render(
+        "pyproject",
+        &json!({
+            "package_name": package_name,
+            "description": args.description.as_ref().unwrap(),
+        }),
+    )?;
     fs::write(output_dir.join("pyproject.toml"), pyproject_content)?;
 
     // Render README.md
     let readme_template = include_str!("../templates/tool/README.md.hbs");
     hb.register_template_string("readme", readme_template)?;
-    let readme_content = hb.render("readme", &json!({
-        "name": to_title_case(&args.name),
-        "description": args.description.as_ref().unwrap(),
-        "category": args.category,
-        "slug": args.name,
-        "function_name": function_name,
-    }))?;
+    let readme_content = hb.render(
+        "readme",
+        &json!({
+            "name": to_title_case(&args.name),
+            "description": args.description.as_ref().unwrap(),
+            "category": args.category,
+            "slug": args.name,
+            "function_name": function_name,
+        }),
+    )?;
     fs::write(output_dir.join("README.md"), readme_content)?;
 
-    println!("{} Created tool: {}", "✓".green().bold(), output_dir.display());
+    println!(
+        "{} Created tool: {}",
+        "✓".green().bold(),
+        output_dir.display()
+    );
     println!("  {} tool.yaml", "→".blue());
     println!("  {} impl.py", "→".blue());
     println!("  {} pyproject.toml", "→".blue());

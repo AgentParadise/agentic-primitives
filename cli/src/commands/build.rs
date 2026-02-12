@@ -7,9 +7,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+use crate::commands::build_v2;
 use crate::config::PrimitivesConfig;
 use crate::manifest::{AgenticManifest, ManifestPrimitive, MANIFEST_FILENAME};
-use crate::providers::{ClaudeTransformer, OpenAITransformer, ProviderTransformer};
+use crate::providers::{
+    ClaudeTransformer, ClaudeV2Transformer, OpenAITransformer, ProviderTransformer,
+};
 use crate::utils::{matches_only_patterns, parse_only_patterns, warn_if_empty_match};
 
 /// Arguments for the build command
@@ -23,6 +26,7 @@ pub struct BuildArgs {
     pub only: Option<String>,
     pub clean: bool,
     pub verbose: bool,
+    pub primitives_version: Option<String>, // "v1" or "v2"
 }
 
 /// Result of a build operation
@@ -64,7 +68,21 @@ fn extract_primitive_id(path: &Path) -> Option<String> {
 }
 
 /// Get a transformer for the specified provider
-fn get_transformer(provider: &str) -> Result<Box<dyn ProviderTransformer>> {
+fn get_transformer(
+    provider: &str,
+    primitives_version: Option<&String>,
+) -> Result<Box<dyn ProviderTransformer>> {
+    // Use v2 transformer if building v2 primitives
+    if let Some(version) = primitives_version {
+        if version == "v2" {
+            return match provider {
+                "claude" => Ok(Box::new(ClaudeV2Transformer::new())),
+                _ => bail!("Provider {provider} not yet supported for v2. Use: claude"),
+            };
+        }
+    }
+
+    // Default v1 transformers
     match provider {
         "claude" => Ok(Box::new(ClaudeTransformer::new())),
         "openai" => Ok(Box::new(OpenAITransformer::new())),
@@ -423,14 +441,27 @@ fn print_build_summary(result: &BuildResult) {
 
 /// Execute the build command
 pub fn execute(args: &BuildArgs, config: &PrimitivesConfig) -> Result<()> {
-    // 1. Instantiate provider transformer
-    let transformer = get_transformer(&args.provider)?;
+    // 1. Instantiate provider transformer (v1 or v2)
+    let transformer = get_transformer(&args.provider, args.primitives_version.as_ref())?;
 
     // 2. Prepare output directory
     let output_dir = prepare_output_dir(args)?;
 
-    // 3. Discover primitives
-    let primitives = discover_primitives(args, config)?;
+    // 3. Discover primitives (v1 or v2 based on primitives_version flag)
+    let primitives = if let Some(ref version) = args.primitives_version {
+        if version == "v2" {
+            let primitives_base = PathBuf::from(&config.paths.primitives)
+                .parent()
+                .unwrap()
+                .to_path_buf();
+            build_v2::discover_v2_primitives(args, &primitives_base)?
+        } else {
+            discover_primitives(args, config)?
+        }
+    } else {
+        // Default to v1 for backward compatibility
+        discover_primitives(args, config)?
+    };
 
     // Warn if --only filter resulted in no matches
     if let Some(ref only) = args.only {
@@ -501,21 +532,21 @@ mod tests {
 
     #[test]
     fn test_get_transformer_claude() {
-        let transformer = get_transformer("claude");
+        let transformer = get_transformer("claude", None);
         assert!(transformer.is_ok());
         assert_eq!(transformer.unwrap().provider_name(), "claude");
     }
 
     #[test]
     fn test_get_transformer_openai() {
-        let transformer = get_transformer("openai");
+        let transformer = get_transformer("openai", None);
         assert!(transformer.is_ok());
         assert_eq!(transformer.unwrap().provider_name(), "openai");
     }
 
     #[test]
     fn test_get_transformer_unknown() {
-        match get_transformer("unknown") {
+        match get_transformer("unknown", None) {
             Ok(_) => panic!("Expected error for unknown provider"),
             Err(e) => assert!(e.to_string().contains("Unknown provider")),
         }
@@ -533,6 +564,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -549,6 +581,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -565,6 +598,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(!should_include_primitive(path, &args).unwrap());
     }
@@ -581,6 +615,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -597,6 +632,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(!should_include_primitive(path, &args).unwrap());
     }
@@ -613,6 +649,7 @@ mod tests {
             only: None,
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).is_err());
     }
@@ -646,6 +683,7 @@ mod tests {
             only: Some("qa/*".to_string()),
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(should_include_primitive(path, &args).unwrap());
     }
@@ -662,6 +700,7 @@ mod tests {
             only: Some("qa/*".to_string()),
             clean: false,
             verbose: false,
+            primitives_version: None,
         };
         assert!(!should_include_primitive(path, &args).unwrap());
     }

@@ -1,77 +1,91 @@
 # Agentic Primitives CLI
 
-Command-line interface for managing agentic primitives - atomic building blocks for AI coding systems.
+**Status:** ✨ **Active Development**
 
-## Building
+## Overview
 
-```bash
-# Build debug version
-cargo build
+The unified CLI for agentic-primitives. Supports both V1 and V2 primitive structures with:
+- Flat directory organization (V2) and legacy nested structure (V1)
+- Frontmatter-based metadata
+- JSON Schema validation
+- CLI generators for rapid development
+- Auto-generated adapters
 
-# Build release version
-cargo build --release
-
-# Run from source
-cargo run -- --help
-```
-
-## Development
-
-```bash
-# Format code
-cargo fmt
-
-# Lint code
-cargo clippy
-
-# Run tests
-cargo test
-
-# Run all QA checks (from repo root)
-cd .. && just qa
-```
+**Binary Name:** `agentic-p`
 
 ## Installation
 
 ```bash
-# Install locally
-cargo install --path .
-
-# Use directly
-agentic --help
+cd cli
+cargo build --release
+# Binary: target/release/agentic-p
 ```
 
-## Commands
+## Quick Start
 
-- `init` - Initialize a new primitives repository
-- `new` - Create a new primitive (prompt, tool, hook)
-- `validate` - Validate primitives structure and content
-- `list` - List primitives with filtering
-- `inspect` - Inspect a specific primitive
-- `version` - Manage primitive versions
-- `migrate` - Migrate primitives to latest format
-- `build` - Build provider-specific outputs (generates `.agentic-manifest.yaml`)
-- `install` - Smart sync to provider directory (preserves local files)
-- `test-hook` - Test a hook locally
-- `config` - Manage per-project configuration (version overrides)
+```bash
+# Create a new command
+./target/release/agentic-p new command qa review \
+  --description "Review code quality" \
+  --model sonnet
 
-For detailed usage, run `agentic-p <command> --help`.
+# Validate primitives
+./target/release/agentic-p validate primitives/v2/commands/qa/review.md
 
-## Architecture
+# Build for Claude
+./target/release/agentic-p build --provider claude --primitives-version v2
+```
 
-The CLI is organized into modules:
+## Features
 
-- `config` - Load and parse primitives.config.yaml
-- `error` - Custom error types
-- `models` - Model resolution (provider/model)
-- `schema` - JSON schema validation
-- `primitives` - Data structures for prompts, tools, hooks
-- `commands` - CLI command implementations
-- `validation` - Three-layer validation engine
-- `providers` - Provider transformers (Claude, OpenAI, Cursor)
-- `templates` - Embedded templates for scaffolding
+### CLI Generators
+```bash
+# Create command
+agentic-p new command <category> <name>
 
-## License
+# Create skill
+agentic-p new skill <category> <name>
 
-MIT
+# Create tool
+agentic-p new tool <category> <name>
+```
 
+### Schema Validation
+```bash
+# Validate single file
+agentic-p validate primitives/v2/commands/qa/review.md
+
+# Validate all v2 primitives
+agentic-p validate --all
+```
+
+### Build System
+```bash
+# Build v2 primitives
+agentic-p build --provider claude --primitives-version v2
+```
+
+## Documentation
+
+- [Docs Site](../docs-site-fuma/content/docs/)
+- [Migration Guide](../docs-site-fuma/content/docs/guides/migration.mdx)
+- [CLI Reference](../docs-site-fuma/content/docs/cli/)
+- [Frontmatter Reference](../docs-site-fuma/content/docs/reference/frontmatter.mdx)
+
+## Development
+
+```bash
+# Run tests
+cargo test
+
+# Format code
+cargo fmt
+
+# Lint
+cargo clippy
+
+# Build dev version
+cargo build
+```
+
+**Last Updated:** 2026-02-11
