@@ -176,6 +176,41 @@ def remove_enabled_plugin(settings: dict, plugin_name: str) -> dict:
     return settings
 
 
+def merge_plugin_settings(settings: dict, plugin_settings: dict, plugin_name: str) -> dict:
+    """Merge plugin-defined settings (attribution, env, etc.) into settings.json.
+
+    Each merged key is tracked via a _plugin_settings metadata dict so
+    uninstall can cleanly revert only settings that came from plugins.
+    """
+    tracker = settings.get("_plugin_settings", {})
+
+    for key, value in plugin_settings.items():
+        settings[key] = value
+        # Track which plugin set this key
+        tracker[key] = make_hook_tag(plugin_name)
+
+    if tracker:
+        settings["_plugin_settings"] = tracker
+    return settings
+
+
+def remove_plugin_settings(settings: dict, plugin_name: str) -> dict:
+    """Remove settings that were added by a specific plugin."""
+    tag = make_hook_tag(plugin_name)
+    tracker = settings.get("_plugin_settings", {})
+
+    keys_to_remove = [k for k, v in tracker.items() if v == tag]
+    for key in keys_to_remove:
+        settings.pop(key, None)
+        del tracker[key]
+
+    if not tracker:
+        settings.pop("_plugin_settings", None)
+    else:
+        settings["_plugin_settings"] = tracker
+    return settings
+
+
 def install_plugin(name: str, global_scope: bool) -> None:
     """Install a plugin to the cache and register it in settings."""
     plugin_dir = get_plugin_dir(name)
@@ -202,6 +237,12 @@ def install_plugin(name: str, global_scope: bool) -> None:
     settings = remove_hooks(settings, name)
     settings = merge_hooks(settings, plugin_hooks, name, cache_dir)
     settings = add_enabled_plugin(settings, name)
+
+    # Merge plugin settings (attribution, env, etc.) from manifest
+    plugin_settings = manifest.get("settings", {})
+    if plugin_settings:
+        settings = merge_plugin_settings(settings, plugin_settings, name)
+
     save_settings(settings_path, settings)
 
     print(f"Installed {name}@{manifest['version']} ({scope_label})")
@@ -209,6 +250,8 @@ def install_plugin(name: str, global_scope: bool) -> None:
     print(f"  Settings: {settings_path}")
     if plugin_hooks:
         print(f"  Hooks:    {', '.join(plugin_hooks.keys())}")
+    if plugin_settings:
+        print(f"  Settings: {', '.join(plugin_settings.keys())}")
 
 
 def uninstall_plugin(name: str, global_scope: bool) -> None:
@@ -229,9 +272,10 @@ def uninstall_plugin(name: str, global_scope: bool) -> None:
             except OSError:
                 break
 
-    # Remove hooks and enabled entry from settings
+    # Remove hooks, plugin settings, and enabled entry from settings
     settings = load_settings(settings_path)
     settings = remove_hooks(settings, name)
+    settings = remove_plugin_settings(settings, name)
     settings = remove_enabled_plugin(settings, name)
     save_settings(settings_path, settings)
 

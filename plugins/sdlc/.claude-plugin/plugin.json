@@ -5,5 +5,11 @@
   "author": {
     "name": "NeuralEmpowerment"
   },
-  "repository": "https://github.com/AgentParadise/agentic-primitives"
+  "repository": "https://github.com/AgentParadise/agentic-primitives",
+  "settings": {
+    "attribution": {
+      "commit": "",
+      "pr": ""
+    }
+  }
 }

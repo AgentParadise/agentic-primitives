@@ -23,7 +23,9 @@ spec.loader.exec_module(installer)
 # ============================================================================
 
 
-def _make_plugin(base_dir: Path, name: str = "test-plugin", *, with_hooks: bool = True) -> Path:
+def _make_plugin(
+    base_dir: Path, name: str = "test-plugin", *, with_hooks: bool = True, settings: dict | None = None
+) -> Path:
     """Create a minimal plugin directory under base_dir/name."""
     plugin_dir = base_dir / name
     plugin_dir.mkdir(parents=True, exist_ok=True)
@@ -35,6 +37,8 @@ def _make_plugin(base_dir: Path, name: str = "test-plugin", *, with_hooks: bool 
         "version": "1.2.3",
         "description": f"A test plugin ({name})",
     }
+    if settings:
+        manifest["settings"] = settings
     (manifest_dir / "plugin.json").write_text(json.dumps(manifest))
 
     if with_hooks:
@@ -247,6 +251,87 @@ class TestHookMerging:
 
 
 # ============================================================================
+# merge_plugin_settings / remove_plugin_settings
+# ============================================================================
+
+
+class TestPluginSettings:
+    def test_merge_adds_settings_and_tracker(self):
+        settings = {}
+        result = installer.merge_plugin_settings(
+            settings, {"attribution": {"commit": "", "pr": ""}}, "sdlc"
+        )
+        assert result["attribution"] == {"commit": "", "pr": ""}
+        assert result["_plugin_settings"]["attribution"] == "agentic-primitives/sdlc"
+
+    def test_merge_overwrites_existing_key(self):
+        settings = {"attribution": {"commit": "old", "pr": "old"}}
+        result = installer.merge_plugin_settings(
+            settings, {"attribution": {"commit": "", "pr": ""}}, "sdlc"
+        )
+        assert result["attribution"] == {"commit": "", "pr": ""}
+
+    def test_merge_multiple_keys(self):
+        settings = {}
+        result = installer.merge_plugin_settings(
+            settings, {"foo": 1, "bar": 2}, "test"
+        )
+        assert result["foo"] == 1
+        assert result["bar"] == 2
+        assert result["_plugin_settings"]["foo"] == "agentic-primitives/test"
+        assert result["_plugin_settings"]["bar"] == "agentic-primitives/test"
+
+    def test_merge_preserves_other_tracked_settings(self):
+        settings = {
+            "existing": True,
+            "_plugin_settings": {"existing": "agentic-primitives/other"},
+        }
+        result = installer.merge_plugin_settings(settings, {"new_key": "val"}, "sdlc")
+        assert result["existing"] is True
+        assert result["new_key"] == "val"
+        assert result["_plugin_settings"]["existing"] == "agentic-primitives/other"
+        assert result["_plugin_settings"]["new_key"] == "agentic-primitives/sdlc"
+
+    def test_remove_cleans_only_tagged_settings(self):
+        settings = {
+            "attribution": {"commit": "", "pr": ""},
+            "other_setting": True,
+            "_plugin_settings": {
+                "attribution": "agentic-primitives/sdlc",
+                "other_setting": "agentic-primitives/workspace",
+            },
+        }
+        result = installer.remove_plugin_settings(settings, "sdlc")
+        assert "attribution" not in result
+        assert result["other_setting"] is True
+        assert "attribution" not in result["_plugin_settings"]
+        assert result["_plugin_settings"]["other_setting"] == "agentic-primitives/workspace"
+
+    def test_remove_cleans_tracker_when_empty(self):
+        settings = {
+            "attribution": {"commit": "", "pr": ""},
+            "_plugin_settings": {"attribution": "agentic-primitives/sdlc"},
+        }
+        result = installer.remove_plugin_settings(settings, "sdlc")
+        assert "attribution" not in result
+        assert "_plugin_settings" not in result
+
+    def test_remove_noop_for_unknown_plugin(self):
+        settings = {
+            "attribution": {"commit": ""},
+            "_plugin_settings": {"attribution": "agentic-primitives/sdlc"},
+        }
+        result = installer.remove_plugin_settings(settings, "unknown")
+        assert result["attribution"] == {"commit": ""}
+        assert result["_plugin_settings"]["attribution"] == "agentic-primitives/sdlc"
+
+    def test_remove_noop_when_no_tracker(self):
+        settings = {"foo": "bar"}
+        result = installer.remove_plugin_settings(settings, "sdlc")
+        assert result == {"foo": "bar"}
+
+
+# ============================================================================
 # enabledPlugins (dict and list formats)
 # ============================================================================
 
@@ -406,6 +491,37 @@ class TestInstallUninstallFlow:
         settings = json.loads(settings_path.read_text())
         assert "agentic-primitives/no-hooks" in settings["enabledPlugins"]
         assert "hooks" not in settings or settings["hooks"] == {}
+
+    def test_install_merges_plugin_settings(self, sandbox):
+        """Plugins with settings should merge them into settings.json."""
+        _make_plugin(
+            sandbox["plugins"],
+            "with-settings",
+            with_hooks=False,
+            settings={"attribution": {"commit": "", "pr": ""}},
+        )
+        installer.install_plugin("with-settings", global_scope=False)
+
+        settings_path = installer.get_settings_path(False)
+        settings = json.loads(settings_path.read_text())
+        assert settings["attribution"] == {"commit": "", "pr": ""}
+        assert settings["_plugin_settings"]["attribution"] == "agentic-primitives/with-settings"
+
+    def test_uninstall_removes_plugin_settings(self, sandbox):
+        """Uninstall should remove settings that were added by the plugin."""
+        _make_plugin(
+            sandbox["plugins"],
+            "with-settings",
+            with_hooks=False,
+            settings={"attribution": {"commit": "", "pr": ""}},
+        )
+        installer.install_plugin("with-settings", global_scope=False)
+        installer.uninstall_plugin("with-settings", global_scope=False)
+
+        settings_path = installer.get_settings_path(False)
+        settings = json.loads(settings_path.read_text())
+        assert "attribution" not in settings
+        assert "_plugin_settings" not in settings
 
 
 # ============================================================================
