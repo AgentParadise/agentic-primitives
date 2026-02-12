@@ -82,7 +82,7 @@ Plugins are pinned to a specific commit and never auto-update.
 
 | Plugin | Commands | Skills | Hooks |
 |--------|----------|--------|-------|
-| **sdlc** | `/commit`, `/push`, `/merge`, `/merge-cycle`, `/review`, `/fetch`, `/worktree` | `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
 | **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
 | **research** | `/doc-scraper` | -- | -- |
 | **meta** | `/create-command`, `/create-prime`, `/create-doc-sync` | `prompt-generator` | -- |
