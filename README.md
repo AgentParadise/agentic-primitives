@@ -106,7 +106,6 @@ agentic-primitives/
 ├── scripts/                    # Plugin installer, QA runner, build tools
 ├── tests/                      # Integration & unit tests
 ├── docs/adrs/                  # Architecture Decision Records (32 ADRs)
-├── schemas/                    # JSON schemas for commands & skills
 └── justfile                    # Task runner (just --list)
 ```
 
