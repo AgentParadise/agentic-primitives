@@ -2,7 +2,7 @@
 
 > Atomic building blocks for AI agent systems
 
-[![Version](https://img.shields.io/badge/version-3.1.0-purple.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-3.1.1-purple.svg)](VERSION)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
