@@ -2,7 +2,7 @@
 
 > Atomic building blocks for AI agent systems
 
-[![Version](https://img.shields.io/badge/version-3.0.0-purple.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-3.0.1-purple.svg)](VERSION)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
@@ -30,32 +30,63 @@ Reusable prompts deployed as **Claude Code plugins** — commands, skills, hooks
 - [uv](https://docs.astral.sh/uv/) — fast Python package manager
 - [just](https://github.com/casey/just) — command runner (optional, recommended)
 
-### Install a Plugin
+### Install Plugins
+
+Plugins are installed via Claude Code's built-in plugin system. Requires Claude Code v1.0.33+.
+
+**1. Add the marketplace (one-time setup):**
 
 ```bash
-# Add the marketplace (one-time)
 claude plugin marketplace add AgentParadise/agentic-primitives
+```
 
-# Install a plugin globally
+Or from inside Claude Code, type `/plugin` and go to the **Marketplaces** tab.
+
+**2. Install the plugins you need:**
+
+```bash
+# Install globally (available in all projects)
 claude plugin install sdlc@agentic-primitives --scope user
+claude plugin install workspace@agentic-primitives --scope user
+claude plugin install meta@agentic-primitives --scope user
+claude plugin install research@agentic-primitives --scope user
+claude plugin install docs@agentic-primitives --scope user
 
 # Or install to current project only
 claude plugin install sdlc@agentic-primitives --scope project
 ```
 
-Or use the interactive UI: type `/plugin` inside Claude Code.
+Or from inside Claude Code, type `/plugin` and browse the **Discover** tab.
+
+**3. Update plugins:**
+
+```bash
+claude plugin update sdlc@agentic-primitives
+```
+
+Plugins are pinned to a specific commit and never auto-update.
 
 ---
 
 ## Available Plugins
 
-| Plugin | Description | Includes |
-|--------|-------------|----------|
-| **sdlc** | Software Development Lifecycle | `/commit`, `/push`, `/merge`, `/merge-cycle`, `/review`, `/fetch` commands; `testing-expert`, `pre-commit-qa`, `prioritize` skills; security hooks, git hooks |
-| **workspace** | Observable isolated workspaces | Session lifecycle hooks, tool observability, structured JSONL event emission |
-| **research** | Information gathering | `/doc-scraper` command, Firecrawl web scraping tool |
-| **meta** | Primitive generators | `/create-command`, `/create-prime`, `/create-doc-sync` commands |
-| **docs** | Documentation tools | Fumadocs integration skill |
+| Plugin | Install | Description |
+|--------|---------|-------------|
+| **sdlc** | `claude plugin install sdlc@agentic-primitives --scope user` | Software Development Lifecycle |
+| **workspace** | `claude plugin install workspace@agentic-primitives --scope user` | Observable isolated workspaces |
+| **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |
+| **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |
+| **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |
+
+### What's in each plugin
+
+| Plugin | Commands | Skills | Hooks |
+|--------|----------|--------|-------|
+| **sdlc** | `/commit`, `/push`, `/merge`, `/merge-cycle`, `/review`, `/fetch`, `/worktree` | `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
+| **research** | `/doc-scraper` | -- | -- |
+| **meta** | `/create-command`, `/create-prime`, `/create-doc-sync` | `prompt-generator` | -- |
+| **docs** | -- | Fumadocs integration | -- |
 
 ---
 
@@ -107,7 +138,7 @@ agentic-primitives/
 ├── scripts/                    # QA runner, benchmark tools
 ├── tests/                      # Integration & unit tests
 ├── docs/adrs/                  # Architecture Decision Records (32 ADRs)
-├── VERSION                     # Repo version (3.0.0)
+├── VERSION                     # Repo version (3.0.1)
 └── justfile                    # Task runner (just --list)
 ```
 
