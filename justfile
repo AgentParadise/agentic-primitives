@@ -366,6 +366,41 @@ plugin-uninstall name *FLAGS:
 plugin-uninstall name *FLAGS:
     python scripts/install_plugin.py uninstall {{ name }} {{ FLAGS }}
 
+# Show plugin commands help
+[group('plugins')]
+[unix]
+plugin-help:
+    @echo '{{ GREEN }}Plugin Commands:{{ NORMAL }}'
+    @echo ''
+    @echo '  just plugin-list                  List available plugins with versions'
+    @echo '  just plugin-install <name>        Install plugin to current project'
+    @echo '  just plugin-install <name> --global  Install plugin globally'
+    @echo '  just plugin-uninstall <name>      Uninstall from current project'
+    @echo '  just plugin-uninstall <name> --global  Uninstall globally'
+    @echo '  just plugin-validate              Validate all plugin manifests'
+    @echo ''
+    @echo '{{ YELLOW }}Examples:{{ NORMAL }}'
+    @echo '  just plugin-install sdlc --global    Install SDLC security hooks globally'
+    @echo '  just plugin-install workspace        Install workspace hooks to project'
+    @echo '  just plugin-list                     See all 5 available plugins'
+
+[group('plugins')]
+[windows]
+plugin-help:
+    Write-Host "Plugin Commands:" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  just plugin-list                  List available plugins with versions"
+    Write-Host "  just plugin-install <name>        Install plugin to current project"
+    Write-Host "  just plugin-install <name> --global  Install plugin globally"
+    Write-Host "  just plugin-uninstall <name>      Uninstall from current project"
+    Write-Host "  just plugin-uninstall <name> --global  Uninstall globally"
+    Write-Host "  just plugin-validate              Validate all plugin manifests"
+    Write-Host ""
+    Write-Host "Examples:" -ForegroundColor Yellow
+    Write-Host "  just plugin-install sdlc --global    Install SDLC security hooks globally"
+    Write-Host "  just plugin-install workspace        Install workspace hooks to project"
+    Write-Host "  just plugin-list                     See all 5 available plugins"
+
 # Validate all plugin manifests and structure
 [group('plugins')]
 [unix]
