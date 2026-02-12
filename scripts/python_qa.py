@@ -22,8 +22,6 @@ PACKAGES = [
     Path("lib/python/agentic_logging"),
     Path("lib/python/agentic_security"),
     Path("lib/python/agentic_settings"),
-    Path("lib/python/agentic_workspace"),
-    Path("services/analytics"),
 ]
 
 # Additional test directories (not packages)

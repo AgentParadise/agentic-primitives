@@ -1,9 +1,0 @@
-{
-  "title": "Core Concepts",
-  "pages": [
-    "primitives",
-    "versioning",
-    "providers",
-    "hooks"
-  ]
-}
