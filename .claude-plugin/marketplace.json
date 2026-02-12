@@ -1,37 +1,40 @@
 {
   "name": "agentic-primitives",
   "description": "Production-grade plugins for Claude Code agents — SDLC, workspace observability, research tools, documentation, and meta-generators",
-  "version": "1.0.0",
-  "author": {
+  "owner": {
     "name": "NeuralEmpowerment",
     "url": "https://github.com/AgentParadise"
   },
-  "repository": "https://github.com/AgentParadise/agentic-primitives",
-  "plugins": {
-    "sdlc": {
-      "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "sdlc",
       "description": "Software Development Lifecycle — commit, review, QA, testing, security hooks, git hooks, and infrastructure configuration",
-      "source": "./plugins/sdlc"
+      "source": "./plugins/sdlc",
+      "category": "development"
     },
-    "workspace": {
-      "version": "1.0.0",
+    {
+      "name": "workspace",
       "description": "Observable isolated workspaces — lifecycle and observability hooks emitting structured JSONL events",
-      "source": "./plugins/workspace"
+      "source": "./plugins/workspace",
+      "category": "development"
     },
-    "research": {
-      "version": "1.0.0",
+    {
+      "name": "research",
       "description": "Information gathering — web scraping, documentation extraction, and research tools",
-      "source": "./plugins/research"
+      "source": "./plugins/research",
+      "category": "development"
     },
-    "meta": {
-      "version": "1.0.0",
+    {
+      "name": "meta",
       "description": "Primitive generators — tools that create commands, skills, prompts, and other agentic primitives",
-      "source": "./plugins/meta"
+      "source": "./plugins/meta",
+      "category": "development"
     },
-    "docs": {
-      "version": "1.0.0",
+    {
+      "name": "docs",
       "description": "Documentation tools — Fumadocs integration and documentation management",
-      "source": "./plugins/docs"
+      "source": "./plugins/docs",
+      "category": "development"
     }
-  }
+  ]
 }
