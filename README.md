@@ -3,7 +3,7 @@
 > Atomic building blocks for AI agent systems
 
 [![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
 ---
@@ -203,4 +203,4 @@ This project's design decisions are documented in [13 ADRs](docs/adrs/), includi
 
 ## License
 
-[Apache 2.0](LICENSE)
+[MIT](LICENSE)
