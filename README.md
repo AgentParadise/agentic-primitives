@@ -150,6 +150,7 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 | **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |
 | **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |
 | **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |
+| **compound-engineering** | `claude plugin install compound-engineering@agentic-primitives --scope user` | Agent-native architecture, swarms, skill creation |
 
 ### What's in each plugin
 
@@ -160,6 +161,7 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 | **research** | `scrape_docs` | -- | -- | -- |
 | **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |
 | **docs** | -- | Fumadocs integration | -- | -- |
+| **compound-engineering** | -- | `agent-native-architecture`, `orchestrating-swarms`, `create-agent-skills` | -- | -- |
 
 ---
 
@@ -197,7 +199,8 @@ agentic-primitives/
 │   ├── workspace/              #   Workspace observability hooks
 │   ├── research/               #   Research tools (firecrawl, doc-scraper)
 │   ├── meta/                   #   Primitive generators
-│   └── docs/                   #   Documentation tools
+│   ├── docs/                   #   Documentation tools
+│   └── architecture/           #   Agent-native architecture (from Every, Inc.)
 ├── lib/python/                 # Infrastructure Primitives
 │   ├── agentic_isolation/      #   Docker workspace sandboxing
 │   ├── agentic_events/         #   JSONL event emission
