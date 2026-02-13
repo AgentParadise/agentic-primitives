@@ -1,0 +1,47 @@
+name: Plugin Tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag-plugin-versions:
+    name: Tag Plugin Versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Create tags for bumped plugins
+        run: |
+          for plugin_dir in plugins/*/; do
+            plugin_name=$(basename "$plugin_dir")
+            plugin_json="${plugin_dir}.claude-plugin/plugin.json"
+
+            if [[ ! -f "$plugin_json" ]]; then
+              continue
+            fi
+
+            head_version=$(jq -r '.version' "$plugin_json")
+            base_version=$(git show HEAD~1:"${plugin_json}" 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+
+            if [[ -z "$base_version" ]] || [[ "$base_version" == "$head_version" ]]; then
+              continue
+            fi
+
+            tag="${plugin_name}/v${head_version}"
+
+            if git rev-parse "$tag" >/dev/null 2>&1; then
+              echo "⚠ $tag already exists, skipping"
+              continue
+            fi
+
+            git tag "$tag"
+            echo "✓ Tagged ${tag}"
+          done
+
+          git push --tags
