@@ -1,136 +1,24 @@
 # Agentic Primitives
 
-> **The composable platform for agentic engineering.**
+> Atomic building blocks for AI agent systems
 
-Agentic Primitives is a batteries-included framework for building, observing, and isolating AI coding agents. It provides the atomic building blocks — prompts, tools, hooks, and workspaces — that compose into production-grade agentic systems.
-
-`.claude/` is the canonical format. OpenCode and Codex generation planned.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
 ---
 
-## Three Pillars
+## What Are Agentic Primitives?
 
-### 1. 🧩 Plugins — Drop-in Primitives
+This repository contains two kinds of primitives for building AI agent systems:
 
-Reusable commands, skills, agents, and tools that work with Claude Code today.
+### Prompt Primitives
 
-```
-primitives/v1/
-├── commands/       # /slash-commands (devops, qa, review, workflow, meta)
-├── skills/         # Reusable knowledge (testing, docs, devops, review)
-├── agents/         # Persistent personas (@agent-name)
-├── tools/          # UV Python scripts, MCP integrations
-└── hooks/          # Lifecycle event handlers
-```
+Reusable prompts deployed as **Claude Code plugins** — commands, skills, hooks, and tools that agents use during software development.
 
-Every primitive is **atomic and composable**. Drop a markdown file in the right folder — it works. Need something more complex? Add tool implementations in Python or TypeScript alongside it.
+### Infrastructure Primitives
 
-### 2. 🔭 Observability — See What Your Agents Do
-
-**You can't build reliable agentic systems if you can't see what they're doing.** Observability is a first-class primitive, not an afterthought.
-
-Every agent action flows through a hook-based event pipeline:
-
-| Hook | Lifecycle Event | What It Captures |
-|------|----------------|------------------|
-| `pre-tool-use` | Before any tool call | Security validation, dangerous command blocking |
-| `post-tool-use` | After tool execution | Result logging, metrics emission |
-| `session-start/end` | Session lifecycle | Session tracking, resource cleanup |
-| `user-prompt` | User input | PII detection, credential scanning |
-| `subagent-stop` | Subagent completion | Multi-agent coordination |
-| `pre-compact` | Before context compaction | Context preservation |
-| `notification` | Agent notifications | Alert routing |
-| `stop` | Agent shutdown | Graceful cleanup |
-
-**Architecture:** OTel-first. Events emit as OpenTelemetry traces, metrics, and logs — route them anywhere (Grafana, Datadog, local JSONL, your own dashboard).
-
-```python
-from agentic_otel import OTelConfig, HookOTelEmitter
-
-emitter = HookOTelEmitter(OTelConfig(
-    endpoint="http://localhost:4317",
-    service_name="my-agent",
-))
-```
-
-**Security hooks** run automatically — blocking dangerous bash commands, protecting sensitive files, and scanning for leaked credentials. Every decision is logged.
-
-See the [Observability Dashboard example](examples/002-observability-dashboard/) for a full-stack demo.
-
-### 3. 📦 Workspace Isolation — Batteries-Included Agent Environments
-
-Production-ready Docker images for running agents in isolated, reproducible workspaces.
-
-**What's in the box:**
-
-| Feature | Details |
-|---------|---------|
-| **LSP Support** | Pyright, TypeScript, rust-analyzer — lazy-loaded, zero config |
-| **Toolchains** | Node.js 22, Python 3.12, Rust stable, UV, GitHub CLI |
-| **Observability** | Pre-wired hook pipeline, JSONL event streams |
-| **Security** | Non-root user, no setuid binaries, isolated `/workspace` |
-| **Artifacts** | Structured `input/` and `output/` directories (ADR-036) |
-| **Claude Code** | Pre-installed with official LSP plugins enabled |
-
-```bash
-# Build the workspace image
-python scripts/build-provider.py claude-cli
-
-# Run an isolated agent
-docker compose -f providers/workspaces/claude-cli/docker-compose.record.yaml up
-```
-
-LSP servers are **lazy** — they only start when Claude encounters files in that language. An agent working on Python won't spin up rust-analyzer. Safe for multi-agent orchestration.
-
----
-
-## Python Libraries
-
-Reusable packages in `lib/python/` for building your own agentic infrastructure:
-
-| Package | Purpose |
-|---------|---------|
-| [`agentic_events`](lib/python/agentic_events/) | Event models and emission |
-| [`agentic_isolation`](lib/python/agentic_isolation/) | Docker/local workspace isolation |
-| [`agentic_security`](lib/python/agentic_security/) | Declarative security policies |
-| [`agentic_adapters`](lib/python/agentic_adapters/) | Claude CLI runner and hook generator |
-| [`agentic_settings`](lib/python/agentic_settings/) | Settings discovery and configuration |
-| [`agentic_logging`](lib/python/agentic_logging/) | Structured logging utilities |
-| [`agentic_workspace`](lib/python/agentic_workspace/) | Workspace management |
-
----
-
-## Repo Structure
-
-```
-agentic-primitives/
-├── primitives/              # The atomic building blocks
-│   ├── v1/                  # Active primitives (commands, skills, tools, hooks)
-│   └── v2/                  # Next-gen primitives (in development)
-│
-├── providers/               # Provider-specific adapters
-│   ├── agents/claude-code/  # Claude Code hooks config, supported events
-│   ├── models/              # Model specs (Anthropic, OpenAI, Google)
-│   └── workspaces/          # Docker images (base, claude-cli)
-│
-├── .claude/                 # Canonical Claude Code integration
-│   ├── commands/            # Slash commands (devops, qa, review, workflow)
-│   ├── hooks/               # Hook handlers (Python, UV-based)
-│   └── tools/               # Tool implementations
-│
-├── lib/python/              # Reusable Python packages
-├── services/                # Backend services (hooks, analytics)
-├── examples/                # Working examples with demos
-├── docs/                    # Documentation + ADRs
-├── docs-site-fuma/          # FumaDocs documentation site
-├── playground/              # Local testing environment
-├── specs/                   # JSON schemas for all primitives
-├── schemas/                 # Frontmatter validation schemas
-└── scripts/                 # Build and utility scripts
-```
+**Python packages** that power agent execution — isolation, security, events, logging, adapters, and settings. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.
 
 ---
 
@@ -138,75 +26,181 @@ agentic-primitives/
 
 ### Prerequisites
 
-- [UV](https://docs.astral.sh/uv/) (Python package management)
-- [Just](https://github.com/casey/just) (task runner)
-- Python 3.11+
-- Docker (for workspace isolation)
+- [Python 3.11+](https://www.python.org/)
+- [uv](https://docs.astral.sh/uv/) — fast Python package manager
+- [just](https://github.com/casey/just) — command runner (optional, recommended)
 
-### Install
+### Install Plugins
 
-```bash
-git clone https://github.com/AgentParadise/agentic-primitives.git
-cd agentic-primitives
+Plugins are installed via Claude Code's built-in plugin system. Requires Claude Code v1.0.33+.
 
-# Install as a Claude Code plugin
-# (from your project directory)
-/plugin install /path/to/agentic-primitives
-```
+You can also do all of this interactively by typing `/plugin` inside Claude Code.
 
-### Development
+**1. Add the marketplace (one-time setup):**
 
 ```bash
-just          # Show all commands
-just fmt      # Format code
-just lint     # Lint
-just test     # Run all tests
-just qa       # Full QA suite
+claude plugin marketplace add AgentParadise/agentic-primitives
+```
+
+**2. Install the plugins you need:**
+
+```bash
+# Install globally (available in all projects)
+claude plugin install sdlc@agentic-primitives --scope user
+
+# Or install to current project only
+claude plugin install sdlc@agentic-primitives --scope project
+```
+
+**3. Update to the latest version:**
+
+```bash
+# Refresh the marketplace catalog first
+claude plugin marketplace update agentic-primitives
+
+# Then update the plugin
+claude plugin update sdlc@agentic-primitives
+```
+
+Plugins are pinned to a version and never auto-update. Updates require both steps above.
+
+**4. Disable / enable without uninstalling:**
+
+```bash
+claude plugin disable sdlc@agentic-primitives
+claude plugin enable sdlc@agentic-primitives
+```
+
+**5. Uninstall:**
+
+```bash
+claude plugin uninstall sdlc@agentic-primitives
+```
+
+**6. Verify security hooks are active:**
+
+```bash
+# Inside a Claude Code session, run:
+/sdlc:validate_security-hooks
+```
+
+Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in the commands above.
+
+---
+
+## Available Plugins
+
+| Plugin | Install | Description |
+|--------|---------|-------------|
+| **sdlc** | `claude plugin install sdlc@agentic-primitives --scope user` | Software Development Lifecycle |
+| **workspace** | `claude plugin install workspace@agentic-primitives --scope user` | Observable isolated workspaces |
+| **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |
+| **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |
+| **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |
+
+### What's in each plugin
+
+| Plugin | Commands | Skills | Hooks |
+|--------|----------|--------|-------|
+| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
+| **research** | `scrape_docs` | -- | -- |
+| **meta** | `/create-command`, `/create-prime`, `/create-doc-sync` | `prompt-generator` | -- |
+| **docs** | -- | Fumadocs integration | -- |
+
+---
+
+## Python Packages
+
+Infrastructure primitives in `lib/python/`, installable via `pip` or `uv`:
+
+| Package | Version | Description |
+|---------|---------|-------------|
+| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.3.0 | Docker workspace sandboxing for agent execution |
+| [`agentic-events`](lib/python/agentic_events/) | 0.1.0 | Zero-dependency JSONL event emission |
+| [`agentic-logging`](lib/python/agentic_logging/) | 0.1.0 | Structured logging for agents and humans |
+
+```bash
+# Install a package for development
+cd lib/python/agentic_isolation
+uv sync --all-extras
+
+# Run tests
+uv run pytest -x -q
 ```
 
 ---
 
-## Philosophy
+## Repository Structure
 
-**Atomic Agentic Design.** Every piece — a prompt, a tool, a hook, a workspace config — is a composable primitive. Mix and match to build exactly the agentic system you need.
-
-**Observability is non-negotiable.** Every tool call, every security decision, every session lifecycle event is captured. If your agent did it, you can see it.
-
-**`.claude/` as canonical, generate for the rest.** Claude Code is the primary target today. OpenCode and Codex converters are planned, following the [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) approach.
-
-**Compounding returns.** Inspired by compound engineering — each unit of work should make future work easier. Primitives are documented, versioned, and reusable by design.
+```
+agentic-primitives/
+├── plugins/                    # Prompt Primitives
+│   ├── sdlc/                   #   SDLC plugin (commands, skills, hooks)
+│   ├── workspace/              #   Workspace observability hooks
+│   ├── research/               #   Research tools (firecrawl, doc-scraper)
+│   ├── meta/                   #   Primitive generators
+│   └── docs/                   #   Documentation tools
+├── lib/python/                 # Infrastructure Primitives
+│   ├── agentic_isolation/      #   Docker workspace sandboxing
+│   ├── agentic_events/         #   JSONL event emission
+│   └── agentic_logging/        #   Structured logging
+├── providers/                  # Workspace providers & model data
+│   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace
+│   ├── models/                 #   Model cards (pricing, context windows)
+│   └── agents/                 #   Agent configuration templates
+├── scripts/                    # QA runner, benchmark tools
+├── tests/                      # Integration & unit tests
+├── docs/adrs/                  # Architecture Decision Records (32 ADRs)
+├── VERSION                     # Repo version (3.0.1)
+└── justfile                    # Task runner (just --list)
+```
 
 ---
 
-## Documentation
+## Development
 
-- [Getting Started](docs/getting-started.md)
-- [Architecture](docs/architecture.md)
-- [Hooks System](docs/hooks/)
-- [Versioning Guide](docs/versioning-guide.md)
-- [Architecture Decision Records](docs/adrs/) (30+ ADRs)
-- [Examples](examples/)
+```bash
+# Initialize environment
+just init
+
+# Run all tests
+just test
+
+# Run QA (format check + lint + test)
+just qa
+
+# Auto-fix formatting and lint issues
+just qa-fix
+
+# Run full CI pipeline
+just ci
+```
+
+### Docker Workspace Images
+
+```bash
+# Build Claude CLI workspace image
+just build-workspace-claude-cli
+
+# List available providers
+just list-providers
+```
 
 ---
 
-## Roadmap
+## Architecture Decision Records
 
-- [x] Core primitives framework (commands, skills, agents, tools, hooks)
-- [x] OTel-first observability pipeline
-- [x] Workspace isolation with Docker images
-- [x] LSP integration (Pyright, TypeScript, rust-analyzer)
-- [x] Security hooks (bash validator, file protection, PII scanning)
-- [ ] OpenCode / Codex generation
-- [ ] Community primitive registry
-- [ ] FumaDocs site deployment
-- [ ] Installable via `curl | sh` / Homebrew / NPM
+This project's design decisions are documented in [32 ADRs](docs/adrs/), including:
+
+- [ADR-020: Agentic Prompt Taxonomy](docs/adrs/020-agentic-prompt-taxonomy.md)
+- [ADR-025: Just Task Runner](docs/adrs/025-just-task-runner.md)
+- [ADR-027: Provider Workspace Images](docs/adrs/027-provider-workspace-images.md)
+- [ADR-029: Simplified Event System](docs/adrs/029-simplified-event-system.md)
+- [ADR-033: Plugin-Native Workspace Images](docs/adrs/033-plugin-native-workspace-images.md)
 
 ---
 
 ## License
 
-[MIT](LICENSE)
-
----
-
-**Built by [Agent Paradise](https://github.com/AgentParadise)** — where observability meets agentic engineering.
+[Apache 2.0](LICENSE)

@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/notification.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/notification.py",
             "timeout": 5,
             "type": "command"
           }
@@ -16,7 +16,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/post-tool-use.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/post-tool-use.py",
             "timeout": 10,
             "type": "command"
           }
@@ -28,7 +28,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/pre-compact.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/pre-compact.py",
             "timeout": 5,
             "type": "command"
           }
@@ -40,7 +40,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/pre-tool-use.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/sdlc/hooks/handlers/pre-tool-use.py",
             "timeout": 10,
             "type": "command"
           }
@@ -52,7 +52,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/session-end.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/session-end.py",
             "timeout": 5,
             "type": "command"
           }
@@ -63,7 +63,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/session-start.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/session-start.py",
             "timeout": 5,
             "type": "command"
           }
@@ -75,7 +75,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/stop.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/stop.py",
             "timeout": 5,
             "type": "command"
           }
@@ -86,7 +86,7 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/subagent-stop.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/subagent-stop.py",
             "timeout": 5,
             "type": "command"
           }
@@ -97,7 +97,12 @@
       {
         "hooks": [
           {
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/user-prompt.py",
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/sdlc/hooks/handlers/user-prompt.py",
+            "timeout": 5,
+            "type": "command"
+          },
+          {
+            "command": "${CLAUDE_PROJECT_DIR}/plugins/workspace/hooks/handlers/user-prompt.py",
             "timeout": 5,
             "type": "command"
           }

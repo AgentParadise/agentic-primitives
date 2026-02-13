@@ -1,0 +1,23 @@
+[project]
+name = "consumer-contract-tests"
+version = "1.0.0"
+description = "Consumer contract tests verifying downstream compatibility"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=8.0.0",
+    "agentic-logging",
+    "agentic-events",
+    "agentic-isolation",
+]
+
+[tool.uv.sources]
+agentic-logging = { path = "../../lib/python/agentic_logging" }
+agentic-events = { path = "../../lib/python/agentic_events" }
+agentic-isolation = { path = "../../lib/python/agentic_isolation" }
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]

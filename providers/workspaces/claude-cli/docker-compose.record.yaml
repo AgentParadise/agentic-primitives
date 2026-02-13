@@ -1,12 +1,22 @@
 # Docker Compose for recording agent sessions WITH workspace capture
 #
 # Usage:
-#   # Set your task and prompt, then run
-#   TASK="artifact-test" PROMPT="Write a summary to /workspace/artifacts/output/summary.md" \
+#   # With OAuth token (recommended — cheaper, no API key needed):
+#   CLAUDE_CODE_OAUTH_TOKEN="..." TASK="artifact-test" \
+#     PROMPT="Write a summary to /workspace/artifacts/output/summary.md" \
+#     docker compose -f docker-compose.record.yaml up
+#
+#   # With API key (fallback):
+#   ANTHROPIC_API_KEY="..." TASK="artifact-test" \
+#     PROMPT="Write a summary to /workspace/artifacts/output/summary.md" \
 #     docker compose -f docker-compose.record.yaml up
 #
 #   # Recording will be saved to fixtures/recordings/<task>/
 #   # with events.jsonl + workspace/ files
+#
+# Auth priority (handled by Claude CLI natively):
+#   1. CLAUDE_CODE_OAUTH_TOKEN (if set)
+#   2. ANTHROPIC_API_KEY (fallback)
 #
 # See ADR-030: Session Recording for Testing
 
@@ -15,7 +25,9 @@ services:
     image: agentic-workspace-claude-cli:latest
     container_name: claude-cli-agent
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Auth: Claude CLI prioritizes OAuth token over API key
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5-20250929}
     volumes:
       # Mount workspace for file capture after execution
@@ -53,51 +65,48 @@ services:
       - CAPTURE_WORKSPACE=${CAPTURE_WORKSPACE:-true}
     # Install docker CLI, wait for agent, capture logs + workspace
     command:
-      [
-        "sh",
-        "-c",
-        |
-          set -e
-          apk add --no-cache docker-cli > /dev/null 2>&1
+      - sh
+      - -c
+      - |
+        set -e
+        apk add --no-cache docker-cli > /dev/null 2>&1
 
-          RECORDING_DIR="/recordings/$${TASK}"
-          mkdir -p "$${RECORDING_DIR}"
+        RECORDING_DIR="/recordings/$${TASK}"
+        mkdir -p "$${RECORDING_DIR}"
 
-          echo "Waiting for agent to start..."
-          sleep 2
+        echo "Waiting for agent to start..."
+        sleep 2
 
-          echo "Capturing events to $${RECORDING_DIR}/events.jsonl..."
-          docker logs -f claude-cli-agent 2>&1 | uv run python /scripts/capture_recording.py \
-            --output "$${RECORDING_DIR}/events.jsonl" \
-            --cli-version "$${CLI_VERSION}" \
-            --model "claude-sonnet-4-5" \
-            --task "$${TASK}" \
-            --verbose
+        echo "Capturing events to $${RECORDING_DIR}/events.jsonl..."
+        docker logs -f claude-cli-agent 2>&1 | uv run python /scripts/capture_recording.py \
+          --output "$${RECORDING_DIR}/events.jsonl" \
+          --cli-version "$${CLI_VERSION}" \
+          --model "claude-sonnet-4-5" \
+          --task "$${TASK}" \
+          --verbose
 
-          # After agent completes, capture workspace files
-          if [ "$${CAPTURE_WORKSPACE}" = "true" ]; then
-            echo "Capturing workspace files..."
-            if [ -d /agent-workspace/artifacts/output ]; then
-              mkdir -p "$${RECORDING_DIR}/workspace"
-              cp -r /agent-workspace/artifacts "$${RECORDING_DIR}/workspace/"
-              echo "Captured workspace files:"
-              find "$${RECORDING_DIR}/workspace" -type f
-            else
-              echo "No artifacts/output directory found in workspace"
-            fi
+        # After agent completes, capture workspace files
+        if [ "$${CAPTURE_WORKSPACE}" = "true" ]; then
+          echo "Capturing workspace files..."
+          if [ -d /agent-workspace/artifacts/output ]; then
+            mkdir -p "$${RECORDING_DIR}/workspace"
+            cp -r /agent-workspace/artifacts "$${RECORDING_DIR}/workspace/"
+            echo "Captured workspace files:"
+            find "$${RECORDING_DIR}/workspace" -type f
+          else
+            echo "No artifacts/output directory found in workspace"
           fi
+        fi
 
-          echo "Recording complete: $${RECORDING_DIR}"
-      ]
+        echo "Recording complete: $${RECORDING_DIR}"
 
 volumes:
   agent-workspace:
-
 # Alternative: Simple one-shot recording without workspace capture
 # Just pipe the output:
 #
 #   docker run --rm \
-#     -e ANTHROPIC_API_KEY \
+#     -e CLAUDE_CODE_OAUTH_TOKEN \
 #     agentic-workspace-claude-cli \
 #     claude -p "Your task" 2>&1 | \
 #     python scripts/capture_recording.py -o recording.jsonl -v

@@ -5,10 +5,6 @@ build/
 dist/
 target/
 
-# Rust
-Cargo.lock
-**/*.rs.bk
-*.pdb
 
 # Python
 __pycache__/
@@ -23,6 +19,9 @@ ENV/
 pip-log.txt
 pip-delete-this-directory.txt
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.refcache/
 .coverage
 htmlcov/
 *.egg-info/
@@ -98,22 +97,10 @@ secrets/
 .parcel-cache/
 .vite/
 
-# Lock files for examples/tests (keep root lock files)
-cli/Cargo.lock
-
 # Compiled binaries
-agentic-primitives
 *.exe
 *.dll
 *.dylib
-*.app
-
-# Profiling and debugging
-*.prof
-*.trace
-flamegraph.svg
-perf.data
-perf.data.old
 
 
 # Reference materials (not for commit)
@@ -122,8 +109,10 @@ docs/_reference/agentic-tools/
 docs/_reference/tac-12_multi-agent-orchestration/
 docs/_reference/*.md
 
-# Temporary planning files
+# Planning & Research files (generally local only)
 PROJECT-PLAN_*.md
+**/RESEARCH*.md
+
 
 # Cursor config
 .cursorignore

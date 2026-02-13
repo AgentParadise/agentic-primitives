@@ -16,14 +16,10 @@ lib/python/
 │   ├── player.py        ← SessionPlayer: replay recordings
 │   └── fixtures.py      ← load_recording(), list_recordings()
 │
-├── agentic_adapters/    ← Claude CLI/SDK integration
-│   ├── claude_cli/      ← ClaudeCLIRunner, hook generation
-│   └── claude_sdk/      ← SDK options builder
-│
 ├── agentic_isolation/   ← Workspace providers
 │   └── providers/       ← DockerProvider, LocalProvider
 │
-└── agentic_security/    ← Security policies & validators
+└── agentic_logging/     ← Structured logging for agents
 
 providers/workspaces/claude-cli/
 ├── Dockerfile                   ← Build: agentic-workspace-claude-cli

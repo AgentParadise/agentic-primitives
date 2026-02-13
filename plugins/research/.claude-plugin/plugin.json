@@ -1,0 +1,16 @@
+{
+  "name": "research",
+  "version": "1.1.0",
+  "description": "Information gathering — web scraping, documentation extraction, and research tools",
+  "author": {
+    "name": "NeuralEmpowerment"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives",
+  "requires_env": {
+    "FIRECRAWL_API_KEY": {
+      "description": "Firecrawl API key for web scraping. Get from: https://firecrawl.dev",
+      "required": false,
+      "secret": true
+    }
+  }
+}

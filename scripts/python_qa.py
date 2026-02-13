@@ -16,19 +16,15 @@ from pathlib import Path
 
 # All Python packages to check
 PACKAGES = [
-    Path("lib/python/agentic_adapters"),
     Path("lib/python/agentic_events"),
     Path("lib/python/agentic_isolation"),
     Path("lib/python/agentic_logging"),
-    Path("lib/python/agentic_security"),
-    Path("lib/python/agentic_settings"),
-    Path("lib/python/agentic_workspace"),
-    Path("services/analytics"),
 ]
 
 # Additional test directories (not packages)
 TEST_DIRS = [
     Path("tests/unit/claude/hooks"),
+    Path("tests/consumer_contracts"),
 ]
 
 
