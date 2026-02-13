@@ -13,10 +13,11 @@
 #   ${CLAUDE_PLUGIN_ROOT} for portable path resolution.
 #
 # Environment Variables (provided by orchestrator):
-#   GIT_AUTHOR_NAME     - Git commit author name (required for git ops)
-#   GIT_AUTHOR_EMAIL    - Git commit author email (required for git ops)
-#   GITHUB_TOKEN        - GitHub token for git push (optional)
-#   ANTHROPIC_API_KEY   - Claude API key (optional, may come via sidecar)
+#   CLAUDE_CODE_OAUTH_TOKEN - OAuth token for Claude CLI (preferred, cheaper)
+#   ANTHROPIC_API_KEY       - Claude API key (fallback if no OAuth token)
+#   GIT_AUTHOR_NAME         - Git commit author name (required for git ops)
+#   GIT_AUTHOR_EMAIL        - Git commit author email (required for git ops)
+#   GITHUB_TOKEN            - GitHub token for git push (optional)
 #
 # This script is the SINGLE SOURCE OF TRUTH for workspace configuration.
 # Orchestrators should NOT have hardcoded setup scripts.
