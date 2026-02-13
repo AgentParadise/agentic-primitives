@@ -8,7 +8,7 @@ Web scraping tool using the [Firecrawl](https://firecrawl.dev) API to extract we
 - 📝 Outputs clean markdown with YAML frontmatter
 - 🏷️ Supports version tagging for documentation
 - 📊 Integrates with `agentic_logging` for session tracking
-- ⚙️ Validates API key via `agentic_settings`
+- ⚙️ API key via `FIRECRAWL_API_KEY` env var (declared in plugin `requires_env`)
 
 ## Requirements
 

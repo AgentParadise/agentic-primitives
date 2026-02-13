@@ -97,11 +97,8 @@ Infrastructure primitives in `lib/python/`, installable via `pip` or `uv`:
 | Package | Version | Description |
 |---------|---------|-------------|
 | [`agentic-isolation`](lib/python/agentic_isolation/) | 0.3.0 | Docker workspace sandboxing for agent execution |
-| [`agentic-security`](lib/python/agentic_security/) | 0.1.0 | Declarative bash/file/content security policies |
 | [`agentic-events`](lib/python/agentic_events/) | 0.1.0 | Zero-dependency JSONL event emission |
 | [`agentic-logging`](lib/python/agentic_logging/) | 0.1.0 | Structured logging for agents and humans |
-| [`agentic-adapters`](lib/python/agentic_adapters/) | 0.1.0 | Claude SDK/CLI runtime integration |
-| [`agentic-settings`](lib/python/agentic_settings/) | 0.1.0 | Configuration discovery via Pydantic |
 
 ```bash
 # Install a package for development
@@ -126,11 +123,8 @@ agentic-primitives/
 │   └── docs/                   #   Documentation tools
 ├── lib/python/                 # Infrastructure Primitives
 │   ├── agentic_isolation/      #   Docker workspace sandboxing
-│   ├── agentic_security/       #   Security policies
 │   ├── agentic_events/         #   JSONL event emission
-│   ├── agentic_logging/        #   Structured logging
-│   ├── agentic_adapters/       #   Claude SDK/CLI adapters
-│   └── agentic_settings/       #   Configuration management
+│   └── agentic_logging/        #   Structured logging
 ├── providers/                  # Workspace providers & model data
 │   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace
 │   ├── models/                 #   Model cards (pricing, context windows)

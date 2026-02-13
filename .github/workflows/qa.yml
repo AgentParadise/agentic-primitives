@@ -23,11 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         package:
-          - name: "Adapters"
-            path: "lib/python/agentic_adapters"
-            python: "3.11"
-            pytest-args: "-x -q"
-
           - name: "Events"
             path: "lib/python/agentic_events"
             python: "3.11"
@@ -44,15 +39,6 @@ jobs:
             pytest-args: "-x -q --cov-fail-under=90"
             typecheck: true
 
-          - name: "Security"
-            path: "lib/python/agentic_security"
-            python: "3.11"
-            pytest-args: "-x -q"
-
-          - name: "Settings"
-            path: "lib/python/agentic_settings"
-            python: "3.11"
-            pytest-args: "-x -q"
 
     steps:
       - uses: actions/checkout@v6
