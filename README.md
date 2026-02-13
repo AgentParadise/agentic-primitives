@@ -6,8 +6,7 @@ Agentic Primitives is a batteries-included framework for building, observing, an
 
 `.claude/` is the canonical format. OpenCode and Codex generation planned.
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
 ---
@@ -27,16 +26,7 @@ primitives/v1/
 └── hooks/          # Lifecycle event handlers
 ```
 
-Every primitive is **atomic and composable**. Drop a markdown file in the right folder — it works. Need something more complex? Add tool implementations in Python, Rust, or TypeScript alongside it.
-
-The Rust CLI (`agentic-p`) handles validation, versioning (BLAKE3 hashes), and building for different providers:
-
-```bash
-agentic-p new command qa/review       # Create a primitive
-agentic-p validate                     # Validate everything
-agentic-p build --provider claude      # Build for Claude Code
-agentic-p install --provider claude    # Install to your project
-```
+Every primitive is **atomic and composable**. Drop a markdown file in the right folder — it works. Need something more complex? Add tool implementations in Python or TypeScript alongside it.
 
 ### 2. 🔭 Observability — See What Your Agents Do
 
@@ -131,7 +121,6 @@ agentic-primitives/
 │   ├── hooks/               # Hook handlers (Python, UV-based)
 │   └── tools/               # Tool implementations
 │
-├── cli/                     # Rust CLI (agentic-p)
 ├── lib/python/              # Reusable Python packages
 ├── services/                # Backend services (hooks, analytics)
 ├── examples/                # Working examples with demos
@@ -149,36 +138,30 @@ agentic-primitives/
 
 ### Prerequisites
 
-- [Rust](https://www.rust-lang.org/) 1.75+ (CLI)
 - [UV](https://docs.astral.sh/uv/) (Python package management)
 - [Just](https://github.com/casey/just) (task runner)
 - Python 3.11+
+- Docker (for workspace isolation)
 
-### Install & Build
+### Install
 
 ```bash
 git clone https://github.com/AgentParadise/agentic-primitives.git
 cd agentic-primitives
 
-# Build the CLI
-just build
-
-# Run the full QA suite
-just qa
-
-# Install primitives to your project
-agentic-p install --provider claude
+# Install as a Claude Code plugin
+# (from your project directory)
+/plugin install /path/to/agentic-primitives
 ```
 
 ### Development
 
 ```bash
 just          # Show all commands
-just fmt      # Format (Rust + Python)
+just fmt      # Format code
 just lint     # Lint
 just test     # Run all tests
 just qa       # Full QA suite
-just verify   # Clean build + QA
 ```
 
 ---
@@ -209,7 +192,6 @@ just verify   # Clean build + QA
 ## Roadmap
 
 - [x] Core primitives framework (commands, skills, agents, tools, hooks)
-- [x] Rust CLI with validation, versioning, and provider builds
 - [x] OTel-first observability pipeline
 - [x] Workspace isolation with Docker images
 - [x] LSP integration (Pyright, TypeScript, rust-analyzer)
@@ -223,7 +205,7 @@ just verify   # Clean build + QA
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[MIT](LICENSE)
 
 ---
 
