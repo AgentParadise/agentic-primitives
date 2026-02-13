@@ -191,7 +191,7 @@ just list-providers
 
 ## Architecture Decision Records
 
-This project's design decisions are documented in [32 ADRs](docs/adrs/), including:
+This project's design decisions are documented in [13 ADRs](docs/adrs/), including:
 
 - [ADR-020: Agentic Prompt Taxonomy](docs/adrs/020-agentic-prompt-taxonomy.md)
 - [ADR-025: Just Task Runner](docs/adrs/025-just-task-runner.md)
