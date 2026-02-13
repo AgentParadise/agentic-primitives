@@ -102,6 +102,10 @@ class WorkspaceDockerProvider(BaseProvider):
 
     async def create(self, config: WorkspaceConfig) -> Workspace:
         """Create a Docker container workspace with security hardening."""
+        # Resolve plugin env vars before creating container
+        if config.plugins:
+            config.resolve_plugin_env()
+
         short_id = uuid.uuid4().hex[:8]
         workspace_id = f"ws-{short_id}"
         container_name = f"agentic-ws-{short_id}"

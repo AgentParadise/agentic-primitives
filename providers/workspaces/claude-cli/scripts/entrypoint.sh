@@ -6,16 +6,23 @@
 # This script runs when the container starts (AFTER any tmpfs mounts).
 # It configures the workspace from environment variables, then execs to CMD.
 #
+# Plugin Architecture (ADR-033):
+#   Plugins are baked into /opt/agentic/plugins/ at build time. This entrypoint
+#   discovers them and builds --plugin-dir flags for Claude CLI. Each plugin
+#   directory contains .claude-plugin/plugin.json and hooks/hooks.json using
+#   ${CLAUDE_PLUGIN_ROOT} for portable path resolution.
+#
 # Environment Variables (provided by orchestrator):
-#   GIT_AUTHOR_NAME     - Git commit author name (required for git ops)
-#   GIT_AUTHOR_EMAIL    - Git commit author email (required for git ops)
-#   GITHUB_TOKEN        - GitHub token for git push (optional)
-#   ANTHROPIC_API_KEY   - Claude API key (optional, may come via sidecar)
+#   CLAUDE_CODE_OAUTH_TOKEN - OAuth token for Claude CLI (preferred, cheaper)
+#   ANTHROPIC_API_KEY       - Claude API key (fallback if no OAuth token)
+#   GIT_AUTHOR_NAME         - Git commit author name (required for git ops)
+#   GIT_AUTHOR_EMAIL        - Git commit author email (required for git ops)
+#   GITHUB_TOKEN            - GitHub token for git push (optional)
 #
 # This script is the SINGLE SOURCE OF TRUTH for workspace configuration.
 # Orchestrators should NOT have hardcoded setup scripts.
 #
-# See: agentic-primitives/docs/workspace-contract.md
+# See: agentic-primitives/docs/adrs/033-plugin-native-workspace-images.md
 # =============================================================================
 
 set -e
@@ -23,9 +30,13 @@ set -e
 # -----------------------------------------------------------------------------
 # 1. Claude CLI Configuration
 # -----------------------------------------------------------------------------
-# Create ~/.claude/settings.json with attribution disabled and LSP plugins enabled.
+# Create ~/.claude/settings.json with LSP plugins enabled.
 # This must be done HERE because /home/agent is a tmpfs mount that wipes
 # anything baked into the Docker image.
+#
+# NOTE: Hooks are NO LONGER configured here. They are loaded automatically
+# via --plugin-dir flags from the baked-in plugins at /opt/agentic/plugins/.
+# This ensures identical hook behavior between local and Docker environments.
 #
 # LSP plugins (pyright-lsp, typescript-lsp, rust-analyzer-lsp) are enabled by
 # default. The LSP servers are LAZY — they only start when Claude encounters
@@ -40,52 +51,6 @@ cat > ~/.claude/settings.json << 'EOF'
     "commit": "",
     "pr": ""
   },
-  "hooks": {
-    "PreToolUse": [{
-      "matcher": "*",
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/agentic/hooks/handlers/pre-tool-use.py",
-        "timeout": 10
-      }]
-    }],
-    "PostToolUse": [{
-      "matcher": "*",
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/agentic/hooks/handlers/post-tool-use.py",
-        "timeout": 10
-      }]
-    }],
-    "SessionStart": [{
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/agentic/hooks/handlers/session-start.py",
-        "timeout": 5
-      }]
-    }],
-    "SessionEnd": [{
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/agentic/hooks/handlers/session-end.py",
-        "timeout": 5
-      }]
-    }],
-    "Stop": [{
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/agentic/hooks/handlers/stop.py",
-        "timeout": 5
-      }]
-    }],
-    "SubagentStop": [{
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/agentic/hooks/handlers/subagent-stop.py",
-        "timeout": 5
-      }]
-    }]
-  },
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
@@ -97,7 +62,34 @@ EOF
 chmod 600 ~/.claude/settings.json
 
 # -----------------------------------------------------------------------------
-# 2. Git Configuration
+# 2. Plugin Discovery (ADR-033)
+# -----------------------------------------------------------------------------
+# Scan /opt/agentic/plugins/ for valid plugin directories and build
+# --plugin-dir flags. A valid plugin has .claude-plugin/plugin.json.
+# These flags are stored in AGENTIC_PLUGIN_FLAGS for the orchestrator
+# to append when invoking claude CLI.
+
+PLUGIN_FLAGS=""
+PLUGINS_DIR="${AGENTIC_PLUGINS_DIR:-/opt/agentic/plugins}"
+
+if [ -d "$PLUGINS_DIR" ]; then
+    for plugin_dir in "$PLUGINS_DIR"/*/; do
+        if [ -f "${plugin_dir}.claude-plugin/plugin.json" ]; then
+            plugin_name=$(basename "$plugin_dir")
+            PLUGIN_FLAGS="${PLUGIN_FLAGS} --plugin-dir ${plugin_dir%/}"
+            echo "[entrypoint] Discovered plugin: ${plugin_name}"
+        fi
+    done
+fi
+
+# Export for orchestrator use (e.g., agentic-isolation can read this)
+export AGENTIC_PLUGIN_FLAGS="${PLUGIN_FLAGS}"
+
+# Also write to a file for easy sourcing by scripts
+echo "${PLUGIN_FLAGS}" > /tmp/.agentic-plugin-flags
+
+# -----------------------------------------------------------------------------
+# 3. Git Configuration
 # -----------------------------------------------------------------------------
 # Configure git identity from environment variables.
 # These are required for any git commit/push operations.
@@ -118,7 +110,7 @@ elif [ -n "${GIT_AUTHOR_NAME}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 3. GitHub Credentials
+# 4. GitHub Credentials
 # -----------------------------------------------------------------------------
 # Store GitHub token in git credential helper and gh CLI config.
 # This persists credentials for git push after env vars are cleared.
@@ -141,7 +133,7 @@ GHEOF
 fi
 
 # -----------------------------------------------------------------------------
-# 4. Workspace Directories
+# 5. Workspace Directories
 # -----------------------------------------------------------------------------
 # Ensure workspace directories exist (should be pre-created in image,
 # but verify in case of custom mounts)
@@ -156,7 +148,7 @@ mkdir -p /workspace/repos
 mkdir -p ~/.cargo
 
 # -----------------------------------------------------------------------------
-# 5. Execute CMD
+# 6. Execute CMD
 # -----------------------------------------------------------------------------
 # Pass through to the original command (e.g., bash, claude, etc.)
 

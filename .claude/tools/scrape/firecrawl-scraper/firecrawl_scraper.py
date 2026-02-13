@@ -54,7 +54,11 @@ class ScrapeMetadata(BaseModel):
 
 def get_firecrawl_api_key() -> str:
     """
-    Get Firecrawl API key from agentic_settings or environment.
+    Get Firecrawl API key from environment.
+
+    The key is provided via FIRECRAWL_API_KEY env var, which is
+    auto-forwarded by agentic-isolation when declared in plugin.json
+    requires_env.
 
     Returns:
         The Firecrawl API key.
@@ -64,19 +68,6 @@ def get_firecrawl_api_key() -> str:
     """
     import os
 
-    # First try agentic_settings
-    try:
-        from agentic_settings import get_settings
-
-        settings = get_settings()
-        if settings.firecrawl_api_key:
-            return settings.firecrawl_api_key.get_secret_value()
-    except ImportError:
-        logger.debug("agentic_settings not available, falling back to environment")
-    except Exception as e:
-        logger.debug(f"Error loading agentic_settings: {e}")
-
-    # Fall back to environment variable
     api_key = os.getenv("FIRECRAWL_API_KEY")
     if not api_key:
         err_console.print(

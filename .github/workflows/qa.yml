@@ -23,11 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         package:
-          - name: "Adapters"
-            path: "lib/python/agentic_adapters"
-            python: "3.11"
-            pytest-args: "-x -q"
-
           - name: "Events"
             path: "lib/python/agentic_events"
             python: "3.11"
@@ -44,15 +39,6 @@ jobs:
             pytest-args: "-x -q --cov-fail-under=90"
             typecheck: true
 
-          - name: "Security"
-            path: "lib/python/agentic_security"
-            python: "3.11"
-            pytest-args: "-x -q"
-
-          - name: "Settings"
-            path: "lib/python/agentic_settings"
-            python: "3.11"
-            pytest-args: "-x -q"
 
     steps:
       - uses: actions/checkout@v6
@@ -143,6 +129,219 @@ jobs:
         run: uv run pytest -v
 
   #############################################################################
+  # PLUGIN STRUCTURE VALIDATION - Ensure plugins work in local + Docker
+  #############################################################################
+
+  plugin-validate:
+    name: Plugin Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate plugin structure
+        run: |
+          failed=0
+          total_pass=0
+          total_warn=0
+          total_error=0
+
+          for plugin_dir in plugins/*/; do
+            plugin_name=$(basename "$plugin_dir")
+            plugin_json="${plugin_dir}.claude-plugin/plugin.json"
+            hooks_json="${plugin_dir}hooks/hooks.json"
+            errors=0
+            warnings=0
+            passes=0
+
+            echo ""
+            echo "═══════════════════════════════════════════════════"
+            echo "Validating plugin: ${plugin_name}"
+            echo "═══════════════════════════════════════════════════"
+
+            # --- Structure checks ---
+
+            # 1. Manifest exists
+            if [[ ! -f "$plugin_json" ]]; then
+              echo "  [ERROR] .claude-plugin/plugin.json missing"
+              errors=$((errors + 1))
+              echo ""
+              echo "  Result: ${passes} passed, ${warnings} warnings, ${errors} errors"
+              total_error=$((total_error + errors))
+              failed=1
+              continue
+            fi
+            echo "  [PASS] .claude-plugin/plugin.json exists"
+            passes=$((passes + 1))
+
+            # 2. Manifest is valid JSON
+            if ! jq empty "$plugin_json" 2>/dev/null; then
+              echo "  [ERROR] plugin.json is not valid JSON"
+              errors=$((errors + 1))
+              total_error=$((total_error + errors))
+              failed=1
+              continue
+            fi
+            echo "  [PASS] plugin.json is valid JSON"
+            passes=$((passes + 1))
+
+            # 3. Required fields
+            name_field=$(jq -r '.name // empty' "$plugin_json")
+            version_field=$(jq -r '.version // empty' "$plugin_json")
+            desc_field=$(jq -r '.description // empty' "$plugin_json")
+            if [[ -z "$name_field" ]] || [[ -z "$version_field" ]] || [[ -z "$desc_field" ]]; then
+              echo "  [ERROR] Missing required fields (name, version, or description)"
+              errors=$((errors + 1))
+            else
+              echo "  [PASS] Required fields present (name: ${name_field}, version: ${version_field})"
+              passes=$((passes + 1))
+            fi
+
+            # --- Hooks checks ---
+
+            if [[ -f "$hooks_json" ]]; then
+              # 4. hooks.json is valid JSON
+              if ! jq empty "$hooks_json" 2>/dev/null; then
+                echo "  [ERROR] hooks/hooks.json is not valid JSON"
+                errors=$((errors + 1))
+              else
+                echo "  [PASS] hooks/hooks.json is valid JSON"
+                passes=$((passes + 1))
+              fi
+
+              # 5. No parent traversal in hook commands
+              if grep -q '\.\.\/' "$hooks_json"; then
+                echo "  [ERROR] hooks.json contains ../ parent traversal (breaks --plugin-dir)"
+                errors=$((errors + 1))
+              else
+                echo "  [PASS] No parent traversal (../) in hook paths"
+                passes=$((passes + 1))
+              fi
+
+              # 6. No absolute paths (should use ${CLAUDE_PLUGIN_ROOT})
+              if grep -Eq '"command":\s*"/[^$]' "$hooks_json"; then
+                echo "  [ERROR] hooks.json contains absolute paths (must use \${CLAUDE_PLUGIN_ROOT})"
+                errors=$((errors + 1))
+              else
+                echo "  [PASS] No hardcoded absolute paths in hook commands"
+                passes=$((passes + 1))
+              fi
+
+              # 7. Uses CLAUDE_PLUGIN_ROOT
+              if grep -q 'CLAUDE_PLUGIN_ROOT' "$hooks_json"; then
+                echo "  [PASS] Hook commands use \${CLAUDE_PLUGIN_ROOT}"
+                passes=$((passes + 1))
+              else
+                echo "  [WARN] No \${CLAUDE_PLUGIN_ROOT} references found in hooks.json"
+                warnings=$((warnings + 1))
+              fi
+
+              # 8. All referenced handler files exist
+              handler_missing=0
+              while IFS= read -r cmd_path; do
+                # Resolve ${CLAUDE_PLUGIN_ROOT} to the plugin dir for checking
+                resolved=$(echo "$cmd_path" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${plugin_dir%/}|g")
+                if [[ ! -f "$resolved" ]]; then
+                  echo "  [ERROR] Hook handler not found: ${cmd_path} (resolved: ${resolved})"
+                  errors=$((errors + 1))
+                  handler_missing=1
+                fi
+              done < <(jq -r '.. | .command? // empty' "$hooks_json" 2>/dev/null)
+
+              if [[ "$handler_missing" -eq 0 ]]; then
+                echo "  [PASS] All hook handlers exist on disk"
+                passes=$((passes + 1))
+              fi
+            fi
+
+            # --- Self-containment: check Python handlers ---
+
+            while IFS= read -r pyfile; do
+              # Check for EventEmitter writing to stdout (should be stderr)
+              if grep -q 'EventEmitter(' "$pyfile" && grep -q 'output=sys.stdout' "$pyfile"; then
+                echo "  [ERROR] ${pyfile##*/}: EventEmitter outputs to sys.stdout (must use sys.stderr)"
+                errors=$((errors + 1))
+              fi
+
+              # Check for fail-open pattern (handlers should catch exceptions)
+              if grep -q 'def main' "$pyfile"; then
+                if ! grep -q 'except Exception' "$pyfile" && ! grep -q 'except:' "$pyfile"; then
+                  echo "  [WARN] ${pyfile##*/}: main() does not have top-level exception handler (should fail open)"
+                  warnings=$((warnings + 1))
+                fi
+              fi
+            done < <(find "${plugin_dir}hooks" -name "*.py" -type f 2>/dev/null)
+
+            # --- requires_env validation ---
+            has_requires_env=$(jq -r 'has("requires_env")' "$plugin_json" 2>/dev/null)
+            if [[ "$has_requires_env" == "true" ]]; then
+              # Validate each entry has required fields
+              env_valid=true
+              while IFS= read -r env_var; do
+                has_desc=$(jq -r ".requires_env[\"${env_var}\"] | has(\"description\")" "$plugin_json")
+                has_req=$(jq -r ".requires_env[\"${env_var}\"] | has(\"required\")" "$plugin_json")
+                has_sec=$(jq -r ".requires_env[\"${env_var}\"] | has(\"secret\")" "$plugin_json")
+                if [[ "$has_desc" != "true" ]] || [[ "$has_req" != "true" ]] || [[ "$has_sec" != "true" ]]; then
+                  echo "  [ERROR] requires_env.${env_var}: missing description, required, or secret field"
+                  errors=$((errors + 1))
+                  env_valid=false
+                fi
+              done < <(jq -r '.requires_env | keys[]' "$plugin_json" 2>/dev/null)
+
+              if [[ "$env_valid" == "true" ]]; then
+                echo "  [PASS] requires_env entries are well-formed"
+                passes=$((passes + 1))
+              fi
+            else
+              echo "  [INFO] No requires_env declared"
+            fi
+
+            # --- Summary for this plugin ---
+            echo ""
+            echo "  Result: ${passes} passed, ${warnings} warnings, ${errors} errors"
+            total_pass=$((total_pass + passes))
+            total_warn=$((total_warn + warnings))
+            total_error=$((total_error + errors))
+            if [[ "$errors" -gt 0 ]]; then
+              failed=1
+            fi
+          done
+
+          echo ""
+          echo "═══════════════════════════════════════════════════"
+          echo "Total: ${total_pass} passed, ${total_warn} warnings, ${total_error} errors"
+          echo "═══════════════════════════════════════════════════"
+
+          if [[ "$failed" -eq 1 ]]; then
+            echo ""
+            echo "ERROR: Plugin validation failed. Fix errors above before merging."
+            echo "See ADR-033 for plugin structure requirements."
+            exit 1
+          fi
+
+      - name: Write summary
+        if: always()
+        run: |
+          echo "## Plugin Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Plugin | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          for plugin_dir in plugins/*/; do
+            plugin_name=$(basename "$plugin_dir")
+            plugin_json="${plugin_dir}.claude-plugin/plugin.json"
+            if [[ -f "$plugin_json" ]]; then
+              version=$(jq -r '.version // "?"' "$plugin_json")
+              echo "| ${plugin_name} (v${version}) | Checked |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| ${plugin_name} | No manifest |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+  #############################################################################
   # PLUGIN VERSION CHECK - Ensure plugin.json version is bumped on changes
   #############################################################################
 
@@ -221,6 +420,7 @@ jobs:
       - python-packages
       - python-hooks
       - consumer-contracts
+      - plugin-validate
       - plugin-version-check
     runs-on: ubuntu-latest
     steps:
@@ -229,6 +429,7 @@ jobs:
           if [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
              [[ "${{ needs.consumer-contracts.result }}" == "failure" ]] || \
+             [[ "${{ needs.plugin-validate.result }}" == "failure" ]] || \
              [[ "${{ needs.plugin-version-check.result }}" == "failure" ]]; then
             echo "QA checks failed"
             exit 1
@@ -237,6 +438,7 @@ jobs:
           if [[ "${{ needs.python-packages.result }}" == "cancelled" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
              [[ "${{ needs.consumer-contracts.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.plugin-validate.result }}" == "cancelled" ]] || \
              [[ "${{ needs.plugin-version-check.result }}" == "cancelled" ]]; then
             echo "QA checks were cancelled"
             exit 1
@@ -253,4 +455,5 @@ jobs:
           echo "| Python Packages | ${{ needs.python-packages.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Consumer Contracts | ${{ needs.consumer-contracts.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Plugin Validation | ${{ needs.plugin-validate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Plugin Version Check | ${{ needs.plugin-version-check.result }} |" >> $GITHUB_STEP_SUMMARY
