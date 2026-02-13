@@ -1,0 +1,14 @@
+{
+  "name": "architecture",
+  "version": "1.0.0",
+  "description": "Agent-native architecture patterns, swarm orchestration, and skill creation guides for building AI-first systems",
+  "author": {
+    "name": "AgentParadise"
+  },
+  "attribution": {
+    "source": "Compound Engineering Plugin by Every, Inc.",
+    "license": "MIT",
+    "url": "https://github.com/EveryInc/compound-engineering-plugin"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}
