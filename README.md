@@ -2,7 +2,7 @@
 
 > Atomic building blocks for AI agent systems
 
-[![Version](https://img.shields.io/badge/version-3.1.1-purple.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
@@ -34,37 +34,57 @@ Reusable prompts deployed as **Claude Code plugins** — commands, skills, hooks
 
 Plugins are installed via Claude Code's built-in plugin system. Requires Claude Code v1.0.33+.
 
+You can also do all of this interactively by typing `/plugin` inside Claude Code.
+
 **1. Add the marketplace (one-time setup):**
 
 ```bash
 claude plugin marketplace add AgentParadise/agentic-primitives
 ```
 
-Or from inside Claude Code, type `/plugin` and go to the **Marketplaces** tab.
-
 **2. Install the plugins you need:**
 
 ```bash
 # Install globally (available in all projects)
 claude plugin install sdlc@agentic-primitives --scope user
-claude plugin install workspace@agentic-primitives --scope user
-claude plugin install meta@agentic-primitives --scope user
-claude plugin install research@agentic-primitives --scope user
-claude plugin install docs@agentic-primitives --scope user
 
 # Or install to current project only
 claude plugin install sdlc@agentic-primitives --scope project
 ```
 
-Or from inside Claude Code, type `/plugin` and browse the **Discover** tab.
-
-**3. Update plugins:**
+**3. Update to the latest version:**
 
 ```bash
+# Refresh the marketplace catalog first
+claude plugin marketplace update agentic-primitives
+
+# Then update the plugin
 claude plugin update sdlc@agentic-primitives
 ```
 
-Plugins are pinned to a specific commit and never auto-update.
+Plugins are pinned to a version and never auto-update. Updates require both steps above.
+
+**4. Disable / enable without uninstalling:**
+
+```bash
+claude plugin disable sdlc@agentic-primitives
+claude plugin enable sdlc@agentic-primitives
+```
+
+**5. Uninstall:**
+
+```bash
+claude plugin uninstall sdlc@agentic-primitives
+```
+
+**6. Verify security hooks are active:**
+
+```bash
+# Inside a Claude Code session, run:
+/sdlc:validate_security-hooks
+```
+
+Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in the commands above.
 
 ---
 
@@ -82,7 +102,7 @@ Plugins are pinned to a specific commit and never auto-update.
 
 | Plugin | Commands | Skills | Hooks |
 |--------|----------|--------|-------|
-| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
 | **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
 | **research** | `scrape_docs` | -- | -- |
 | **meta** | `/create-command`, `/create-prime`, `/create-doc-sync` | `prompt-generator` | -- |
