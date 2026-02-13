@@ -1,24 +1,25 @@
 ---
 title: "ADR-014: Centralized Agentic Logging System"
-status: superseded
+status: accepted
 created: 2025-11-25
-updated: 2025-11-26
+updated: 2026-02-12
 author: AI Agent (Claude)
-superseded_by: Self-logging hook architecture (lib/python/agentic_analytics)
 ---
 
 # ADR-014: Centralized Agentic Logging System
 
 ## Status
 
-**Superseded** (2025-11-26)
+**Accepted**
 
-> **Note:** This ADR proposed a centralized logging system with a `hooks-collector`. 
-> This has been superseded by a simpler "self-logging" architecture where each hook 
-> logs its own decisions using the `agentic_analytics` library.
+> **Implementation Note:** The `agentic_logging` library proposed in this ADR has been
+> fully implemented at `lib/python/agentic_logging/` and is actively used throughout
+> the v3.x plugin architecture. The library provides structured logging with JSON and
+> human-readable formatters, environment-based configuration, and is maintained with
+> comprehensive test coverage.
 
 - Created: 2025-11-25
-- Updated: 2025-11-25
+- Updated: 2026-02-12
 - Author(s): AI Agent (Claude)
 
 ## Context
