@@ -7,10 +7,17 @@
 # Features:
 #   - Node.js 22 LTS (required for Claude CLI)
 #   - Python 3.12 + uv (for hooks and agentic packages)
-#   - Claude CLI with JSONL event emission to stdout
-#   - Pre-bundled primitive hooks with agentic_events
+#   - Claude CLI with plugin-based hook loading via --plugin-dir (ADR-033)
+#   - Pre-bundled plugins (sdlc, workspace) with agentic_events for observability
 #   - LSP language servers (pyright, typescript-language-server, rust-analyzer)
 #   - Security hardening (non-root, no setuid)
+#
+# Plugin Architecture (ADR-033):
+#   Plugins are baked into /opt/agentic/plugins/ and loaded at runtime via
+#   --plugin-dir flags built by the entrypoint. This is the same plugin format
+#   used locally, ensuring identical behavior in both environments.
+#   Plugin env vars declared in requires_env are auto-forwarded by the
+#   agentic-isolation orchestrator.
 #
 # LSP Architecture:
 #   The image bundles LSP binaries and pre-enables the official Claude Code LSP
@@ -21,9 +28,10 @@
 #   for multi-agent orchestration: only the LSP servers actually needed per-task
 #   consume memory at runtime.
 #
-# Events are emitted as JSONL to stdout, captured by the agent runner.
+# Events are emitted as JSONL to stderr, captured by the agent runner.
 #
 # See ADR-027: Provider-Based Workspace Images
+# See ADR-033: Plugin-Native Workspace Images
 
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
@@ -122,7 +130,7 @@ RUN uv pip install --system --break-system-packages --no-cache /tmp/packages/*.w
     && rm -rf /tmp/packages
 
 # =============================================================================
-# Stage 4: Final image with hooks and security
+# Stage 4: Final image with plugins and security
 # =============================================================================
 FROM packages AS final
 
@@ -141,7 +149,7 @@ RUN usermod -l agent -d /home/agent -m node \
 RUN mkdir -p /workspace/artifacts/input \
     && mkdir -p /workspace/artifacts/output \
     && mkdir -p /workspace/repos \
-    && mkdir -p /opt/agentic/hooks \
+    && mkdir -p /opt/agentic/plugins \
     && mkdir -p /opt/agentic/config \
     && mkdir -p /home/agent/.claude \
     && chown -R agent:agent /workspace \
@@ -154,12 +162,14 @@ RUN mkdir -p /workspace/artifacts/input \
 # Copy entrypoint script
 COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
 
-# Copy pre-staged hooks from build context
-COPY hooks/ /opt/agentic/hooks/
+# Copy pre-staged plugins from build context (ADR-033)
+# Each plugin is a self-contained directory with .claude-plugin/plugin.json
+# and hooks/hooks.json using ${CLAUDE_PLUGIN_ROOT} for path resolution.
+COPY plugins/ /opt/agentic/plugins/
 
-# Set permissions on hooks and entrypoint
-RUN chmod -R 755 /opt/agentic/hooks \
-    && find /opt/agentic/hooks -name "*.py" -exec chmod 755 {} \; \
+# Set permissions on plugins and entrypoint
+RUN chmod -R 755 /opt/agentic/plugins \
+    && find /opt/agentic/plugins -name "*.py" -exec chmod 755 {} \; \
     && chmod 755 /opt/agentic/entrypoint.sh \
     && chown -R agent:agent /opt/agentic
 
@@ -185,10 +195,8 @@ USER agent
 # Environment variables
 ENV HOME=/home/agent \
     WORKSPACE_DIR=/workspace \
-    # Hooks location
-    AGENTIC_HOOKS_DIR=/opt/agentic/hooks \
-    # Python path for validators
-    PYTHONPATH=/opt/agentic/hooks \
+    # Plugins location (ADR-033)
+    AGENTIC_PLUGINS_DIR=/opt/agentic/plugins \
     # Disable Claude Code attribution in commits/PRs
     ANTHROPIC_NO_ATTRIBUTION=1 \
     # Use uv for Python execution (faster, better caching)

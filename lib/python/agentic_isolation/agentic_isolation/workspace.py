@@ -101,6 +101,7 @@ class AgenticWorkspace:
         secrets: dict[str, str] | None = None,
         environment: dict[str, str] | None = None,
         mounts: list[tuple[str, str, bool]] | None = None,
+        plugins: list[str] | None = None,
         limits: ResourceLimits | None = None,
         security: SecurityConfig | None = None,
         auto_cleanup: bool = True,
@@ -115,6 +116,7 @@ class AgenticWorkspace:
             secrets: Secrets to inject as environment variables
             environment: Non-secret environment variables
             mounts: List of (host_path, container_path, read_only) tuples
+            plugins: Plugin directories to load via --plugin-dir (ADR-033)
             limits: Resource limits
             security: Security configuration (docker provider only)
             auto_cleanup: Whether to cleanup on exit
@@ -139,6 +141,7 @@ class AgenticWorkspace:
             secrets=secrets or {},
             environment=environment or {},
             mounts=mount_configs,
+            plugins=plugins or [],
             limits=limits or ResourceLimits(),
             security=security or SecurityConfig(),
             auto_cleanup=auto_cleanup,

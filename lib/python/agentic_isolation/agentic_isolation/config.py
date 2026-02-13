@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -210,6 +215,61 @@ class WorkspaceConfig:
 
     # Labels for identification
     labels: dict[str, str] = field(default_factory=dict)
+
+    # Plugin directories to load via --plugin-dir (ADR-033)
+    plugins: list[str] = field(default_factory=list)
+
+    def with_plugin(self, plugin_path: str | Path) -> WorkspaceConfig:
+        """Add a plugin directory and return self for chaining."""
+        self.plugins.append(str(plugin_path))
+        return self
+
+    def resolve_plugin_env(self) -> None:
+        """Read requires_env from plugin manifests and populate secrets/environment.
+
+        For each plugin directory, reads .claude-plugin/plugin.json and
+        looks for a requires_env field. For each declared env var:
+        - secret=true vars are added to self.secrets (if set in host env)
+        - secret=false vars are added to self.environment (if set in host env)
+        - required=true vars raise ValueError if not set
+
+        This method is idempotent - safe to call multiple times.
+        """
+        for plugin_path in self.plugins:
+            manifest_path = Path(plugin_path) / ".claude-plugin" / "plugin.json"
+            if not manifest_path.exists():
+                continue
+
+            try:
+                manifest = json.loads(manifest_path.read_text())
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("Failed to read plugin manifest %s: %s", manifest_path, e)
+                continue
+
+            requires_env = manifest.get("requires_env", {})
+            plugin_name = manifest.get("name", Path(plugin_path).name)
+
+            for var_name, spec in requires_env.items():
+                # Skip if already explicitly set
+                if var_name in self.secrets or var_name in self.environment:
+                    continue
+
+                value = os.environ.get(var_name)
+                is_required = spec.get("required", False)
+                is_secret = spec.get("secret", False)
+
+                if value is None:
+                    if is_required:
+                        description = spec.get("description", "")
+                        raise ValueError(
+                            f"Plugin '{plugin_name}' requires env var {var_name}: {description}"
+                        )
+                    continue
+
+                if is_secret:
+                    self.secrets[var_name] = value
+                else:
+                    self.environment[var_name] = value
 
     def with_mount(
         self,

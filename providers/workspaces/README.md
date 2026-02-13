@@ -40,8 +40,8 @@ The build process:
 1. **Reads manifest** - `providers/workspaces/<provider>/manifest.yaml`
 2. **Stages build context** - Creates `build/<provider>/` with:
    - Dockerfile
-   - Hooks (from `primitives/v1/hooks/`)
-   - Python wheels (agentic_otel, agentic_security)
+   - Plugins (from `plugins/`, per manifest `plugins.include`)
+   - Python wheels (agentic_events)
 3. **Builds Docker image** - Self-contained, reproducible
 
 ```
@@ -54,9 +54,9 @@ providers/workspaces/claude-cli/
 
 build/claude-cli/       # Staged context
 ├── Dockerfile
-├── hooks/
-│   ├── handlers/
-│   └── validators/
+├── plugins/
+│   ├── sdlc/           # Self-contained plugin
+│   └── workspace/      # Self-contained plugin
 └── packages/
     └── *.whl
 ```
@@ -72,13 +72,10 @@ image:
   dockerfile: ./Dockerfile
   tag: agentic-workspace-claude-cli
 
-hooks:
-  handlers:
-    - pre-tool-use
-    - post-tool-use
-  validators:
-    - security/bash
-    - security/file
+plugins:
+  include:
+    - sdlc
+    - workspace
 
 defaults:
   allowed_tools: [Read, Write, Bash]
@@ -102,7 +99,7 @@ All workspace images include:
 
 - **Non-root user** (`agent:1000`)
 - **No setuid/setgid binaries**
-- **Read-only hooks directory**
+- **Read-only plugins directory**
 - **Health checks**
 
 See [ADR-027: Provider-Based Workspace Images](../../docs/adrs/027-provider-workspace-images.md)

@@ -225,6 +225,44 @@ list-providers:
     @echo '{{ YELLOW }}Available workspace providers:{{ NORMAL }}'
     @ls -1 providers/workspaces/ | grep -v README
 
+# Run workspace integration tests (requires Docker + .env with API keys)
+[group('docker')]
+[unix]
+test-workspace:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e '{{ YELLOW }}Running workspace integration tests...{{ NORMAL }}'
+    # Source .env (check worktree root, then main repo via git common-dir)
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    MAIN_ROOT=$(cd "$(git rev-parse --git-common-dir)/.." 2>/dev/null && pwd)
+    for d in "$REPO_ROOT" "$MAIN_ROOT"; do
+        if [ -f "$d/.env" ]; then
+            echo -e '{{ YELLOW }}Loading $d/.env{{ NORMAL }}'
+            set -a; source "$d/.env"; set +a; break
+        fi
+    done
+    cd lib/python/agentic_isolation && uv run pytest tests/integration/ -v --tb=short
+    echo -e '{{ GREEN }}✓ Workspace integration tests passed{{ NORMAL }}'
+
+# Run plugin env forwarding tests only (requires Docker + FIRECRAWL_API_KEY)
+[group('docker')]
+[unix]
+test-plugin-env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e '{{ YELLOW }}Running plugin env forwarding tests...{{ NORMAL }}'
+    # Source .env (check worktree root, then main repo via git common-dir)
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    MAIN_ROOT=$(cd "$(git rev-parse --git-common-dir)/.." 2>/dev/null && pwd)
+    for d in "$REPO_ROOT" "$MAIN_ROOT"; do
+        if [ -f "$d/.env" ]; then
+            echo -e '{{ YELLOW }}Loading $d/.env{{ NORMAL }}'
+            set -a; source "$d/.env"; set +a; break
+        fi
+    done
+    cd lib/python/agentic_isolation && uv run pytest tests/integration/test_plugin_env.py -v --tb=short
+    echo -e '{{ GREEN }}✓ Plugin env tests passed{{ NORMAL }}'
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════════

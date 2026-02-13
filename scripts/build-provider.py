@@ -18,10 +18,11 @@ Usage:
 The build process:
 1. Reads manifest.yaml from providers/workspaces/<provider>/
 2. Creates staged build context in build/<provider>/
-3. Copies Dockerfile, hooks, and builds Python wheels
+3. Copies Dockerfile, plugins, and builds Python wheels
 4. Runs docker build with the staged context
 
 See ADR-027: Provider-Based Workspace Images
+See ADR-033: Plugin-Native Workspace Images
 """
 
 import argparse
@@ -35,7 +36,7 @@ import yaml
 # Paths relative to agentic-primitives root
 ROOT = Path(__file__).parent.parent
 PROVIDERS_DIR = ROOT / "providers" / "workspaces"
-PRIMITIVES_DIR = ROOT / "primitives" / "v1" / "hooks"
+PLUGINS_DIR = ROOT / "plugins"
 PYTHON_PACKAGES_DIR = ROOT / "lib" / "python"
 BUILD_DIR = ROOT / "build"
 
@@ -59,48 +60,38 @@ def stage_dockerfile(provider: str, build_context: Path) -> None:
     print("  ✓ Dockerfile")
 
 
-def stage_hooks(manifest: dict, build_context: Path) -> None:
-    """Copy hook handlers and validators to build context."""
-    hooks_config = manifest.get("hooks", {})
-    if not hooks_config.get("handlers"):
-        print("  ⊘ No hooks configured")
+def stage_plugins(manifest: dict, build_context: Path) -> None:
+    """Copy plugin directories to build context (ADR-033).
+
+    Each plugin is a self-contained directory with .claude-plugin/plugin.json.
+    The entire directory tree is copied to preserve hooks, commands, skills, etc.
+    """
+    plugins_config = manifest.get("plugins", {})
+    plugin_names = plugins_config.get("include", [])
+
+    if not plugin_names:
+        print("  ⊘ No plugins configured")
         return
 
-    hooks_dir = build_context / "hooks"
-    handlers_dir = hooks_dir / "handlers"
-    validators_dir = hooks_dir / "validators"
-    handlers_dir.mkdir(parents=True, exist_ok=True)
-    validators_dir.mkdir(parents=True, exist_ok=True)
+    plugins_dst = build_context / "plugins"
+    plugins_dst.mkdir(parents=True, exist_ok=True)
 
-    # Copy handlers
-    for handler in hooks_config.get("handlers", []):
-        src = PRIMITIVES_DIR / "handlers" / f"{handler}.py"
-        if src.exists():
-            shutil.copy2(src, handlers_dir / f"{handler}.py")
-            print(f"  ✓ Handler: {handler}")
-        else:
-            print(f"  ⚠ Handler not found: {handler}")
+    for plugin_name in plugin_names:
+        src = PLUGINS_DIR / plugin_name
+        if not src.exists():
+            print(f"  ⚠ Plugin not found: {plugin_name}")
+            continue
 
-    # Copy validators
-    for validator in hooks_config.get("validators", []):
-        # Validator format: "security/bash" -> validators/security/bash.py
-        parts = validator.split("/")
-        if len(parts) == 2:
-            category, name = parts
-            src = PRIMITIVES_DIR / "validators" / category / f"{name}.py"
-            dst_dir = validators_dir / category
-            dst_dir.mkdir(parents=True, exist_ok=True)
+        # Validate plugin has required manifest
+        manifest_file = src / ".claude-plugin" / "plugin.json"
+        if not manifest_file.exists():
+            print(f"  ⚠ Plugin missing .claude-plugin/plugin.json: {plugin_name}")
+            continue
 
-            if src.exists():
-                shutil.copy2(src, dst_dir / f"{name}.py")
-                print(f"  ✓ Validator: {validator}")
-            else:
-                print(f"  ⚠ Validator not found: {validator}")
-
-            # Copy __init__.py if exists
-            init_src = PRIMITIVES_DIR / "validators" / category / "__init__.py"
-            if init_src.exists():
-                shutil.copy2(init_src, dst_dir / "__init__.py")
+        # Copy entire plugin directory
+        dst = plugins_dst / plugin_name
+        shutil.copytree(src, dst)
+        print(f"  ✓ Plugin: {plugin_name}")
 
 
 def stage_scripts(provider: str, build_context: Path) -> None:
@@ -124,7 +115,8 @@ def build_wheels(build_context: Path) -> None:
     packages_dir.mkdir(parents=True, exist_ok=True)
 
     # Packages to include in the image
-    required_packages = ["agentic_events", "agentic_security"]
+    # agentic_events is the core observability package used by plugin hooks
+    required_packages = ["agentic_events"]
 
     for pkg_name in required_packages:
         pkg_path = PYTHON_PACKAGES_DIR / pkg_name
@@ -213,7 +205,7 @@ def main():
     # Stage files
     stage_dockerfile(provider, build_context)
     stage_scripts(provider, build_context)
-    stage_hooks(manifest, build_context)
+    stage_plugins(manifest, build_context)
     build_wheels(build_context)
 
     if args.stage_only:
