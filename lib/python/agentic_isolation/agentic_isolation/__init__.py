@@ -25,6 +25,15 @@ With Docker (production):
         async for line in workspace.stream(["claude", "-p", "Hello"]):
             print(line)
 
+With plugins (ADR-033):
+    async with AgenticWorkspace.create(
+        provider="docker",
+        image="agentic-workspace-claude-cli:latest",
+        plugins=["/opt/agentic/plugins/sdlc", "/opt/agentic/plugins/workspace"],
+    ) as workspace:
+        # Plugin env vars (requires_env) are auto-forwarded from host
+        result = await workspace.execute("claude --plugin-dir ...")
+
 Features:
     - Multiple providers: Local, Docker, E2B (future)
     - Security hardening (cap-drop, read-only root, gVisor)
