@@ -27,27 +27,16 @@ runtime:
   # Native OTel support
   otel_native: true
 
-# Hook configuration
-hooks:
-  # Source directory relative to agentic-primitives root
-  source: ../../../primitives/v1/hooks/
-  # Hook handlers to include
-  handlers:
-    - pre-tool-use
-    - post-tool-use
-    - session-start
-    - session-end
-    - user-prompt
-    - notification
-    - stop
-    - subagent-stop
-  # Validators to include
-  validators:
-    - security/bash
-    - security/file
-    - prompt/pii
+# Plugin configuration (ADR-033)
+# Plugins are self-contained directories with .claude-plugin/plugin.json
+# and hooks/hooks.json. They are loaded at runtime via --plugin-dir flags.
+plugins:
+  # Plugins to bake into the image
+  include:
+    - sdlc
+    - workspace
   # Install location in the image
-  install_path: /opt/agentic/hooks
+  install_path: /opt/agentic/plugins
 
 # Default tool configuration
 defaults:
