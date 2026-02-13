@@ -197,6 +197,7 @@ This project's design decisions are documented in [32 ADRs](docs/adrs/), includi
 - [ADR-025: Just Task Runner](docs/adrs/025-just-task-runner.md)
 - [ADR-027: Provider Workspace Images](docs/adrs/027-provider-workspace-images.md)
 - [ADR-029: Simplified Event System](docs/adrs/029-simplified-event-system.md)
+- [ADR-033: Plugin-Native Workspace Images](docs/adrs/033-plugin-native-workspace-images.md)
 
 ---
 
