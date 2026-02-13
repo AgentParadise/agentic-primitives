@@ -97,16 +97,18 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 | **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |
 | **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |
 | **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |
+| **architecture** | `claude plugin install architecture@agentic-primitives --scope user` | Agent-native architecture, swarms, skill creation |
 
 ### What's in each plugin
 
 | Plugin | Commands | Skills | Hooks |
 |--------|----------|--------|-------|
-| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks`, `plan`, `work`, `compound`, `compound-review`, `brainstorm` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
 | **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
 | **research** | `scrape_docs` | -- | -- |
 | **meta** | `/create-command`, `/create-prime`, `/create-doc-sync` | `prompt-generator` | -- |
 | **docs** | -- | Fumadocs integration | -- |
+| **architecture** | -- | `agent-native-architecture`, `orchestrating-swarms`, `create-agent-skills` | -- |
 
 ---
 
@@ -140,7 +142,8 @@ agentic-primitives/
 │   ├── workspace/              #   Workspace observability hooks
 │   ├── research/               #   Research tools (firecrawl, doc-scraper)
 │   ├── meta/                   #   Primitive generators
-│   └── docs/                   #   Documentation tools
+│   ├── docs/                   #   Documentation tools
+│   └── architecture/           #   Agent-native architecture (from Every, Inc.)
 ├── lib/python/                 # Infrastructure Primitives
 │   ├── agentic_isolation/      #   Docker workspace sandboxing
 │   ├── agentic_events/         #   JSONL event emission
