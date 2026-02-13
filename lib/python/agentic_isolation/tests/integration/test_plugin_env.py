@@ -23,11 +23,7 @@ from agentic_isolation import (
 )
 
 # Path to the research plugin (has requires_env with FIRECRAWL_API_KEY)
-RESEARCH_PLUGIN = (
-    Path(__file__).parent.parent.parent.parent.parent.parent
-    / "plugins"
-    / "research"
-)
+RESEARCH_PLUGIN = Path(__file__).parent.parent.parent.parent.parent.parent / "plugins" / "research"
 
 
 def docker_available() -> bool:
