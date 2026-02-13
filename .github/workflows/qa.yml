@@ -103,6 +103,31 @@ jobs:
           uv sync --all-extras
           uv run pytest -x -q
 
+  consumer-contracts:
+    name: Consumer Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "tests/consumer_contracts/uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: ./tests/consumer_contracts
+        run: uv sync --all-extras
+
+      - name: Run contract tests
+        working-directory: ./tests/consumer_contracts
+        run: uv run pytest -v
+
   #############################################################################
   # PLUGIN STRUCTURE VALIDATION - Ensure plugins work in local + Docker
   #############################################################################
@@ -394,6 +419,7 @@ jobs:
     needs:
       - python-packages
       - python-hooks
+      - consumer-contracts
       - plugin-validate
       - plugin-version-check
     runs-on: ubuntu-latest
@@ -402,6 +428,7 @@ jobs:
         run: |
           if [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
+             [[ "${{ needs.consumer-contracts.result }}" == "failure" ]] || \
              [[ "${{ needs.plugin-validate.result }}" == "failure" ]] || \
              [[ "${{ needs.plugin-version-check.result }}" == "failure" ]]; then
             echo "QA checks failed"
@@ -410,6 +437,7 @@ jobs:
 
           if [[ "${{ needs.python-packages.result }}" == "cancelled" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.consumer-contracts.result }}" == "cancelled" ]] || \
              [[ "${{ needs.plugin-validate.result }}" == "cancelled" ]] || \
              [[ "${{ needs.plugin-version-check.result }}" == "cancelled" ]]; then
             echo "QA checks were cancelled"
@@ -426,5 +454,6 @@ jobs:
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Python Packages | ${{ needs.python-packages.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Consumer Contracts | ${{ needs.consumer-contracts.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Plugin Validation | ${{ needs.plugin-validate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Plugin Version Check | ${{ needs.plugin-version-check.result }} |" >> $GITHUB_STEP_SUMMARY

@@ -24,6 +24,7 @@ PACKAGES = [
 # Additional test directories (not packages)
 TEST_DIRS = [
     Path("tests/unit/claude/hooks"),
+    Path("tests/consumer_contracts"),
 ]
 
 
