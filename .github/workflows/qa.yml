@@ -118,6 +118,74 @@ jobs:
           uv run pytest -x -q
 
   #############################################################################
+  # PLUGIN VERSION CHECK - Ensure plugin.json version is bumped on changes
+  #############################################################################
+
+  plugin-version-check:
+    name: Plugin Version Check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check plugin versions
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          failed=0
+
+          for plugin_dir in plugins/*/; do
+            plugin_name=$(basename "$plugin_dir")
+            plugin_json="${plugin_dir}.claude-plugin/plugin.json"
+
+            # Skip plugins without plugin.json
+            if [[ ! -f "$plugin_json" ]]; then
+              continue
+            fi
+
+            # Check if any files in this plugin changed (excluding plugin.json itself)
+            changed_files=$(git diff --name-only "$base"...HEAD -- "$plugin_dir" | grep -v '.claude-plugin/plugin.json' || true)
+
+            if [[ -z "$changed_files" ]]; then
+              echo "✓ $plugin_name — no content changes"
+              continue
+            fi
+
+            # Get version from base and head
+            head_version=$(jq -r '.version' "$plugin_json")
+            base_version=$(git show "${base}:${plugin_json}" 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+
+            if [[ -z "$base_version" ]]; then
+              echo "✓ $plugin_name — new plugin (no base version)"
+              continue
+            fi
+
+            if [[ "$base_version" == "$head_version" ]]; then
+              echo ""
+              echo "✗ $plugin_name — content changed but version not bumped (${base_version})"
+              echo "  Changed files:"
+              echo "$changed_files" | sed 's/^/    /'
+              echo "  → Update version in ${plugin_json}"
+              echo ""
+              failed=1
+            else
+              echo "✓ $plugin_name — version bumped ${base_version} → ${head_version}"
+            fi
+          done
+
+          if [[ "$failed" -eq 1 ]]; then
+            echo ""
+            echo "ERROR: Plugin content changed without version bump."
+            echo "Claude Code uses the version field in plugin.json to detect updates."
+            echo "Without a bump, users running 'claude plugin update' won't get the new code."
+            exit 1
+          fi
+
+          echo ""
+          echo "All plugin versions OK."
+
+  #############################################################################
   # SUMMARY JOB - Required status check for PRs
   #############################################################################
 
@@ -127,18 +195,21 @@ jobs:
     needs:
       - python-packages
       - python-hooks
+      - plugin-version-check
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs
         run: |
           if [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
-             [[ "${{ needs.python-hooks.result }}" == "failure" ]]; then
+             [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
+             [[ "${{ needs.plugin-version-check.result }}" == "failure" ]]; then
             echo "QA checks failed"
             exit 1
           fi
 
           if [[ "${{ needs.python-packages.result }}" == "cancelled" ]] || \
-             [[ "${{ needs.python-hooks.result }}" == "cancelled" ]]; then
+             [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.plugin-version-check.result }}" == "cancelled" ]]; then
             echo "QA checks were cancelled"
             exit 1
           fi
@@ -153,3 +224,4 @@ jobs:
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Python Packages | ${{ needs.python-packages.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Plugin Version Check | ${{ needs.plugin-version-check.result }} |" >> $GITHUB_STEP_SUMMARY
