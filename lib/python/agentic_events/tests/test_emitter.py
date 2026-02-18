@@ -154,3 +154,110 @@ class TestEventEmitter:
             assert "event_type" in event
             assert "timestamp" in event
             assert "session_id" in event
+
+
+class TestGitEvents:
+    """Tests for git observability event methods."""
+
+    def _make_emitter(self):
+        output = io.StringIO()
+        return EventEmitter(session_id="test-git", output=output), output
+
+    def test_git_commit(self):
+        emitter, output = self._make_emitter()
+        event = emitter.git_commit(
+            sha="abc123",
+            branch="main",
+            repo="my-repo",
+            files_changed=3,
+            insertions=10,
+            deletions=2,
+            message_preview="fix: something",
+            author="Test User <test@example.com>",
+        )
+        assert event["event_type"] == "git_commit"
+        ctx = event["context"]
+        assert ctx["sha"] == "abc123"
+        assert ctx["branch"] == "main"
+        assert ctx["repo"] == "my-repo"
+        assert ctx["files_changed"] == 3
+        assert ctx["insertions"] == 10
+        assert ctx["deletions"] == 2
+        assert ctx["message_preview"] == "fix: something"
+        assert ctx["author"] == "Test User <test@example.com>"
+
+    def test_git_push(self):
+        emitter, output = self._make_emitter()
+        event = emitter.git_push(
+            branch="feat/test",
+            remote="origin",
+            remote_url="https://github.com/test/repo.git",
+            commits_count=5,
+            commit_range="abc123..def456",
+        )
+        assert event["event_type"] == "git_push"
+        ctx = event["context"]
+        assert ctx["branch"] == "feat/test"
+        assert ctx["remote"] == "origin"
+        assert ctx["commits_count"] == 5
+        assert ctx["commit_range"] == "abc123..def456"
+
+    def test_git_rewrite(self):
+        emitter, output = self._make_emitter()
+        mappings = [
+            {"old_sha": "aaa", "new_sha": "bbb"},
+            {"old_sha": "ccc", "new_sha": "ddd"},
+        ]
+        event = emitter.git_rewrite(
+            rewrite_type="rebase",
+            mappings=mappings,
+            commits_folded=2,
+        )
+        assert event["event_type"] == "git_rewrite"
+        ctx = event["context"]
+        assert ctx["rewrite_type"] == "rebase"
+        assert len(ctx["mappings"]) == 2
+        assert ctx["mappings"][0]["old_sha"] == "aaa"
+        assert ctx["commits_folded"] == 2
+
+    def test_git_rewrite_defaults(self):
+        emitter, output = self._make_emitter()
+        event = emitter.git_rewrite(rewrite_type="amend")
+        assert event["context"]["mappings"] == []
+        assert event["context"]["commits_folded"] == 0
+
+    def test_git_merge(self):
+        emitter, output = self._make_emitter()
+        event = emitter.git_merge(
+            branch="main",
+            merge_sha="abc123",
+            commits_merged=3,
+            is_squash=True,
+        )
+        assert event["event_type"] == "git_merge"
+        ctx = event["context"]
+        assert ctx["branch"] == "main"
+        assert ctx["merge_sha"] == "abc123"
+        assert ctx["commits_merged"] == 3
+        assert ctx["is_squash"] is True
+
+    def test_git_merge_defaults(self):
+        emitter, output = self._make_emitter()
+        event = emitter.git_merge(branch="main")
+        assert event["context"]["is_squash"] is False
+        assert event["context"]["commits_merged"] == 0
+
+    def test_git_events_jsonl(self):
+        """Test git events produce valid JSONL output."""
+        emitter, output = self._make_emitter()
+        emitter.git_commit(sha="a", branch="main", repo="r")
+        emitter.git_push(branch="main", remote="origin")
+        emitter.git_rewrite(rewrite_type="rebase")
+        emitter.git_merge(branch="main")
+
+        output.seek(0)
+        lines = output.readlines()
+        assert len(lines) == 4
+        for line in lines:
+            event = json.loads(line)
+            assert event["event_type"].startswith("git_")

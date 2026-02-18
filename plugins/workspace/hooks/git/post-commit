@@ -1,0 +1,39 @@
+#!/bin/sh
+# post-commit hook — emits GIT_COMMIT event to stderr
+SHA=$(git rev-parse HEAD 2>/dev/null || exit 0)
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")
+MESSAGE=$(git log -1 --pretty=%s HEAD 2>/dev/null || echo "")
+AUTHOR=$(git log -1 --pretty="%an <%ae>" HEAD 2>/dev/null || echo "")
+
+STATS=$(git diff --shortstat HEAD~1 HEAD 2>/dev/null || echo "")
+FILES_CHANGED=$(echo "$STATS" | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' || echo "0")
+INSERTIONS=$(echo "$STATS" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+DELETIONS=$(echo "$STATS" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+
+export _HOOK_SHA="$SHA" _HOOK_BRANCH="$BRANCH" _HOOK_REPO="$REPO"
+export _HOOK_MESSAGE="$MESSAGE" _HOOK_AUTHOR="$AUTHOR"
+export _HOOK_FILES="${FILES_CHANGED:-0}" _HOOK_INS="${INSERTIONS:-0}" _HOOK_DEL="${DELETIONS:-0}"
+
+python3 -c '
+import os, sys
+try:
+    from agentic_events import EventEmitter
+    emitter = EventEmitter(
+        session_id=os.getenv("CLAUDE_SESSION_ID", "unknown"),
+        provider="claude",
+        output=sys.stderr,
+    )
+    emitter.git_commit(
+        sha=os.environ.get("_HOOK_SHA", ""),
+        branch=os.environ.get("_HOOK_BRANCH", ""),
+        repo=os.environ.get("_HOOK_REPO", ""),
+        files_changed=int(os.environ.get("_HOOK_FILES", "0") or "0"),
+        insertions=int(os.environ.get("_HOOK_INS", "0") or "0"),
+        deletions=int(os.environ.get("_HOOK_DEL", "0") or "0"),
+        message_preview=os.environ.get("_HOOK_MESSAGE", ""),
+        author=os.environ.get("_HOOK_AUTHOR", ""),
+    )
+except Exception:
+    pass
+' 2>&2

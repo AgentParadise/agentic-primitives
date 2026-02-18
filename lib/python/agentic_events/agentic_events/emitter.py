@@ -339,3 +339,119 @@ class EventEmitter:
             context={"tool_name": tool_name, "permission_type": permission_type},
             metadata=metadata if metadata else None,
         )
+
+    # -------------------------------------------------------------------------
+    # Git events
+    # -------------------------------------------------------------------------
+
+    def git_commit(
+        self,
+        sha: str,
+        branch: str,
+        repo: str,
+        files_changed: int = 0,
+        insertions: int = 0,
+        deletions: int = 0,
+        message_preview: str = "",
+        author: str = "",
+    ) -> dict[str, Any]:
+        """Emit a git commit event.
+
+        Args:
+            sha: Commit SHA.
+            branch: Branch name.
+            repo: Repository name.
+            files_changed: Number of files changed.
+            insertions: Lines inserted.
+            deletions: Lines deleted.
+            message_preview: First line of commit message.
+            author: Commit author.
+        """
+        return self.emit(
+            EventType.GIT_COMMIT,
+            context={
+                "sha": sha,
+                "branch": branch,
+                "repo": repo,
+                "files_changed": files_changed,
+                "insertions": insertions,
+                "deletions": deletions,
+                "message_preview": message_preview,
+                "author": author,
+            },
+        )
+
+    def git_push(
+        self,
+        branch: str,
+        remote: str,
+        remote_url: str = "",
+        commits_count: int = 0,
+        commit_range: str = "",
+    ) -> dict[str, Any]:
+        """Emit a git push event.
+
+        Args:
+            branch: Branch being pushed.
+            remote: Remote name.
+            remote_url: Remote URL.
+            commits_count: Number of commits being pushed.
+            commit_range: Commit range (old_sha..new_sha).
+        """
+        return self.emit(
+            EventType.GIT_PUSH,
+            context={
+                "branch": branch,
+                "remote": remote,
+                "remote_url": remote_url,
+                "commits_count": commits_count,
+                "commit_range": commit_range,
+            },
+        )
+
+    def git_rewrite(
+        self,
+        rewrite_type: str,
+        mappings: list[dict[str, str]] | None = None,
+        commits_folded: int = 0,
+    ) -> dict[str, Any]:
+        """Emit a git rewrite event.
+
+        Args:
+            rewrite_type: Type of rewrite (rebase or amend).
+            mappings: List of {old_sha, new_sha} mappings.
+            commits_folded: Number of commits folded (for squash rebases).
+        """
+        return self.emit(
+            EventType.GIT_REWRITE,
+            context={
+                "rewrite_type": rewrite_type,
+                "mappings": mappings or [],
+                "commits_folded": commits_folded,
+            },
+        )
+
+    def git_merge(
+        self,
+        branch: str,
+        merge_sha: str = "",
+        commits_merged: int = 0,
+        is_squash: bool = False,
+    ) -> dict[str, Any]:
+        """Emit a git merge event.
+
+        Args:
+            branch: Branch that was merged into.
+            merge_sha: The merge commit SHA.
+            commits_merged: Number of commits merged.
+            is_squash: Whether this was a squash merge.
+        """
+        return self.emit(
+            EventType.GIT_MERGE,
+            context={
+                "branch": branch,
+                "merge_sha": merge_sha,
+                "commits_merged": commits_merged,
+                "is_squash": is_squash,
+            },
+        )

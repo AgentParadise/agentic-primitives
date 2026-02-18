@@ -1,0 +1,32 @@
+#!/bin/sh
+# post-merge hook — emits GIT_MERGE event to stderr
+# First arg is squash flag (1 if squash merge, 0 otherwise)
+SQUASH_FLAG="${1:-0}"
+IS_SQUASH="false"
+[ "$SQUASH_FLAG" = "1" ] && IS_SQUASH="true"
+
+MERGE_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+COMMITS_MERGED=$(git log --oneline ORIG_HEAD..HEAD 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+
+export _HOOK_BRANCH="$BRANCH" _HOOK_MERGE_SHA="$MERGE_SHA"
+export _HOOK_COMMITS="$COMMITS_MERGED" _HOOK_IS_SQUASH="$IS_SQUASH"
+
+python3 -c '
+import os, sys
+try:
+    from agentic_events import EventEmitter
+    emitter = EventEmitter(
+        session_id=os.getenv("CLAUDE_SESSION_ID", "unknown"),
+        provider="claude",
+        output=sys.stderr,
+    )
+    emitter.git_merge(
+        branch=os.environ.get("_HOOK_BRANCH", ""),
+        merge_sha=os.environ.get("_HOOK_MERGE_SHA", ""),
+        commits_merged=int(os.environ.get("_HOOK_COMMITS", "0") or "0"),
+        is_squash=os.environ.get("_HOOK_IS_SQUASH", "false") == "true",
+    )
+except Exception:
+    pass
+' 2>&2

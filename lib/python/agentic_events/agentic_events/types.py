@@ -37,6 +37,12 @@ class EventType(StrEnum):
     PROMPT_SUBMITTED = "user_prompt_submitted"
     PERMISSION_REQUESTED = "permission_requested"
 
+    # Git events
+    GIT_COMMIT = "git_commit"
+    GIT_PUSH = "git_push"
+    GIT_REWRITE = "git_rewrite"
+    GIT_MERGE = "git_merge"
+
 
 class SecurityDecision(StrEnum):
     """Security decision outcomes."""

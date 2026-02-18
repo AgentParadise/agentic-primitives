@@ -1,0 +1,43 @@
+#!/bin/sh
+# pre-push hook — emits GIT_PUSH event to stderr
+# Receives: remote name and URL as args; stdin has lines of:
+#   <local ref> <local sha> <remote ref> <remote sha>
+REMOTE="$1"
+REMOTE_URL="$2"
+
+LINES=""
+TOTAL_COMMITS=0
+while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+    BRANCH=$(echo "$LOCAL_REF" | sed 's|refs/heads/||')
+    RANGE="${REMOTE_SHA}..${LOCAL_SHA}"
+    if echo "$REMOTE_SHA" | grep -qE '^0+$'; then
+        COUNT=$(git rev-list --count "$LOCAL_SHA" 2>/dev/null || echo "0")
+        RANGE="(new)..${LOCAL_SHA}"
+    else
+        COUNT=$(git rev-list --count "$RANGE" 2>/dev/null || echo "0")
+    fi
+    TOTAL_COMMITS=$((TOTAL_COMMITS + COUNT))
+
+    export _HOOK_BRANCH="$BRANCH" _HOOK_REMOTE="$REMOTE" _HOOK_REMOTE_URL="$REMOTE_URL"
+    export _HOOK_COUNT="$COUNT" _HOOK_RANGE="$RANGE"
+
+    python3 -c '
+import os, sys
+try:
+    from agentic_events import EventEmitter
+    emitter = EventEmitter(
+        session_id=os.getenv("CLAUDE_SESSION_ID", "unknown"),
+        provider="claude",
+        output=sys.stderr,
+    )
+    emitter.git_push(
+        branch=os.environ.get("_HOOK_BRANCH", ""),
+        remote=os.environ.get("_HOOK_REMOTE", ""),
+        remote_url=os.environ.get("_HOOK_REMOTE_URL", ""),
+        commits_count=int(os.environ.get("_HOOK_COUNT", "0") or "0"),
+        commit_range=os.environ.get("_HOOK_RANGE", ""),
+    )
+except Exception:
+    pass
+' 2>&2
+done

@@ -109,6 +109,11 @@ elif [ -n "${GIT_AUTHOR_NAME}" ]; then
     export GIT_COMMITTER_EMAIL="${GIT_AUTHOR_EMAIL:-agent@agentic.local}"
 fi
 
+# Install observability git hooks (global — applies to all repos in workspace)
+if [ -d "$PLUGINS_DIR/workspace/hooks/git" ]; then
+    git config --global core.hooksPath "$PLUGINS_DIR/workspace/hooks/git"
+fi
+
 # -----------------------------------------------------------------------------
 # 4. GitHub Credentials
 # -----------------------------------------------------------------------------

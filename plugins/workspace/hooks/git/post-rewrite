@@ -1,0 +1,40 @@
+#!/bin/sh
+# post-rewrite hook — emits GIT_REWRITE event to stderr
+# First arg is rewrite type (rebase or amend)
+# stdin has lines of: <old sha> <new sha> [extra info]
+REWRITE_TYPE="${1:-unknown}"
+
+MAPPINGS="["
+FIRST=true
+COUNT=0
+while read -r OLD_SHA NEW_SHA _REST; do
+    COUNT=$((COUNT + 1))
+    if [ "$FIRST" = true ]; then
+        FIRST=false
+    else
+        MAPPINGS="${MAPPINGS},"
+    fi
+    MAPPINGS="${MAPPINGS}{\"old_sha\":\"${OLD_SHA}\",\"new_sha\":\"${NEW_SHA}\"}"
+done
+MAPPINGS="${MAPPINGS}]"
+
+export _HOOK_REWRITE_TYPE="$REWRITE_TYPE" _HOOK_MAPPINGS="$MAPPINGS" _HOOK_COUNT="$COUNT"
+
+python3 -c '
+import os, sys, json
+try:
+    from agentic_events import EventEmitter
+    emitter = EventEmitter(
+        session_id=os.getenv("CLAUDE_SESSION_ID", "unknown"),
+        provider="claude",
+        output=sys.stderr,
+    )
+    mappings = json.loads(os.environ.get("_HOOK_MAPPINGS", "[]"))
+    emitter.git_rewrite(
+        rewrite_type=os.environ.get("_HOOK_REWRITE_TYPE", "unknown"),
+        mappings=mappings,
+        commits_folded=int(os.environ.get("_HOOK_COUNT", "0") or "0"),
+    )
+except Exception:
+    pass
+' 2>&2
