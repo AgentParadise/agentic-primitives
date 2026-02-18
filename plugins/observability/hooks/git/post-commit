@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Post-commit hook — emit git_commit event via agentic_events.
+
+Parses git output to extract commit metadata and token estimates.
+Always exits 0 — observability never breaks git operations.
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+
+def run(cmd, **kwargs):
+    """Run a command and return stripped stdout, or empty string on failure."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5, **kwargs)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def main():
+    try:
+        from agentic_events import EventEmitter
+
+        session_id = os.getenv("CLAUDE_SESSION_ID", os.getenv("AEF_SESSION_ID", "unknown"))
+        emitter = EventEmitter(session_id=session_id, provider="claude", output=sys.stderr)
+
+        sha = run(["git", "rev-parse", "HEAD"])
+        branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        message = run(["git", "log", "-1", "--pretty=%B"]).split("\n")[0]
+        author = run(["git", "log", "-1", "--pretty=%an"])
+
+        # Diff stats
+        has_parent = run(["git", "rev-parse", "HEAD~1"]) != ""
+        if has_parent:
+            stat_line = run(["git", "diff", "--shortstat", "HEAD~1", "HEAD"])
+            names = run(["git", "diff", "--name-only", "HEAD~1", "HEAD"])
+        else:
+            stat_line = run(["git", "diff", "--cached", "--shortstat"])
+            names = run(["git", "diff", "--cached", "--name-only"])
+
+        files_changed = len([f for f in names.split("\n") if f]) if names else 0
+
+        insertions = 0
+        deletions = 0
+        if stat_line:
+            import re
+            m = re.search(r"(\d+) insertion", stat_line)
+            if m:
+                insertions = int(m.group(1))
+            m = re.search(r"(\d+) deletion", stat_line)
+            if m:
+                deletions = int(m.group(1))
+
+        # Token estimates (chars/4)
+        if has_parent:
+            diff = run(["git", "diff", "HEAD~1", "HEAD"])
+        else:
+            diff = run(["git", "show", "--format=", "HEAD"])
+        added_chars = sum(len(l) - 1 for l in diff.split("\n") if l.startswith("+") and not l.startswith("+++"))
+        removed_chars = sum(len(l) - 1 for l in diff.split("\n") if l.startswith("-") and not l.startswith("---"))
+
+        # Get repo name from remote
+        remote = run(["git", "remote", "get-url", "origin"])
+        repo = remote.rstrip("/").rsplit("/", 1)[-1].replace(".git", "") if remote else ""
+
+        emitter.git_commit(
+            sha=sha,
+            branch=branch,
+            repo=repo,
+            files_changed=files_changed,
+            insertions=insertions,
+            deletions=deletions,
+            message_preview=message[:200],
+            author=author,
+            estimated_tokens_added=added_chars // 4,
+            estimated_tokens_removed=removed_chars // 4,
+        )
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()

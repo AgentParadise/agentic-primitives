@@ -64,10 +64,39 @@ Fields:
 - `context` — event-specific payload (varies by event type)
 - `metadata` — optional additional data (when provided by the hook)
 
+## Git hooks
+
+In addition to Claude Code lifecycle hooks, this plugin includes git hooks that emit events for git operations:
+
+| Git Hook | Event Type Emitted |
+|---|---|
+| `post-commit` | `git_commit` (with sha, branch, files changed, insertions/deletions, token estimates) |
+| `post-merge` | `git_merge` (with branch, merge sha, commits merged, squash detection) |
+| `post-rewrite` | `git_rewrite` (with rewrite type, old→new sha mappings) |
+| `pre-push` | `git_push` (with remote, branch, commit count, commit range) |
+
+### Installing git hooks
+
+```bash
+# Install to current repo
+python plugins/observability/hooks/git/install.py
+
+# Install globally (all repos)
+python plugins/observability/hooks/git/install.py --global
+
+# Uninstall
+python plugins/observability/hooks/git/install.py --uninstall
+```
+
+The installer backs up any existing hooks before overwriting and restores them on uninstall.
+
+Unlike the SDLC plugin's bash-based git hooks (which write raw JSONL to a file), these use `agentic_events.EventEmitter` for consistent structured output on stderr.
+
 ## Architecture
 
 ```
 hooks.json (14 events)  →  observe.py (single dispatcher)  →  agentic_events.EventEmitter  →  stderr JSONL
+git hooks (4 hooks)      →  post-commit/merge/rewrite/pre-push  →  agentic_events.EventEmitter  →  stderr JSONL
 ```
 
-One handler, one dispatch table, zero blocking.
+One dispatch handler for Claude Code events, four focused scripts for git events. Zero blocking.

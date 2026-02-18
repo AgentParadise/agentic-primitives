@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Post-rewrite hook — emit git_rewrite event via agentic_events.
+
+Handles both rebase and amend operations.
+Reads old-sha/new-sha pairs from stdin.
+Always exits 0 — observability never breaks git operations.
+
+Args: $1 = "rebase" or "amend"
+"""
+
+import os
+import sys
+
+
+def main():
+    try:
+        from agentic_events import EventEmitter
+
+        session_id = os.getenv("CLAUDE_SESSION_ID", os.getenv("AEF_SESSION_ID", "unknown"))
+        emitter = EventEmitter(session_id=session_id, provider="claude", output=sys.stderr)
+
+        rewrite_type = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+
+        # Read old-sha new-sha pairs from stdin
+        mappings = []
+        if not sys.stdin.isatty():
+            for line in sys.stdin:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    mappings.append({"old_sha": parts[0], "new_sha": parts[1]})
+
+        emitter.git_rewrite(
+            rewrite_type=rewrite_type,
+            mappings=mappings,
+            commits_folded=len(mappings),
+        )
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()
