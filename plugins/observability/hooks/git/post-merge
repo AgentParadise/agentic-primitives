@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Post-merge hook — emit git_merge event via agentic_events.
+
+Always exits 0 — observability never breaks git operations.
+"""
+
+import os
+import subprocess
+import sys
+
+
+def run(cmd, **kwargs):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5, **kwargs)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def main():
+    try:
+        from agentic_events import EventEmitter
+
+        session_id = os.getenv("CLAUDE_SESSION_ID", os.getenv("AEF_SESSION_ID", "unknown"))
+        emitter = EventEmitter(session_id=session_id, provider="claude", output=sys.stderr)
+
+        branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        merge_sha = run(["git", "rev-parse", "HEAD"])
+
+        # Count merged commits
+        commits_merged = 0
+        check = run(["git", "rev-parse", "HEAD^2"])
+        if check:
+            log = run(["git", "log", "--oneline", "HEAD^1..HEAD^2"])
+            commits_merged = len([l for l in log.split("\n") if l]) if log else 0
+
+        # Detect squash merge (single parent with squash marker)
+        parents = run(["git", "rev-parse", "HEAD^2"])
+        is_squash = parents == "" and sys.argv[1:2] == ["1"]  # $1=squash flag
+
+        emitter.git_merge(
+            branch=branch,
+            merge_sha=merge_sha,
+            commits_merged=commits_merged,
+            is_squash=is_squash,
+        )
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()
