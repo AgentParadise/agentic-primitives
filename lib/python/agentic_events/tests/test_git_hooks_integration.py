@@ -329,11 +329,15 @@ class TestParallelPluginCompatibility:
         # Run both handlers
         obs_result = subprocess.run(
             [sys.executable, str(OBSERVE_PATH)],
-            input=input_bytes, capture_output=True, timeout=10,
+            input=input_bytes,
+            capture_output=True,
+            timeout=10,
         )
         sdlc_result = subprocess.run(
             [sys.executable, str(sdlc_handler)],
-            input=input_bytes, capture_output=True, timeout=10,
+            input=input_bytes,
+            capture_output=True,
+            timeout=10,
         )
 
         # Observability: exit 0, no stdout (never blocks)
@@ -359,7 +363,9 @@ class TestParallelPluginCompatibility:
 
         obs_result = subprocess.run(
             [sys.executable, str(OBSERVE_PATH)],
-            input=input_bytes, capture_output=True, timeout=10,
+            input=input_bytes,
+            capture_output=True,
+            timeout=10,
         )
 
         # Observability MUST NOT block — no stdout, exit 0

@@ -155,7 +155,9 @@ class TestGitOperationEmitter:
 
         assert "details" not in event["context"]
 
-    @pytest.mark.parametrize("op", ["pull", "merge", "rebase", "stash", "fetch", "clone", "log", "diff", "status"])
+    @pytest.mark.parametrize(
+        "op", ["pull", "merge", "rebase", "stash", "fetch", "clone", "log", "diff", "status"]
+    )
     def test_various_operations(self, op):
         output = io.StringIO()
         emitter = EventEmitter(session_id="test-git", output=output)
