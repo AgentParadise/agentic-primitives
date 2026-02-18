@@ -1,0 +1,46 @@
+# Browser Automation Recipes
+#
+# Human-in-the-loop terminal coding primitive.
+# These recipes demonstrate the browser automation skill, agent, and command
+# at different layers of abstraction.
+#
+# Dependencies: playwright-cli, claude (Claude Code CLI)
+
+default_url := "https://news.ycombinator.com/"
+default_qa_prompt := "Navigate to https://news.ycombinator.com/. Verify the front page loads with posts. Click 'More' to go to the next page. Verify page 2 loads. Go back to page 1."
+
+# List available recipes
+default:
+    @just --list
+
+# ─── Layer 1: Skill (Direct CLI) ─────────────────────────────
+
+# Run browser skill directly — headless by default
+browser-test headed="false" url=default_url:
+    claude --dangerously-skip-permissions --model sonnet "/browser {{url}} {{headed}}"
+
+# ─── Layer 2: Agent (Isolated Session) ────────────────────────
+
+# Spawn a single browser-qa-agent for a user story
+qa-single headed="false" prompt=default_qa_prompt:
+    claude --dangerously-skip-permissions --model opus \
+        "Use a @browser-qa-agent: (headed: {{headed}}) {{prompt}}"
+
+# ─── Layer 3: Command (Orchestration) ────────────────────────
+
+# Run UI review — parallel validation across all YAML stories
+ui-review headed="false" filter="" *flags="":
+    claude --dangerously-skip-permissions --model opus \
+        "/browser:ui-review {{headed}} {{filter}} {{flags}}"
+
+# ─── Layer 4: Reusable Compositions ──────────────────────────
+
+# Smoke test a deployment URL
+smoke-test url:
+    claude --dangerously-skip-permissions --model sonnet \
+        "/browser {{url}} — verify the page loads, check for console errors, screenshot the result"
+
+# Visual regression — screenshot before and after
+visual-diff url before="before.png" after="after.png":
+    claude --dangerously-skip-permissions --model sonnet \
+        "/browser {{url}} — take a screenshot and save as {{before}}, then take another and save as {{after}}"
