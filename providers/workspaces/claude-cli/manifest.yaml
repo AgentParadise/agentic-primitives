@@ -35,6 +35,7 @@ plugins:
   include:
     - sdlc
     - workspace
+    - observability
   # Install location in the image
   install_path: /opt/agentic/plugins
 
