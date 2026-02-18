@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔀 Git Observability Hooks
+
+- **Token estimation** in `GIT_COMMIT` events — `estimated_tokens_added` and `estimated_tokens_removed` using chars/4 approximation (per ADR-022)
+- **Integration tests** that exercise git hook shell scripts end-to-end with real git repos
+- **Recording fixture** for git events at `tests/fixtures/git-events-recording/events.jsonl`
+- **Documentation** for git observability hooks in `docs/hooks/README.md`
+
 ### 🎯 Agentic Prompts & Smart Sync
 
 Major additions for prompt primitives and improved install workflow.

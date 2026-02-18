@@ -11,9 +11,16 @@ FILES_CHANGED=$(echo "$STATS" | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' || ec
 INSERTIONS=$(echo "$STATS" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
 DELETIONS=$(echo "$STATS" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
 
+# Estimate tokens added/removed using chars/4 approximation (ADR-022)
+DIFF_ADD=$(git diff HEAD~1 HEAD 2>/dev/null | grep '^+[^+]' | wc -c)
+DIFF_DEL=$(git diff HEAD~1 HEAD 2>/dev/null | grep '^-[^-]' | wc -c)
+TOKENS_ADD=$((DIFF_ADD / 4))
+TOKENS_DEL=$((DIFF_DEL / 4))
+
 export _HOOK_SHA="$SHA" _HOOK_BRANCH="$BRANCH" _HOOK_REPO="$REPO"
 export _HOOK_MESSAGE="$MESSAGE" _HOOK_AUTHOR="$AUTHOR"
 export _HOOK_FILES="${FILES_CHANGED:-0}" _HOOK_INS="${INSERTIONS:-0}" _HOOK_DEL="${DELETIONS:-0}"
+export _HOOK_TOKENS_ADD="${TOKENS_ADD:-0}" _HOOK_TOKENS_DEL="${TOKENS_DEL:-0}"
 
 python3 -c '
 import os, sys
@@ -33,6 +40,8 @@ try:
         deletions=int(os.environ.get("_HOOK_DEL", "0") or "0"),
         message_preview=os.environ.get("_HOOK_MESSAGE", ""),
         author=os.environ.get("_HOOK_AUTHOR", ""),
+        estimated_tokens_added=int(os.environ.get("_HOOK_TOKENS_ADD", "0") or "0"),
+        estimated_tokens_removed=int(os.environ.get("_HOOK_TOKENS_DEL", "0") or "0"),
     )
 except Exception:
     pass

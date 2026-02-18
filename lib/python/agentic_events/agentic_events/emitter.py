@@ -354,6 +354,8 @@ class EventEmitter:
         deletions: int = 0,
         message_preview: str = "",
         author: str = "",
+        estimated_tokens_added: int | None = None,
+        estimated_tokens_removed: int | None = None,
     ) -> dict[str, Any]:
         """Emit a git commit event.
 
@@ -366,20 +368,24 @@ class EventEmitter:
             deletions: Lines deleted.
             message_preview: First line of commit message.
             author: Commit author.
+            estimated_tokens_added: Estimated tokens added (chars/4 approx, per ADR-022).
+            estimated_tokens_removed: Estimated tokens removed (chars/4 approx, per ADR-022).
         """
-        return self.emit(
-            EventType.GIT_COMMIT,
-            context={
-                "sha": sha,
-                "branch": branch,
-                "repo": repo,
-                "files_changed": files_changed,
-                "insertions": insertions,
-                "deletions": deletions,
-                "message_preview": message_preview,
-                "author": author,
-            },
-        )
+        context: dict[str, Any] = {
+            "sha": sha,
+            "branch": branch,
+            "repo": repo,
+            "files_changed": files_changed,
+            "insertions": insertions,
+            "deletions": deletions,
+            "message_preview": message_preview,
+            "author": author,
+        }
+        if estimated_tokens_added is not None:
+            context["estimated_tokens_added"] = estimated_tokens_added
+        if estimated_tokens_removed is not None:
+            context["estimated_tokens_removed"] = estimated_tokens_removed
+        return self.emit(EventType.GIT_COMMIT, context=context)
 
     def git_push(
         self,

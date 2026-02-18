@@ -409,6 +409,60 @@ cd services/hooks && docker compose up -d
 
 ---
 
+## 🔀 Git Observability Hooks
+
+The workspace plugin includes **four git hooks** that emit structured observability events to stderr via the `agentic_events` library. These hooks provide visibility into all git operations performed during an agent session.
+
+### Hooks
+
+| Hook | Event Type | Trigger |
+|------|-----------|---------|
+| `post-commit` | `git_commit` | After every commit |
+| `post-rewrite` | `git_rewrite` | After `git commit --amend` or `git rebase` |
+| `post-merge` | `git_merge` | After `git merge` or `git pull` |
+| `pre-push` | `git_push` | Before `git push` (emits, never blocks) |
+
+### How It Works
+
+1. Hook scripts live in `plugins/workspace/hooks/git/`
+2. They are auto-installed via `git config core.hooksPath` in the workspace entrypoint
+3. Each hook collects git metadata (SHA, branch, diff stats) using shell commands
+4. A small inline Python snippet imports `agentic_events.EventEmitter` and emits a JSONL event to stderr
+5. The agent runner captures stderr and routes events to storage/analytics
+
+### Token Estimation (ADR-022)
+
+The `post-commit` hook estimates tokens added and removed using the `chars/4` approximation defined in [ADR-022](../adrs/022-token-estimation.md). These are emitted as `estimated_tokens_added` and `estimated_tokens_removed` in the `git_commit` event context, enabling cost and impact tracking without an actual tokenizer.
+
+### Example Event
+
+```json
+{
+  "event_type": "git_commit",
+  "timestamp": "2026-02-18T03:00:02+00:00",
+  "session_id": "session-abc",
+  "provider": "claude",
+  "context": {
+    "sha": "a1b2c3d4...",
+    "branch": "feat/example",
+    "repo": "my-project",
+    "files_changed": 3,
+    "insertions": 45,
+    "deletions": 12,
+    "message_preview": "feat: add new widget",
+    "author": "Dev <dev@example.com>",
+    "estimated_tokens_added": 280,
+    "estimated_tokens_removed": 75
+  }
+}
+```
+
+### Testing
+
+Integration tests in `lib/python/agentic_events/tests/test_git_hooks_integration.py` exercise the hooks end-to-end by creating real git repos, installing hooks, and verifying emitted events. A recording fixture at `tests/fixtures/git-events-recording/events.jsonl` provides realistic git event data for downstream consumers.
+
+---
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
