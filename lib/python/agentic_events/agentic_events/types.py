@@ -33,6 +33,18 @@ class EventType(StrEnum):
     CONTEXT_COMPACTED = "context_compacted"
     NOTIFICATION = "system_notification"
 
+    # Subagent lifecycle
+    SUBAGENT_STARTED = "subagent_started"
+
+    # Tool failure
+    TOOL_FAILED = "tool_execution_failed"
+
+    # Teammate events
+    TEAMMATE_IDLE = "teammate_idle"
+
+    # Task events
+    TASK_COMPLETED = "task_completed"
+
     # User interaction
     PROMPT_SUBMITTED = "user_prompt_submitted"
     PERMISSION_REQUESTED = "permission_requested"

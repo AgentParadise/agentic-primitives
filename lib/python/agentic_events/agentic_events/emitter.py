@@ -339,3 +339,81 @@ class EventEmitter:
             context={"tool_name": tool_name, "permission_type": permission_type},
             metadata=metadata if metadata else None,
         )
+
+    # -------------------------------------------------------------------------
+    # Subagent / teammate / task events
+    # -------------------------------------------------------------------------
+
+    def subagent_started(
+        self,
+        subagent_id: str,
+        agent_type: str = "subagent",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a subagent started event.
+
+        Args:
+            subagent_id: Identifier of the subagent.
+            agent_type: Type of agent (e.g., "subagent", "teammate").
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.SUBAGENT_STARTED,
+            context={"subagent_id": subagent_id, "agent_type": agent_type},
+            metadata=metadata if metadata else None,
+        )
+
+    def tool_failed(
+        self,
+        tool_name: str,
+        tool_use_id: str,
+        error: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a tool execution failed event.
+
+        Args:
+            tool_name: Name of the tool that failed.
+            tool_use_id: Unique identifier for this tool invocation.
+            error: Error message.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.TOOL_FAILED,
+            context={"tool_name": tool_name, "tool_use_id": tool_use_id, "error": error},
+            metadata=metadata if metadata else None,
+        )
+
+    def teammate_idle(
+        self,
+        teammate_id: str,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a teammate idle event.
+
+        Args:
+            teammate_id: Identifier of the idle teammate.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.TEAMMATE_IDLE,
+            context={"teammate_id": teammate_id},
+            metadata=metadata if metadata else None,
+        )
+
+    def task_completed(
+        self,
+        task_id: str,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a task completed event.
+
+        Args:
+            task_id: Identifier of the completed task.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.TASK_COMPLETED,
+            context={"task_id": task_id},
+            metadata=metadata if metadata else None,
+        )
