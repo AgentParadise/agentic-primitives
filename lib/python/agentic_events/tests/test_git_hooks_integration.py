@@ -258,9 +258,9 @@ class TestObserveHandlerNeverBlocks:
         assert result["returncode"] == 0
         assert result["stdout"] == ""
         # stderr should have JSONL events (tool_started + git_commit)
-        lines = [l for l in result["stderr"].strip().split("\n") if l.strip()]
+        lines = [line for line in result["stderr"].strip().split("\n") if line.strip()]
         assert len(lines) >= 2  # tool_started + git_commit
-        types = [json.loads(l)["event_type"] for l in lines]
+        types = [json.loads(line)["event_type"] for line in lines]
         assert "tool_execution_started" in types
         assert "git_commit" in types
 
@@ -274,8 +274,8 @@ class TestObserveHandlerNeverBlocks:
         }
         result = self._run_handler(event)
         assert result["returncode"] == 0
-        lines = [l for l in result["stderr"].strip().split("\n") if l.strip()]
-        types = [json.loads(l)["event_type"] for l in lines]
+        lines = [line for line in result["stderr"].strip().split("\n") if line.strip()]
+        types = [json.loads(line)["event_type"] for line in lines]
         assert "git_push" in types
 
     def test_non_git_bash_no_git_events(self):
@@ -287,8 +287,8 @@ class TestObserveHandlerNeverBlocks:
             "tool_use_id": "toolu_ls",
         }
         result = self._run_handler(event)
-        lines = [l for l in result["stderr"].strip().split("\n") if l.strip()]
-        types = [json.loads(l)["event_type"] for l in lines]
+        lines = [line for line in result["stderr"].strip().split("\n") if line.strip()]
+        types = [json.loads(line)["event_type"] for line in lines]
         assert "tool_execution_started" in types
         assert not any(t.startswith("git_") for t in types)
 
