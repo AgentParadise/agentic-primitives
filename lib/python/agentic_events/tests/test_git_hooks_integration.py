@@ -47,11 +47,15 @@ def _install_hooks(repo_dir: Path) -> None:
             dst.chmod(dst.stat().st_mode | stat.S_IEXEC)
 
 
-def _git(repo_dir: Path, *args: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+def _git(
+    repo_dir: Path, *args: str, env_extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     """Run a git command in the given repo, capturing stderr for event parsing."""
     env = os.environ.copy()
     # Ensure agentic_events is importable by the hook scripts
-    env["PYTHONPATH"] = str(PACKAGE_DIR) + ((":" + env.get("PYTHONPATH", "")) if env.get("PYTHONPATH") else "")
+    env["PYTHONPATH"] = str(PACKAGE_DIR) + (
+        (":" + env.get("PYTHONPATH", "")) if env.get("PYTHONPATH") else ""
+    )
     env["CLAUDE_SESSION_ID"] = "test-integration"
     env["GIT_AUTHOR_NAME"] = "Test User"
     env["GIT_AUTHOR_EMAIL"] = "test@example.com"
@@ -147,7 +151,9 @@ class TestGitCommitHook:
         _git(repo, "add", "code.py")
         _git(repo, "commit", "-m", "first")
 
-        (repo / "code.py").write_text("def hello():\n    return 'universe'\n\ndef goodbye():\n    pass\n")
+        (repo / "code.py").write_text(
+            "def hello():\n    return 'universe'\n\ndef goodbye():\n    pass\n"
+        )
         _git(repo, "add", "code.py")
         result = _git(repo, "commit", "-m", "update code")
 

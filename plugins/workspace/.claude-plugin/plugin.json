@@ -1,6 +1,6 @@
 {
   "name": "workspace",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Observable isolated workspaces — provides lifecycle and observability hooks for agent workspaces, emitting structured JSONL events via agentic_events",
   "author": {
     "name": "NeuralEmpowerment"
