@@ -41,6 +41,44 @@ AI Developer Workflows. Deterministic pipelines with non-deterministic agents at
 - **Key principle:** Every stage has a quality gate. No stage passes without validation.
 - **Create:** `/create-workflow <description>`
 
+## The Deterministic Backbone: `just`
+
+[just](https://github.com/casey/just) is the task runner that provides the **deterministic glue** between layers. While agents handle ambiguous, non-deterministic work, `just` handles the repeatable parts: build, test, lint, deploy, format.
+
+### Why `just`
+
+- **Deterministic** — same input, same output, every time
+- **Composable** — recipes call other recipes
+- **Portable** — works on macOS, Linux, CI, containers
+- **Agent-friendly** — agents can invoke `just` recipes as reliable building blocks
+
+### How It Fits
+
+```
+Agent (non-deterministic)  →  just recipe (deterministic)  →  result
+     "figure out what to test"    "just test"                  pass/fail
+```
+
+Use `just` for:
+- **Build/test/lint/format** — repeatable quality checks
+- **Workflow stage execution** — the deterministic skeleton of an ADW
+- **Quality gates** — `just qa` as a pass/fail gate between stages
+- **Setup/teardown** — container initialization, cleanup
+
+Don't use `just` for:
+- Anything requiring judgment or interpretation (that's the agent's job)
+- Dynamic decisions about what to do next
+
+### In Workflows (Layer 4)
+
+ADWs combine `just` recipes (deterministic) with agent stages (non-deterministic):
+
+```
+just setup → [Agent: analyze] → just test → [Agent: review] → just deploy
+```
+
+The `just` steps are the guardrails. The agent steps are the intelligence.
+
 ## Layer Interaction
 
 ```
@@ -51,6 +89,8 @@ Layer 3: Commands      ← human-facing orchestration
 Layer 2: Sub-Agents    ← specialized workers
     ↓ uses
 Layer 1: Skills        ← raw capabilities
+
+Cross-cutting: just   ← deterministic glue at every layer
 ```
 
 ## Two Deployment Targets
@@ -73,6 +113,50 @@ Instead of running an install script per container (token-wasteful), use the **m
 2. **Baked prime** is stored as `AGENTS.md` in the repo root
 3. **Container startup** reads `AGENTS.md` automatically — zero extra tokens
 4. The prime encodes: architecture, conventions, test patterns, validation expectations, tool access
+
+## Higher-Order Primitives
+
+A **higher-order primitive** is a prompt that generates other prompts. It operates one level of abstraction above the 4 layers — it's the factory that stamps out skills, agents, commands, and workflows.
+
+### The Hierarchy
+
+```
+Higher-order primitives    ← generate other primitives
+    ↓ produces
+Layer 4: Workflows         ← automate processes
+Layer 3: Commands          ← orchestrate agents
+Layer 2: Sub-Agents        ← specialize on skills
+Layer 1: Skills            ← raw capabilities
+```
+
+### Existing Higher-Order Primitives
+
+| Primitive | What It Generates | Layer |
+|-----------|-------------------|-------|
+| `/create-skill` | Skill definitions | 1 |
+| `/create-agent` | Sub-agent definitions | 2 |
+| `/create-command` | Command prompts | 3 |
+| `/create-workflow` | ADW pipelines | 4 |
+| `/create-prime` | Codebase primes (AGENTS.md) | Cross-cutting |
+
+### When to Create a Higher-Order Primitive
+
+Create one when you find yourself repeatedly generating the same *kind* of prompt across repos. The pattern:
+
+1. **Recognize the pattern** — "I keep writing the same type of skill/command"
+2. **Extract the template** — what's common across all instances?
+3. **Parameterize** — what varies per instance?
+4. **Create the generator** — a `/create-X` command that takes parameters and outputs the primitive
+
+### The Meta-Prime Pattern
+
+The most important higher-order primitive is `/create-prime`:
+
+```
+/create-prime  →  analyzes repo  →  generates AGENTS.md  →  every agent reads it for free
+```
+
+This is **one prompt to rule them all** — it encodes your entire codebase's conventions, architecture, and expectations into a format that any agent (human or AI) can absorb instantly.
 
 ## Design Rules
 

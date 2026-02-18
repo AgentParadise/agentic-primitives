@@ -6,14 +6,16 @@ Built on the **4-layer agentic primitive taxonomy**: Skills → Sub-Agents → C
 
 ## Commands
 
+All generators are **higher-order primitives** — prompts that generate other prompts.
+
 | Command | Layer | Description |
 |---------|-------|-------------|
-| **create-skill** | 1 - Capability | Generate a new skill primitive (raw capability) |
-| **create-agent** | 2 - Scale | Generate a sub-agent definition (specialized worker) |
-| **create-command** | 3 - Orchestration | Generate a command (orchestrates agents) |
-| **create-workflow** | 4 - Automation | Generate an ADW (end-to-end pipeline) |
-| **create-prime** | — | Generate a repo-specific prime for agent onboarding |
-| **create-doc-sync** | — | Create documentation sync configurations |
+| **create-skill** | 1 - Capability | Generate a new skill primitive (raw capability, CLI-based) |
+| **create-agent** | 2 - Scale | Generate a self-validating sub-agent definition |
+| **create-command** | 3 - Orchestration | Generate a command that orchestrates agents |
+| **create-workflow** | 4 - Automation | Generate an ADW pipeline with quality gates |
+| **create-prime** | Cross-cutting | Generate a repo-specific prime (→ AGENTS.md) for agent onboarding |
+| **create-doc-sync** | Utility | Create documentation sync configurations |
 
 ## Skills
 
