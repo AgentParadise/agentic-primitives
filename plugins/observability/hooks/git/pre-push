@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Pre-push hook — emit git_push event via agentic_events.
+
+Git doesn't have a native post-push hook, so we use pre-push
+to capture push metadata before the push proceeds.
+
+Args: $1=remote_name, $2=remote_url
+Always exits 0 — observability never blocks push operations.
+"""
+
+import os
+import subprocess
+import sys
+
+
+def run(cmd, **kwargs):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5, **kwargs)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def main():
+    try:
+        from agentic_events import EventEmitter
+
+        session_id = os.getenv("CLAUDE_SESSION_ID", os.getenv("AEF_SESSION_ID", "unknown"))
+        emitter = EventEmitter(session_id=session_id, provider="claude", output=sys.stderr)
+
+        remote = sys.argv[1] if len(sys.argv) > 1 else "origin"
+        remote_url = sys.argv[2] if len(sys.argv) > 2 else ""
+        branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+
+        # Count commits to push
+        upstream = run(["git", "rev-parse", "--abbrev-ref", "@{upstream}"])
+        if upstream:
+            log = run(["git", "log", "--oneline", f"{upstream}..HEAD"])
+            commits_count = len([l for l in log.split("\n") if l]) if log else 0
+            commit_range = f"{run(['git', 'rev-parse', upstream])}..{run(['git', 'rev-parse', 'HEAD'])}"
+        else:
+            commits_count = 0
+            commit_range = ""
+
+        emitter.git_push(
+            branch=branch,
+            remote=remote,
+            remote_url=remote_url,
+            commits_count=commits_count,
+            commit_range=commit_range,
+        )
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()

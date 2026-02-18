@@ -339,3 +339,177 @@ class EventEmitter:
             context={"tool_name": tool_name, "permission_type": permission_type},
             metadata=metadata if metadata else None,
         )
+
+    # -------------------------------------------------------------------------
+    # Subagent / teammate / task events
+    # -------------------------------------------------------------------------
+
+    def subagent_started(
+        self,
+        subagent_id: str,
+        agent_type: str = "subagent",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a subagent started event.
+
+        Args:
+            subagent_id: Identifier of the subagent.
+            agent_type: Type of agent (e.g., "subagent", "teammate").
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.SUBAGENT_STARTED,
+            context={"subagent_id": subagent_id, "agent_type": agent_type},
+            metadata=metadata if metadata else None,
+        )
+
+    def tool_failed(
+        self,
+        tool_name: str,
+        tool_use_id: str,
+        error: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a tool execution failed event.
+
+        Args:
+            tool_name: Name of the tool that failed.
+            tool_use_id: Unique identifier for this tool invocation.
+            error: Error message.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.TOOL_FAILED,
+            context={"tool_name": tool_name, "tool_use_id": tool_use_id, "error": error},
+            metadata=metadata if metadata else None,
+        )
+
+    def teammate_idle(
+        self,
+        teammate_id: str,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a teammate idle event.
+
+        Args:
+            teammate_id: Identifier of the idle teammate.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.TEAMMATE_IDLE,
+            context={"teammate_id": teammate_id},
+            metadata=metadata if metadata else None,
+        )
+
+    def task_completed(
+        self,
+        task_id: str,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a task completed event.
+
+        Args:
+            task_id: Identifier of the completed task.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.TASK_COMPLETED,
+            context={"task_id": task_id},
+            metadata=metadata if metadata else None,
+        )
+
+    # -------------------------------------------------------------------------
+    # Git operation events
+    # -------------------------------------------------------------------------
+
+    def git_commit(
+        self,
+        message: str = "",
+        sha: str = "",
+        branch: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git commit event.
+
+        Args:
+            message: Commit message preview.
+            sha: Commit SHA (short or full).
+            branch: Branch the commit was made on.
+            **metadata: Additional metadata.
+        """
+        context: dict[str, Any] = {"operation": "commit"}
+        if message:
+            context["message"] = message[:200]
+        if sha:
+            context["sha"] = sha
+        if branch:
+            context["branch"] = branch
+        return self.emit(
+            EventType.GIT_COMMIT,
+            context=context,
+            metadata=metadata if metadata else None,
+        )
+
+    def git_push(
+        self,
+        remote: str = "origin",
+        branch: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git push event.
+
+        Args:
+            remote: Remote name.
+            branch: Branch being pushed.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.GIT_PUSH,
+            context={"operation": "push", "remote": remote, "branch": branch},
+            metadata=metadata if metadata else None,
+        )
+
+    def git_branch_changed(
+        self,
+        from_branch: str = "",
+        to_branch: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git branch changed event.
+
+        Args:
+            from_branch: Previous branch name.
+            to_branch: New branch name.
+            **metadata: Additional metadata.
+        """
+        return self.emit(
+            EventType.GIT_BRANCH_CHANGED,
+            context={
+                "operation": "branch_change",
+                "from_branch": from_branch,
+                "to_branch": to_branch,
+            },
+            metadata=metadata if metadata else None,
+        )
+
+    def git_operation(
+        self,
+        operation: str,
+        details: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a generic git operation event for operations not covered by specific methods.
+
+        Args:
+            operation: Git subcommand (e.g., "pull", "merge", "stash", "rebase").
+            details: Command details or arguments preview.
+            **metadata: Additional metadata.
+        """
+        context: dict[str, Any] = {"operation": operation}
+        if details:
+            context["details"] = details[:500]
+        return self.emit(
+            EventType.GIT_OPERATION,
+            context=context,
+            metadata=metadata if metadata else None,
+        )
