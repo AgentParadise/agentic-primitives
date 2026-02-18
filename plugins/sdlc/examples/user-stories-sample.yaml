@@ -1,0 +1,31 @@
+# Sample user stories for browser_ui-review command
+# Place YAML files like this in a user_stories/ directory in your project root.
+
+stories:
+  - name: "Homepage loads successfully"
+    url: "https://example.com/"
+    workflow: |
+      Navigate to https://example.com/
+      Verify the page loads successfully
+      Verify a heading is visible
+      Verify no console errors are present
+
+  - name: "Navigation links work"
+    url: "https://example.com/"
+    workflow: |
+      Navigate to https://example.com/
+      Verify the page loads with navigation links
+      Click the first navigation link
+      Verify the new page loads successfully
+      Click the browser back button
+      Verify the homepage loads again
+
+  - name: "Page is responsive"
+    url: "https://example.com/"
+    workflow: |
+      Navigate to https://example.com/
+      Verify the page loads at default viewport (1440x900)
+      Resize the viewport to 375x812 (mobile)
+      Verify the page adapts to mobile layout
+      Resize back to 1440x900
+      Verify the desktop layout is restored
