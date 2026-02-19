@@ -10,15 +10,68 @@
 
 ## What Are Agentic Primitives?
 
-This repository contains two kinds of primitives for building AI agent systems:
+Atomic building blocks for AI agent systems — packaged as Claude Code plugins and Python libraries.
 
-### Prompt Primitives
+Designed to work in two contexts:
+- **Human-in-the-loop** — a developer using Claude Code in the terminal, invoking commands explicitly, staying in control
+- **Headless workspaces** — fully automated agents running in isolation with no human present, where tool scoping and policy hooks are the safety layer
 
-Reusable prompts deployed as **Claude Code plugins** — commands, skills, hooks, and tools that agents use during software development.
+The same primitives serve both. The difference is configuration: which tools are allowed, which hooks fire, which agents are trusted.
 
-### Infrastructure Primitives
+---
 
-**Python packages** that power agent execution — isolation, security, events, logging, adapters, and settings. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.
+## The Primitives
+
+### Commands
+Explicit user-invocable slash commands (`/sdlc:git_push`). Granular, predictable, human-triggered. The developer stays in the loop.
+
+→ Lives in: `plugins/<plugin>/commands/<name>.md`
+
+### Skills
+Reusable workflows Claude invokes automatically when a task matches the description — or that you invoke as `/sdlc:git`. Consolidated, intent-driven, works in both human and headless contexts.
+
+→ Lives in: `plugins/<plugin>/skills/<name>/SKILL.md`
+
+### Agents
+Named specialist subagents with a scoped system prompt, explicit allowed/disallowed tools, and optional persistent memory. The tool scope is the key primitive — it determines what an agent *can* do, not just what it *should* do. Agents can preload skills and delegate to other agents via the `Task` tool.
+
+→ Lives in: `plugins/<plugin>/agents/<name>/agent.md`
+
+### Hooks
+Event-driven automation that fires on Claude Code lifecycle events (`PreToolUse`, `PostToolUse`, `SubagentStop`, `SessionStart`, etc.). Observe, modify, or block — enforcing policies and emitting telemetry without touching workflow code.
+
+→ Lives in: `plugins/<plugin>/hooks/hooks.json` + handlers
+
+### Lib
+Python packages that power agent runtimes — isolation, events, logging, security. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.
+
+→ Lives in: `lib/python/`
+
+---
+
+### How They Compose
+
+```
+User: /sdlc:git_push          ← Command (explicit, human-in-loop)
+  or
+Claude detects push needed    ← Skill (auto-invoked, headless-friendly)
+       │
+       ├─► PreToolUse Hook validates git commands before execution
+       │
+       ├─► Skill delegates review to env-reviewer Agent (Task tool)
+       │         ├─ tools: Read, Grep, Glob only (cannot modify anything)
+       │         ├─ disallowedTools: Write, Edit (enforced, not just instructed)
+       │         └─ SubagentStop Hook records telemetry
+       │
+       └─► PostToolUse Hook emits structured JSONL event (Lib: agentic-events)
+```
+
+**The pattern:**
+- **Commands** give humans direct control at the right granularity
+- **Skills** orchestrate work for agents — consolidated, intent-driven
+- **Agents** specialize with enforced tool scopes — least privilege by design
+- **Hooks** enforce policies and observability without touching workflow code
+- **Lib** provides the runtime substrate — isolation, events, structured logging
 
 ---
 
@@ -100,13 +153,13 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 
 ### What's in each plugin
 
-| Plugin | Commands | Skills | Hooks |
-|--------|----------|--------|-------|
-| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
-| **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
-| **research** | `scrape_docs` | -- | -- |
-| **meta** | `/create-command`, `/create-prime`, `/create-doc-sync` | `prompt-generator` | -- |
-| **docs** | -- | Fumadocs integration | -- |
+| Plugin | Commands | Skills | Agents | Hooks |
+|--------|----------|--------|--------|-------|
+| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks`, `browser`, `browser_ui-review` | `git`, `commit`, `pre-commit-qa`, `qa-setup`, `testing-expert`, `review`, `prioritize`, `env-management`, `centralized-configuration`, `macos-keychain-secrets`, `browser` | `env-reviewer`, `browser-qa-agent` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **workspace** | -- | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
+| **research** | `scrape_docs` | -- | -- | -- |
+| **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |
+| **docs** | -- | Fumadocs integration | -- | -- |
 
 ---
 
@@ -136,7 +189,11 @@ uv run pytest -x -q
 ```
 agentic-primitives/
 ├── plugins/                    # Prompt Primitives
-│   ├── sdlc/                   #   SDLC plugin (commands, skills, hooks)
+│   ├── sdlc/                   #   SDLC plugin
+│   │   ├── commands/           #     Explicit user-invocable slash commands
+│   │   ├── skills/             #     Agent-invocable workflows
+│   │   ├── agents/             #     Named subagents with scoped tools
+│   │   └── hooks/              #     Lifecycle event handlers
 │   ├── workspace/              #   Workspace observability hooks
 │   ├── research/               #   Research tools (firecrawl, doc-scraper)
 │   ├── meta/                   #   Primitive generators
