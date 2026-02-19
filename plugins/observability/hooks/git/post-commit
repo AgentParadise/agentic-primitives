@@ -67,13 +67,13 @@ def main():
         repo = remote.rstrip("/").rsplit("/", 1)[-1].replace(".git", "") if remote else ""
 
         emitter.git_commit(
+            message=message[:200],
             sha=sha,
             branch=branch,
             repo=repo,
             files_changed=files_changed,
             insertions=insertions,
             deletions=deletions,
-            message_preview=message[:200],
             author=author,
             estimated_tokens_added=added_chars // 4,
             estimated_tokens_removed=removed_chars // 4,
