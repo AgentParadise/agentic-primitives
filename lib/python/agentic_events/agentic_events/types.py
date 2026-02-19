@@ -19,8 +19,8 @@ class EventType(StrEnum):
     SESSION_COMPLETED = "session_completed"
 
     # Tool execution
-    TOOL_STARTED = "tool_execution_started"
-    TOOL_COMPLETED = "tool_execution_completed"
+    TOOL_EXECUTION_STARTED = "tool_execution_started"
+    TOOL_EXECUTION_COMPLETED = "tool_execution_completed"
 
     # Security decisions
     SECURITY_DECISION = "security_decision"
@@ -31,13 +31,13 @@ class EventType(StrEnum):
 
     # System events
     CONTEXT_COMPACTED = "context_compacted"
-    NOTIFICATION = "system_notification"
+    SYSTEM_NOTIFICATION = "system_notification"
 
     # Subagent lifecycle
     SUBAGENT_STARTED = "subagent_started"
 
     # Tool failure
-    TOOL_FAILED = "tool_execution_failed"
+    TOOL_EXECUTION_FAILED = "tool_execution_failed"
 
     # Teammate events
     TEAMMATE_IDLE = "teammate_idle"
@@ -46,7 +46,7 @@ class EventType(StrEnum):
     TASK_COMPLETED = "task_completed"
 
     # User interaction
-    PROMPT_SUBMITTED = "user_prompt_submitted"
+    USER_PROMPT_SUBMITTED = "user_prompt_submitted"
     PERMISSION_REQUESTED = "permission_requested"
 
     # Git operations (detected via PreToolUse/PostToolUse on Bash git commands)

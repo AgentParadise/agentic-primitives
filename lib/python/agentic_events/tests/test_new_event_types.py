@@ -1,4 +1,4 @@
-"""Tests for new event types: SUBAGENT_STARTED, TOOL_FAILED, TEAMMATE_IDLE, TASK_COMPLETED."""
+"""Tests for new event types: SUBAGENT_STARTED, TOOL_EXECUTION_FAILED, TEAMMATE_IDLE, TASK_COMPLETED."""
 
 import io
 import json
@@ -17,7 +17,7 @@ class TestNewEventTypes:
         assert EventType.SUBAGENT_STARTED == "subagent_started"
 
     def test_tool_failed_type(self):
-        assert EventType.TOOL_FAILED == "tool_execution_failed"
+        assert EventType.TOOL_EXECUTION_FAILED == "tool_execution_failed"
 
     def test_teammate_idle_type(self):
         assert EventType.TEAMMATE_IDLE == "teammate_idle"

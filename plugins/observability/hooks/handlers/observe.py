@@ -5,7 +5,9 @@ Generic observability handler — dispatches ALL Claude Code hook events.
 Reads hook_event_name from stdin JSON and calls the appropriate
 agentic_events emitter method. Pure logging — never blocks (exit 0 always).
 
-Events are emitted as JSONL to stderr, captured by the agent runner.
+Events are emitted as JSONL to stdout, captured by the workflow engine's stream reader.
+Hook stdout is captured alongside Claude's stream-json output; parse_jsonl_line()
+distinguishes hook events (have "event_type") from Claude's native events (have "type").
 """
 
 import json
@@ -29,7 +31,7 @@ def _get_emitter(session_id: str | None = None):
         _emitter = EventEmitter(
             session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
             provider="claude",
-            output=sys.stderr,
+            output=sys.stdout,
         )
         return _emitter
     except ImportError:

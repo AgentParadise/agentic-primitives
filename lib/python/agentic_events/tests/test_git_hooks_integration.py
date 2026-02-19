@@ -228,7 +228,9 @@ class TestObserveHandlerNeverBlocks:
         }
         result = self._run_handler(event)
         assert result["returncode"] == 0
-        assert result["stdout"] == ""  # No stdout = never blocks
+        # stdout has JSONL events (hook events are on stdout for stream capture)
+        # stderr must be empty (never writes non-event data to stderr)
+        assert result["stderr"] == ""
 
     def test_exit_zero_on_empty_input(self):
         result = self._run_handler(None)
@@ -246,25 +248,25 @@ class TestObserveHandlerNeverBlocks:
         assert result["returncode"] == 0
         assert result["stdout"] == ""
 
-    def test_git_commit_emits_to_stderr(self):
+    def test_git_commit_emits_to_stdout(self):
         event = {
-            "session_id": "test-stderr",
+            "session_id": "test-stdout",
             "hook_event_name": "PreToolUse",
             "tool_name": "Bash",
             "tool_input": "git commit -m 'hello'",
-            "tool_use_id": "toolu_stderr",
+            "tool_use_id": "toolu_stdout",
         }
         result = self._run_handler(event)
         assert result["returncode"] == 0
-        assert result["stdout"] == ""
-        # stderr should have JSONL events (tool_started + git_commit)
-        lines = [line for line in result["stderr"].strip().split("\n") if line.strip()]
+        assert result["stderr"] == ""  # nothing on stderr
+        # stdout should have JSONL events (tool_started + git_commit)
+        lines = [line for line in result["stdout"].strip().split("\n") if line.strip()]
         assert len(lines) >= 2  # tool_started + git_commit
         types = [json.loads(line)["event_type"] for line in lines]
         assert "tool_execution_started" in types
         assert "git_commit" in types
 
-    def test_git_push_emits_to_stderr(self):
+    def test_git_push_emits_to_stdout(self):
         event = {
             "session_id": "test-push",
             "hook_event_name": "PreToolUse",
@@ -274,7 +276,7 @@ class TestObserveHandlerNeverBlocks:
         }
         result = self._run_handler(event)
         assert result["returncode"] == 0
-        lines = [line for line in result["stderr"].strip().split("\n") if line.strip()]
+        lines = [line for line in result["stdout"].strip().split("\n") if line.strip()]
         types = [json.loads(line)["event_type"] for line in lines]
         assert "git_push" in types
 
@@ -287,7 +289,7 @@ class TestObserveHandlerNeverBlocks:
             "tool_use_id": "toolu_ls",
         }
         result = self._run_handler(event)
-        lines = [line for line in result["stderr"].strip().split("\n") if line.strip()]
+        lines = [line for line in result["stdout"].strip().split("\n") if line.strip()]
         types = [json.loads(line)["event_type"] for line in lines]
         assert "tool_execution_started" in types
         assert not any(t.startswith("git_") for t in types)
@@ -340,9 +342,9 @@ class TestParallelPluginCompatibility:
             timeout=10,
         )
 
-        # Observability: exit 0, no stdout (never blocks)
+        # Observability: exit 0, no stderr (events go to stdout for stream capture, never blocks)
         assert obs_result.returncode == 0
-        assert obs_result.stdout.decode().strip() == ""
+        assert obs_result.stderr.decode().strip() == ""
 
         # SDLC: exit 0, safe command allowed (no deny output)
         assert sdlc_result.returncode == 0
@@ -368,6 +370,6 @@ class TestParallelPluginCompatibility:
             timeout=10,
         )
 
-        # Observability MUST NOT block — no stdout, exit 0
+        # Observability MUST NOT block — events on stdout (JSONL), no stderr, exit 0
         assert obs_result.returncode == 0
-        assert obs_result.stdout.decode().strip() == ""
+        assert obs_result.stderr.decode().strip() == ""
