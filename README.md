@@ -149,13 +149,11 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 
 | Plugin | Skills | Agents | Hooks |
 |--------|--------|--------|-------|
-| **sdlc** | `commit`, `pre-commit-qa`, `qa-setup`, `review`, `prioritize`, `testing-expert`, `env-management`, `centralized-configuration`, `macos-keychain-secrets` | _(in progress)_ | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **sdlc** | `commit`, `pre-commit-qa`, `qa-setup`, `review`, `prioritize`, `testing-expert`, `env-management`, `centralized-configuration`, `macos-keychain-secrets`, `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `validate_security-hooks` | `env-reviewer` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
 | **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
 | **research** | `doc-scraper` | -- | -- |
 | **meta** | `prompt-generator`, `create-prime`, `create-doc-sync` | -- | -- |
 | **docs** | Fumadocs integration | -- | -- |
-
-> **Note on commands:** The `plugins/sdlc/commands/` directory contains legacy-format slash commands (`git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `validate_security-hooks`). These work identically to skills but use the older `.claude/commands/` format. They will be migrated to `skills/` in a future release.
 
 ---
 
