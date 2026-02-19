@@ -100,10 +100,19 @@ if [ -n "${GIT_AUTHOR_NAME}" ]; then
     git config --global init.defaultBranch main
 fi
 
-# Install observability git hooks globally.
-# Points core.hooksPath to the baked-in hook scripts so post-commit, pre-push,
-# etc. fire for every repo in this container and emit JSONL to stderr.
-# The hooks dir is persistent (baked into image) and scripts are already chmod 755.
+# Install observability git hooks globally (ADR-043).
+#
+# core.hooksPath is a git global config that overrides the per-repo .git/hooks/
+# directory. Setting it here (at container startup) means post-commit, pre-push,
+# post-merge, and post-rewrite hooks fire for EVERY repo cloned or initialized
+# inside this container — including repos cloned by the agent mid-task.
+#
+# The hooks emit JSONL observability events to stderr. The docker exec stream in
+# AgenticEventStreamAdapter uses stderr=STDOUT to capture them alongside Claude's
+# stdout, and WorkflowExecutionEngine stores them in TimescaleDB.
+#
+# Without this line, git hooks only fire in repos that have their own .git/hooks/
+# scripts, which is almost never the case for freshly cloned repos.
 GIT_HOOKS_DIR="${AGENTIC_PLUGINS_DIR:-/opt/agentic/plugins}/observability/hooks/git"
 if [ -d "${GIT_HOOKS_DIR}" ]; then
     git config --global core.hooksPath "${GIT_HOOKS_DIR}"
