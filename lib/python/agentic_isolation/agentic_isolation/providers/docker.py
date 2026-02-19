@@ -371,6 +371,19 @@ class WorkspaceDockerProvider(BaseProvider):
 
         Yields:
             Individual stdout lines as they are produced
+
+        ARCHITECTURE NOTE — stderr=STDOUT is intentional (ADR-043):
+        -----------------------------------------------------------------
+        Git observability hooks (post-commit, pre-push, etc.) emit JSONL event
+        lines to STDERR. Using stderr=STDOUT merges them into stdout so callers
+        receive both Claude's stream-json output AND git hook JSONL on one pipe.
+        parse_jsonl_line() distinguishes them: hook events have "event_type",
+        Claude stream-json has "type".
+
+        NOTE: This class (WorkspaceDockerProvider) is used in agentic_isolation
+        contexts. The dashboard's primary docker exec path is in:
+          syn_adapters/workspace_backends/agentic/adapter.py → AgenticEventStreamAdapter.stream()
+        Both must keep stderr=STDOUT. Do not revert to PIPE or DEVNULL.
         """
         container_name = workspace._handle
         if not container_name:
@@ -392,10 +405,12 @@ class WorkspaceDockerProvider(BaseProvider):
 
         logger.debug("Starting stream (container=%s, cmd=%s)", container_name, command)
 
+        # stderr=STDOUT: merge stderr so git hook JSONL events reach the engine.
+        # See docstring above for rationale. Do NOT change to PIPE or DEVNULL.
         proc = await asyncio.create_subprocess_exec(
             *exec_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,  # Merge stderr so git hook JSONL events reach the engine
+            stderr=asyncio.subprocess.STDOUT,
         )
 
         start_time = time.perf_counter()
