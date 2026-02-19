@@ -67,6 +67,16 @@ from agentic_isolation.providers.claude_cli import (
     SessionSummary,
     TokenUsage,
 )
+from agentic_isolation.retry import (
+    CircuitBreaker,
+    CircuitBreakerStats,
+    CircuitOpenError,
+    CircuitState,
+    RetryExhaustedError,
+    RetryPolicy,
+    retry_async,
+    retry_with_circuit_breaker,
+)
 from agentic_isolation.workspace import AgenticWorkspace, register_provider
 
 __all__ = [
@@ -91,6 +101,15 @@ __all__ = [
     "ObservabilityEvent",
     "SessionSummary",
     "TokenUsage",
+    # Retry / circuit breaker
+    "retry_async",
+    "retry_with_circuit_breaker",
+    "RetryPolicy",
+    "CircuitBreaker",
+    "CircuitBreakerStats",
+    "CircuitState",
+    "RetryExhaustedError",
+    "CircuitOpenError",
 ]
 
 __version__ = "0.3.0"
