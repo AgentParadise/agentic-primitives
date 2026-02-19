@@ -178,7 +178,7 @@ RUN claude --version && python3 --version && node --version && uv --version && g
 
 # Verify LSP server installations
 RUN typescript-language-server --version \
-    && pyright-langserver --version \
+    && pyright --version \
     && rust-analyzer --version \
     && rustc --version \
     && cargo --version
