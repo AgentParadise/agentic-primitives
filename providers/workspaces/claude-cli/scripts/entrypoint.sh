@@ -100,6 +100,16 @@ if [ -n "${GIT_AUTHOR_NAME}" ]; then
     git config --global init.defaultBranch main
 fi
 
+# Install observability git hooks globally.
+# Points core.hooksPath to the baked-in hook scripts so post-commit, pre-push,
+# etc. fire for every repo in this container and emit JSONL to stderr.
+# The hooks dir is persistent (baked into image) and scripts are already chmod 755.
+GIT_HOOKS_DIR="${AGENTIC_PLUGINS_DIR:-/opt/agentic/plugins}/observability/hooks/git"
+if [ -d "${GIT_HOOKS_DIR}" ]; then
+    git config --global core.hooksPath "${GIT_HOOKS_DIR}"
+    echo "[entrypoint] Git observability hooks installed from ${GIT_HOOKS_DIR}"
+fi
+
 # Also set committer identity (git uses both for commits)
 if [ -n "${GIT_COMMITTER_NAME:-}" ]; then
     export GIT_COMMITTER_NAME

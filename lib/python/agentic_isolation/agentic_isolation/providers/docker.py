@@ -395,7 +395,7 @@ class WorkspaceDockerProvider(BaseProvider):
         proc = await asyncio.create_subprocess_exec(
             *exec_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,  # Avoid buffer blocking
+            stderr=asyncio.subprocess.STDOUT,  # Merge stderr so git hook JSONL events reach the engine
         )
 
         start_time = time.perf_counter()
