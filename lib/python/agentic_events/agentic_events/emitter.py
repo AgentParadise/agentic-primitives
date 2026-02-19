@@ -140,7 +140,7 @@ class EventEmitter:
         self._tool_start_times[tool_use_id] = time.monotonic()
 
         return self.emit(
-            EventType.TOOL_STARTED,
+            EventType.TOOL_EXECUTION_STARTED,
             context={
                 "tool_name": tool_name,
                 "tool_use_id": tool_use_id,
@@ -187,7 +187,7 @@ class EventEmitter:
         if error:
             context["error"] = error
 
-        return self.emit(EventType.TOOL_COMPLETED, context=context)
+        return self.emit(EventType.TOOL_EXECUTION_COMPLETED, context=context)
 
     # -------------------------------------------------------------------------
     # Security events
@@ -297,7 +297,7 @@ class EventEmitter:
             level: Notification level (info, warning, error).
         """
         return self.emit(
-            EventType.NOTIFICATION,
+            EventType.SYSTEM_NOTIFICATION,
             context={"message": message, "level": level},
         )
 
@@ -317,7 +317,7 @@ class EventEmitter:
             max_preview_length: Maximum length of preview.
         """
         return self.emit(
-            EventType.PROMPT_SUBMITTED,
+            EventType.USER_PROMPT_SUBMITTED,
             context={"prompt_preview": prompt_preview[:max_preview_length]},
         )
 
@@ -379,7 +379,7 @@ class EventEmitter:
             **metadata: Additional metadata.
         """
         return self.emit(
-            EventType.TOOL_FAILED,
+            EventType.TOOL_EXECUTION_FAILED,
             context={"tool_name": tool_name, "tool_use_id": tool_use_id, "error": error},
             metadata=metadata if metadata else None,
         )
