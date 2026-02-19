@@ -10,15 +10,62 @@
 
 ## What Are Agentic Primitives?
 
-This repository contains two kinds of primitives for building AI agent systems:
+Atomic building blocks for AI agent systems — packaged as Claude Code plugins and Python libraries.
 
-### Prompt Primitives
+---
 
-Reusable prompts deployed as **Claude Code plugins** — commands, skills, hooks, and tools that agents use during software development.
+## The Primitives
 
-### Infrastructure Primitives
+Four Claude Code primitives, each with a distinct responsibility:
 
-**Python packages** that power agent execution — isolation, security, events, logging, adapters, and settings. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.
+### Skills
+Reusable multi-step workflows invoked as slash commands (`/sdlc:commit`) or auto-detected by Claude when a task matches the skill's description. A skill defines the workflow, the tools allowed, and can delegate to agents.
+
+→ Lives in: `plugins/<plugin>/skills/<name>/SKILL.md`
+
+### Agents
+Named specialist subagents with a focused system prompt, scoped tool access, and optional persistent memory. Delegated to via the `Task` tool — Claude routes work to the right specialist automatically based on the task description.
+
+→ Lives in: `plugins/<plugin>/agents/<name>/agent.md`
+
+### Hooks
+Event-driven automation that fires on Claude Code lifecycle events (`PreToolUse`, `PostToolUse`, `SubagentStop`, `SessionStart`, etc.). Can observe, modify, or block — enforcing policies, emitting telemetry, running validators.
+
+→ Lives in: `plugins/<plugin>/hooks/hooks.json` + handlers
+
+### Lib
+Python packages that power agent runtimes — isolation, events, logging, security. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.
+
+→ Lives in: `lib/python/`
+
+---
+
+### How They Compose
+
+```
+User invokes /sdlc:commit (Skill)
+       │
+       ├─► Skill runs QA checks
+       │         │
+       │         └─► PreToolUse Hook validates Bash commands
+       │
+       ├─► Skill delegates to review Agent (Task tool)
+       │         │
+       │         ├─► Agent has read-only tools + security-checklist skill preloaded
+       │         └─► SubagentStop Hook records telemetry (Lib: agentic-events)
+       │
+       └─► Skill creates commit with conventional format
+```
+
+**The pattern:**
+- **Skills** orchestrate — they define the workflow and call the right tools or agents
+- **Agents** specialize — scoped to a domain, can't accidentally do things outside their remit
+- **Hooks** automate — enforce policies and observability without touching the workflow code
+- **Lib** provides the runtime substrate — isolation, events, structured logging
+
+This composition means you can add observability without touching skills, tighten security without touching agents, and extend workflows without changing hooks. Each primitive is independently replaceable.
+
+---
 
 ---
 
@@ -100,13 +147,15 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 
 ### What's in each plugin
 
-| Plugin | Commands | Skills | Hooks |
-|--------|----------|--------|-------|
-| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks` | `commit`, `testing-expert`, `pre-commit-qa`, `qa-setup`, `prioritize`, `centralized-configuration`, `macos-keychain-secrets` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| Plugin | Skills | Agents | Hooks |
+|--------|--------|--------|-------|
+| **sdlc** | `commit`, `pre-commit-qa`, `qa-setup`, `review`, `prioritize`, `testing-expert`, `env-management`, `centralized-configuration`, `macos-keychain-secrets` | _(in progress)_ | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
 | **workspace** | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
-| **research** | `scrape_docs` | -- | -- |
-| **meta** | `/create-command`, `/create-prime`, `/create-doc-sync` | `prompt-generator` | -- |
-| **docs** | -- | Fumadocs integration | -- |
+| **research** | `doc-scraper` | -- | -- |
+| **meta** | `prompt-generator`, `create-prime`, `create-doc-sync` | -- | -- |
+| **docs** | Fumadocs integration | -- | -- |
+
+> **Note on commands:** The `plugins/sdlc/commands/` directory contains legacy-format slash commands (`git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `validate_security-hooks`). These work identically to skills but use the older `.claude/commands/` format. They will be migrated to `skills/` in a future release.
 
 ---
 
@@ -135,25 +184,27 @@ uv run pytest -x -q
 
 ```
 agentic-primitives/
-├── plugins/                    # Prompt Primitives
-│   ├── sdlc/                   #   SDLC plugin (commands, skills, hooks)
-│   ├── workspace/              #   Workspace observability hooks
-│   ├── research/               #   Research tools (firecrawl, doc-scraper)
-│   ├── meta/                   #   Primitive generators
-│   └── docs/                   #   Documentation tools
-├── lib/python/                 # Infrastructure Primitives
-│   ├── agentic_isolation/      #   Docker workspace sandboxing
-│   ├── agentic_events/         #   JSONL event emission
-│   └── agentic_logging/        #   Structured logging
-├── providers/                  # Workspace providers & model data
-│   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace
-│   ├── models/                 #   Model cards (pricing, context windows)
-│   └── agents/                 #   Agent configuration templates
-├── scripts/                    # QA runner, benchmark tools
-├── tests/                      # Integration & unit tests
-├── docs/adrs/                  # Architecture Decision Records (32 ADRs)
-├── VERSION                     # Repo version (3.0.1)
-└── justfile                    # Task runner (just --list)
+├── plugins/                     # Claude Code plugins
+│   └── <plugin>/
+│       ├── .claude-plugin/      #   Plugin metadata (plugin.json)
+│       ├── skills/              #   Skills — reusable slash command workflows
+│       │   └── <name>/SKILL.md
+│       ├── agents/              #   Agents — named specialist subagents
+│       │   └── <name>/agent.md
+│       ├── hooks/               #   Hooks — lifecycle event automation
+│       │   ├── hooks.json
+│       │   └── handlers/
+│       └── commands/            #   Legacy commands (migrating → skills)
+├── lib/python/                  # Python infrastructure packages
+│   ├── agentic_isolation/       #   Docker workspace sandboxing
+│   ├── agentic_events/          #   JSONL event emission
+│   └── agentic_logging/         #   Structured logging
+├── providers/                   # Workspace images & model data
+│   ├── workspaces/claude-cli/   #   Claude CLI Docker workspace
+│   └── models/                  #   Model cards (pricing, context windows)
+├── docs/adrs/                   # Architecture Decision Records
+├── VERSION                      # Repo version
+└── justfile                     # Task runner (just --list)
 ```
 
 ---
