@@ -5,9 +5,9 @@ Generic observability handler — dispatches ALL Claude Code hook events.
 Reads hook_event_name from stdin JSON and calls the appropriate
 agentic_events emitter method. Pure logging — never blocks (exit 0 always).
 
-Events are emitted as JSONL to stdout, captured by the workflow engine's stream reader.
-Hook stdout is captured alongside Claude's stream-json output; parse_jsonl_line()
-distinguishes hook events (have "event_type") from Claude's native events (have "type").
+Events are emitted as JSONL to stderr, merged into stdout by the Docker adapter
+(stderr=asyncio.subprocess.STDOUT). The engine's parse_jsonl_line() distinguishes
+hook events (have "event_type") from Claude's native stream-json (have "type").
 """
 
 import json
