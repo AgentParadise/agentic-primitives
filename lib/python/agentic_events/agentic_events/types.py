@@ -54,6 +54,9 @@ class EventType(StrEnum):
     GIT_PUSH = "git_push"
     GIT_BRANCH_CHANGED = "git_branch_changed"
     GIT_OPERATION = "git_operation"
+    GIT_MERGE = "git_merge"
+    GIT_REWRITE = "git_rewrite"
+    GIT_CHECKOUT = "git_checkout"
 
 
 class SecurityDecision(StrEnum):

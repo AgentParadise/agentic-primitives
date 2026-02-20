@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Post-checkout hook — emit git_checkout event via agentic_events.
+
+Fires after: git checkout, git switch, git clone (initial checkout).
+Args: $1=prev_head  $2=new_head  $3=checkout_type (1=branch, 0=file)
+
+Always exits 0 — observability never breaks git operations.
+
+OUTPUT CHANNEL — stderr is intentional (ADR-043):
+    Events are emitted to STDERR so the docker exec stream merges them into
+    the stdout pipe for WorkflowExecutionEngine to store as observations.
+"""
+
+import os
+import subprocess
+import sys
+
+
+def run(cmd, **kwargs):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5, **kwargs)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def main():
+    try:
+        # Only emit for branch checkouts, not file-level checkouts
+        checkout_type = sys.argv[3] if len(sys.argv) > 3 else "0"
+        if checkout_type != "1":
+            return
+
+        from agentic_events import EventEmitter
+
+        session_id = os.getenv("CLAUDE_SESSION_ID", os.getenv("AEF_SESSION_ID", "unknown"))
+        emitter = EventEmitter(session_id=session_id, provider="claude", output=sys.stderr)
+
+        prev_head = sys.argv[1] if len(sys.argv) > 1 else ""
+        new_head = sys.argv[2] if len(sys.argv) > 2 else ""
+
+        branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        is_clone = prev_head == "0" * 40 or prev_head == ""
+
+        # Resolve previous branch name (best-effort)
+        prev_branch = ""
+        if prev_head and not is_clone:
+            prev_branch = run(["git", "name-rev", "--name-only", "--no-undefined", prev_head])
+            if "~" in prev_branch or "^" in prev_branch:
+                prev_branch = ""  # detached or ambiguous, skip
+
+        remote = run(["git", "remote", "get-url", "origin"])
+        repo = remote.rstrip("/").rsplit("/", 1)[-1].replace(".git", "") if remote else ""
+
+        emitter.git_checkout(
+            branch=branch,
+            prev_branch=prev_branch,
+            sha=new_head[:40] if new_head else "",
+            is_clone=is_clone,
+            repo=repo,
+        )
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()
