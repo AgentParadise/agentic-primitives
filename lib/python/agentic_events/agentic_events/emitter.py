@@ -140,7 +140,7 @@ class EventEmitter:
         self._tool_start_times[tool_use_id] = time.monotonic()
 
         return self.emit(
-            EventType.TOOL_STARTED,
+            EventType.TOOL_EXECUTION_STARTED,
             context={
                 "tool_name": tool_name,
                 "tool_use_id": tool_use_id,
@@ -187,7 +187,7 @@ class EventEmitter:
         if error:
             context["error"] = error
 
-        return self.emit(EventType.TOOL_COMPLETED, context=context)
+        return self.emit(EventType.TOOL_EXECUTION_COMPLETED, context=context)
 
     # -------------------------------------------------------------------------
     # Security events
@@ -297,7 +297,7 @@ class EventEmitter:
             level: Notification level (info, warning, error).
         """
         return self.emit(
-            EventType.NOTIFICATION,
+            EventType.SYSTEM_NOTIFICATION,
             context={"message": message, "level": level},
         )
 
@@ -317,7 +317,7 @@ class EventEmitter:
             max_preview_length: Maximum length of preview.
         """
         return self.emit(
-            EventType.PROMPT_SUBMITTED,
+            EventType.USER_PROMPT_SUBMITTED,
             context={"prompt_preview": prompt_preview[:max_preview_length]},
         )
 
@@ -379,7 +379,7 @@ class EventEmitter:
             **metadata: Additional metadata.
         """
         return self.emit(
-            EventType.TOOL_FAILED,
+            EventType.TOOL_EXECUTION_FAILED,
             context={"tool_name": tool_name, "tool_use_id": tool_use_id, "error": error},
             metadata=metadata if metadata else None,
         )
@@ -489,6 +489,80 @@ class EventEmitter:
                 "from_branch": from_branch,
                 "to_branch": to_branch,
             },
+            metadata=metadata if metadata else None,
+        )
+
+    def git_merge(
+        self,
+        branch: str = "",
+        merge_sha: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git merge event (also fires on git pull).
+
+        Args:
+            branch: Branch the merge landed on.
+            merge_sha: SHA of the resulting merge commit.
+            **metadata: Additional metadata (commits_merged, is_squash, etc.).
+        """
+        context: dict[str, Any] = {"operation": "merge"}
+        if branch:
+            context["branch"] = branch
+        if merge_sha:
+            context["sha"] = merge_sha
+        return self.emit(
+            EventType.GIT_MERGE,
+            context=context,
+            metadata=metadata if metadata else None,
+        )
+
+    def git_rewrite(
+        self,
+        rewrite_type: str = "rebase",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git rewrite event (rebase or amend).
+
+        Args:
+            rewrite_type: "rebase" or "amend".
+            **metadata: Additional metadata (mappings, commits_folded, etc.).
+        """
+        return self.emit(
+            EventType.GIT_REWRITE,
+            context={"operation": rewrite_type},
+            metadata=metadata if metadata else None,
+        )
+
+    def git_checkout(
+        self,
+        branch: str = "",
+        prev_branch: str = "",
+        sha: str = "",
+        is_clone: bool = False,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git checkout event (checkout, switch, or clone).
+
+        Args:
+            branch: Branch checked out.
+            prev_branch: Previous branch (empty if clone or unknown).
+            sha: New HEAD SHA.
+            is_clone: True if this is the initial checkout after git clone.
+            **metadata: Additional metadata.
+        """
+        context: dict[str, Any] = {
+            "operation": "clone" if is_clone else "checkout",
+            "is_clone": is_clone,
+        }
+        if branch:
+            context["branch"] = branch
+        if prev_branch:
+            context["prev_branch"] = prev_branch
+        if sha:
+            context["sha"] = sha
+        return self.emit(
+            EventType.GIT_CHECKOUT,
+            context=context,
             metadata=metadata if metadata else None,
         )
 
