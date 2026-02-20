@@ -49,7 +49,7 @@ class EventType(StrEnum):
     USER_PROMPT_SUBMITTED = "user_prompt_submitted"
     PERMISSION_REQUESTED = "permission_requested"
 
-    # Git operations (detected via PreToolUse/PostToolUse on Bash git commands)
+    # Git operations (emitted by real git hooks: post-commit, pre-push, post-checkout, etc.)
     GIT_COMMIT = "git_commit"
     GIT_PUSH = "git_push"
     GIT_BRANCH_CHANGED = "git_branch_changed"
