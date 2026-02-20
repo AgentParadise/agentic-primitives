@@ -1,17 +1,17 @@
-# Architecture Plugin
+# Compound Engineering Plugin
 
 Agent-native architecture patterns, swarm orchestration, and skill creation guides for building AI-first systems.
 
 ## Install
 
 ```bash
-claude plugin install architecture@agentic-primitives --scope user
+claude plugin install compound-engineering@agentic-primitives --scope user
 ```
 
 Or project-scoped:
 
 ```bash
-claude plugin install architecture@agentic-primitives --scope project
+claude plugin install compound-engineering@agentic-primitives --scope project
 ```
 
 ## Skills

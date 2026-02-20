@@ -200,7 +200,7 @@ agentic-primitives/
 │   ├── research/               #   Research tools (firecrawl, doc-scraper)
 │   ├── meta/                   #   Primitive generators
 │   ├── docs/                   #   Documentation tools
-│   └── architecture/           #   Agent-native architecture (from Every, Inc.)
+│   └── compound-engineering/   #   Agent-native architecture (from Every, Inc.)
 ├── lib/python/                 # Infrastructure Primitives
 │   ├── agentic_isolation/      #   Docker workspace sandboxing
 │   ├── agentic_events/         #   JSONL event emission
