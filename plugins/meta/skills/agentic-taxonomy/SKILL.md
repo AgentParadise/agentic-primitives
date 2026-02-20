@@ -32,15 +32,6 @@ Reusable prompts that orchestrate teams of sub-agents. Commands are the human-fa
 - **Key principle:** Commands decompose work and delegate. They don't do the work themselves.
 - **Create:** `/create-command <description>`
 
-### Layer 4 — Workflows / ADWs (Automation)
-
-AI Developer Workflows. Deterministic pipelines with non-deterministic agents at each stage. This is "out of the loop" engineering.
-
-- **Location:** `plugins/{plugin}/workflows/{id}.md`
-- **Scope:** End-to-end automation of an engineering process (e.g., "PR Review Pipeline" → lint → test → review → merge)
-- **Key principle:** Every stage has a quality gate. No stage passes without validation.
-- **Create:** `/create-workflow <description>`
-
 ## The Deterministic Backbone: `just`
 
 [just](https://github.com/casey/just) is the task runner that provides the **deterministic glue** between layers. While agents handle ambiguous, non-deterministic work, `just` handles the repeatable parts: build, test, lint, deploy, format.
@@ -69,21 +60,9 @@ Don't use `just` for:
 - Anything requiring judgment or interpretation (that's the agent's job)
 - Dynamic decisions about what to do next
 
-### In Workflows (Layer 4)
-
-ADWs combine `just` recipes (deterministic) with agent stages (non-deterministic):
-
-```
-just setup → [Agent: analyze] → just test → [Agent: review] → just deploy
-```
-
-The `just` steps are the guardrails. The agent steps are the intelligence.
-
 ## Layer Interaction
 
 ```
-Layer 4: Workflows     ← automate entire processes
-    ↓ orchestrates
 Layer 3: Commands      ← human-facing orchestration
     ↓ spawns
 Layer 2: Sub-Agents    ← specialized workers
@@ -103,7 +82,6 @@ All primitives work in both environments:
 | **Skills** | Mounted into workspace | `.claude/skills/` in project |
 | **Sub-agents** | Task tool inside container | Task tool interactively |
 | **Commands** | Injected via prime prompt | `/slash` commands directly |
-| **Workflows** | Phase configs in orchestration engine | Sequential command execution |
 
 ## Priming Pattern
 
@@ -123,7 +101,6 @@ A **higher-order primitive** is a prompt that generates other prompts. It operat
 ```
 Higher-order primitives    ← generate other primitives
     ↓ produces
-Layer 4: Workflows         ← automate processes
 Layer 3: Commands          ← orchestrate agents
 Layer 2: Sub-Agents        ← specialize on skills
 Layer 1: Skills            ← raw capabilities
@@ -136,7 +113,6 @@ Layer 1: Skills            ← raw capabilities
 | `/create-skill` | Skill definitions | 1 |
 | `/create-agent` | Sub-agent definitions | 2 |
 | `/create-command` | Command prompts | 3 |
-| `/create-workflow` | ADW pipelines | 4 |
 | `/create-prime` | Codebase primes (AGENTS.md) | Cross-cutting |
 
 ### When to Create a Higher-Order Primitive
@@ -163,5 +139,4 @@ This is **one prompt to rule them all** — it encodes your entire codebase's co
 1. **Skills are CLIs, not MCPs** — composable, token-efficient, no lock-in
 2. **Sub-agents self-validate** — no agent returns results without checking its own work
 3. **Commands decompose, they don't execute** — they spawn agents, not run code
-4. **Workflows have quality gates** — every stage passes or escalates
-5. **Token efficiency everywhere** — progressive disclosure, structured output, smart context loading
+4. **Token efficiency everywhere** — progressive disclosure, structured output, smart context loading
