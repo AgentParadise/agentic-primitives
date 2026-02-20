@@ -104,11 +104,15 @@ class TestRetryPolicy:
         assert p.compute_delay(3) == 4.0
 
     def test_compute_delay_respects_max(self):
-        p = RetryPolicy.exponential(base_delay_s=1.0, max_delay_s=3.0, backoff_factor=2.0, jitter=False)
+        p = RetryPolicy.exponential(
+            base_delay_s=1.0, max_delay_s=3.0, backoff_factor=2.0, jitter=False
+        )
         assert p.compute_delay(5) == 3.0  # would be 16, capped at 3
 
     def test_compute_delay_jitter_within_bounds(self):
-        p = RetryPolicy.exponential(base_delay_s=1.0, max_delay_s=10.0, backoff_factor=2.0, jitter=True)
+        p = RetryPolicy.exponential(
+            base_delay_s=1.0, max_delay_s=10.0, backoff_factor=2.0, jitter=True
+        )
         for _ in range(50):
             delay = p.compute_delay(1)
             assert 0.0 <= delay <= 1.0
