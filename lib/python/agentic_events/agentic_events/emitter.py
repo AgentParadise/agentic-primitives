@@ -492,6 +492,80 @@ class EventEmitter:
             metadata=metadata if metadata else None,
         )
 
+    def git_merge(
+        self,
+        branch: str = "",
+        merge_sha: str = "",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git merge event (also fires on git pull).
+
+        Args:
+            branch: Branch the merge landed on.
+            merge_sha: SHA of the resulting merge commit.
+            **metadata: Additional metadata (commits_merged, is_squash, etc.).
+        """
+        context: dict[str, Any] = {"operation": "merge"}
+        if branch:
+            context["branch"] = branch
+        if merge_sha:
+            context["sha"] = merge_sha
+        return self.emit(
+            EventType.GIT_MERGE,
+            context=context,
+            metadata=metadata if metadata else None,
+        )
+
+    def git_rewrite(
+        self,
+        rewrite_type: str = "rebase",
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git rewrite event (rebase or amend).
+
+        Args:
+            rewrite_type: "rebase" or "amend".
+            **metadata: Additional metadata (mappings, commits_folded, etc.).
+        """
+        return self.emit(
+            EventType.GIT_REWRITE,
+            context={"operation": rewrite_type},
+            metadata=metadata if metadata else None,
+        )
+
+    def git_checkout(
+        self,
+        branch: str = "",
+        prev_branch: str = "",
+        sha: str = "",
+        is_clone: bool = False,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Emit a git checkout event (checkout, switch, or clone).
+
+        Args:
+            branch: Branch checked out.
+            prev_branch: Previous branch (empty if clone or unknown).
+            sha: New HEAD SHA.
+            is_clone: True if this is the initial checkout after git clone.
+            **metadata: Additional metadata.
+        """
+        context: dict[str, Any] = {
+            "operation": "clone" if is_clone else "checkout",
+            "is_clone": is_clone,
+        }
+        if branch:
+            context["branch"] = branch
+        if prev_branch:
+            context["prev_branch"] = prev_branch
+        if sha:
+            context["sha"] = sha
+        return self.emit(
+            EventType.GIT_CHECKOUT,
+            context=context,
+            metadata=metadata if metadata else None,
+        )
+
     def git_operation(
         self,
         operation: str,

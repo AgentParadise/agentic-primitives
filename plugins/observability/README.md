@@ -1,149 +1,183 @@
 # observability plugin
 
-Full-spectrum agent observability — hooks **every** Claude Code lifecycle event and all git operations, emitting structured JSONL events via `agentic_events`. Designed to be composable with other plugins.
+Full-spectrum agent observability — hooks every Claude Code lifecycle event and all git operations, emitting structured JSONL events via `agentic_events`.
 
-## What it does
+## Event sources and ownership
 
-Two independent sources of observability events, with strict ownership of event types:
+Two independent sources, with **strict, non-overlapping ownership** of event types:
 
-| Source | Mechanism | Event types owned | Output channel |
+| Source | Mechanism | Owns these event types | Output channel |
 |---|---|---|---|
-| `observe.py` | Claude Code hooks (PreToolUse, PostToolUse, etc.) | `tool_execution_started/completed/failed`, `session_started/completed`, `user_prompt_submitted`, and all other Claude Code lifecycle events | **stdout** |
-| git hooks | Real git hooks (`post-commit`, `pre-push`, etc.) | `git_commit`, `git_push`, `git_merge`, `git_rewrite` — exclusively | **stderr** |
+| `observe.py` | Claude Code hooks (PreToolUse, PostToolUse, …) | `tool_execution_started`, `tool_execution_completed`, `tool_execution_failed`, `session_started`, `session_completed`, `user_prompt_submitted`, `permission_requested`, `system_notification`, `subagent_started`, `subagent_stopped`, `agent_stopped`, `teammate_idle`, `task_completed`, `context_compacted` | **stdout** |
+| git hooks | Real git hooks (`post-commit`, `post-merge`, …) | `git_commit`, `git_push`, `git_merge`, `git_rewrite`, `git_checkout` — exclusively | **stderr** |
 
-**Critical invariant**: `observe.py` never emits git event types. Git hooks are the sole source of truth for `git_commit`/`git_push`/`git_merge`/`git_rewrite`. This ensures git events carry real post-operation metadata (SHA, files changed, token estimates) rather than inferred pre-operation intent.
+**Critical invariant: `observe.py` must never emit git event types. Git hooks are the sole source of truth for all `git_*` events.**
 
-### Why different output channels?
+This separation ensures git events carry real post-operation metadata (actual SHA, files changed, token estimates) rather than intent inferred before the operation runs.
 
-- **`observe.py` → stdout**: Claude Code captures Claude Code hook subprocess stdout and embeds it in the `hook_response` stream-json event. Consumers read it from there.
-- **git hooks → stderr**: Git hooks run inside the Bash tool subprocess. Their output (stdout and stderr) is captured by Claude Code as the Bash tool result, then packaged in the `tool_result` content. Consumers scan `tool_result` content for embedded JSONL lines.
+## Output channel rationale
 
-Both channels are consumed, just through different paths in the engine. Neither blocks execution — always exits 0.
+### `observe.py` → stdout
+Claude Code captures the stdout of each hook subprocess and embeds it in the `hook_response` stream-json event. The engine reads it from there.
 
-## Hook-to-Claude-Code-version compatibility
+### git hooks → stderr
+Git hooks run as subprocesses triggered by git — they are **not** children of the Bash tool process. Their stderr flows into the docker exec stream, which the adapter merges into the stdout pipe via `stderr=asyncio.subprocess.STDOUT`. The engine reads every line of that merged stream and stores any line containing `event_type` as an observation.
 
-| Hook Event | Claude Code Version | Event Type Emitted |
+**Do not switch git hooks to stdout.** Git hook stdout is surfaced to the user in the terminal (e.g. printed after `git commit`). Stderr is the conventional channel for diagnostic/observability output and avoids polluting the user-visible output.
+
+## Claude Code lifecycle hooks
+
+| Hook event | Claude Code version | Event type emitted |
 |---|---|---|
-| SessionStart | 1.0+ | `session_started` |
-| SessionEnd | 1.0+ | `session_completed` |
-| UserPromptSubmit | 1.0+ | `user_prompt_submitted` |
-| PreToolUse | 1.0+ | `tool_execution_started` |
-| PostToolUse | 1.0+ | `tool_execution_completed` |
-| PostToolUseFailure | 1.1+ | `tool_execution_failed` |
-| PermissionRequest | 1.0+ | `permission_requested` |
-| Notification | 1.0+ | `system_notification` |
-| SubagentStart | 1.1+ | `subagent_started` |
-| SubagentStop | 1.0+ | `subagent_stopped` |
-| Stop | 1.0+ | `agent_stopped` |
-| TeammateIdle | 1.2+ | `teammate_idle` |
-| TaskCompleted | 1.2+ | `task_completed` |
-| PreCompact | 1.0+ | `context_compacted` |
+| `SessionStart` | 1.0+ | `session_started` |
+| `SessionEnd` | 1.0+ | `session_completed` |
+| `UserPromptSubmit` | 1.0+ | `user_prompt_submitted` |
+| `PreToolUse` | 1.0+ | `tool_execution_started` |
+| `PostToolUse` | 1.0+ | `tool_execution_completed` |
+| `PostToolUseFailure` | 1.1+ | `tool_execution_failed` |
+| `PermissionRequest` | 1.0+ | `permission_requested` |
+| `Notification` | 1.0+ | `system_notification` |
+| `SubagentStart` | 1.1+ | `subagent_started` |
+| `SubagentStop` | 1.0+ | `subagent_stopped` |
+| `Stop` | 1.0+ | `agent_stopped` |
+| `TeammateIdle` | 1.2+ | `teammate_idle` |
+| `TaskCompleted` | 1.2+ | `task_completed` |
+| `PreCompact` | 1.0+ | `context_compacted` |
 
-> **Note:** Hook availability depends on your Claude Code version. Events from newer versions are silently ignored by older Claude Code installations.
-
-## Usage
-
-Install this plugin alongside other plugins in your `.claude/plugins/` directory. It is purely additive — it observes and logs but never modifies behavior or blocks tool execution.
-
-```
-.claude/plugins/observability/  →  this plugin
-.claude/plugins/workspace/      →  your workspace plugin
-```
-
-Both plugins can coexist. The observability plugin provides comprehensive event coverage while workspace handlers can add domain-specific logic.
-
-## Event schema
-
-Each emitted event is a single JSON line (stdout for Claude Code hook events, stderr for git hook events — see Architecture below):
-
-```json
-{
-  "event_type": "tool_execution_started",
-  "timestamp": "2026-02-18T22:00:00+00:00",
-  "session_id": "session-abc123",
-  "provider": "claude",
-  "context": {
-    "tool_name": "Bash",
-    "tool_use_id": "toolu_xyz",
-    "input_preview": "git status"
-  }
-}
-```
-
-Fields:
-- `event_type` — one of the event types from the table above
-- `timestamp` — ISO 8601 UTC timestamp
-- `session_id` — Claude session identifier
-- `provider` — always `"claude"`
-- `context` — event-specific payload (varies by event type)
-- `metadata` — optional additional data (when provided by the hook)
+Events from hooks not available in the installed Claude Code version are silently absent.
 
 ## Git hooks
 
-In addition to Claude Code lifecycle hooks, this plugin includes git hooks that emit events for git operations:
+| Git hook | Fires on | Event type emitted | Key fields |
+|---|---|---|---|
+| `post-commit` | `git commit` | `git_commit` | sha, branch, message, files\_changed, insertions, deletions, estimated tokens |
+| `pre-push` | `git push` | `git_push` | remote, branch, commit count |
+| `post-merge` | `git merge`, `git pull` (merge strategy) | `git_merge` | branch, merge sha, commits\_merged, is\_squash |
+| `post-rewrite` | `git rebase`, `git commit --amend` | `git_rewrite` | rewrite\_type ("rebase"/"amend"), old→new sha mappings, commits\_folded |
+| `post-checkout` | `git checkout`, `git switch`, `git clone` | `git_checkout` | branch, prev\_branch, sha, is\_clone |
 
-| Git Hook | Event Type Emitted |
-|---|---|
-| `post-commit` | `git_commit` (with sha, branch, files changed, insertions/deletions, token estimates) |
-| `post-merge` | `git_merge` (with branch, merge sha, commits merged, squash detection) |
-| `post-rewrite` | `git_rewrite` (with rewrite type, old→new sha mappings) |
-| `pre-push` | `git_push` (with remote, branch, commit count, commit range) |
+> **`git pull` note:** git has no `post-pull` hook. Pull = fetch + merge/rebase. The fetch is invisible to hooks. The merge fires `post-merge` → `git_merge`; a rebase pull fires `post-rewrite` → `git_rewrite`. Both are covered.
+
+All git hooks always exit 0 — observability never blocks a git operation.
 
 ### Installing git hooks
 
-```bash
-# Install to current repo
-python plugins/observability/hooks/git/install.py
+Git hooks are installed globally in the workspace container via `entrypoint.sh`:
 
-# Install globally (all repos)
+```sh
+git config --global core.hooksPath "${GIT_HOOKS_DIR}"
+# → /opt/agentic/plugins/observability/hooks/git
+```
+
+This applies to every repo cloned or created inside the container without any per-repo setup.
+
+For local development outside the container:
+
+```bash
+# Install globally (all repos on this machine)
 python plugins/observability/hooks/git/install.py --global
+
+# Install to current repo only
+python plugins/observability/hooks/git/install.py
 
 # Uninstall
 python plugins/observability/hooks/git/install.py --uninstall
 ```
 
-The installer backs up any existing hooks before overwriting and restores them on uninstall.
+## Event schema
 
-Unlike the SDLC plugin's bash-based git hooks (which write raw JSONL to a file), these use `agentic_events.EventEmitter(output=sys.stderr)` for consistent structured output. Stderr is used (not stdout) because git hook output ends up as part of the Bash tool result — both channels get captured — but stderr is conventional for diagnostic/observability output and avoids any ambiguity.
+Every emitted event is a single JSON line:
+
+```json
+{
+  "event_type": "git_commit",
+  "timestamp": "2026-02-19T23:44:46+00:00",
+  "session_id": "7d421b2d-bcd9-4f53-8421-a68fb9d2941f",
+  "provider": "claude",
+  "context": {
+    "operation": "commit",
+    "sha": "42c33b6685c582646b822dea5b8bfef59c505207",
+    "branch": "feat/my-feature",
+    "message": "feat: add observability hooks"
+  },
+  "metadata": {
+    "repo": "my-repo",
+    "files_changed": 4,
+    "insertions": 572,
+    "deletions": 0,
+    "author": "agent[bot]",
+    "estimated_tokens_added": 3429,
+    "estimated_tokens_removed": 0
+  }
+}
+```
+
+Fields:
+- `event_type` — canonical type string (see tables above)
+- `timestamp` — ISO 8601 UTC
+- `session_id` — from `CLAUDE_SESSION_ID` env var (set by the adapter at `docker exec` time)
+- `provider` — always `"claude"`
+- `context` — core event fields (operation type, identifiers)
+- `metadata` — supplementary data (stats, estimates, secondary fields)
+
+Consumers merge `{**context, **metadata}` to get all fields in a flat dict.
 
 ## Architecture
 
 ```
-SOURCE A — Claude Code lifecycle events
-  hooks.json (14 events)
-       │
-       └─► observe.py (single dispatcher)
-                │
-                └─► agentic_events.EventEmitter(output=sys.stdout)
-                         │
-                         └─► stdout JSONL → captured in Claude Code hook_response stream-json
-                                  │
-                                  └─► engine reads from hook_response.output / .stderr fields
+┌─────────────────────────────────────────────────────────────┐
+│  SOURCE A — Claude Code lifecycle events                    │
+│                                                             │
+│  hooks.json (14 hook types)                                 │
+│       │                                                     │
+│       └─► observe.py                                        │
+│                │                                            │
+│                └─► EventEmitter(output=sys.stdout)          │
+│                         │                                   │
+│                         └─► stdout JSONL                    │
+│                                  │                          │
+│                    embedded in hook_response stream-json    │
+│                                  │                          │
+│                         engine reads → stores event         │
+└─────────────────────────────────────────────────────────────┘
 
-SOURCE B — Git operations (source of truth for git events)
-  git hooks (post-commit, pre-push, post-merge, post-rewrite)
-       │
-       └─► post-commit / pre-push / ... (individual scripts)
-                │
-                └─► agentic_events.EventEmitter(output=sys.stderr)
-                         │
-                         └─► stderr → captured by Claude Code as Bash tool output
-                                  │
-                                  └─► engine scans tool_result content for embedded JSONL
+┌─────────────────────────────────────────────────────────────┐
+│  SOURCE B — Git operations (sole source of truth for git_*) │
+│                                                             │
+│  git hooks (triggered by git itself, not by Claude Code)    │
+│    post-commit / pre-push / post-merge /                    │
+│    post-rewrite / post-checkout                             │
+│       │                                                     │
+│       └─► individual hook scripts                           │
+│                │                                            │
+│                └─► EventEmitter(output=sys.stderr)          │
+│                         │                                   │
+│                         └─► stderr JSONL                    │
+│                                  │                          │
+│          merged by adapter.py stderr=asyncio.STDOUT         │
+│                                  │                          │
+│          engine readline() → parse_jsonl_line()             │
+│                                  │                          │
+│                         stores git_* event in DB            │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-One dispatch handler for Claude Code events, four focused scripts for git events. Zero blocking. No cross-emission between sources.
-
-### Event type ownership (strict)
+## Event type ownership (exhaustive)
 
 ```
-observe.py owns:      tool_execution_started, tool_execution_completed, tool_execution_failed,
-                      session_started, session_completed, user_prompt_submitted,
-                      permission_requested, system_notification, subagent_started,
-                      subagent_stopped, agent_stopped, teammate_idle, task_completed,
-                      context_compacted
+observe.py owns (Claude Code hook events):
+    session_started         session_completed       user_prompt_submitted
+    tool_execution_started  tool_execution_completed  tool_execution_failed
+    permission_requested    system_notification     context_compacted
+    subagent_started        subagent_stopped        agent_stopped
+    teammate_idle           task_completed
 
-git hooks own:        git_commit, git_push, git_merge, git_rewrite
+git hooks own (git operation events):
+    git_commit      ← post-commit
+    git_push        ← pre-push
+    git_merge       ← post-merge   (also fires on git pull with merge strategy)
+    git_rewrite     ← post-rewrite (git rebase and git commit --amend)
+    git_checkout    ← post-checkout (git checkout, git switch, git clone)
 ```
 
-These sets are mutually exclusive by design. `observe.py` must never emit git event types.
+These sets are **mutually exclusive**. Adding a git event type to `observe.py`, or a Claude Code event type to a git hook, is a violation of this contract.
