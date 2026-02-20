@@ -77,9 +77,7 @@ class CircuitOpenError(Exception):
         import datetime
 
         reset_iso = datetime.datetime.fromtimestamp(reset_at).isoformat()
-        super().__init__(
-            f"Circuit breaker is OPEN. Requests rejected until {reset_iso}."
-        )
+        super().__init__(f"Circuit breaker is OPEN. Requests rejected until {reset_iso}.")
 
 
 # ---------------------------------------------------------------------------
