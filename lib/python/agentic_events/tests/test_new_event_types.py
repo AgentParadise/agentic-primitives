@@ -1,4 +1,4 @@
-"""Tests for new event types: SUBAGENT_STARTED, TOOL_EXECUTION_FAILED, TEAMMATE_IDLE, TASK_COMPLETED."""
+"""Tests for new event types: SUBAGENT_STARTED, TOOL_EXECUTION_FAILED, TEAMMATE_IDLE."""
 
 import io
 import json
