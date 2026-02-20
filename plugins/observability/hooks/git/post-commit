@@ -3,6 +3,20 @@
 
 Parses git output to extract commit metadata and token estimates.
 Always exits 0 — observability never breaks git operations.
+
+OUTPUT CHANNEL — stderr is intentional (ADR-043):
+    Events are emitted to STDERR (not stdout). The docker exec stream in
+    AgenticEventStreamAdapter and WorkspaceDockerProvider uses stderr=STDOUT
+    to merge stderr into the stdout pipe, so the WorkflowExecutionEngine
+    receives this JSONL and stores it as an observation in TimescaleDB.
+
+    DO NOT switch to stdout: Claude Code hooks capture subprocess stdout and
+    include it in the hook_response stream-json event, which would cause double-
+    processing. Stderr bypasses Claude Code hook capture and goes directly to
+    the docker exec stream, where the engine is the sole consumer.
+
+    hook emits → stderr → merged by docker exec → engine readline() → parse_jsonl_line()
+                                                                     → git_commit stored
 """
 
 import json
@@ -67,13 +81,13 @@ def main():
         repo = remote.rstrip("/").rsplit("/", 1)[-1].replace(".git", "") if remote else ""
 
         emitter.git_commit(
+            message=message[:200],
             sha=sha,
             branch=branch,
             repo=repo,
             files_changed=files_changed,
             insertions=insertions,
             deletions=deletions,
-            message_preview=message[:200],
             author=author,
             estimated_tokens_added=added_chars // 4,
             estimated_tokens_removed=removed_chars // 4,

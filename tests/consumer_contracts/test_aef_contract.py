@@ -107,8 +107,8 @@ class TestAEFEventsContract:
     def test_event_type_tool_values(self) -> None:
         from agentic_events import EventType
 
-        assert EventType.TOOL_STARTED == "tool_execution_started"
-        assert EventType.TOOL_COMPLETED == "tool_execution_completed"
+        assert EventType.TOOL_EXECUTION_STARTED == "tool_execution_started"
+        assert EventType.TOOL_EXECUTION_COMPLETED == "tool_execution_completed"
 
     def test_recording_enum_values(self) -> None:
         from agentic_events import Recording

@@ -5,12 +5,13 @@ Generic observability handler — dispatches ALL Claude Code hook events.
 Reads hook_event_name from stdin JSON and calls the appropriate
 agentic_events emitter method. Pure logging — never blocks (exit 0 always).
 
-Events are emitted as JSONL to stderr, captured by the agent runner.
+Events are emitted as JSONL to stderr, merged into stdout by the Docker adapter
+(stderr=asyncio.subprocess.STDOUT). The engine's parse_jsonl_line() distinguishes
+hook events (have "event_type") from Claude's native stream-json (have "type").
 """
 
 import json
 import os
-import re
 import sys
 
 # === EVENT EMITTER (lazy initialized) ===
@@ -60,55 +61,16 @@ def _handle_user_prompt_submit(emitter, event):
     )
 
 
-def _extract_git_subcmd(event):
-    """Extract git subcommand from a Bash tool input, if present."""
-    if event.get("tool_name") != "Bash":
-        return None, None
-    tool_input = event.get("tool_input", "")
-    cmd = tool_input if isinstance(tool_input, str) else str(tool_input)
-    m = re.search(r'\bgit\s+(\w+)', cmd)
-    return (m.group(1), cmd) if m else (None, None)
-
-
-def _emit_git_event(emitter, subcmd, cmd_str):
-    """Emit a git-specific event based on the detected subcommand."""
-    if subcmd == "commit":
-        msg_match = re.search(r'-m\s+["\'](.+?)["\']', cmd_str)
-        emitter.git_commit(message=msg_match.group(1) if msg_match else "")
-    elif subcmd == "push":
-        parts = cmd_str.split()
-        try:
-            idx = parts.index("push")
-            args = [a for a in parts[idx + 1:] if not a.startswith("-")]
-        except (ValueError, IndexError):
-            args = []
-        emitter.git_push(
-            remote=args[0] if args else "origin",
-            branch=args[1] if len(args) >= 2 else "",
-        )
-    elif subcmd in ("checkout", "switch"):
-        parts = cmd_str.split()
-        try:
-            idx = parts.index(subcmd)
-            args = [a for a in parts[idx + 1:] if not a.startswith("-")]
-        except (ValueError, IndexError):
-            args = []
-        emitter.git_branch_changed(to_branch=args[0] if args else "")
-    else:
-        # Generic git operation (merge, pull, rebase, stash, etc.)
-        emitter.git_operation(operation=subcmd, details=cmd_str[:500])
-
-
 def _handle_pre_tool_use(emitter, event):
     emitter.tool_started(
         tool_name=event.get("tool_name", "unknown"),
         tool_use_id=event.get("tool_use_id", ""),
         input_preview=str(event.get("tool_input", ""))[:500],
     )
-    # Detect and emit git-specific events
-    subcmd, cmd_str = _extract_git_subcmd(event)
-    if subcmd:
-        _emit_git_event(emitter, subcmd, cmd_str)
+    # Git-specific events come from real git hooks (post-commit, pre-push, etc.)
+    # which fire after git operations complete and emit richer metadata (SHA,
+    # branch, files_changed, etc.). Claude Code tool calls are recorded as
+    # plain tool_started/tool_completed events — no git inference here.
 
 
 def _handle_post_tool_use(emitter, event):
