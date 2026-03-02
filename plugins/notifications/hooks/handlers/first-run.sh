@@ -22,15 +22,13 @@ fi
 
 # If macOS only (no push), nudge for mobile push
 if $HAS_MACOS; then
-  echo "🔔 Notifications plugin active"
-  echo "  ✅ macOS desktop notifications: enabled"
-  echo "  ⚠️  Mobile push: not configured"
-  echo "  → Run: ${PLUGIN_DIR}/setup.sh (30 seconds, optional)"
+  cat <<'EOF'
+{"notifications":{"status":"partial","macos":true,"push":false,"message":"Run /notifications:configure to set up mobile push"}}
+EOF
   exit 0
 fi
 
 # Nothing configured at all (Linux/remote)
-echo "🔔 Notifications plugin installed — needs setup"
-echo "  ⚠️  No notification providers configured"
-echo "  → Run: ${PLUGIN_DIR}/setup.sh (30 seconds)"
-echo "  This will set up push notifications to your phone via ntfy.sh"
+cat <<'EOF'
+{"notifications":{"status":"unconfigured","macos":false,"push":false,"message":"Run /notifications:configure to set up notifications"}}
+EOF
