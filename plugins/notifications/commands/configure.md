@@ -49,6 +49,33 @@ if [ -z "${NTFY_TOPIC:-}" ] && ! command -v osascript &>/dev/null && [ -z "${PUS
 fi
 ```
 
+## Step 1b: Machine Name
+
+Check the current machine label and offer to customize it:
+
+```bash
+CURRENT_MACHINE="${CLAUDE_NOTIFY_MACHINE:-$(hostname)}"
+echo "📍 Machine label: $CURRENT_MACHINE"
+```
+
+If the hostname looks like a raw default (e.g., `Users-MacBook-Pro.local`), suggest a friendlier name like `"M3 Pro"` or `"Work Laptop"`. Ask if they'd like to set a custom name.
+
+If they choose a name, detect the shell RC file (same as Option 1 below) and append:
+
+```bash
+if grep -q 'CLAUDE_NOTIFY_MACHINE' "$SHELL_RC" 2>/dev/null; then
+  echo "⚠️ CLAUDE_NOTIFY_MACHINE already exists in $SHELL_RC"
+  # Offer to replace it
+else
+  printf '\n# Claude Code Notifications — machine label\nexport CLAUDE_NOTIFY_MACHINE="%s"\n' "$CHOSEN_NAME" >> "$SHELL_RC"
+  echo "✅ Machine label set to: $CHOSEN_NAME"
+fi
+```
+
+This label appears in every notification so multi-machine setups are easy to distinguish. Skip if the user is happy with the current value.
+
+---
+
 ## Step 2: Offer Options
 
 After showing status, present these options and ask the user what they'd like to do:
