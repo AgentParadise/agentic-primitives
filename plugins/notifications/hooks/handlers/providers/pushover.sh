@@ -13,7 +13,7 @@ case "$HOOK_TYPE" in
   Stop|TaskCompleted) PRIORITY="0" ;;
 esac
 
-curl -sf \
+curl -sf --max-time 4 \
   --form-string "token=${PUSHOVER_TOKEN}" \
   --form-string "user=${PUSHOVER_USER}" \
   --form-string "title=Claude Code — ${HOOK_TYPE}" \

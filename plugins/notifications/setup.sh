@@ -11,7 +11,12 @@ echo "(This gives you push notifications on any device via ntfy.sh)"
 echo ""
 read -rp "Enter a prefix (e.g., claude, myname): " PREFIX
 
-SHELL_RC="${HOME}/.zshrc"
+# Detect shell RC file
+if [[ "${SHELL:-}" == */zsh ]]; then
+  SHELL_RC="${HOME}/.zshrc"
+else
+  SHELL_RC="${HOME}/.bashrc"
+fi
 
 if [[ -z "$PREFIX" ]]; then
   echo "Skipping ntfy setup."
@@ -21,8 +26,12 @@ else
   echo ""
   echo "✅ Your ntfy topic: ${TOPIC}"
   echo ""
-  echo "  export NTFY_TOPIC=\"${TOPIC}\"" >> "$SHELL_RC"
-  echo "Written NTFY_TOPIC to $SHELL_RC"
+  if grep -q 'NTFY_TOPIC' "$SHELL_RC" 2>/dev/null; then
+    echo "⚠️  NTFY_TOPIC already exists in $SHELL_RC — skipping write"
+  else
+    printf '\n# Claude Code Notifications\nexport NTFY_TOPIC="%s"\n' "$TOPIC" >> "$SHELL_RC"
+    echo "Written NTFY_TOPIC to $SHELL_RC"
+  fi
   echo ""
   echo "Subscribe on your phone:"
   echo "  1. Install ntfy app (iOS/Android)"

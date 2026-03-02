@@ -23,7 +23,7 @@ case "$HOOK_TYPE" in
   TaskCompleted) TAGS="tada,claude" ;;
 esac
 
-curl -sf \
+curl -sf --max-time 4 \
   -H "Title: Claude Code — ${HOOK_TYPE}" \
   -H "Priority: ${PRIORITY}" \
   -H "Tags: ${TAGS}" \
