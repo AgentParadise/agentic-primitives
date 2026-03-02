@@ -64,11 +64,17 @@ Wait for the user to choose, then follow the appropriate section below.
 
 ## Option 1: Set Up ntfy Push
 
-1. Generate a secure topic:
+1. Ask the user for an optional name prefix (e.g., their name). Generate a secure topic that fits within ntfy's **64-character limit**:
    ```bash
-   TOPIC="claude_$(openssl rand -hex 32)"
-   echo "Your topic: $TOPIC"
+   PREFIX="${1:-claude}"  # user's chosen prefix, default "claude"
+   # Calculate remaining space: 64 total - prefix length - 1 underscore
+   REMAINING=$((64 - ${#PREFIX} - 1))
+   # Each hex char = 4 bits, so REMAINING hex chars
+   RANDOM_PART=$(openssl rand -hex 32 | head -c "$REMAINING")
+   TOPIC="${PREFIX}_${RANDOM_PART}"
+   echo "Your topic ($((${#TOPIC})) chars): $TOPIC"
    ```
+   If the prefix is too long (would leave fewer than 16 random chars), warn the user and suggest a shorter one.
 
 2. Detect the user's shell RC file:
    ```bash
