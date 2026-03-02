@@ -14,7 +14,7 @@ _theme_sound() {
   local type="$1"
   case "$theme" in
     default)  case "$type" in idle) echo Ping;; permission) echo Basso;; complete) echo Glass;; esac ;;
-    ocean)    case "$type" in idle) echo Submarine;; permission) echo Sonar;; complete) echo Blow;; esac ;;
+    ocean)    case "$type" in idle) echo Blow;; permission) echo Sonar;; complete) echo Submarine;; esac ;;
     minimal)  case "$type" in idle) echo Tink;; permission) echo Pop;; complete) echo Purr;; esac ;;
     alert)    case "$type" in idle) echo Hero;; permission) echo Sosumi;; complete) echo Fanfare;; esac ;;
     *)        ;; # unknown or unset — fall through

@@ -68,7 +68,7 @@ Choose a theme to change all notification sounds at once, or override individual
 | Theme | Idle | Permission | Complete |
 |-------|------|------------|----------|
 | `default` | Ping | Basso | Glass |
-| `ocean` | Submarine | Sonar | Blow |
+| `ocean` | Blow | Sonar | Submarine |
 | `minimal` | Tink | Pop | Purr |
 | `alert` | Hero | Sosumi | Fanfare |
 
