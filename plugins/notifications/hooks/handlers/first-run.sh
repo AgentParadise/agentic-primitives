@@ -1,22 +1,36 @@
 #!/usr/bin/env bash
-# first-run.sh — SessionStart hook: nudge user to configure push notifications
-# Runs every session start. Silent when already configured. Always exits 0.
+# first-run.sh — SessionStart hook: onboarding status on first run
+# Runs every session start. Silent when fully configured. Always exits 0.
 
-# macOS has native notifications out of the box — no setup needed
-if command -v osascript &>/dev/null; then
-  exit 0
-fi
+set -euo pipefail
 
-# If ntfy is configured, nothing to do
-if [[ -n "${NTFY_TOPIC:-}" ]]; then
-  exit 0
-fi
-
-# If pushover is configured, nothing to do
-if [[ -n "${PUSHOVER_TOKEN:-}" && -n "${PUSHOVER_USER:-}" ]]; then
-  exit 0
-fi
-
-# Not configured — emit a gentle nudge
 PLUGIN_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-echo "🔔 Push notifications not configured yet. Run the setup wizard: ${PLUGIN_DIR}/setup.sh"
+
+# Detect capabilities
+HAS_MACOS=false
+HAS_NTFY=false
+HAS_PUSHOVER=false
+
+command -v osascript &>/dev/null && HAS_MACOS=true
+[[ -n "${NTFY_TOPIC:-}" ]] && HAS_NTFY=true
+[[ -n "${PUSHOVER_TOKEN:-}" && -n "${PUSHOVER_USER:-}" ]] && HAS_PUSHOVER=true
+
+# If any push provider is configured, stay silent (fully set up)
+if $HAS_NTFY || $HAS_PUSHOVER; then
+  exit 0
+fi
+
+# If macOS only (no push), nudge for mobile push
+if $HAS_MACOS; then
+  echo "🔔 Notifications plugin active"
+  echo "  ✅ macOS desktop notifications: enabled"
+  echo "  ⚠️  Mobile push: not configured"
+  echo "  → Run: ${PLUGIN_DIR}/setup.sh (30 seconds, optional)"
+  exit 0
+fi
+
+# Nothing configured at all (Linux/remote)
+echo "🔔 Notifications plugin installed — needs setup"
+echo "  ⚠️  No notification providers configured"
+echo "  → Run: ${PLUGIN_DIR}/setup.sh (30 seconds)"
+echo "  This will set up push notifications to your phone via ntfy.sh"
