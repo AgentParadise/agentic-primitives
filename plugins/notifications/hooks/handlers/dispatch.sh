@@ -26,7 +26,7 @@ elif value is not None:
 " <<< "$INPUT"
 }
 
-HOOK_TYPE="$(extract_json_string "hook_type")"
+HOOK_TYPE="$(extract_json_string "hook_event_name")"
 SESSION_ID="$(extract_json_string "session_id")"
 
 # --- Determine emoji and summary ---
