@@ -150,7 +150,7 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 | **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |
 | **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |
 | **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |
-| **notifications** | `claude plugin install notifications@agentic-primitives --scope user` | Push notifications (ntfy, macOS, Pushover) |
+| **notifications** | `claude plugin install notifications@agentic-primitives --scope user` | Push notifications (ntfy, macOS, Pushover). After install, run `/notifications:configure` to set up. |
 | **observability** | `claude plugin install observability@agentic-primitives --scope user` | Full-spectrum JSONL event observability |
 
 ### What's in each plugin
@@ -162,7 +162,7 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 | **research** | `scrape_docs` | -- | -- | -- |
 | **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |
 | **docs** | -- | Fumadocs integration | -- | -- |
-| **notifications** | -- | -- | -- | Notification, Stop, TaskCompleted → ntfy/macOS/Pushover with sound themes |
+| **notifications** | `configure` | -- | -- | Notification, Stop, TaskCompleted → ntfy/macOS/Pushover with sound themes |
 | **observability** | -- | -- | -- | All 14 lifecycle events → structured JSONL via agentic_events |
 
 ---
