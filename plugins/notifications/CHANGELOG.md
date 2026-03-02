@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — 2026-03-02
+
+- Add `/notifications:configure` slash command for interactive setup
+- Remove `setup.sh` (replaced by the slash command)
+- Update `first-run.sh` to reference `/notifications:configure`
+
 ## 0.2.0 — 2026-03-02
 
 - Add sound themes: `default`, `ocean`, `minimal`, `alert`

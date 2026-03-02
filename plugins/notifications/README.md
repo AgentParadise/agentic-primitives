@@ -1,6 +1,6 @@
 # 🔔 Notifications Plugin
 
-Get notified when Claude Code needs your attention, finishes a task, or stops. Supports macOS native notifications, [ntfy.sh](https://ntfy.sh) push notifications (any device), and [Pushover](https://pushover.net). Zero config on macOS — just install and go. For mobile push, export one env var.
+Get notified when Claude Code needs your attention, finishes a task, or stops. Supports macOS native notifications, [ntfy.sh](https://ntfy.sh) push notifications (any device), and [Pushover](https://pushover.net). Zero config on macOS — just install and go. For mobile push, run `/notifications:configure`.
 
 ## Quick Start
 
@@ -8,17 +8,28 @@ Get notified when Claude Code needs your attention, finishes a task, or stops. S
 # 1. Install the plugin (symlink or copy into your Claude Code plugins dir)
 ln -s /path/to/agentic-primitives/plugins/notifications ~/.claude/plugins/notifications
 
-# 2. (Optional) Get push notifications on your phone
-export NTFY_TOPIC="my_secret_topic"  # or run ./setup.sh to generate a secure one
+# 2. (Optional) Configure push notifications interactively
+#    In Claude Code, run the slash command:
+/notifications:configure
 
 # 3. Done. Claude Code will notify you automatically.
 ```
 
-## First Run
+## `/notifications:configure` Command
 
-On **macOS**, notifications work immediately — no setup required. Native desktop notifications fire automatically.
+Run `/notifications:configure` inside Claude Code for an interactive setup experience. It will:
 
-On **Linux/remote machines**, the plugin prompts you on first session start to configure push notifications. Once you run `./setup.sh` or set `NTFY_TOPIC` manually, the prompt disappears and never shows again.
+1. **Show current status** — which providers are active, current sound theme
+2. **Set up ntfy push** — generates a secure topic, writes to your shell RC
+3. **Change sound theme** — pick from 4 themes (default/ocean/minimal/alert)
+4. **Disable a provider** — cleanly remove env vars from your shell RC
+5. **Test notifications** — send a test through each active provider
+
+## After Install
+
+On **macOS**, desktop notifications work immediately — no setup required.
+
+For **mobile push notifications** (any platform), run `/notifications:configure` inside Claude Code. It walks you through setup interactively.
 
 ## Hooked Events
 
@@ -38,7 +49,7 @@ If `osascript` is available, you get native macOS notifications with sound. No c
 
 Free, open-source push notifications. Works on iOS, Android, and web.
 
-1. Run `./setup.sh` to generate a secure topic, **or** set `NTFY_TOPIC` manually
+1. Run `/notifications:configure` and choose "Set up ntfy push"
 2. Subscribe to your topic in the [ntfy app](https://ntfy.sh)
 3. Notifications arrive on all your devices
 
@@ -63,11 +74,11 @@ Choose a theme to change all notification sounds at once, or override individual
 
 ### Setting a Theme
 
+Run `/notifications:configure` and choose "Change sound theme", or set manually:
+
 ```bash
 export CLAUDE_NOTIFY_THEME="ocean"
 ```
-
-Or run `./setup.sh` which offers an interactive theme picker.
 
 ### Sound Resolution Priority
 
@@ -125,4 +136,4 @@ For power users, see `config.example.json`. Environment variables always take pr
 
 ## Security
 
-⚠️ **ntfy topics are public by default.** Anyone who knows your topic name can read your notifications. Use `./setup.sh` to generate a topic with 64 random hex characters — this makes it unguessable (256 bits of entropy). For sensitive environments, consider [self-hosting ntfy](https://docs.ntfy.sh/install/) with access control.
+⚠️ **ntfy topics are public by default.** Anyone who knows your topic name can read your notifications. The `/notifications:configure` command generates a topic with 64 random hex characters — this makes it unguessable (256 bits of entropy). For sensitive environments, consider [self-hosting ntfy](https://docs.ntfy.sh/install/) with access control.

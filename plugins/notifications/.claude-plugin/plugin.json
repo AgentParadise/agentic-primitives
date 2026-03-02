@@ -1,6 +1,6 @@
 {
   "name": "notifications",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Desktop and push notifications for Claude Code — macOS native, ntfy.sh, and Pushover with sound themes",
   "author": {
     "name": "NeuralEmpowerment"
