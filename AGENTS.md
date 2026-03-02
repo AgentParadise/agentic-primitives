@@ -1,39 +1,42 @@
-# AGENTS.md
+---
+description:
+globs:
+alwaysApply: true
+---
+# Agentic Primitives
 
-## What Is This
-
-Agentic Primitives — atomic building blocks for AI agent systems. This repo contains Claude Code plugins and Python libraries that provide reusable capabilities (SDLC, research, workspace management, observability, etc.) for agent-powered workflows.
+Atomic building blocks for AI agent systems. Claude Code plugins + Python libraries for reusable agent capabilities (SDLC, research, workspace management, observability, notifications).
 
 ## Repo Structure
 
 ```
 plugins/                  ← Claude Code plugins
   sdlc/                     SDLC automation (PR, review, test)
-  workspace/                Workspace management
+  workspace/                Workspace lifecycle + observability hooks
   research/                 Web research capabilities
-  meta/                     Meta/self-improvement
+  meta/                     Meta/self-improvement tools
   docs/                     Documentation generation
-  notifications/            Notification handling
-  observability/            Logging & monitoring
+  notifications/            Push notifications (ntfy, macOS, Pushover)
+  observability/            Full-spectrum JSONL event emission
 lib/python/               ← Python packages
-  agentic_events/           Event bus
-  agentic_isolation/        Sandboxing
+  agentic_events/           Session recording & playback
+  agentic_isolation/        Docker workspace sandboxing
   agentic_logging/          Structured logging
 providers/                ← Workspace providers (Docker, local)
-.claude-plugin/           ← Marketplace config + root plugin settings
+.claude-plugin/           ← Marketplace config (marketplace.json)
 docs/                     ← ADRs, guides
 tests/                    ← Test suite
 ```
 
 ## Plugin Structure
 
-Every plugin must follow this layout:
+Every plugin must have `.claude-plugin/plugin.json`. Other dirs are optional.
 
 ```
 plugins/<name>/
 ├── .claude-plugin/plugin.json  ← REQUIRED: name, version, description
-├── hooks/hooks.json            ← Hook definitions
-├── hooks/handlers/             ← Hook handler scripts
+├── hooks/hooks.json            ← Hook definitions (optional)
+├── hooks/handlers/             ← Hook handler scripts (optional)
 ├── commands/                   ← Slash commands (optional)
 ├── skills/                     ← Skills (optional)
 ├── agents/                     ← Agent definitions (optional)
@@ -41,17 +44,22 @@ plugins/<name>/
 └── CHANGELOG.md
 ```
 
+**plugin.json schema:** Only `name` is required. Valid fields: `name`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, `commands`, `agents`, `skills`, `hooks`, `mcpServers`, `outputStyles`, `lspServers`. Unknown keys cause install failures.
+
 ## Common Tasks
 
 **Add a plugin:**
-1. Create `plugins/<name>/` with `plugin.json` and `hooks/hooks.json`
-2. Register in `.claude-plugin/marketplace.json`
-3. Add to root README tables
-4. `just qa-fix` → PR
+1. Create `plugins/<name>/.claude-plugin/plugin.json`
+2. Add hooks, commands, skills, agents as needed
+3. **Register in `.claude-plugin/marketplace.json`** ← required for `claude plugin install`
+4. Add to root `README.md` install table + feature matrix
+5. `just qa-fix` → PR with conventional commit
 
 **Update a plugin:**
-1. Bump version in `plugin.json` + update `CHANGELOG.md`
-2. `just qa-fix` → PR
+1. Make changes
+2. Bump version in `.claude-plugin/plugin.json` (CI enforces version bump on content changes)
+3. Update `CHANGELOG.md`
+4. `just qa-fix` → PR
 
 **QA:**
 - `just qa` — full validation suite
@@ -62,7 +70,7 @@ plugins/<name>/
 
 ## Conventions
 
-- **Commits:** Conventional (`feat:`, `fix:`, `docs:`, `chore:`, etc.)
+- **Commits:** Conventional format — `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`
 - **Python:** Use `uv`, never `pip`
 - **Architecture decisions:** Document in `docs/adrs/`
-- **Reference:** [Claude Code Plugin Docs](https://docs.anthropic.com/en/docs/claude-code/plugins)
+- **Plugin docs:** [Claude Code Plugins](https://code.claude.com/docs/en/plugins.md) · [Reference](https://code.claude.com/docs/en/plugins-reference.md) · [Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces.md)
