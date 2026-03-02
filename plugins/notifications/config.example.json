@@ -1,0 +1,17 @@
+{
+  "_comment": "Optional config for power users. Environment variables take precedence.",
+  "ntfy": {
+    "topic": "your_topic_here",
+    "server": "https://ntfy.sh"
+  },
+  "pushover": {
+    "token": "",
+    "user": ""
+  },
+  "macos": {
+    "sound": "Ping",
+    "theme": "default",
+    "enabled": true
+  },
+  "machine": "my-machine"
+}

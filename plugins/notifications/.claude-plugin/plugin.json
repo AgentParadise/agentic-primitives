@@ -1,0 +1,31 @@
+{
+  "name": "notifications",
+  "version": "0.2.0",
+  "description": "Desktop and push notifications for Claude Code — macOS native, ntfy.sh, and Pushover with sound themes",
+  "author": {
+    "name": "NeuralEmpowerment"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives",
+  "requires_env": {
+    "NTFY_TOPIC": {
+      "description": "ntfy.sh topic for push notifications (run setup.sh to generate a secure one)",
+      "required": false,
+      "secret": true
+    },
+    "PUSHOVER_TOKEN": {
+      "description": "Pushover API token",
+      "required": false,
+      "secret": true
+    },
+    "PUSHOVER_USER": {
+      "description": "Pushover user key",
+      "required": false,
+      "secret": true
+    },
+    "NOTIFY_SOUND_THEME": {
+      "description": "Sound theme for macOS notifications (default, ocean, minimal, alert)",
+      "required": false,
+      "secret": false
+    }
+  }
+}
