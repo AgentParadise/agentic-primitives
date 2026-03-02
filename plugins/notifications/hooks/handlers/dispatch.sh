@@ -26,8 +26,15 @@ elif value is not None:
 " <<< "$INPUT"
 }
 
-HOOK_TYPE="$(extract_json_string "hook_type")"
+HOOK_TYPE="$(extract_json_string "hook_event_name")"
 SESSION_ID="$(extract_json_string "session_id")"
+
+# --- Git branch (best-effort) ---
+CWD="$(extract_json_string "cwd")"
+BRANCH=""
+if [[ -n "$CWD" ]] && command -v git &>/dev/null; then
+  BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+fi
 
 # --- Determine emoji and summary ---
 MACHINE="${CLAUDE_NOTIFY_MACHINE:-$(hostname)}"
@@ -78,7 +85,12 @@ case "$HOOK_TYPE" in
 esac
 
 # --- Format message ---
-FORMATTED="${MACHINE}: ${EMOJI} ${HOOK_TYPE} — ${SUMMARY}"
+BRANCH_LINE=""
+if [[ -n "$BRANCH" ]]; then
+  BRANCH_LINE=" [${BRANCH}]"
+fi
+
+FORMATTED="${MACHINE}${BRANCH_LINE}: ${EMOJI} ${HOOK_TYPE} — ${SUMMARY}"
 
 # --- Dispatch to active providers ---
 
