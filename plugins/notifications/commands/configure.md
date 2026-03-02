@@ -64,11 +64,17 @@ Wait for the user to choose, then follow the appropriate section below.
 
 ## Option 1: Set Up ntfy Push
 
-1. Generate a secure topic:
+1. Ask the user for an optional name prefix (e.g., their name). Generate a secure topic that fits within ntfy's **64-character limit**:
    ```bash
-   TOPIC="claude_$(openssl rand -hex 32)"
-   echo "Your topic: $TOPIC"
+   PREFIX="${1:-claude}"  # user's chosen prefix, default "claude"
+   # Calculate remaining space: 64 total - prefix length - 1 underscore
+   REMAINING=$((64 - ${#PREFIX} - 1))
+   # Each hex char = 4 bits, so REMAINING hex chars
+   RANDOM_PART=$(openssl rand -hex 32 | head -c "$REMAINING")
+   TOPIC="${PREFIX}_${RANDOM_PART}"
+   echo "Your topic ($((${#TOPIC})) chars): $TOPIC"
    ```
+   If the prefix is too long (would leave fewer than 16 random chars), warn the user and suggest a shorter one.
 
 2. Detect the user's shell RC file:
    ```bash
@@ -183,9 +189,57 @@ Report which tests were sent and ask if the user received them.
 
 ---
 
+## Step 0: Check for Conflicts (run before Step 1)
+
+Before showing status, check for any notification-related hooks in the user's global or project settings that might clash with this plugin. This plugin should be the **single source of truth** for notifications.
+
+```bash
+echo "=== Checking for conflicting notification config ==="
+
+# Check global settings
+if [ -f "$HOME/.claude/settings.json" ]; then
+  # Look for Notification hooks outside this plugin
+  if grep -q '"Notification"' "$HOME/.claude/settings.json" 2>/dev/null; then
+    echo "⚠️  Found Notification hooks in ~/.claude/settings.json"
+    echo "   These may conflict with the notifications plugin."
+    cat "$HOME/.claude/settings.json" | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+    hooks=d.get('hooks',{}).get('Notification',[])
+    if hooks:
+        print('   Hooks found:')
+        for h in hooks:
+            for hook in h.get('hooks',[]):
+                print(f\"     - {hook.get('type','?')}: {hook.get('command',hook.get('prompt',''))[:60]}\")
+except: pass
+" 2>/dev/null
+  fi
+fi
+
+# Check project settings
+if [ -f ".claude/settings.json" ]; then
+  if grep -q '"Notification"\|"Stop"\|"TaskCompleted"' ".claude/settings.json" 2>/dev/null; then
+    echo "⚠️  Found notification-related hooks in .claude/settings.json (project)"
+  fi
+fi
+
+# Check for conflicting env vars from other tools
+for var in CLAUDE_NOTIFY_SOUND CLAUDE_NOTIFY_SOUND_IDLE CLAUDE_NOTIFY_SOUND_PERMISSION CLAUDE_NOTIFY_SOUND_COMPLETE; do
+  if [ -n "${!var:-}" ]; then
+    echo "ℹ️  Individual sound override active: $var=${!var}"
+  fi
+done
+```
+
+If conflicts are found, inform the user and offer to help clean them up (remove conflicting hooks from settings.json so the plugin is the single source of truth).
+
+---
+
 ## Behavior Notes
 
 - Be conversational. Ask one question at a time, wait for the user to answer.
 - After completing any option, ask if they'd like to do anything else.
 - Always check for existing entries before appending (idempotent).
 - Use `sed -i.bak` + `rm .bak` for portable in-place editing (macOS sed compatibility).
+- This plugin is the **single source of truth** for notifications. If conflicting notification hooks exist in settings files, offer to remove them.
