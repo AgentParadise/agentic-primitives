@@ -21,7 +21,17 @@ fi
 if [[ -z "$PREFIX" ]]; then
   echo "Skipping ntfy setup."
 else
-  RANDOM_HEX="$(openssl rand -hex 32)"
+  # Generate secure random hex (with fallbacks)
+  if command -v openssl &>/dev/null; then
+    RANDOM_HEX="$(openssl rand -hex 32)"
+  elif command -v python3 &>/dev/null; then
+    RANDOM_HEX="$(python3 -c 'import os; print(os.urandom(32).hex())')"
+  elif [[ -r /dev/urandom ]]; then
+    RANDOM_HEX="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  else
+    echo "Error: Cannot generate secure random. Install openssl or python3." >&2
+    exit 1
+  fi
   TOPIC="${PREFIX}_${RANDOM_HEX}"
   echo ""
   echo "✅ Your ntfy topic: ${TOPIC}"
@@ -73,10 +83,13 @@ if command -v osascript &>/dev/null; then
       CUSTOM_IDLE="${CUSTOM_IDLE:-Ping}"
       CUSTOM_PERM="${CUSTOM_PERM:-Basso}"
       CUSTOM_COMP="${CUSTOM_COMP:-Glass}"
+      # Remove existing sound overrides before writing
+      sed -i.bak '/CLAUDE_NOTIFY_SOUND_IDLE\|CLAUDE_NOTIFY_SOUND_PERMISSION\|CLAUDE_NOTIFY_SOUND_COMPLETE\|CLAUDE_NOTIFY_THEME/d' "$SHELL_RC" 2>/dev/null || true
+      rm -f "${SHELL_RC}.bak"
       {
-        echo "  export CLAUDE_NOTIFY_SOUND_IDLE=\"${CUSTOM_IDLE}\""
-        echo "  export CLAUDE_NOTIFY_SOUND_PERMISSION=\"${CUSTOM_PERM}\""
-        echo "  export CLAUDE_NOTIFY_SOUND_COMPLETE=\"${CUSTOM_COMP}\""
+        echo "export CLAUDE_NOTIFY_SOUND_IDLE=\"${CUSTOM_IDLE}\""
+        echo "export CLAUDE_NOTIFY_SOUND_PERMISSION=\"${CUSTOM_PERM}\""
+        echo "export CLAUDE_NOTIFY_SOUND_COMPLETE=\"${CUSTOM_COMP}\""
       } >> "$SHELL_RC"
       echo ""
       echo "✅ Custom sounds written to $SHELL_RC"
@@ -86,7 +99,10 @@ if command -v osascript &>/dev/null; then
   esac
 
   if [[ -n "${THEME:-}" ]]; then
-    echo "  export CLAUDE_NOTIFY_THEME=\"${THEME}\"" >> "$SHELL_RC"
+    # Remove existing theme/sound overrides before writing
+    sed -i.bak '/CLAUDE_NOTIFY_THEME\|CLAUDE_NOTIFY_SOUND_IDLE\|CLAUDE_NOTIFY_SOUND_PERMISSION\|CLAUDE_NOTIFY_SOUND_COMPLETE/d' "$SHELL_RC" 2>/dev/null || true
+    rm -f "${SHELL_RC}.bak"
+    echo "export CLAUDE_NOTIFY_THEME=\"${THEME}\"" >> "$SHELL_RC"
     echo ""
     echo "✅ Theme '${THEME}' written to $SHELL_RC"
   fi

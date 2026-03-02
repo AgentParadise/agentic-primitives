@@ -8,11 +8,22 @@ PROVIDERS_DIR="${SCRIPT_DIR}/providers"
 # --- Read JSON from stdin ---
 INPUT="$(cat)"
 
-# --- Extract fields via lightweight JSON parsing (no jq dependency) ---
-# Claude Code hook JSON has: hook_type, session_id, and event-specific fields
+# --- Extract fields from JSON ---
+# Uses python3 for correct JSON parsing (handles escaped quotes, newlines, etc.)
 extract_json_string() {
   local key="$1"
-  echo "$INPUT" | grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed "s/\"${key}\"[[:space:]]*:[[:space:]]*\"//" | sed 's/"$//'
+  python3 -c "
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+    sys.exit(0)
+value = data.get('$key', '')
+if isinstance(value, str):
+    print(value)
+elif value is not None:
+    print(json.dumps(value, ensure_ascii=False))
+" <<< "$INPUT"
 }
 
 HOOK_TYPE="$(extract_json_string "hook_type")"
@@ -86,5 +97,6 @@ if [[ -n "${PUSHOVER_TOKEN:-}" && -n "${PUSHOVER_USER:-}" ]]; then
   "$PROVIDERS_DIR/pushover.sh" "$HOOK_TYPE" "$SUMMARY" "$FORMATTED" &
 fi
 
-# Wait for all background providers (within hook timeout)
-wait
+# Wait for all background providers (within hook timeout).
+# Ignore exit codes so provider failures don't fail the hook under set -e.
+wait || true

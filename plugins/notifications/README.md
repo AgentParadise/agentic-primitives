@@ -110,10 +110,14 @@ You can also use any `.aiff` file in `/System/Library/Sounds/`.
 
 ## Message Format
 
+**Push providers** (ntfy, Pushover) show the full formatted message:
+
 ```
 my-machine: 🟡 Notification — Needs permission to run command
 my-machine: 🟢 TaskCompleted — Task completed
 ```
+
+**macOS native** notifications display differently due to system constraints: the title is always "Claude Code", the subtitle shows the event type (e.g., "Notification"), and the body shows the summary text.
 
 ## Config File (Optional)
 

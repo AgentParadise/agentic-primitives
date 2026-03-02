@@ -49,4 +49,11 @@ case "$NOTIFY_TYPE" in
   *)          SOUND="${CLAUDE_NOTIFY_SOUND:-Ping}" ;;
 esac
 
-osascript -e "display notification \"${SUMMARY//\"/\\\"}\" with title \"Claude Code\" subtitle \"${HOOK_TYPE//\"/\\\"}\" sound name \"${SOUND//\"/\\\"}\""
+osascript - "$SUMMARY" "$HOOK_TYPE" "$SOUND" <<'APPLESCRIPT'
+on run argv
+  set summary to item 1 of argv
+  set hookType to item 2 of argv
+  set soundName to item 3 of argv
+  display notification summary with title "Claude Code" subtitle hookType sound name soundName
+end run
+APPLESCRIPT
