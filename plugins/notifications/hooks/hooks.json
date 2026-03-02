@@ -25,6 +25,18 @@
         ]
       }
     ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/handlers/first-run.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
     "TaskCompleted": [
       {
         "matcher": "",

@@ -14,6 +14,12 @@ export NTFY_TOPIC="my_secret_topic"  # or run ./setup.sh to generate a secure on
 # 3. Done. Claude Code will notify you automatically.
 ```
 
+## First Run
+
+On **macOS**, notifications work immediately — no setup required. Native desktop notifications fire automatically.
+
+On **Linux/remote machines**, the plugin prompts you on first session start to configure push notifications. Once you run `./setup.sh` or set `NTFY_TOPIC` manually, the prompt disappears and never shows again.
+
 ## Hooked Events
 
 | Event | Emoji | When |
