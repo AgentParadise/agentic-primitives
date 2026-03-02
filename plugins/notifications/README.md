@@ -25,11 +25,11 @@ Run `/notifications:configure` inside Claude Code for an interactive setup exper
 4. **Disable a provider** — cleanly remove env vars from your shell RC
 5. **Test notifications** — send a test through each active provider
 
-## First Run
+## After Install
 
-On **macOS**, notifications work immediately — no setup required. Native desktop notifications fire automatically.
+On **macOS**, desktop notifications work immediately — no setup required.
 
-On **Linux/remote machines**, the plugin prompts you on first session start to run `/notifications:configure`.
+For **mobile push notifications** (any platform), run `/notifications:configure` inside Claude Code. It walks you through setup interactively.
 
 ## Hooked Events
 
