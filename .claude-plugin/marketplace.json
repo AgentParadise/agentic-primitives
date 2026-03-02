@@ -35,6 +35,18 @@
       "description": "Documentation tools — Fumadocs integration and documentation management",
       "source": "./plugins/docs",
       "category": "development"
+    },
+    {
+      "name": "notifications",
+      "description": "Push notifications for Claude Code — ntfy.sh, macOS native, and Pushover with sound themes. Zero-config on macOS.",
+      "source": "./plugins/notifications",
+      "category": "observability"
+    },
+    {
+      "name": "observability",
+      "description": "Full-spectrum agent observability — hooks every Claude Code lifecycle event and emits structured JSONL events",
+      "source": "./plugins/observability",
+      "category": "observability"
     }
   ]
 }
