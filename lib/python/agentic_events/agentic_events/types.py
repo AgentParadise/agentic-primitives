@@ -67,6 +67,14 @@ class SecurityDecision(StrEnum):
     WARN = "warn"
 
 
+class ClaudeToolName(StrEnum):
+    """Claude CLI built-in tool names used for lifecycle detection."""
+
+    SUBAGENT = "Agent"
+    # Pre-2026 name for the subagent tool (Claude CLI renamed Task → Agent)
+    SUBAGENT_LEGACY = "Task"
+
+
 class SessionSource(StrEnum):
     """How a session was started."""
 
