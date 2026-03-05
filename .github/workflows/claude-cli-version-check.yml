@@ -1,0 +1,99 @@
+name: Claude CLI Version Check
+
+on:
+  schedule:
+    # Run daily at 09:00 UTC
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get pinned version from Dockerfile
+        id: pinned
+        run: |
+          VERSION=$(grep 'ARG CLAUDE_CLI_VERSION=' providers/workspaces/claude-cli/Dockerfile | cut -d= -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Pinned version: $VERSION"
+
+      - name: Get latest npm version and changelog
+        id: latest
+        run: |
+          VERSION=$(npm view @anthropic-ai/claude-code version)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Latest version: $VERSION"
+
+          # Fetch changelog from npm package metadata (repository URL)
+          REPO_URL=$(npm view @anthropic-ai/claude-code repository.url 2>/dev/null | sed 's|git+||;s|\.git$||;s|ssh://git@|https://|')
+          if [ -n "$REPO_URL" ]; then
+            CHANGELOG_URL="${REPO_URL}/releases"
+            echo "changelog_url=$CHANGELOG_URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "changelog_url=https://www.npmjs.com/package/@anthropic-ai/claude-code?activeTab=versions" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compare versions
+        if: steps.pinned.outputs.version != steps.latest.outputs.version
+        run: |
+          echo "::warning::Claude CLI updated: ${{ steps.pinned.outputs.version }} -> ${{ steps.latest.outputs.version }}"
+          echo "Review changelog and test JSONL contract before bumping."
+          echo "Key areas: tool names (ClaudeToolName), stream-json schema, hook event names."
+
+      - name: Open issue if version changed
+        if: steps.pinned.outputs.version != steps.latest.outputs.version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pinned = '${{ steps.pinned.outputs.version }}';
+            const latest = '${{ steps.latest.outputs.version }}';
+            const changelogUrl = '${{ steps.latest.outputs.changelog_url }}';
+            const title = `Claude CLI update available: ${pinned} -> ${latest}`;
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'claude-cli-update',
+            });
+
+            if (issues.data.some(i => i.title === title)) {
+              console.log('Issue already exists, skipping.');
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ['claude-cli-update'],
+              body: [
+                `## Claude CLI Version Update`,
+                ``,
+                `| | Version |`,
+                `|---|---|`,
+                `| **Pinned** | \`${pinned}\` |`,
+                `| **Latest** | \`${latest}\` |`,
+                ``,
+                `### Changelog`,
+                ``,
+                `${changelogUrl}`,
+                ``,
+                `### Before bumping, verify:`,
+                `- [ ] Tool names haven't changed (check \`ClaudeToolName\` in \`agentic_events/types.py\`)`,
+                `- [ ] \`stream-json\` output schema is compatible`,
+                `- [ ] Hook event names (\`SessionStart\`, \`PreToolUse\`, etc.) are unchanged`,
+                `- [ ] Run subagent-demo workflow and confirm \`subagent_started\`/\`subagent_stopped\` events appear`,
+                ``,
+                `### To bump:`,
+                `\`\`\`dockerfile`,
+                `# providers/workspaces/claude-cli/Dockerfile`,
+                `ARG CLAUDE_CLI_VERSION=${latest}`,
+                `\`\`\``,
+                ``,
+                `Then rebuild: \`just workspace-build\``,
+              ].join('\n'),
+            });
