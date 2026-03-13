@@ -6,6 +6,10 @@ on:
     - cron: "0 9 * * *"
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
@@ -51,6 +55,23 @@ jobs:
             const latest = '${{ steps.latest.outputs.version }}';
             const changelogUrl = '${{ steps.latest.outputs.changelog_url }}';
             const title = `Claude CLI update available: ${pinned} -> ${latest}`;
+
+            // Ensure label exists (avoid 422 if missing)
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'claude-cli-update',
+              });
+            } catch {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'claude-cli-update',
+                color: '1d76db',
+                description: 'Claude CLI version update available',
+              });
+            }
 
             // Check if issue already exists
             const issues = await github.rest.issues.listForRepo({
