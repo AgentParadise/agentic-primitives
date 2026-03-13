@@ -64,6 +64,11 @@ class Recording(str, Enum):
     ARTIFACT_WRITE = "artifact-write"  # Writes to artifacts/output/
     ARTIFACT_READ_WRITE = "artifact-read-write"  # Reads input/, writes output/
 
+    # Hook-based recordings (newer CLI versions)
+    SUBAGENT_CONCURRENT = "subagent-concurrent"  # v2.0.76 — concurrent subagent lifecycle
+    CONTEXT_TRACKING = "context-tracking"  # v2.1.29 — hook event format
+    MULTI_MODEL_USAGE = "multi-model-usage"  # v2.1.29 — multi-model token tracking
+
 
 def get_recordings_dir() -> Path:
     """Get the canonical recordings directory.
