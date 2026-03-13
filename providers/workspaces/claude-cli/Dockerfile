@@ -82,7 +82,11 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && rm -rf /root/.local
 
 # Install Claude CLI globally via npm
-RUN npm install -g @anthropic-ai/claude-code
+# Pin version to control JSONL output contract — bump deliberately, not silently.
+# When upgrading, verify: tool names (Agent vs Task), stream-json event schema,
+# hook event names. See ClaudeToolName in agentic_events.types.
+ARG CLAUDE_CLI_VERSION=2.1.69
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}
 
 # =============================================================================
 # LSP: Language Servers for code intelligence
