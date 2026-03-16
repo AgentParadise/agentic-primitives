@@ -85,7 +85,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 # Pin version to control JSONL output contract — bump deliberately, not silently.
 # When upgrading, verify: tool names (Agent vs Task), stream-json event schema,
 # hook event names. See ClaudeToolName in agentic_events.types.
-ARG CLAUDE_CLI_VERSION=2.1.69
+ARG CLAUDE_CLI_VERSION=2.1.76
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}
 
 # =============================================================================
@@ -212,6 +212,9 @@ ENV HOME=/home/agent \
     RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/home/agent/.cargo \
     PATH=/usr/local/cargo/bin:$PATH
+
+# Labels for version tracking and image selection
+LABEL agentic.claude_cli_version=${CLAUDE_CLI_VERSION}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \
