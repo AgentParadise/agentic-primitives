@@ -14,7 +14,7 @@ jobs:
   check-version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Get pinned version from Dockerfile
         id: pinned
@@ -48,7 +48,7 @@ jobs:
 
       - name: Open issue if version changed
         if: steps.pinned.outputs.version != steps.latest.outputs.version
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const pinned = '${{ steps.pinned.outputs.version }}';
