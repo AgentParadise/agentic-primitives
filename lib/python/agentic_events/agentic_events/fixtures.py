@@ -64,6 +64,11 @@ class Recording(str, Enum):
     ARTIFACT_WRITE = "artifact-write"  # Writes to artifacts/output/
     ARTIFACT_READ_WRITE = "artifact-read-write"  # Reads input/, writes output/
 
+    # Subagent and advanced recordings
+    SUBAGENT_CONCURRENT = "subagent-concurrent"
+    CONTEXT_TRACKING = "context-tracking"
+    MULTI_MODEL_USAGE = "multi-model-usage"
+
 
 def get_recordings_dir() -> Path:
     """Get the canonical recordings directory.
