@@ -58,12 +58,33 @@ class JSONFormatter(jsonlogger.JsonFormatter):  # type: ignore[name-defined, mis
 # logging.LogRecord.__dict__ is the *class* dict and does not contain these —
 # they are set as instance attributes in LogRecord.__init__ — so we maintain an
 # explicit exclusion set rather than relying on class-dict membership checks.
-_STDLIB_LOG_RECORD_FIELDS = frozenset({
-    "name", "msg", "args", "created", "filename", "funcName",
-    "levelname", "levelno", "lineno", "module", "msecs", "pathname",
-    "process", "processName", "relativeCreated", "stack_info", "exc_info",
-    "exc_text", "thread", "threadName", "taskName", "message", "asctime",
-})
+_STDLIB_LOG_RECORD_FIELDS = frozenset(
+    {
+        "name",
+        "msg",
+        "args",
+        "created",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "module",
+        "msecs",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "exc_info",
+        "exc_text",
+        "thread",
+        "threadName",
+        "taskName",
+        "message",
+        "asctime",
+    }
+)
 
 
 class HumanFormatter(logging.Formatter):
