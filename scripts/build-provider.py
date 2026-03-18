@@ -151,18 +151,47 @@ def get_git_commit() -> str:
     return "unknown"
 
 
+def extract_cli_version(build_context: Path) -> str | None:
+    """Extract CLAUDE_CLI_VERSION from the staged Dockerfile."""
+    dockerfile = build_context / "Dockerfile"
+    if not dockerfile.exists():
+        return None
+    for line in dockerfile.read_text().splitlines():
+        # Match: ARG CLAUDE_CLI_VERSION=X.Y.Z
+        if line.strip().startswith("ARG CLAUDE_CLI_VERSION="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
 def docker_build(
     build_context: Path,
     tag: str,
     no_cache: bool = False,
 ) -> None:
-    """Run docker build with commit label for cache invalidation."""
+    """Run docker build with commit label for cache invalidation.
+
+    Also tags with the CLI version (e.g., :2.1.76) so consumers can
+    pin specific versions.
+    """
     commit = get_git_commit()
-    cmd = ["docker", "build", "-t", tag, "--label", f"agentic.commit={commit}", "."]
+    # Build args/flags first, context path "." last (docker build requires this order)
+    cmd = ["docker", "build", "-t", tag, "--label", f"agentic.commit={commit}"]
+
+    # Add version-specific tag (e.g., agentic-workspace-claude-cli:2.1.76)
+    cli_version = extract_cli_version(build_context)
+    if cli_version:
+        base_name = tag.rsplit(":", 1)[0]
+        version_tag = f"{base_name}:{cli_version}"
+        cmd.extend(["-t", version_tag])
+
+    cmd.append(".")
+
     if no_cache:
         cmd.insert(2, "--no-cache")
 
     print(f"\n🐳 Building Docker image: {tag}")
+    if cli_version:
+        print(f"   Also tagged: {version_tag}")
     print(f"   Context: {build_context}")
     print(f"   Commit: {commit}")
 
@@ -173,6 +202,8 @@ def docker_build(
         sys.exit(1)
 
     print(f"\n✅ Successfully built: {tag}")
+    if cli_version:
+        print(f"   Version tag: {version_tag}")
 
 
 def main():
