@@ -11,7 +11,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -25,7 +24,6 @@ from agentic_isolation.retry import (
     retry_async,
     retry_with_circuit_breaker,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
