@@ -214,6 +214,8 @@ ENV HOME=/home/agent \
     PATH=/usr/local/cargo/bin:$PATH
 
 # Labels for version tracking and image selection
+# Re-declare ARG here: build args are stage-scoped and don't carry across FROM boundaries.
+ARG CLAUDE_CLI_VERSION
 LABEL agentic.claude_cli_version=${CLAUDE_CLI_VERSION}
 
 # Health check
