@@ -272,6 +272,34 @@ class TestHumanFormatter:
         assert "Line 2" in output
         assert "Line 3" in output
 
+    def test_stdlib_fields_not_rendered_as_extra(self) -> None:
+        """Stdlib LogRecord fields must not appear as ├─ tree entries.
+
+        LogRecord instance attributes (pathname, lineno, thread, etc.) are NOT
+        in logging.LogRecord.__dict__ (class dict), so a class-dict membership
+        check incorrectly lets them through.  The explicit _STDLIB_LOG_RECORD_FIELDS
+        exclusion set in HumanFormatter must block all of them.
+        """
+        formatter = HumanFormatter(use_color=False)
+        record = logging.LogRecord(
+            name="test.module",
+            level=logging.INFO,
+            pathname="/some/path/module.py",
+            lineno=42,
+            msg="Test message",
+            args=(),
+            exc_info=None,
+        )
+        record.host = "localhost"  # type: ignore[attr-defined]  # genuine extra field
+
+        output = formatter.format(record)
+
+        # Genuine extra field should appear
+        assert "host:" in output
+        # Stdlib fields must NOT appear as tree entries
+        for field in ("pathname", "lineno", "thread", "threadName", "process", "processName"):
+            assert f"{field}:" not in output
+
     def test_timestamp_includes_milliseconds(self) -> None:
         """Test that timestamp includes milliseconds."""
         formatter = HumanFormatter(use_color=False)
