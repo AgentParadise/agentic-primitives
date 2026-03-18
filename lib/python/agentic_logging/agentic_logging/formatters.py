@@ -54,6 +54,39 @@ class JSONFormatter(jsonlogger.JsonFormatter):  # type: ignore[name-defined, mis
             log_record["exc_info"] = self.formatException(record.exc_info)
 
 
+# Standard LogRecord instance attributes that should never appear as extra fields.
+# logging.LogRecord.__dict__ is the *class* dict and does not contain these —
+# they are set as instance attributes in LogRecord.__init__ — so we maintain an
+# explicit exclusion set rather than relying on class-dict membership checks.
+_STDLIB_LOG_RECORD_FIELDS = frozenset(
+    {
+        "name",
+        "msg",
+        "args",
+        "created",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "module",
+        "msecs",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "exc_info",
+        "exc_text",
+        "thread",
+        "threadName",
+        "taskName",
+        "message",
+        "asctime",
+    }
+)
+
+
 class HumanFormatter(logging.Formatter):
     """Human-readable formatter with minimal color and structure.
 
@@ -151,11 +184,13 @@ class HumanFormatter(logging.Formatter):
         # Message on next line with indent
         lines = [first_line, f"  {record.getMessage()}"]
 
-        # Add extra fields if present
+        # Add extra fields if present (caller-supplied via extra={...}).
+        # Exclude the standard LogRecord instance attributes — they are not in
+        # logging.LogRecord.__dict__ (class dict) so we use an explicit set.
         extra_fields = {
             k: v
             for k, v in record.__dict__.items()
-            if k not in logging.LogRecord.__dict__ and k != "session_id"
+            if k not in _STDLIB_LOG_RECORD_FIELDS and k != "session_id"
         }
 
         # Add session_id first if present
