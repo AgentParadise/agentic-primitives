@@ -174,7 +174,8 @@ def docker_build(
     pin specific versions.
     """
     commit = get_git_commit()
-    cmd = ["docker", "build", "-t", tag, "--label", f"agentic.commit={commit}", "."]
+    # Build args/flags first, context path "." last (docker build requires this order)
+    cmd = ["docker", "build", "-t", tag, "--label", f"agentic.commit={commit}"]
 
     # Add version-specific tag (e.g., agentic-workspace-claude-cli:2.1.76)
     cli_version = extract_cli_version(build_context)
@@ -182,6 +183,8 @@ def docker_build(
         base_name = tag.rsplit(":", 1)[0]
         version_tag = f"{base_name}:{cli_version}"
         cmd.extend(["-t", version_tag])
+
+    cmd.append(".")
 
     if no_cache:
         cmd.insert(2, "--no-cache")
