@@ -203,6 +203,7 @@ async def retry_async(
 
     is_retryable = policy.is_retryable or (lambda _err, _attempt: True)
     last_exc: BaseException = RuntimeError("retry_async called with max_attempts=0")
+    attempt = 0
 
     for attempt in range(1, policy.max_attempts + 1):
         try:
@@ -229,7 +230,7 @@ async def retry_async(
             if delay > 0:
                 await asyncio.sleep(delay)
 
-    raise RetryExhaustedError(policy.max_attempts, last_exc)
+    raise RetryExhaustedError(attempt, last_exc)
 
 
 # ---------------------------------------------------------------------------
@@ -272,8 +273,9 @@ class CircuitBreaker:
         All calls are rejected immediately with :exc:`CircuitOpenError`.
         After *reset_timeout_s* seconds the circuit transitions to HALF_OPEN.
     HALF_OPEN
-        A single probe call is allowed through.  On success the circuit closes;
-        on failure it re-opens.
+        Calls are allowed through until *success_threshold* consecutive successes
+        close the circuit.  A single failure immediately re-opens it.  Multiple
+        concurrent callers may probe simultaneously — no admission lock is enforced.
 
     Parameters
     ----------
@@ -308,6 +310,13 @@ class CircuitBreaker:
         is_failure: Callable[[BaseException], bool] | None = None,
         on_state_change: Callable[[CircuitState, CircuitState], None] | None = None,
     ) -> None:
+        if failure_threshold < 1:
+            raise ValueError(f"failure_threshold must be >= 1, got {failure_threshold}")
+        if success_threshold < 1:
+            raise ValueError(f"success_threshold must be >= 1, got {success_threshold}")
+        if reset_timeout_s < 0:
+            raise ValueError(f"reset_timeout_s must be >= 0, got {reset_timeout_s}")
+
         self._failure_threshold = failure_threshold
         self._reset_timeout_s = reset_timeout_s
         self._success_threshold = success_threshold
@@ -358,7 +367,9 @@ class CircuitBreaker:
 
         if self._state is CircuitState.OPEN:
             assert self._opened_at is not None  # noqa: S101
-            raise CircuitOpenError(reset_at=self._opened_at + self._reset_timeout_s)
+            elapsed = time.monotonic() - self._opened_at
+            remaining = max(0.0, self._reset_timeout_s - elapsed)
+            raise CircuitOpenError(reset_at=time.time() + remaining)
 
         try:
             result = await fn()
