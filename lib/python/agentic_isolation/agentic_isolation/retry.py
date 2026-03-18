@@ -44,7 +44,8 @@ import math
 import random
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Any, TypeVar
 
@@ -74,9 +75,7 @@ class CircuitOpenError(Exception):
 
     def __init__(self, reset_at: float) -> None:
         self.reset_at = reset_at
-        import datetime
-
-        reset_iso = datetime.datetime.fromtimestamp(reset_at).isoformat()
+        reset_iso = datetime.fromtimestamp(reset_at).isoformat()
         super().__init__(f"Circuit breaker is OPEN. Requests rejected until {reset_iso}.")
 
 
@@ -112,12 +111,16 @@ class RetryPolicy:
     #: Optional hook called *before* sleeping; receives ``(error, attempt, delay_s)``.
     on_retry: Callable[[BaseException, int, float], None] | None = None
 
+    def __post_init__(self) -> None:
+        if self.max_attempts < 1:
+            raise ValueError(f"max_attempts must be >= 1, got {self.max_attempts}")
+
     # ------------------------------------------------------------------
     # Factories
     # ------------------------------------------------------------------
 
     @classmethod
-    def exponential(cls, **kwargs: Any) -> "RetryPolicy":
+    def exponential(cls, **kwargs: Any) -> RetryPolicy:
         """Exponential back-off with jitter (recommended for I/O operations)."""
         defaults: dict[str, Any] = {
             "max_attempts": 3,
@@ -130,7 +133,7 @@ class RetryPolicy:
         return cls(**defaults)
 
     @classmethod
-    def fixed(cls, delay_s: float = 0.5, **kwargs: Any) -> "RetryPolicy":
+    def fixed(cls, delay_s: float = 0.5, **kwargs: Any) -> RetryPolicy:
         """Fixed delay between retries (no exponential growth)."""
         defaults: dict[str, Any] = {
             "max_attempts": 3,
@@ -143,7 +146,7 @@ class RetryPolicy:
         return cls(**defaults)
 
     @classmethod
-    def none(cls) -> "RetryPolicy":
+    def none(cls) -> RetryPolicy:
         """No retries – errors propagate after the very first attempt."""
         return cls(max_attempts=1, base_delay_s=0.0, max_delay_s=0.0, jitter=False)
 

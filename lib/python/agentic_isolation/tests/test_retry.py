@@ -416,11 +416,11 @@ class TestRetryWithCircuitBreaker:
         cb = CircuitBreaker(failure_threshold=1)
         fn = always_fail()
         policy = RetryPolicy.none()
-        # Trip the circuit
-        with pytest.raises(TransientError):
+        # Trip the circuit — retry_async wraps the underlying error in RetryExhaustedError
+        with pytest.raises(RetryExhaustedError):
             await retry_with_circuit_breaker(fn, policy, cb)
         assert cb.state is CircuitState.OPEN
-        # Next call should raise CircuitOpenError
+        # Next call should raise CircuitOpenError (circuit is OPEN, call rejected immediately)
         with pytest.raises(CircuitOpenError):
             await retry_with_circuit_breaker(fn, policy, cb)
 
