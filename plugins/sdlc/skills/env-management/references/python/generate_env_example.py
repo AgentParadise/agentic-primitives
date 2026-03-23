@@ -196,6 +196,28 @@ def generate() -> str:
 # Idempotent .env sync
 # ═════════════════════════════════════════════════════════════════════════════
 
+def _is_multiline_end(line: str) -> bool:
+    return line.rstrip().endswith('"') and not line.rstrip().endswith('\\"')
+
+
+def _is_multiline_start(value: str) -> bool:
+    return value.startswith('"') and not value.endswith('"')
+
+
+def _complete_multiline(
+    line: str,
+    current_key: str | None,
+    current_lines: list[str],
+    result: dict[str, str],
+) -> tuple[str | None, list[str], bool]:
+    current_lines.append(line)
+    if _is_multiline_end(line):
+        if current_key:
+            result[current_key] = "\n".join(current_lines)
+        return None, [], False
+    return current_key, current_lines, True
+
+
 def _parse_env(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
@@ -206,11 +228,9 @@ def _parse_env(path: Path) -> dict[str, str]:
 
     for line in path.read_text().splitlines():
         if in_multiline:
-            current_lines.append(line)
-            if line.rstrip().endswith('"') and not line.rstrip().endswith('\\"'):
-                if current_key:
-                    result[current_key] = "\n".join(current_lines)
-                current_key, current_lines, in_multiline = None, [], False
+            current_key, current_lines, in_multiline = _complete_multiline(
+                line, current_key, current_lines, result,
+            )
             continue
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -218,13 +238,37 @@ def _parse_env(path: Path) -> dict[str, str]:
         if "=" in line:
             k, _, v = line.partition("=")
             k, v = k.strip(), v.strip()
-            if v.startswith('"') and not v.endswith('"'):
+            if _is_multiline_start(v):
                 in_multiline = True
                 current_key = k
                 current_lines = [v]
             else:
                 result[k] = v
     return result
+
+
+def _process_template_line(
+    line: str,
+    existing: dict[str, str],
+    template_keys: set[str],
+) -> str:
+    k, _, default = line.partition("=")
+    k = k.strip()
+    template_keys.add(k)
+    return f"{k}={existing[k]}" if k in existing else f"{k}={default.strip()}"
+
+
+def _build_external_section(external: dict[str, str]) -> list[str]:
+    return [
+        "",
+        "# " + "=" * 76,
+        "# EXTERNAL / UNMANAGED VARIABLES",
+        "# " + "=" * 76,
+        "# Not defined in any Settings class. Review periodically.",
+        "",
+        *[f"{k}={v}" for k, v in sorted(external.items())],
+        "",
+    ]
 
 
 def sync_env(example_path: Path, env_path: Path) -> None:
@@ -237,28 +281,14 @@ def sync_env(example_path: Path, env_path: Path) -> None:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             out.append(line)
-            continue
-        if "=" in line:
-            k, _, default = line.partition("=")
-            k = k.strip()
-            template_keys.add(k)
-            out.append(f"{k}={existing[k]}" if k in existing else f"{k}={default.strip()}")
+        elif "=" in line:
+            out.append(_process_template_line(line, existing, template_keys))
         else:
             out.append(line)
 
-    # Preserve vars in .env that aren't in the template
     external = {k: v for k, v in existing.items() if k not in template_keys}
     if external:
-        out.extend([
-            "",
-            "# " + "=" * 76,
-            "# EXTERNAL / UNMANAGED VARIABLES",
-            "# " + "=" * 76,
-            "# Not defined in any Settings class. Review periodically.",
-            "",
-            *[f"{k}={v}" for k, v in sorted(external.items())],
-            "",
-        ])
+        out.extend(_build_external_section(external))
 
     env_path.write_text("\n".join(out))
     new_keys = [k for k in template_keys if k not in existing]

@@ -103,6 +103,31 @@ def uninstall_hooks(target_dir: Path) -> bool:
     return True
 
 
+def _handle_global_install(args: argparse.Namespace, script_dir: Path) -> int:
+    target_dir = get_global_hooks_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    if args.uninstall:
+        ok = uninstall_hooks(target_dir)
+        if ok:
+            subprocess.run(["git", "config", "--global", "--unset", "core.hooksPath"], check=False)
+        return 0 if ok else 1
+    ok = install_hooks(target_dir, script_dir)
+    if ok:
+        subprocess.run(["git", "config", "--global", "core.hooksPath", str(target_dir)], check=True)
+    return 0 if ok else 1
+
+
+def _handle_local_install(args: argparse.Namespace, script_dir: Path) -> int:
+    git_dir = get_git_dir()
+    if git_dir is None:
+        print("Error: Not in a git repository")
+        return 1
+    target_dir = git_dir / "hooks"
+    if args.uninstall:
+        return 0 if uninstall_hooks(target_dir) else 1
+    return 0 if install_hooks(target_dir, script_dir) else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Install observability git hooks")
     parser.add_argument("--global", dest="global_install", action="store_true",
@@ -113,28 +138,8 @@ def main() -> int:
     script_dir = get_script_dir()
 
     if args.global_install:
-        target_dir = get_global_hooks_dir()
-        target_dir.mkdir(parents=True, exist_ok=True)
-        if args.uninstall:
-            ok = uninstall_hooks(target_dir)
-            if ok:
-                subprocess.run(["git", "config", "--global", "--unset", "core.hooksPath"], check=False)
-            return 0 if ok else 1
-        else:
-            ok = install_hooks(target_dir, script_dir)
-            if ok:
-                subprocess.run(["git", "config", "--global", "core.hooksPath", str(target_dir)], check=True)
-            return 0 if ok else 1
-    else:
-        git_dir = get_git_dir()
-        if git_dir is None:
-            print("Error: Not in a git repository")
-            return 1
-        target_dir = git_dir / "hooks"
-        if args.uninstall:
-            return 0 if uninstall_hooks(target_dir) else 1
-        else:
-            return 0 if install_hooks(target_dir, script_dir) else 1
+        return _handle_global_install(args, script_dir)
+    return _handle_local_install(args, script_dir)
 
 
 if __name__ == "__main__":

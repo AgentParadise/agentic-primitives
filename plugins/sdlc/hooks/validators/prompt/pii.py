@@ -78,6 +78,35 @@ CONTEXT_PATTERNS: list[tuple[str, str]] = [
 ]
 
 
+def _scan_pii_patterns(prompt: str) -> tuple[list[dict[str, str | int]], str]:
+    detected_pii: list[dict[str, str | int]] = []
+    highest_risk = "none"
+    risk_order = {"none": 0, "low": 1, "medium": 2, "high": 3}
+
+    for pattern, pii_type, risk_level in PII_PATTERNS:
+        matches = re.findall(pattern, prompt, re.IGNORECASE)
+        if matches:
+            detected_pii.append(
+                {
+                    "type": pii_type,
+                    "risk": risk_level,
+                    "count": len(matches),
+                }
+            )
+            if risk_order.get(risk_level, 0) > risk_order.get(highest_risk, 0):
+                highest_risk = risk_level
+
+    return detected_pii, highest_risk
+
+
+def _scan_context_patterns(prompt: str) -> list[str]:
+    detected_context: list[str] = []
+    for pattern, context_type in CONTEXT_PATTERNS:
+        if re.search(pattern, prompt, re.IGNORECASE):
+            detected_context.append(context_type)
+    return detected_context
+
+
 def validate(
     tool_input: dict[str, Any], context: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -96,29 +125,8 @@ def validate(
     if not prompt:
         return {"safe": True}
 
-    detected_pii: list[dict[str, str | int]] = []
-    highest_risk = "none"
-    risk_order = {"none": 0, "low": 1, "medium": 2, "high": 3}
-
-    # Check for PII patterns
-    for pattern, pii_type, risk_level in PII_PATTERNS:
-        matches = re.findall(pattern, prompt, re.IGNORECASE)
-        if matches:
-            detected_pii.append(
-                {
-                    "type": pii_type,
-                    "risk": risk_level,
-                    "count": len(matches),
-                }
-            )
-            if risk_order.get(risk_level, 0) > risk_order.get(highest_risk, 0):
-                highest_risk = risk_level
-
-    # Check for context patterns (these raise awareness but don't block)
-    detected_context: list[str] = []
-    for pattern, context_type in CONTEXT_PATTERNS:
-        if re.search(pattern, prompt, re.IGNORECASE):
-            detected_context.append(context_type)
+    detected_pii, highest_risk = _scan_pii_patterns(prompt)
+    detected_context = _scan_context_patterns(prompt)
 
     # Determine action based on risk level
     if highest_risk == "high":
