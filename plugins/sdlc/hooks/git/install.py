@@ -176,6 +176,35 @@ def clear_global_hooks_path() -> bool:
         return False
 
 
+def _handle_global_install(args: argparse.Namespace, script_dir: Path) -> int:
+    target_dir = get_global_hooks_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.uninstall:
+        success = uninstall_hooks(target_dir)
+        if success:
+            clear_global_hooks_path()
+        return 0 if success else 1
+
+    success = install_hooks(target_dir, script_dir)
+    if success:
+        configure_global_hooks_path(target_dir)
+    return 0 if success else 1
+
+
+def _handle_local_install(args: argparse.Namespace, script_dir: Path) -> int:
+    git_dir = get_git_dir()
+    if git_dir is None:
+        print("Error: Not in a git repository")
+        return 1
+
+    target_dir = git_dir / "hooks"
+
+    if args.uninstall:
+        return 0 if uninstall_hooks(target_dir) else 1
+    return 0 if install_hooks(target_dir, script_dir) else 1
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -208,31 +237,8 @@ Events are written to: $ANALYTICS_PATH or .agentic/analytics/events.jsonl
     script_dir = get_script_dir()
 
     if args.global_install:
-        target_dir = get_global_hooks_dir()
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        if args.uninstall:
-            success = uninstall_hooks(target_dir)
-            if success:
-                clear_global_hooks_path()
-            return 0 if success else 1
-        else:
-            success = install_hooks(target_dir, script_dir)
-            if success:
-                configure_global_hooks_path(target_dir)
-            return 0 if success else 1
-    else:
-        git_dir = get_git_dir()
-        if git_dir is None:
-            print("Error: Not in a git repository")
-            return 1
-
-        target_dir = git_dir / "hooks"
-
-        if args.uninstall:
-            return 0 if uninstall_hooks(target_dir) else 1
-        else:
-            return 0 if install_hooks(target_dir, script_dir) else 1
+        return _handle_global_install(args, script_dir)
+    return _handle_local_install(args, script_dir)
 
 
 if __name__ == "__main__":

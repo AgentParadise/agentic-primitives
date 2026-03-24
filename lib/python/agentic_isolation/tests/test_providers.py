@@ -85,6 +85,126 @@ class TestWorkspace:
         assert "created_at" in data
 
 
+class TestReadStreamLines:
+    """Tests for BaseProvider._read_stream_lines shared helper."""
+
+    async def test_yields_decoded_lines(self) -> None:
+        """Should yield decoded stdout lines from a subprocess."""
+        import asyncio
+
+        from agentic_isolation.providers.base import BaseProvider
+
+        proc = await asyncio.create_subprocess_exec(
+            "printf",
+            "line1\nline2\nline3\n",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        lines = [line async for line in BaseProvider._read_stream_lines(proc)]
+        assert lines == ["line1", "line2", "line3"]
+
+    async def test_skips_empty_lines(self) -> None:
+        """Should skip empty lines in output."""
+        import asyncio
+
+        from agentic_isolation.providers.base import BaseProvider
+
+        proc = await asyncio.create_subprocess_exec(
+            "printf",
+            "hello\n\nworld\n",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        lines = [line async for line in BaseProvider._read_stream_lines(proc)]
+        assert lines == ["hello", "world"]
+
+    async def test_timeout_kills_process(self) -> None:
+        """Should kill the process when timeout is reached."""
+        import asyncio
+
+        from agentic_isolation.providers.base import BaseProvider
+
+        proc = await asyncio.create_subprocess_exec(
+            "sleep",
+            "60",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        lines = [line async for line in BaseProvider._read_stream_lines(proc, timeout_seconds=1)]
+        assert lines == []
+        # Process should be terminated
+        assert proc.returncode is not None
+
+
+class TestCheckStreamTimeout:
+    """Tests for BaseProvider._check_stream_timeout."""
+
+    async def test_no_timeout_returns_false(self) -> None:
+        """Should return False when no timeout is set."""
+        import asyncio
+        import time
+
+        from agentic_isolation.providers.base import BaseProvider
+
+        proc = await asyncio.create_subprocess_exec(
+            "sleep",
+            "0",
+            stdout=asyncio.subprocess.PIPE,
+        )
+        assert BaseProvider._check_stream_timeout(proc, None, time.perf_counter()) is False
+        proc.kill()
+        await proc.wait()
+
+    async def test_within_timeout_returns_false(self) -> None:
+        """Should return False when within timeout."""
+        import asyncio
+        import time
+
+        from agentic_isolation.providers.base import BaseProvider
+
+        proc = await asyncio.create_subprocess_exec(
+            "sleep",
+            "60",
+            stdout=asyncio.subprocess.PIPE,
+        )
+        assert BaseProvider._check_stream_timeout(proc, 30, time.perf_counter()) is False
+        proc.kill()
+        await proc.wait()
+
+
+class TestTerminateProcess:
+    """Tests for BaseProvider._terminate_process."""
+
+    async def test_terminates_running_process(self) -> None:
+        """Should terminate a running process."""
+        import asyncio
+
+        from agentic_isolation.providers.base import BaseProvider
+
+        proc = await asyncio.create_subprocess_exec(
+            "sleep",
+            "60",
+            stdout=asyncio.subprocess.PIPE,
+        )
+        assert proc.returncode is None
+        await BaseProvider._terminate_process(proc)
+        assert proc.returncode is not None
+
+    async def test_noop_on_already_exited(self) -> None:
+        """Should be safe to call on already-exited process."""
+        import asyncio
+
+        from agentic_isolation.providers.base import BaseProvider
+
+        proc = await asyncio.create_subprocess_exec(
+            "true",
+            stdout=asyncio.subprocess.PIPE,
+        )
+        await proc.wait()
+        # Should not raise
+        await BaseProvider._terminate_process(proc)
+
+
 class TestWorkspaceProviderProtocol:
     """Tests for WorkspaceProvider protocol."""
 

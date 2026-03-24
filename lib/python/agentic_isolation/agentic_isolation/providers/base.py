@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from agentic_isolation.config import WorkspaceConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -234,3 +240,70 @@ class BaseProvider(ABC):
     ) -> bool:
         """Check if file exists."""
         ...
+
+    @staticmethod
+    async def _terminate_process(proc: asyncio.subprocess.Process) -> None:
+        """Ensure a subprocess is terminated."""
+        if proc.returncode is not None:
+            return
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except (TimeoutError, ProcessLookupError):
+            try:
+                proc.kill()
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except (TimeoutError, ProcessLookupError):
+                pass
+
+    @staticmethod
+    def _check_stream_timeout(
+        proc: asyncio.subprocess.Process,
+        timeout_seconds: int | None,
+        start_time: float,
+    ) -> bool:
+        """Check if stream has exceeded timeout. Returns True if timed out."""
+        if not timeout_seconds:
+            return False
+        elapsed = time.perf_counter() - start_time
+        if elapsed > timeout_seconds:
+            logger.warning("Stream timeout after %.1fs", elapsed)
+            proc.kill()
+            return True
+        return False
+
+    @staticmethod
+    async def _read_stream_lines(
+        proc: asyncio.subprocess.Process,
+        timeout_seconds: int | None = None,
+    ) -> AsyncIterator[str]:
+        """Read lines from a subprocess stdout stream.
+
+        Shared by docker and local providers. Yields decoded lines
+        as they are produced, with periodic timeout checking.
+        """
+        start_time = time.perf_counter()
+
+        try:
+            while proc.stdout is not None:
+                if BaseProvider._check_stream_timeout(proc, timeout_seconds, start_time):
+                    break
+
+                try:
+                    line_bytes = await asyncio.wait_for(
+                        proc.stdout.readline(),
+                        timeout=1.0,
+                    )
+                except TimeoutError:
+                    if proc.returncode is not None:
+                        break
+                    continue
+
+                if not line_bytes:
+                    break
+
+                line = line_bytes.decode("utf-8", errors="replace").rstrip("\n\r")
+                if line:
+                    yield line
+        finally:
+            await BaseProvider._terminate_process(proc)

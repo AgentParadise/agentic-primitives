@@ -150,6 +150,47 @@ class HumanFormatter(logging.Formatter):
             return os.environ.get("ANSICON") is not None
         return True
 
+    def _format_header(self, record: logging.LogRecord) -> str:
+        emoji = self.LEVEL_EMOJI.get(record.levelname, "  ")
+        timestamp = self.formatTime(record, "%H:%M:%S")
+        if hasattr(record, "msecs"):
+            timestamp = f"{timestamp}.{int(record.msecs):03d}"
+        level = record.levelname.ljust(8)
+
+        if self.use_color:
+            color = self.COLORS.get(record.levelname, "")
+            reset = self.COLORS["RESET"]
+            dim = self.COLORS["DIM"]
+            return (
+                f"{dim}[{timestamp}]{reset} {emoji} {color}{level}{reset} {dim}{record.name}{reset}"
+            )
+        return f"[{timestamp}] {emoji} {level} {record.name}"
+
+    def _format_extras(self, record: logging.LogRecord) -> list[str]:
+        extra_fields = {
+            k: v
+            for k, v in record.__dict__.items()
+            if k not in _STDLIB_LOG_RECORD_FIELDS and k != "session_id"
+        }
+        if hasattr(record, "session_id"):
+            extra_fields = {"session_id": record.session_id, **extra_fields}
+
+        if not extra_fields:
+            return []
+
+        lines: list[str] = []
+        items = list(extra_fields.items())
+        dim = self.COLORS.get("DIM", "") if self.use_color else ""
+        reset = self.COLORS.get("RESET", "") if self.use_color else ""
+
+        for i, (key, value) in enumerate(items):
+            prefix = "├─" if i < len(items) - 1 else "└─"
+            if self.use_color:
+                lines.append(f"  {dim}{prefix} {key}: {value}{reset}")
+            else:
+                lines.append(f"  {prefix} {key}: {value}")
+        return lines
+
     def format(self, record: logging.LogRecord) -> str:
         """Format a log record for human consumption.
 
@@ -159,62 +200,11 @@ class HumanFormatter(logging.Formatter):
         Returns:
             Formatted string ready for console output
         """
-        # Get emoji and color for this level
-        emoji = self.LEVEL_EMOJI.get(record.levelname, "  ")
+        lines = [self._format_header(record), f"  {record.getMessage()}"]
+        lines.extend(self._format_extras(record))
 
-        # Format timestamp
-        timestamp = self.formatTime(record, "%H:%M:%S")
-        # Add milliseconds
-        if hasattr(record, "msecs"):
-            timestamp = f"{timestamp}.{int(record.msecs):03d}"
-
-        # Build the first line
-        level = record.levelname.ljust(8)  # Pad to 8 chars for alignment
-
-        if self.use_color:
-            color = self.COLORS.get(record.levelname, "")
-            reset = self.COLORS["RESET"]
-            dim = self.COLORS["DIM"]
-            first_line = (
-                f"{dim}[{timestamp}]{reset} {emoji} {color}{level}{reset} {dim}{record.name}{reset}"
-            )
-        else:
-            first_line = f"[{timestamp}] {emoji} {level} {record.name}"
-
-        # Message on next line with indent
-        lines = [first_line, f"  {record.getMessage()}"]
-
-        # Add extra fields if present (caller-supplied via extra={...}).
-        # Exclude the standard LogRecord instance attributes — they are not in
-        # logging.LogRecord.__dict__ (class dict) so we use an explicit set.
-        extra_fields = {
-            k: v
-            for k, v in record.__dict__.items()
-            if k not in _STDLIB_LOG_RECORD_FIELDS and k != "session_id"
-        }
-
-        # Add session_id first if present
-        if hasattr(record, "session_id"):
-            extra_fields = {"session_id": record.session_id, **extra_fields}
-
-        if extra_fields:
-            items = list(extra_fields.items())
-            for i, (key, value) in enumerate(items):
-                # Use tree characters for visual structure
-                if i < len(items) - 1:
-                    prefix = "├─"
-                else:
-                    prefix = "└─"
-
-                if self.use_color:
-                    lines.append(f"  {dim}{prefix} {key}: {value}{reset}")
-                else:
-                    lines.append(f"  {prefix} {key}: {value}")
-
-        # Add exception info if present
         if record.exc_info:
             exc_text = self.formatException(record.exc_info)
-            # Indent each line of the exception
             for line in exc_text.split("\n"):
                 lines.append(f"  {line}")
 
