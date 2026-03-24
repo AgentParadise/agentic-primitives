@@ -95,7 +95,8 @@ class TestReadStreamLines:
         from agentic_isolation.providers.base import BaseProvider
 
         proc = await asyncio.create_subprocess_exec(
-            "printf", "line1\nline2\nline3\n",
+            "printf",
+            "line1\nline2\nline3\n",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -109,7 +110,8 @@ class TestReadStreamLines:
         from agentic_isolation.providers.base import BaseProvider
 
         proc = await asyncio.create_subprocess_exec(
-            "printf", "hello\n\nworld\n",
+            "printf",
+            "hello\n\nworld\n",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -123,13 +125,12 @@ class TestReadStreamLines:
         from agentic_isolation.providers.base import BaseProvider
 
         proc = await asyncio.create_subprocess_exec(
-            "sleep", "60",
+            "sleep",
+            "60",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        lines = [
-            line async for line in BaseProvider._read_stream_lines(proc, timeout_seconds=1)
-        ]
+        lines = [line async for line in BaseProvider._read_stream_lines(proc, timeout_seconds=1)]
         assert lines == []
         # Process should be terminated
         assert proc.returncode is not None
@@ -146,7 +147,8 @@ class TestCheckStreamTimeout:
         from agentic_isolation.providers.base import BaseProvider
 
         proc = await asyncio.create_subprocess_exec(
-            "sleep", "0",
+            "sleep",
+            "0",
             stdout=asyncio.subprocess.PIPE,
         )
         assert BaseProvider._check_stream_timeout(proc, None, time.perf_counter()) is False
@@ -161,7 +163,8 @@ class TestCheckStreamTimeout:
         from agentic_isolation.providers.base import BaseProvider
 
         proc = await asyncio.create_subprocess_exec(
-            "sleep", "60",
+            "sleep",
+            "60",
             stdout=asyncio.subprocess.PIPE,
         )
         assert BaseProvider._check_stream_timeout(proc, 30, time.perf_counter()) is False
@@ -179,7 +182,8 @@ class TestTerminateProcess:
         from agentic_isolation.providers.base import BaseProvider
 
         proc = await asyncio.create_subprocess_exec(
-            "sleep", "60",
+            "sleep",
+            "60",
             stdout=asyncio.subprocess.PIPE,
         )
         assert proc.returncode is None

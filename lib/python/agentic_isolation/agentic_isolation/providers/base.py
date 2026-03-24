@@ -287,7 +287,8 @@ class BaseProvider(ABC):
 
                 try:
                     line_bytes = await asyncio.wait_for(
-                        proc.stdout.readline(), timeout=1.0,
+                        proc.stdout.readline(),
+                        timeout=1.0,
                     )
                 except TimeoutError:
                     if proc.returncode is not None:

@@ -273,7 +273,11 @@ class EventParser:
 
         if tool_name == "Task":
             return self._start_subagent(
-                tool_use_id, tool_input, raw, timestamp, parent_tool_use_id,
+                tool_use_id,
+                tool_input,
+                raw,
+                timestamp,
+                parent_tool_use_id,
             )
 
         return ObservabilityEvent(
@@ -299,7 +303,9 @@ class EventParser:
         subagent_name = self._extract_subagent_name(tool_input)
 
         self._active_subagents[tool_use_id] = SubagentState(
-            tool_use_id=tool_use_id, name=subagent_name, started_at=timestamp,
+            tool_use_id=tool_use_id,
+            name=subagent_name,
+            started_at=timestamp,
         )
         logger.debug("Subagent started: %s (%s)", subagent_name, tool_use_id)
 
@@ -335,16 +341,17 @@ class EventParser:
         parent_tool_use_id = raw.get("parent_tool_use_id")
 
         token_event = self._extract_token_usage(
-            raw, message, timestamp, parent_tool_use_id,
+            raw,
+            message,
+            timestamp,
+            parent_tool_use_id,
         )
         if token_event:
             events.append(token_event)
 
         for item in message.get("content", []):
             if isinstance(item, dict) and item.get("type") == "tool_use":
-                events.append(
-                    self._handle_tool_use_item(item, raw, timestamp, parent_tool_use_id)
-                )
+                events.append(self._handle_tool_use_item(item, raw, timestamp, parent_tool_use_id))
 
         return events
 

@@ -178,7 +178,9 @@ class TestResolvePluginEnv:
     """Tests for WorkspaceConfig.resolve_plugin_env."""
 
     def test_resolves_secret_env_var(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Should add secret env vars to secrets dict."""
         plugin_dir = tmp_path / ".claude-plugin"
@@ -198,7 +200,9 @@ class TestResolvePluginEnv:
         assert "API_KEY" not in config.environment
 
     def test_resolves_non_secret_env_var(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Should add non-secret env vars to environment dict."""
         plugin_dir = tmp_path / ".claude-plugin"
@@ -218,7 +222,9 @@ class TestResolvePluginEnv:
         assert "LOG_LEVEL" not in config.secrets
 
     def test_skips_already_set_vars(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Should not overwrite vars already in secrets or environment."""
         plugin_dir = tmp_path / ".claude-plugin"
@@ -244,7 +250,9 @@ class TestResolvePluginEnv:
         config.resolve_plugin_env()  # Should not raise
 
     def test_idempotent(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Should be safe to call multiple times."""
         plugin_dir = tmp_path / ".claude-plugin"

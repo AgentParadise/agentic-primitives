@@ -317,12 +317,18 @@ class WorkspaceDockerProvider(BaseProvider):
             )
 
         exec_cmd = self._build_docker_exec_cmd(
-            container_name, ["sh", "-c", command], cwd=cwd, env=env,
+            container_name,
+            ["sh", "-c", command],
+            cwd=cwd,
+            env=env,
         )
         return await self._run_exec(exec_cmd, timeout=timeout or 3600)
 
     async def _run_exec(
-        self, exec_cmd: list[str], *, timeout: float,
+        self,
+        exec_cmd: list[str],
+        *,
+        timeout: float,
     ) -> ExecuteResult:
         """Run a docker exec command and return the result."""
         start_time = time.perf_counter()
@@ -334,15 +340,19 @@ class WorkspaceDockerProvider(BaseProvider):
             )
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(), timeout=timeout,
+                    proc.communicate(),
+                    timeout=timeout,
                 )
             except TimeoutError:
                 proc.kill()
                 await proc.wait()
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 return ExecuteResult(
-                    exit_code=-1, stdout="", stderr="Command timed out",
-                    duration_ms=duration_ms, timed_out=True,
+                    exit_code=-1,
+                    stdout="",
+                    stderr="Command timed out",
+                    duration_ms=duration_ms,
+                    timed_out=True,
                 )
 
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -355,7 +365,10 @@ class WorkspaceDockerProvider(BaseProvider):
         except Exception as e:
             duration_ms = (time.perf_counter() - start_time) * 1000
             return ExecuteResult(
-                exit_code=-1, stdout="", stderr=str(e), duration_ms=duration_ms,
+                exit_code=-1,
+                stdout="",
+                stderr=str(e),
+                duration_ms=duration_ms,
             )
 
     async def stream(
@@ -390,7 +403,11 @@ class WorkspaceDockerProvider(BaseProvider):
             raise RuntimeError("Container not available")
 
         exec_cmd = self._build_docker_exec_cmd(
-            container_name, command, cwd=cwd, env=env, interactive=True,
+            container_name,
+            command,
+            cwd=cwd,
+            env=env,
+            interactive=True,
         )
 
         logger.debug("Starting stream (container=%s, cmd=%s)", container_name, command)

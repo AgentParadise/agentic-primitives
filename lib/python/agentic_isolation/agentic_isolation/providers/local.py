@@ -218,7 +218,9 @@ class WorkspaceLocalProvider(BaseProvider):
         return exec_env
 
     def _resolve_work_dir(
-        self, workspace: Workspace, cwd: str | None = None,
+        self,
+        workspace: Workspace,
+        cwd: str | None = None,
     ) -> Path:
         """Resolve and ensure the working directory exists."""
         if cwd:

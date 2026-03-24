@@ -26,15 +26,15 @@ def _load_plugin_manifest(plugin_path: str) -> dict[str, Any] | None:
 
 
 def _resolve_single_env_var(
-    var_name: str, spec: dict[str, Any], plugin_name: str,
+    var_name: str,
+    spec: dict[str, Any],
+    plugin_name: str,
 ) -> tuple[str, bool]:
     value = os.environ.get(var_name)
     if value is None:
         if spec.get("required", False):
             description = spec.get("description", "")
-            raise ValueError(
-                f"Plugin '{plugin_name}' requires env var {var_name}: {description}"
-            )
+            raise ValueError(f"Plugin '{plugin_name}' requires env var {var_name}: {description}")
         return "", False
     return value, True
 
@@ -250,7 +250,10 @@ class WorkspaceConfig:
         return self
 
     def _apply_env_var(
-        self, var_name: str, spec: dict[str, Any], plugin_name: str,
+        self,
+        var_name: str,
+        spec: dict[str, Any],
+        plugin_name: str,
     ) -> None:
         """Resolve and store a single environment variable from a plugin manifest."""
         if var_name in self.secrets or var_name in self.environment:
