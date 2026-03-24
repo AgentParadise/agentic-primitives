@@ -250,7 +250,11 @@ class BaseProvider(ABC):
             proc.terminate()
             await asyncio.wait_for(proc.wait(), timeout=5.0)
         except (TimeoutError, ProcessLookupError):
-            proc.kill()
+            try:
+                proc.kill()
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except (TimeoutError, ProcessLookupError):
+                pass
 
     @staticmethod
     def _check_stream_timeout(
