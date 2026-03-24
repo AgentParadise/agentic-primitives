@@ -57,6 +57,31 @@ SUSPICIOUS_INLINE_PATTERNS: list[tuple[str, str]] = [
 ]
 
 
+def _check_dangerous_patterns(targets: list[str], command: str) -> dict[str, Any] | None:
+    for target in targets:
+        for pattern, description in DANGEROUS_INLINE_PATTERNS:
+            if re.search(pattern, target, re.IGNORECASE | re.DOTALL):
+                return {
+                    "safe": False,
+                    "reason": f"Dangerous Python execution blocked: {description}",
+                    "metadata": {
+                        "pattern": pattern,
+                        "command_preview": command[:100],
+                        "risk_level": "critical",
+                    },
+                }
+    return None
+
+
+def _collect_suspicious_patterns(targets: list[str]) -> list[str]:
+    suspicious: list[str] = []
+    for target in targets:
+        for pattern, description in SUSPICIOUS_INLINE_PATTERNS:
+            if re.search(pattern, target, re.IGNORECASE | re.DOTALL):
+                suspicious.append(description)
+    return suspicious
+
+
 def _extract_inline_code(command: str) -> str | None:
     """Extract Python inline code from -c flag."""
     # Match: python3 -c "code" or python3 -c 'code' or python3 -c code
@@ -100,25 +125,11 @@ def validate(
     if inline_code:
         targets.append(inline_code)
 
-    for target in targets:
-        for pattern, description in DANGEROUS_INLINE_PATTERNS:
-            if re.search(pattern, target, re.IGNORECASE | re.DOTALL):
-                return {
-                    "safe": False,
-                    "reason": f"Dangerous Python execution blocked: {description}",
-                    "metadata": {
-                        "pattern": pattern,
-                        "command_preview": command[:100],
-                        "risk_level": "critical",
-                    },
-                }
+    dangerous = _check_dangerous_patterns(targets, command)
+    if dangerous is not None:
+        return dangerous
 
-    # Check for suspicious patterns
-    suspicious: list[str] = []
-    for target in targets:
-        for pattern, description in SUSPICIOUS_INLINE_PATTERNS:
-            if re.search(pattern, target, re.IGNORECASE | re.DOTALL):
-                suspicious.append(description)
+    suspicious = _collect_suspicious_patterns(targets)
 
     return {
         "safe": True,

@@ -273,6 +273,30 @@ class WorkspaceDockerProvider(BaseProvider):
         if workspace_dir:
             shutil.rmtree(workspace_dir, ignore_errors=True)
 
+    def _build_docker_exec_cmd(
+        self,
+        container_name: str,
+        command: list[str],
+        *,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        interactive: bool = False,
+    ) -> list[str]:
+        """Build a docker exec command with optional cwd and env."""
+        exec_cmd = ["docker", "exec"]
+        if interactive:
+            exec_cmd.append("-i")
+
+        exec_cmd.extend(["-w", cwd or "/workspace"])
+
+        if env:
+            for key, value in env.items():
+                exec_cmd.extend(["-e", f"{key}={value}"])
+
+        exec_cmd.append(container_name)
+        exec_cmd.extend(command)
+        return exec_cmd
+
     async def execute(
         self,
         workspace: Workspace,
@@ -290,54 +314,54 @@ class WorkspaceDockerProvider(BaseProvider):
                 stdout="",
                 stderr="Container not available",
                 duration_ms=0,
-                success=False,
             )
 
-        exec_cmd = ["docker", "exec"]
+        exec_cmd = self._build_docker_exec_cmd(
+            container_name,
+            ["sh", "-c", command],
+            cwd=cwd,
+            env=env,
+        )
+        return await self._run_exec(exec_cmd, timeout=timeout or 3600)
 
-        if cwd:
-            exec_cmd.extend(["-w", cwd])
-        else:
-            exec_cmd.extend(["-w", "/workspace"])
-
-        if env:
-            for key, value in env.items():
-                exec_cmd.extend(["-e", f"{key}={value}"])
-
-        exec_cmd.append(container_name)
-        exec_cmd.extend(["sh", "-c", command])
-
+    async def _run_exec(
+        self,
+        exec_cmd: list[str],
+        *,
+        timeout: float,
+    ) -> ExecuteResult:
+        """Run a docker exec command and return the result."""
         start_time = time.perf_counter()
-        timed_out = False
-
         try:
             proc = await asyncio.create_subprocess_exec(
                 *exec_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-
             try:
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(),
-                    timeout=timeout or 3600,
+                    timeout=timeout,
                 )
             except TimeoutError:
                 proc.kill()
                 await proc.wait()
-                timed_out = True
-                stdout, stderr = b"", b"Command timed out"
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                return ExecuteResult(
+                    exit_code=-1,
+                    stdout="",
+                    stderr="Command timed out",
+                    duration_ms=duration_ms,
+                    timed_out=True,
+                )
 
             duration_ms = (time.perf_counter() - start_time) * 1000
-
             return ExecuteResult(
-                exit_code=-1 if timed_out else (proc.returncode or 0),
+                exit_code=proc.returncode or 0,
                 stdout=stdout.decode() if stdout else "",
                 stderr=stderr.decode() if stderr else "",
                 duration_ms=duration_ms,
-                timed_out=timed_out,
             )
-
         except Exception as e:
             duration_ms = (time.perf_counter() - start_time) * 1000
             return ExecuteResult(
@@ -345,7 +369,6 @@ class WorkspaceDockerProvider(BaseProvider):
                 stdout="",
                 stderr=str(e),
                 duration_ms=duration_ms,
-                timed_out=False,
             )
 
     async def stream(
@@ -361,16 +384,6 @@ class WorkspaceDockerProvider(BaseProvider):
 
         This is the key method for observability - yields lines as they
         are produced, enabling real-time dashboard updates.
-
-        Args:
-            workspace: Workspace to execute in
-            command: Command as list of strings
-            timeout_seconds: Max execution time
-            cwd: Working directory override
-            env: Additional environment variables
-
-        Yields:
-            Individual stdout lines as they are produced
 
         ARCHITECTURE NOTE — stderr=STDOUT is intentional (ADR-043):
         -----------------------------------------------------------------
@@ -389,19 +402,13 @@ class WorkspaceDockerProvider(BaseProvider):
         if not container_name:
             raise RuntimeError("Container not available")
 
-        exec_cmd = ["docker", "exec", "-i"]
-
-        if cwd:
-            exec_cmd.extend(["-w", cwd])
-        else:
-            exec_cmd.extend(["-w", "/workspace"])
-
-        if env:
-            for key, value in env.items():
-                exec_cmd.extend(["-e", f"{key}={value}"])
-
-        exec_cmd.append(container_name)
-        exec_cmd.extend(command)
+        exec_cmd = self._build_docker_exec_cmd(
+            container_name,
+            command,
+            cwd=cwd,
+            env=env,
+            interactive=True,
+        )
 
         logger.debug("Starting stream (container=%s, cmd=%s)", container_name, command)
 
@@ -413,47 +420,8 @@ class WorkspaceDockerProvider(BaseProvider):
             stderr=asyncio.subprocess.STDOUT,
         )
 
-        start_time = time.perf_counter()
-
-        try:
-            while True:
-                if proc.stdout is None:
-                    break
-
-                # Check timeout
-                if timeout_seconds:
-                    elapsed = time.perf_counter() - start_time
-                    if elapsed > timeout_seconds:
-                        logger.warning("Stream timeout after %.1fs", elapsed)
-                        proc.kill()
-                        break
-
-                try:
-                    line_bytes = await asyncio.wait_for(
-                        proc.stdout.readline(),
-                        timeout=1.0,  # Check timeout every second
-                    )
-                except TimeoutError:
-                    # Check if process ended
-                    if proc.returncode is not None:
-                        break
-                    continue
-
-                if not line_bytes:
-                    break
-
-                line = line_bytes.decode("utf-8", errors="replace").rstrip("\n\r")
-                if line:
-                    yield line
-
-        finally:
-            # Ensure process is terminated
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                    await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except (TimeoutError, ProcessLookupError):
-                    proc.kill()
+        async for line in self._read_stream_lines(proc, timeout_seconds):
+            yield line
 
     async def write_file(
         self,

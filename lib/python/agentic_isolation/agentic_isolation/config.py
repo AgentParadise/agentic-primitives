@@ -14,6 +14,31 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _load_plugin_manifest(plugin_path: str) -> dict[str, Any] | None:
+    manifest_path = Path(plugin_path) / ".claude-plugin" / "plugin.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        return json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to read plugin manifest %s: %s", manifest_path, e)
+        return None
+
+
+def _resolve_single_env_var(
+    var_name: str,
+    spec: dict[str, Any],
+    plugin_name: str,
+) -> tuple[str, bool]:
+    value = os.environ.get(var_name)
+    if value is None:
+        if spec.get("required", False):
+            description = spec.get("description", "")
+            raise ValueError(f"Plugin '{plugin_name}' requires env var {var_name}: {description}")
+        return "", False
+    return value, True
+
+
 @dataclass
 class SecurityConfig:
     """Security hardening configuration for isolated workspaces.
@@ -224,6 +249,25 @@ class WorkspaceConfig:
         self.plugins.append(str(plugin_path))
         return self
 
+    def _apply_env_var(
+        self,
+        var_name: str,
+        spec: dict[str, Any],
+        plugin_name: str,
+    ) -> None:
+        """Resolve and store a single environment variable from a plugin manifest."""
+        if var_name in self.secrets or var_name in self.environment:
+            return
+
+        value, resolved = _resolve_single_env_var(var_name, spec, plugin_name)
+        if not resolved:
+            return
+
+        if spec.get("secret", False):
+            self.secrets[var_name] = value
+        else:
+            self.environment[var_name] = value
+
     def resolve_plugin_env(self) -> None:
         """Read requires_env from plugin manifests and populate secrets/environment.
 
@@ -236,40 +280,15 @@ class WorkspaceConfig:
         This method is idempotent - safe to call multiple times.
         """
         for plugin_path in self.plugins:
-            manifest_path = Path(plugin_path) / ".claude-plugin" / "plugin.json"
-            if not manifest_path.exists():
-                continue
-
-            try:
-                manifest = json.loads(manifest_path.read_text())
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning("Failed to read plugin manifest %s: %s", manifest_path, e)
+            manifest = _load_plugin_manifest(plugin_path)
+            if manifest is None:
                 continue
 
             requires_env = manifest.get("requires_env", {})
             plugin_name = manifest.get("name", Path(plugin_path).name)
 
             for var_name, spec in requires_env.items():
-                # Skip if already explicitly set
-                if var_name in self.secrets or var_name in self.environment:
-                    continue
-
-                value = os.environ.get(var_name)
-                is_required = spec.get("required", False)
-                is_secret = spec.get("secret", False)
-
-                if value is None:
-                    if is_required:
-                        description = spec.get("description", "")
-                        raise ValueError(
-                            f"Plugin '{plugin_name}' requires env var {var_name}: {description}"
-                        )
-                    continue
-
-                if is_secret:
-                    self.secrets[var_name] = value
-                else:
-                    self.environment[var_name] = value
+                self._apply_env_var(var_name, spec, plugin_name)
 
     def with_mount(
         self,

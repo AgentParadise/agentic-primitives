@@ -67,6 +67,39 @@ def parse_event(line: str) -> dict | None:
         return None
 
 
+def _process_event_line(
+    line: str, start_time: float, verbose: bool,
+) -> dict | None:
+    if not is_jsonl_event(line):
+        if verbose:
+            print(f"  [pass] {line.rstrip()}", file=sys.stderr)
+        return None
+
+    event = parse_event(line)
+    if event is None:
+        return None
+
+    offset_ms = int((time.monotonic() - start_time) * 1000)
+    event["_offset_ms"] = offset_ms
+
+    if verbose:
+        event_type = event.get("event_type") or event.get("type", "unknown")
+        print(f"  [event] {event_type} @ {offset_ms}ms", file=sys.stderr)
+
+    return event
+
+
+def _write_recording(
+    output_path: Path,
+    metadata: dict,
+    events: list[dict],
+) -> None:
+    with Path(output_path).open("w") as f:
+        f.write(json.dumps(metadata) + "\n")
+        for event in events:
+            f.write(json.dumps(event, default=str) + "\n")
+
+
 def capture_from_stream(
     input_stream: TextIO,
     output_path: Path,
@@ -99,35 +132,17 @@ def capture_from_stream(
         print(f"📹 Capturing to {output_path}...", file=sys.stderr)
 
     for line in input_stream:
-        if not is_jsonl_event(line):
-            # Pass through non-event output
-            if verbose:
-                print(f"  [pass] {line.rstrip()}", file=sys.stderr)
-            continue
-
-        event = parse_event(line)
+        event = _process_event_line(line, start_time, verbose)
         if event is None:
             continue
 
-        # Add timing offset
-        offset_ms = int((time.monotonic() - start_time) * 1000)
-        event["_offset_ms"] = offset_ms
-
-        # Capture session_id
         if session_id is None and "session_id" in event:
             session_id = event["session_id"]
 
         events.append(event)
 
-        if verbose:
-            # Support both hook events (event_type) and CLI events (type)
-            event_type = event.get("event_type") or event.get("type", "unknown")
-            print(f"  [event] {event_type} @ {offset_ms}ms", file=sys.stderr)
-
-    # Calculate duration
     duration_ms = int((time.monotonic() - start_time) * 1000)
 
-    # Write recording with metadata header
     metadata = {
         "_recording": {
             "version": 1,
@@ -143,10 +158,7 @@ def capture_from_stream(
         }
     }
 
-    with Path(output_path).open("w") as f:
-        f.write(json.dumps(metadata) + "\n")
-        for event in events:
-            f.write(json.dumps(event, default=str) + "\n")
+    _write_recording(output_path, metadata, events)
 
     if verbose:
         print(f"✅ Captured {len(events)} events in {duration_ms}ms", file=sys.stderr)

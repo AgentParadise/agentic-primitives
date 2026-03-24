@@ -167,6 +167,30 @@ class RetryPolicy:
 # ---------------------------------------------------------------------------
 
 
+def _should_retry(exc: Exception, attempt: int, policy: RetryPolicy) -> bool:
+    is_retryable = policy.is_retryable or (lambda _err, _attempt: True)
+    if attempt == policy.max_attempts:
+        return False
+    return is_retryable(exc, attempt)
+
+
+def _calculate_delay(exc: Exception, attempt: int, policy: RetryPolicy) -> float:
+    delay = policy.compute_delay(attempt)
+    if policy.on_retry is not None:
+        try:
+            policy.on_retry(exc, attempt, delay)
+        except Exception:  # noqa: BLE001
+            pass
+    logger.debug(
+        "retry_async: attempt %d/%d failed (%s). Retrying in %.3fs.",
+        attempt,
+        policy.max_attempts,
+        type(exc).__name__,
+        delay,
+    )
+    return delay
+
+
 async def retry_async(
     fn: Callable[[], Awaitable[T]],
     *,
@@ -201,7 +225,6 @@ async def retry_async(
     if policy is None:
         policy = RetryPolicy.exponential()
 
-    is_retryable = policy.is_retryable or (lambda _err, _attempt: True)
     last_exc: BaseException = RuntimeError("retry_async called with max_attempts=0")
     attempt = 0
 
@@ -210,23 +233,10 @@ async def retry_async(
             return await fn()
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
-            is_last = attempt == policy.max_attempts
-            if is_last or not is_retryable(exc, attempt):
+            if not _should_retry(exc, attempt, policy):
                 break
 
-            delay = policy.compute_delay(attempt)
-            if policy.on_retry is not None:
-                try:
-                    policy.on_retry(exc, attempt, delay)
-                except Exception:  # noqa: BLE001
-                    pass
-            logger.debug(
-                "retry_async: attempt %d/%d failed (%s). Retrying in %.3fs.",
-                attempt,
-                policy.max_attempts,
-                type(exc).__name__,
-                delay,
-            )
+            delay = _calculate_delay(exc, attempt, policy)
             if delay > 0:
                 await asyncio.sleep(delay)
 

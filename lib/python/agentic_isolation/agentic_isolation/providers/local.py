@@ -108,25 +108,8 @@ class WorkspaceLocalProvider(BaseProvider):
         env: dict[str, str] | None = None,
     ) -> ExecuteResult:
         """Execute a command in the workspace."""
-        # Determine working directory
-        if cwd:
-            work_dir = workspace.path / cwd.lstrip("/")
-        else:
-            work_dir = workspace.path / workspace.config.working_dir.lstrip("/")
-
-        # Ensure working directory exists
-        work_dir.mkdir(parents=True, exist_ok=True)
-
-        # Build environment
-        exec_env = os.environ.copy()
-        exec_env.update(workspace.config.environment)
-        exec_env.update(workspace.config.secrets)  # Inject secrets
-        if env:
-            exec_env.update(env)
-
-        # Set workspace-specific variables
-        exec_env["WORKSPACE_ID"] = workspace.id
-        exec_env["WORKSPACE_PATH"] = str(workspace.path)
+        work_dir = self._resolve_work_dir(workspace, cwd)
+        exec_env = self._build_exec_env(workspace, env)
 
         start_time = time.time()
         timed_out = False
@@ -219,6 +202,34 @@ class WorkspaceLocalProvider(BaseProvider):
         file_path = workspace.path / path.lstrip("/")
         return file_path.exists()
 
+    def _build_exec_env(
+        self,
+        workspace: Workspace,
+        env: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Build environment variables for command execution."""
+        exec_env = os.environ.copy()
+        exec_env.update(workspace.config.environment)
+        exec_env.update(workspace.config.secrets)
+        if env:
+            exec_env.update(env)
+        exec_env["WORKSPACE_ID"] = workspace.id
+        exec_env["WORKSPACE_PATH"] = str(workspace.path)
+        return exec_env
+
+    def _resolve_work_dir(
+        self,
+        workspace: Workspace,
+        cwd: str | None = None,
+    ) -> Path:
+        """Resolve and ensure the working directory exists."""
+        if cwd:
+            work_dir = workspace.path / cwd.lstrip("/")
+        else:
+            work_dir = workspace.path / workspace.config.working_dir.lstrip("/")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        return work_dir
+
     async def stream(
         self,
         workspace: Workspace,
@@ -240,66 +251,16 @@ class WorkspaceLocalProvider(BaseProvider):
         Yields:
             Individual stdout lines as they are produced
         """
-        # Determine working directory
-        if cwd:
-            work_dir = workspace.path / cwd.lstrip("/")
-        else:
-            work_dir = workspace.path / workspace.config.working_dir.lstrip("/")
-
-        work_dir.mkdir(parents=True, exist_ok=True)
-
-        # Build environment
-        exec_env = os.environ.copy()
-        exec_env.update(workspace.config.environment)
-        exec_env.update(workspace.config.secrets)
-        if env:
-            exec_env.update(env)
-        exec_env["WORKSPACE_ID"] = workspace.id
-        exec_env["WORKSPACE_PATH"] = str(workspace.path)
+        work_dir = self._resolve_work_dir(workspace, cwd)
+        exec_env = self._build_exec_env(workspace, env)
 
         proc = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,  # Merge stderr into stdout
+            stderr=asyncio.subprocess.STDOUT,
             cwd=str(work_dir),
             env=exec_env,
         )
 
-        start_time = time.perf_counter()
-
-        try:
-            while True:
-                if proc.stdout is None:
-                    break
-
-                if timeout_seconds:
-                    elapsed = time.perf_counter() - start_time
-                    if elapsed > timeout_seconds:
-                        logger.warning("Stream timeout after %.1fs", elapsed)
-                        proc.kill()
-                        break
-
-                try:
-                    line_bytes = await asyncio.wait_for(
-                        proc.stdout.readline(),
-                        timeout=1.0,
-                    )
-                except TimeoutError:
-                    if proc.returncode is not None:
-                        break
-                    continue
-
-                if not line_bytes:
-                    break
-
-                line = line_bytes.decode("utf-8", errors="replace").rstrip("\n\r")
-                if line:
-                    yield line
-
-        finally:
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                    await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except (TimeoutError, ProcessLookupError):
-                    proc.kill()
+        async for line in self._read_stream_lines(proc, timeout_seconds):
+            yield line

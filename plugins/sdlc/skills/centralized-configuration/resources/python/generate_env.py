@@ -143,6 +143,29 @@ def generate_env_example() -> str:
     return "\n".join(lines)
 
 
+def _is_multiline_end(line: str) -> bool:
+    return line.rstrip().endswith('"') and not line.rstrip().endswith('\\"')
+
+
+def _is_multiline_start(value: str) -> bool:
+    return value.startswith('"') and not value.endswith('"')
+
+
+def _handle_multiline_line(
+    line: str,
+    current_key: str | None,
+    current_value_lines: list[str],
+    env_vars: dict[str, str],
+) -> tuple[str | None, list[str], bool]:
+    current_value_lines.append(line)
+    if _is_multiline_end(line):
+        full_value = "\n".join(current_value_lines)
+        if current_key:
+            env_vars[current_key] = full_value
+        return None, [], False
+    return current_key, current_value_lines, True
+
+
 def parse_env_file(path: Path) -> dict[str, str]:
     """Parse existing .env into key=value dict.
 
@@ -152,27 +175,19 @@ def parse_env_file(path: Path) -> dict[str, str]:
         return {}
 
     env_vars: dict[str, str] = {}
-    content = path.read_text()
-
     current_key: str | None = None
     current_value_lines: list[str] = []
     in_multiline = False
 
-    for line in content.split("\n"):
-        if not in_multiline:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-
+    for line in path.read_text().split("\n"):
         if in_multiline:
-            current_value_lines.append(line)
-            if line.rstrip().endswith('"') and not line.rstrip().endswith('\\"'):
-                full_value = "\n".join(current_value_lines)
-                if current_key:
-                    env_vars[current_key] = full_value
-                current_key = None
-                current_value_lines = []
-                in_multiline = False
+            current_key, current_value_lines, in_multiline = _handle_multiline_line(
+                line, current_key, current_value_lines, env_vars,
+            )
+            continue
+
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
 
         if "=" in line:
@@ -180,7 +195,7 @@ def parse_env_file(path: Path) -> dict[str, str]:
             key = key.strip()
             value = value.strip()
 
-            if value.startswith('"') and not value.endswith('"'):
+            if _is_multiline_start(value):
                 in_multiline = True
                 current_key = key
                 current_value_lines = [value]
@@ -188,6 +203,42 @@ def parse_env_file(path: Path) -> dict[str, str]:
                 env_vars[key] = value
 
     return env_vars
+
+
+def _process_template_line(
+    line: str,
+    existing_vars: dict[str, str],
+    template_keys: set[str],
+    new_vars: list[str],
+) -> str:
+    key, _, default_value = line.partition("=")
+    key = key.strip()
+    default_value = default_value.strip()
+    template_keys.add(key)
+
+    if key in existing_vars:
+        return f"{key}={existing_vars[key]}"
+    new_vars.append(key)
+    return f"{key}={default_value}"
+
+
+def _build_external_vars_section(
+    extra_vars: list[str], existing_vars: dict[str, str],
+) -> list[str]:
+    lines: list[str] = [
+        "",
+        "# " + "=" * 76,
+        "# EXTERNAL / UNKNOWN VARIABLES",
+        "# " + "=" * 76,
+        "# These variables are not defined in settings classes.",
+        "# They may come from external tools or plugins.",
+        "# Review periodically - remove if no longer needed.",
+        "",
+    ]
+    for key in sorted(extra_vars):
+        lines.append(f"{key}={existing_vars[key]}")
+    lines.append("")
+    return lines
 
 
 def sync_env_file(
@@ -215,41 +266,16 @@ def sync_env_file(
 
         if not stripped or stripped.startswith("#"):
             output_lines.append(line)
-            continue
-
-        if "=" in line:
-            key, _, default_value = line.partition("=")
-            key = key.strip()
-            default_value = default_value.strip()
-            template_keys.add(key)
-
-            if key in existing_vars:
-                output_lines.append(f"{key}={existing_vars[key]}")
-            else:
-                output_lines.append(f"{key}={default_value}")
-                new_vars.append(key)
+        elif "=" in line:
+            output_lines.append(
+                _process_template_line(line, existing_vars, template_keys, new_vars)
+            )
         else:
             output_lines.append(line)
 
-    # Preserve external variables
     extra_vars = [k for k in existing_vars if k not in template_keys]
-
     if extra_vars:
-        output_lines.extend(
-            [
-                "",
-                "# " + "=" * 76,
-                "# EXTERNAL / UNKNOWN VARIABLES",
-                "# " + "=" * 76,
-                "# These variables are not defined in settings classes.",
-                "# They may come from external tools or plugins.",
-                "# Review periodically - remove if no longer needed.",
-                "",
-            ]
-        )
-        for key in sorted(extra_vars):
-            output_lines.append(f"{key}={existing_vars[key]}")
-        output_lines.append("")
+        output_lines.extend(_build_external_vars_section(extra_vars, existing_vars))
 
     env_path.write_text("\n".join(output_lines))
 
