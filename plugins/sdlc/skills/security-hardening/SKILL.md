@@ -7,11 +7,13 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 # Security Hardening
 
-Audit a codebase for security vulnerabilities and implement fixes. Two modes:
+Audit a codebase for security vulnerabilities and implement fixes. Three modes:
 
 - **audit** — read-only scan, produces a prioritized findings report
 - **fix** — implements the fixes (confirm with user before each change)
 - **both** (default) — audit first, then fix
+
+## Variables
 
 MODE: $1 || "both"
 
@@ -19,7 +21,7 @@ MODE: $1 || "both"
 
 ## Threat Model
 
-This skill covers five attack surface areas. Each has a concrete historical incident:
+This skill covers ten attack surface areas. Each has a concrete historical incident:
 
 ### 1. Supply Chain — Tag Repointing (XZ-utils, 2024)
 
@@ -268,7 +270,7 @@ find . -maxdepth 5 -name "Dockerfile*" -o -name "docker-compose*.yml" \
 ```bash
 echo "=== Actions with MUTABLE tags (MUST FIX) ==="
 # Matches @v1, @v2.3, @main, @master, @latest, @stable
-grep -rn "uses:.*@\(v[0-9]\|main\b\|master\b\|latest\b\|stable\b\)" \
+grep -rn "uses:.*@\(v[0-9]\|\<main\>\|\<master\>\|\<latest\>\|\<stable\>\)" \
   .github/workflows/ 2>/dev/null || echo "None found ✅"
 
 echo ""
@@ -351,9 +353,8 @@ Run both for defense in depth.
 ```bash
 echo "=== pip-audit (Python) ==="
 if command -v pip-audit &>/dev/null; then
-  # Export locked deps with hashes, then audit against PyPI advisory DB.
+  # Export locked deps, then audit against PyPI advisory DB.
   # --disable-pip: use the PyPI JSON API directly (faster, no pip subprocess).
-  # --require-hashes: verify package integrity — catches tampered artifacts.
   uv export --format requirements-txt --no-hashes --quiet \
     | pip-audit --disable-pip -r /dev/stdin 2>&1 \
     || echo "⚠️ pip-audit found issues (see above)"
@@ -365,11 +366,11 @@ echo ""
 echo "=== pnpm audit (Node.js) ==="
 # --prod: only audit production dependencies (devDependencies aren't deployed).
 # Run per-app because each has its own lock file and dependency tree.
-for dir in apps/syn-dashboard-ui apps/syn-pulse-ui apps/syn-docs; do
-  if [ -f "$dir/pnpm-lock.yaml" ] || [ -f "$dir/package-lock.json" ]; then
-    echo "--- $dir ---"
-    (cd "$dir" && pnpm audit --prod 2>&1) || echo "⚠️ audit issues in $dir"
-  fi
+find . -maxdepth 4 \( -name pnpm-lock.yaml -o -name package-lock.json \) \
+  -not -path '*/node_modules/*' -print | sort -u | while IFS= read -r lockfile; do
+  dir="$(dirname "$lockfile")"
+  echo "--- $dir ---"
+  (cd "$dir" && pnpm audit --prod 2>&1) || echo "⚠️ audit issues in $dir"
 done
 ```
 
@@ -387,8 +388,10 @@ echo "=== Python: total package count ==="
 grep -c '^\[\[package\]\]' uv.lock 2>/dev/null || echo "No uv.lock found"
 
 echo ""
-echo "=== Node.js: total package count per app ==="
-for dir in apps/syn-dashboard-ui apps/syn-pulse-ui apps/syn-docs; do
+echo "=== Node.js: total package count per project ==="
+find . -maxdepth 4 \( -name "pnpm-lock.yaml" -o -name "package-lock.json" \) \
+  -not -path '*/node_modules/*' -print | sort -u | while IFS= read -r lockfile; do
+  dir="$(dirname "$lockfile")"
   if [ -f "$dir/pnpm-lock.yaml" ]; then
     count=$(grep -c 'resolution:' "$dir/pnpm-lock.yaml" 2>/dev/null || echo "?")
     echo "  $dir: ~$count packages"
@@ -620,7 +623,7 @@ gh api repos/actions/checkout/git/tags/11bd71901bbe5b1630ceea73d27597364c9af683 
         run: uv tool install pip-audit
 
       # Export locked deps from uv.lock → requirements.txt format.
-      # --no-hashes here because pip-audit fetches its own hashes to verify.
+      # --no-hashes: pip-audit doesn't need hashes for advisory lookups.
       # --frozen ensures we export exactly what's locked, not a fresh resolve.
       - name: Audit Python dependencies
         run: |
@@ -635,8 +638,7 @@ gh api repos/actions/checkout/git/tags/11bd71901bbe5b1630ceea73d27597364c9af683 
 
 ```yaml
   # pnpm audit: checks Node.js dependencies against the npm advisory database.
-  # Runs per-app because each frontend app has its own lock file and dependency
-  # tree — a vulnerability in syn-docs doesn't necessarily affect syn-dashboard-ui.
+  # Runs per-project because each app has its own lock file and dependency tree.
   npm-audit:
     name: Node.js Dependency Audit
     runs-on: ubuntu-latest
@@ -658,9 +660,11 @@ gh api repos/actions/checkout/git/tags/11bd71901bbe5b1630ceea73d27597364c9af683 
       # --audit-level moderate: fail on moderate+ severity (skip low/info noise).
       - name: Audit frontend dependencies
         run: |
-          for dir in apps/syn-dashboard-ui apps/syn-pulse-ui apps/syn-docs; do
+          find . -maxdepth 4 \( -name pnpm-lock.yaml -o -name package-lock.json \) \
+            -not -path '*/node_modules/*' -print | sort -u | while IFS= read -r lockfile; do
+            dir="$(dirname "$lockfile")"
             echo "=== Auditing $dir ==="
-            (cd "$dir" && pnpm audit --prod --audit-level moderate) || true
+            (cd "$dir" && pnpm audit --prod --audit-level moderate)
           done
         continue-on-error: true  # TODO(#N): remove after first clean baseline
 ```

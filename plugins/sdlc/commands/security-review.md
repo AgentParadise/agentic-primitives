@@ -18,7 +18,7 @@ MODE: $1 || "audit"
 ## Instructions
 
 Use the **security-hardening** skill as your knowledge base. It contains the full threat
-model (10 attack categories), audit workflow (12 steps), and fix recipes with inline
+model (10 attack categories), audit workflow (13 steps), and fix recipes with inline
 comments explaining the "why" behind each defense.
 
 1. Run the audit workflow from the skill (Steps 1-11 + 6.5 + 6.6)
