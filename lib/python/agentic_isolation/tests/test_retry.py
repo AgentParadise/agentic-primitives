@@ -30,6 +30,19 @@ from agentic_isolation.retry import (
 # ---------------------------------------------------------------------------
 
 
+class FakeClock:
+    """Deterministic clock for testing time-dependent behavior."""
+
+    def __init__(self, start: float = 0.0) -> None:
+        self._now = start
+
+    def __call__(self) -> float:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
+
+
 class TransientError(Exception):
     """Represents a transient (retryable) error."""
 
@@ -269,20 +282,22 @@ class TestCircuitBreakerStateMachine:
 
     @pytest.mark.asyncio
     async def test_transitions_open_to_half_open_after_timeout(self):
-        cb = CircuitBreaker(failure_threshold=1, reset_timeout_s=0.05)
+        clock = FakeClock()
+        cb = CircuitBreaker(failure_threshold=1, reset_timeout_s=0.05, clock=clock)
         with pytest.raises(TransientError):
             await cb.execute(always_fail())
         assert cb.state is CircuitState.OPEN
 
-        await asyncio.sleep(0.06)
+        clock.advance(0.06)
         assert cb.state is CircuitState.HALF_OPEN
 
     @pytest.mark.asyncio
     async def test_transitions_half_open_to_closed_on_success(self):
-        cb = CircuitBreaker(failure_threshold=1, reset_timeout_s=0.05)
+        clock = FakeClock()
+        cb = CircuitBreaker(failure_threshold=1, reset_timeout_s=0.05, clock=clock)
         with pytest.raises(TransientError):
             await cb.execute(always_fail())
-        await asyncio.sleep(0.06)
+        clock.advance(0.06)
         assert cb.state is CircuitState.HALF_OPEN
 
         result = await cb.execute(AsyncMock(return_value="ok"))
@@ -291,10 +306,11 @@ class TestCircuitBreakerStateMachine:
 
     @pytest.mark.asyncio
     async def test_transitions_half_open_to_open_on_failure(self):
-        cb = CircuitBreaker(failure_threshold=1, reset_timeout_s=0.05)
+        clock = FakeClock()
+        cb = CircuitBreaker(failure_threshold=1, reset_timeout_s=0.05, clock=clock)
         with pytest.raises(TransientError):
             await cb.execute(always_fail())
-        await asyncio.sleep(0.06)
+        clock.advance(0.06)
         assert cb.state is CircuitState.HALF_OPEN
 
         with pytest.raises(TransientError):

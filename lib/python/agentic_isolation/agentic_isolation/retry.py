@@ -319,6 +319,7 @@ class CircuitBreaker:
         success_threshold: int = 1,
         is_failure: Callable[[BaseException], bool] | None = None,
         on_state_change: Callable[[CircuitState, CircuitState], None] | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         if failure_threshold < 1:
             raise ValueError(f"failure_threshold must be >= 1, got {failure_threshold}")
@@ -340,6 +341,7 @@ class CircuitBreaker:
         self._last_failure_at: float | None = None
         self._total_calls: int = 0
         self._total_failures: int = 0
+        self._clock = clock or time.monotonic
 
     # ------------------------------------------------------------------
     # Public API
@@ -377,7 +379,7 @@ class CircuitBreaker:
 
         if self._state is CircuitState.OPEN:
             assert self._opened_at is not None  # noqa: S101
-            elapsed = time.monotonic() - self._opened_at
+            elapsed = self._clock() - self._opened_at
             remaining = max(0.0, self._reset_timeout_s - elapsed)
             raise CircuitOpenError(reset_at=time.time() + remaining)
 
@@ -406,7 +408,7 @@ class CircuitBreaker:
 
     def _check_reset(self) -> None:
         if self._state is CircuitState.OPEN and self._opened_at is not None:
-            elapsed = time.monotonic() - self._opened_at
+            elapsed = self._clock() - self._opened_at
             if elapsed >= self._reset_timeout_s:
                 self._transition(CircuitState.OPEN, CircuitState.HALF_OPEN)
                 self._successes = 0
@@ -428,15 +430,15 @@ class CircuitBreaker:
 
         self._total_failures += 1
         self._failures += 1
-        self._last_failure_at = time.monotonic()
+        self._last_failure_at = self._clock()
 
         if self._state is CircuitState.HALF_OPEN:
             self._transition(CircuitState.HALF_OPEN, CircuitState.OPEN)
-            self._opened_at = time.monotonic()
+            self._opened_at = self._clock()
             self._failures = 1
         elif self._state is CircuitState.CLOSED and self._failures >= self._failure_threshold:
             self._transition(CircuitState.CLOSED, CircuitState.OPEN)
-            self._opened_at = time.monotonic()
+            self._opened_at = self._clock()
 
     def _transition(self, from_state: CircuitState, to_state: CircuitState) -> None:
         self._state = to_state
