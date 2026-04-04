@@ -85,8 +85,12 @@ class WorkspaceDockerProvider(BaseProvider):
         self._default_image = default_image
         self._default_network = default_network
         self._security = security or SecurityConfig.production()
-        self._workspace_base_dir = Path(workspace_base_dir).resolve() if workspace_base_dir else None
-        self._workspace_host_dir = Path(workspace_host_dir).resolve() if workspace_host_dir else None
+        self._workspace_base_dir = (
+            Path(workspace_base_dir).resolve() if workspace_base_dir else None
+        )
+        self._workspace_host_dir = (
+            Path(workspace_host_dir).resolve() if workspace_host_dir else None
+        )
         self._workspaces: dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
 
