@@ -205,6 +205,51 @@ class TestTerminateProcess:
         await BaseProvider._terminate_process(proc)
 
 
+class TestDockerProviderPathResolution:
+    """Tests for Docker provider path resolution."""
+
+    def test_relative_base_dir_resolved_to_absolute(self) -> None:
+        """Relative workspace_base_dir must be resolved to absolute.
+
+        workspace_base_dir is where this process does file I/O.  Docker
+        interprets relative paths in -v= as named volumes, and volume names
+        can't contain "/", so relative multi-segment paths fail.
+        """
+        from agentic_isolation import WorkspaceDockerProvider
+
+        provider = WorkspaceDockerProvider(workspace_base_dir="./workspaces")
+        assert provider._workspace_base_dir is not None
+        assert provider._workspace_base_dir.is_absolute()
+
+    def test_host_dir_preserved_as_is(self) -> None:
+        """workspace_host_dir must NOT be resolved — it's a host path.
+
+        When running in Docker-in-Docker, workspace_host_dir refers to the
+        Docker *host* filesystem.  resolve() would map it to the container's
+        CWD, producing the wrong path for -v mounts.
+        """
+        from pathlib import Path
+
+        from agentic_isolation import WorkspaceDockerProvider
+
+        provider = WorkspaceDockerProvider(workspace_host_dir="./host-workspaces")
+        assert provider._workspace_host_dir is not None
+        assert provider._workspace_host_dir == Path("./host-workspaces")
+
+    def test_absolute_paths_unchanged(self) -> None:
+        """Absolute paths should remain absolute after resolution."""
+        from agentic_isolation import WorkspaceDockerProvider
+
+        provider = WorkspaceDockerProvider(
+            workspace_base_dir="/workspaces",
+            workspace_host_dir="/host/workspaces",
+        )
+        assert provider._workspace_base_dir is not None
+        assert str(provider._workspace_base_dir) == "/workspaces"
+        assert provider._workspace_host_dir is not None
+        assert str(provider._workspace_host_dir) == "/host/workspaces"
+
+
 class TestWorkspaceProviderProtocol:
     """Tests for WorkspaceProvider protocol."""
 
