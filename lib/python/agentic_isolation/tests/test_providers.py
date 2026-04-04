@@ -205,6 +205,41 @@ class TestTerminateProcess:
         await BaseProvider._terminate_process(proc)
 
 
+class TestDockerProviderPathResolution:
+    """Tests for Docker provider path resolution."""
+
+    def test_relative_workspace_dir_resolved_to_absolute(self) -> None:
+        """Relative workspace dirs must be resolved to absolute paths.
+
+        Docker interprets relative paths in -v= as named volumes. Volume names
+        cannot contain "/" so "workspaces/ws-abc" fails. Resolving to absolute
+        paths ensures Docker treats them as bind mounts instead.
+        """
+        from agentic_isolation import WorkspaceDockerProvider
+
+        provider = WorkspaceDockerProvider(
+            workspace_base_dir="./workspaces",
+            workspace_host_dir="./host-workspaces",
+        )
+        assert provider._workspace_base_dir is not None
+        assert provider._workspace_base_dir.is_absolute()
+        assert provider._workspace_host_dir is not None
+        assert provider._workspace_host_dir.is_absolute()
+
+    def test_absolute_workspace_dir_unchanged(self) -> None:
+        """Absolute paths should remain absolute after resolution."""
+        from agentic_isolation import WorkspaceDockerProvider
+
+        provider = WorkspaceDockerProvider(
+            workspace_base_dir="/workspaces",
+            workspace_host_dir="/host/workspaces",
+        )
+        assert provider._workspace_base_dir is not None
+        assert str(provider._workspace_base_dir) == "/workspaces"
+        assert provider._workspace_host_dir is not None
+        assert str(provider._workspace_host_dir) == "/host/workspaces"
+
+
 class TestWorkspaceProviderProtocol:
     """Tests for WorkspaceProvider protocol."""
 
