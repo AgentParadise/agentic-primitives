@@ -10,7 +10,7 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
+import asyncio  # noqa: F401 — used in patch("asyncio.sleep") string refs
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
