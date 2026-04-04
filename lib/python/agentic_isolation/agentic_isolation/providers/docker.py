@@ -88,9 +88,10 @@ class WorkspaceDockerProvider(BaseProvider):
         self._workspace_base_dir = (
             Path(workspace_base_dir).resolve() if workspace_base_dir else None
         )
-        self._workspace_host_dir = (
-            Path(workspace_host_dir).resolve() if workspace_host_dir else None
-        )
+        # Host dir is used for Docker -v mounts and must refer to the Docker
+        # *host* filesystem, not this process's filesystem.  When running inside
+        # a container (DinD), resolve() would map to the container's CWD — wrong.
+        self._workspace_host_dir = Path(workspace_host_dir) if workspace_host_dir else None
         self._workspaces: dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
 
