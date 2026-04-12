@@ -454,6 +454,8 @@ class EventEmitter:
         self,
         remote: str = "origin",
         branch: str = "",
+        sha: str = "",
+        repo: str = "",
         **metadata: Any,
     ) -> dict[str, Any]:
         """Emit a git push event.
@@ -461,11 +463,20 @@ class EventEmitter:
         Args:
             remote: Remote name.
             branch: Branch being pushed.
+            sha: HEAD commit SHA at push time.
+            repo: Repository name.
             **metadata: Additional metadata.
         """
+        context: dict[str, Any] = {"operation": "push", "remote": remote}
+        if branch:
+            context["branch"] = branch
+        if sha:
+            context["sha"] = sha
+        if repo:
+            context["repo"] = repo
         return self.emit(
             EventType.GIT_PUSH,
-            context={"operation": "push", "remote": remote, "branch": branch},
+            context=context,
             metadata=metadata if metadata else None,
         )
 
@@ -496,6 +507,7 @@ class EventEmitter:
         self,
         branch: str = "",
         merge_sha: str = "",
+        repo: str = "",
         **metadata: Any,
     ) -> dict[str, Any]:
         """Emit a git merge event (also fires on git pull).
@@ -503,6 +515,7 @@ class EventEmitter:
         Args:
             branch: Branch the merge landed on.
             merge_sha: SHA of the resulting merge commit.
+            repo: Repository name.
             **metadata: Additional metadata (commits_merged, is_squash, etc.).
         """
         context: dict[str, Any] = {"operation": "merge"}
@@ -510,6 +523,8 @@ class EventEmitter:
             context["branch"] = branch
         if merge_sha:
             context["sha"] = merge_sha
+        if repo:
+            context["repo"] = repo
         return self.emit(
             EventType.GIT_MERGE,
             context=context,
@@ -519,17 +534,30 @@ class EventEmitter:
     def git_rewrite(
         self,
         rewrite_type: str = "rebase",
+        sha: str = "",
+        branch: str = "",
+        repo: str = "",
         **metadata: Any,
     ) -> dict[str, Any]:
         """Emit a git rewrite event (rebase or amend).
 
         Args:
             rewrite_type: "rebase" or "amend".
+            sha: HEAD SHA after rewrite.
+            branch: Current branch.
+            repo: Repository name.
             **metadata: Additional metadata (mappings, commits_folded, etc.).
         """
+        context: dict[str, Any] = {"operation": rewrite_type}
+        if sha:
+            context["sha"] = sha
+        if branch:
+            context["branch"] = branch
+        if repo:
+            context["repo"] = repo
         return self.emit(
             EventType.GIT_REWRITE,
-            context={"operation": rewrite_type},
+            context=context,
             metadata=metadata if metadata else None,
         )
 
@@ -539,6 +567,7 @@ class EventEmitter:
         prev_branch: str = "",
         sha: str = "",
         is_clone: bool = False,
+        repo: str = "",
         **metadata: Any,
     ) -> dict[str, Any]:
         """Emit a git checkout event (checkout, switch, or clone).
@@ -548,6 +577,7 @@ class EventEmitter:
             prev_branch: Previous branch (empty if clone or unknown).
             sha: New HEAD SHA.
             is_clone: True if this is the initial checkout after git clone.
+            repo: Repository name.
             **metadata: Additional metadata.
         """
         context: dict[str, Any] = {
@@ -560,6 +590,8 @@ class EventEmitter:
             context["prev_branch"] = prev_branch
         if sha:
             context["sha"] = sha
+        if repo:
+            context["repo"] = repo
         return self.emit(
             EventType.GIT_CHECKOUT,
             context=context,
