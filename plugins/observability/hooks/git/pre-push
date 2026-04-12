@@ -31,6 +31,11 @@ def main():
         remote = sys.argv[1] if len(sys.argv) > 1 else "origin"
         remote_url = sys.argv[2] if len(sys.argv) > 2 else ""
         branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        sha = run(["git", "rev-parse", "HEAD"])
+
+        # Get repo name from remote
+        origin = run(["git", "remote", "get-url", "origin"])
+        repo = origin.rstrip("/").rsplit("/", 1)[-1].replace(".git", "") if origin else ""
 
         # Count commits to push
         upstream = run(["git", "rev-parse", "--abbrev-ref", "@{upstream}"])
@@ -46,6 +51,8 @@ def main():
             branch=branch,
             remote=remote,
             remote_url=remote_url,
+            sha=sha,
+            repo=repo,
             commits_count=commits_count,
             commit_range=commit_range,
         )
