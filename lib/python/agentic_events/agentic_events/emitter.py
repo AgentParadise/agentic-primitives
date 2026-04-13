@@ -11,6 +11,15 @@ import time
 from datetime import UTC, datetime
 from typing import IO, Any
 
+from agentic_events.payloads import (
+    GitBranchChangedPayload,
+    GitCheckoutPayload,
+    GitCommitPayload,
+    GitMergePayload,
+    GitOperationPayload,
+    GitPushPayload,
+    GitRewritePayload,
+)
 from agentic_events.types import EventType, SecurityDecision
 
 
@@ -435,18 +444,24 @@ class EventEmitter:
             message: Commit message preview.
             sha: Commit SHA (short or full).
             branch: Branch the commit was made on.
-            **metadata: Additional metadata.
+            **metadata: Additional metadata (repo, files_changed, insertions,
+                deletions, author, estimated_tokens_added, estimated_tokens_removed).
         """
-        context: dict[str, Any] = {"operation": "commit"}
-        if message:
-            context["message"] = message[:200]
-        if sha:
-            context["sha"] = sha
-        if branch:
-            context["branch"] = branch
+        payload = GitCommitPayload(
+            message=message[:200] if message else "",
+            sha=sha,
+            branch=branch,
+            repo=str(metadata.pop("repo", "")),
+            author=str(metadata.pop("author", "")),
+            files_changed=int(metadata.pop("files_changed", 0)),
+            insertions=int(metadata.pop("insertions", 0)),
+            deletions=int(metadata.pop("deletions", 0)),
+            estimated_tokens_added=int(metadata.pop("estimated_tokens_added", 0)),
+            estimated_tokens_removed=int(metadata.pop("estimated_tokens_removed", 0)),
+        )
         return self.emit(
             EventType.GIT_COMMIT,
-            context=context,
+            context={"git": payload.to_dict()},
             metadata=metadata if metadata else None,
         )
 
@@ -465,18 +480,20 @@ class EventEmitter:
             branch: Branch being pushed.
             sha: HEAD commit SHA at push time.
             repo: Repository name.
-            **metadata: Additional metadata.
+            **metadata: Additional metadata (remote_url, commits_count, commit_range).
         """
-        context: dict[str, Any] = {"operation": "push", "remote": remote}
-        if branch:
-            context["branch"] = branch
-        if sha:
-            context["sha"] = sha
-        if repo:
-            context["repo"] = repo
+        payload = GitPushPayload(
+            remote=remote,
+            branch=branch,
+            sha=sha,
+            repo=repo,
+            remote_url=str(metadata.pop("remote_url", "")),
+            commits_count=int(metadata.pop("commits_count", 0)),
+            commit_range=str(metadata.pop("commit_range", "")),
+        )
         return self.emit(
             EventType.GIT_PUSH,
-            context=context,
+            context={"git": payload.to_dict()},
             metadata=metadata if metadata else None,
         )
 
@@ -493,13 +510,13 @@ class EventEmitter:
             to_branch: New branch name.
             **metadata: Additional metadata.
         """
+        payload = GitBranchChangedPayload(
+            from_branch=from_branch,
+            to_branch=to_branch,
+        )
         return self.emit(
             EventType.GIT_BRANCH_CHANGED,
-            context={
-                "operation": "branch_change",
-                "from_branch": from_branch,
-                "to_branch": to_branch,
-            },
+            context={"git": payload.to_dict()},
             metadata=metadata if metadata else None,
         )
 
@@ -518,16 +535,14 @@ class EventEmitter:
             repo: Repository name.
             **metadata: Additional metadata (commits_merged, is_squash, etc.).
         """
-        context: dict[str, Any] = {"operation": "merge"}
-        if branch:
-            context["branch"] = branch
-        if merge_sha:
-            context["sha"] = merge_sha
-        if repo:
-            context["repo"] = repo
+        payload = GitMergePayload(
+            branch=branch,
+            sha=merge_sha,
+            repo=repo,
+        )
         return self.emit(
             EventType.GIT_MERGE,
-            context=context,
+            context={"git": payload.to_dict()},
             metadata=metadata if metadata else None,
         )
 
@@ -548,16 +563,15 @@ class EventEmitter:
             repo: Repository name.
             **metadata: Additional metadata (mappings, commits_folded, etc.).
         """
-        context: dict[str, Any] = {"operation": rewrite_type}
-        if sha:
-            context["sha"] = sha
-        if branch:
-            context["branch"] = branch
-        if repo:
-            context["repo"] = repo
+        payload = GitRewritePayload(
+            operation=rewrite_type,
+            sha=sha,
+            branch=branch,
+            repo=repo,
+        )
         return self.emit(
             EventType.GIT_REWRITE,
-            context=context,
+            context={"git": payload.to_dict()},
             metadata=metadata if metadata else None,
         )
 
@@ -580,21 +594,17 @@ class EventEmitter:
             repo: Repository name.
             **metadata: Additional metadata.
         """
-        context: dict[str, Any] = {
-            "operation": "clone" if is_clone else "checkout",
-            "is_clone": is_clone,
-        }
-        if branch:
-            context["branch"] = branch
-        if prev_branch:
-            context["prev_branch"] = prev_branch
-        if sha:
-            context["sha"] = sha
-        if repo:
-            context["repo"] = repo
+        payload = GitCheckoutPayload(
+            operation="clone" if is_clone else "checkout",
+            branch=branch,
+            prev_branch=prev_branch,
+            sha=sha,
+            is_clone=is_clone,
+            repo=repo,
+        )
         return self.emit(
             EventType.GIT_CHECKOUT,
-            context=context,
+            context={"git": payload.to_dict()},
             metadata=metadata if metadata else None,
         )
 
@@ -611,11 +621,12 @@ class EventEmitter:
             details: Command details or arguments preview.
             **metadata: Additional metadata.
         """
-        context: dict[str, Any] = {"operation": operation}
-        if details:
-            context["details"] = details[:500]
+        payload = GitOperationPayload(
+            operation=operation,
+            details=details[:500] if details else "",
+        )
         return self.emit(
             EventType.GIT_OPERATION,
-            context=context,
+            context={"git": payload.to_dict()},
             metadata=metadata if metadata else None,
         )

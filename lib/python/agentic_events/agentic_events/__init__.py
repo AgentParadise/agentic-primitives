@@ -26,6 +26,16 @@ Recording and playback for testing (ADR-030):
 
 from agentic_events.buffer import BatchBuffer, enrich_event, parse_jsonl_line
 from agentic_events.emitter import EventEmitter
+from agentic_events.payloads import (
+    GitBranchChangedPayload,
+    GitCheckoutPayload,
+    GitCommitPayload,
+    GitMergePayload,
+    GitOperationPayload,
+    GitPayload,
+    GitPushPayload,
+    GitRewritePayload,
+)
 from agentic_events.fixtures import (
     Recording,
     get_recordings_dir,
@@ -45,6 +55,15 @@ __all__ = [
     # Types
     "SecurityDecision",
     "SessionSource",
+    # Git event payloads (typed dataclasses)
+    "GitBranchChangedPayload",
+    "GitCheckoutPayload",
+    "GitCommitPayload",
+    "GitMergePayload",
+    "GitOperationPayload",
+    "GitPayload",
+    "GitPushPayload",
+    "GitRewritePayload",
     # Buffer utilities (for AEF)
     "BatchBuffer",
     "parse_jsonl_line",
