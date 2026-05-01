@@ -33,6 +33,13 @@
 # See ADR-027: Provider-Based Workspace Images
 # See ADR-033: Plugin-Native Workspace Images
 
+# Global build args (declared before any FROM so all stages can inherit).
+# Stages that need these must re-declare `ARG <name>` without a default to
+# pull the value in. Bump deliberately — controls JSONL output contract,
+# tool names (Agent vs Task), stream-json event schema, hook event names.
+# See ClaudeToolName in agentic_events.types.
+ARG CLAUDE_CLI_VERSION=2.1.126
+
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
 # =============================================================================
@@ -69,25 +76,25 @@ FROM base AS tooling
 # Install uv (fast Python package + interpreter manager).
 # Use the official uv image as a stage to copy the binary cleanly — avoids
 # curl-piped installer and gives a reproducible source for the binary.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Pin uv to a specific version — `:latest` would silently change between
+# builds and is non-reproducible. Bump deliberately.
+COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /uvx /usr/local/bin/
 
-# Install Python 3.12 via uv (replaces apt python3) and create a system venv
+# Install Python via uv (replaces apt python3) and create a system venv
 # at /opt/venv that all Python packages install into. World-readable so the
 # non-root agent user can use it at runtime.
+# Pin patch version so image's Python doesn't drift across rebuilds.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_LINK_MODE=copy \
     VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:$PATH
 
-RUN uv python install 3.12 \
-    && uv venv --python 3.12 /opt/venv \
+RUN uv python install 3.12.13 \
+    && uv venv --python 3.12.13 /opt/venv \
     && chmod -R a+rX /opt/uv /opt/venv
 
-# Install Claude CLI globally via npm
-# Pin version to control JSONL output contract — bump deliberately, not silently.
-# When upgrading, verify: tool names (Agent vs Task), stream-json event schema,
-# hook event names. See ClaudeToolName in agentic_events.types.
-ARG CLAUDE_CLI_VERSION=2.1.126
+# Install Claude CLI globally via npm. Version pinned via global ARG above.
+ARG CLAUDE_CLI_VERSION
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}
 
 # =============================================================================
@@ -215,8 +222,9 @@ ENV HOME=/home/agent \
     CARGO_HOME=/home/agent/.cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
-# Labels for version tracking and image selection
-# Re-declare ARG here: build args are stage-scoped and don't carry across FROM boundaries.
+# Labels for version tracking and image selection.
+# Re-declare ARG (no default) to pull value from the global ARG declared
+# before any FROM — build args are stage-scoped and don't carry across.
 ARG CLAUDE_CLI_VERSION
 LABEL agentic.claude_cli_version=${CLAUDE_CLI_VERSION}
 
