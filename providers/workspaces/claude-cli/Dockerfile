@@ -41,26 +41,17 @@ FROM node:22-slim AS base
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies (Python is provided by uv, not apt)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Python
-    python3 \
-    python3-venv \
-    # Essentials
     curl \
     ca-certificates \
     git \
     jq \
     tree \
-    # Process management
     procps \
-    # Required for gh CLI installation
     gnupg \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
-
-# Create python -> python3 symlink for compatibility
-RUN ln -sf /usr/bin/python3 /usr/local/bin/python
 
 # Install GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -75,11 +66,22 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | g
 # =============================================================================
 FROM base AS tooling
 
-# Install uv (fast Python package manager)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && mv /root/.local/bin/uv /usr/local/bin/ \
-    && mv /root/.local/bin/uvx /usr/local/bin/ \
-    && rm -rf /root/.local
+# Install uv (fast Python package + interpreter manager).
+# Use the official uv image as a stage to copy the binary cleanly — avoids
+# curl-piped installer and gives a reproducible source for the binary.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+# Install Python 3.12 via uv (replaces apt python3) and create a system venv
+# at /opt/venv that all Python packages install into. World-readable so the
+# non-root agent user can use it at runtime.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_LINK_MODE=copy \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH
+
+RUN uv python install 3.12 \
+    && uv venv --python 3.12 /opt/venv \
+    && chmod -R a+rX /opt/uv /opt/venv
 
 # Install Claude CLI globally via npm
 # Pin version to control JSONL output contract — bump deliberately, not silently.
@@ -127,10 +129,9 @@ FROM tooling AS packages
 # Copy pre-built wheels from staged build context
 COPY packages/*.whl /tmp/packages/
 
-# Install agentic packages with uv
-# Using --break-system-packages since we're in a container
+# Install agentic packages into /opt/venv (uv picks it up via VIRTUAL_ENV).
 # pyjwt is required for Claude CLI MCP authentication
-RUN uv pip install --system --break-system-packages --no-cache /tmp/packages/*.whl pyjwt \
+RUN uv pip install --no-cache /tmp/packages/*.whl pyjwt \
     && rm -rf /tmp/packages
 
 # =============================================================================
@@ -203,8 +204,9 @@ ENV HOME=/home/agent \
     AGENTIC_PLUGINS_DIR=/opt/agentic/plugins \
     # Disable Claude Code attribution in commits/PRs
     ANTHROPIC_NO_ATTRIBUTION=1 \
-    # Use uv for Python execution (faster, better caching)
-    UV_SYSTEM_PYTHON=1 \
+    # Python lives in /opt/venv — installed and managed by uv (not apt).
+    # VIRTUAL_ENV + PATH make the venv's python/pip the default.
+    VIRTUAL_ENV=/opt/venv \
     # Rust toolchain paths
     # RUSTUP_HOME: read-only toolchain installed during build
     # CARGO_HOME: writable location for agent user (registry index, git checkouts)
