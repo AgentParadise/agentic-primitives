@@ -18,6 +18,8 @@
 #   GIT_AUTHOR_NAME         - Git commit author name (required for git ops)
 #   GIT_AUTHOR_EMAIL        - Git commit author email (required for git ops)
 #   GITHUB_TOKEN            - GitHub token for git push (optional)
+#   SYN_OPERATOR_NAME       - Operator display name for Co-authored-by trailer (optional)
+#   SYN_OPERATOR_EMAIL      - Operator email matching a verified GitHub account (optional)
 #
 # This script is the SINGLE SOURCE OF TRUTH for workspace configuration.
 # Orchestrators should NOT have hardcoded setup scripts.
@@ -100,23 +102,46 @@ if [ -n "${GIT_AUTHOR_NAME}" ]; then
     git config --global init.defaultBranch main
 fi
 
-# Install observability git hooks globally (ADR-043).
+# Install workspace git hooks globally (ADR-043).
 #
 # core.hooksPath is a git global config that overrides the per-repo .git/hooks/
-# directory. Setting it here (at container startup) means post-commit, pre-push,
-# post-merge, and post-rewrite hooks fire for EVERY repo cloned or initialized
-# inside this container — including repos cloned by the agent mid-task.
+# directory. Setting it here (at container startup) means our hooks fire for
+# EVERY repo cloned or initialized inside this container — including repos
+# cloned by the agent mid-task.
 #
-# The hooks emit JSONL observability events to stderr. The docker exec stream in
-# AgenticEventStreamAdapter uses stderr=STDOUT to capture them alongside Claude's
-# stdout, and WorkflowExecutionEngine stores them in TimescaleDB.
+# Two contributing sources, composed into a single runtime directory:
+#   1. /opt/agentic/git-hooks/                          — workspace-shipped
+#      hooks. Owned by the claude-cli provider itself (this dir is baked in
+#      by the Dockerfile from providers/workspaces/claude-cli/scripts/git-hooks/).
+#      Currently: prepare-commit-msg for operator Co-authored-by attribution
+#      (driven by SYN_OPERATOR_NAME / SYN_OPERATOR_EMAIL env vars; no-op when
+#      either is unset).
+#   2. /opt/agentic/plugins/observability/hooks/git/    — event-emission hooks
+#      from the observability plugin (post-commit, pre-push, post-merge,
+#      post-rewrite, post-checkout). These emit JSONL to stderr; the docker
+#      exec stream in AgenticEventStreamAdapter merges stderr→stdout, and
+#      WorkflowExecutionEngine stores the events in TimescaleDB.
 #
-# Without this line, git hooks only fire in repos that have their own .git/hooks/
-# scripts, which is almost never the case for freshly cloned repos.
-GIT_HOOKS_DIR="${AGENTIC_PLUGINS_DIR:-/opt/agentic/plugins}/observability/hooks/git"
-if [ -d "${GIT_HOOKS_DIR}" ]; then
+# Workspace-shipped hooks are linked first so any future name collision
+# resolves in favor of the observability event emitters (rare, but explicit).
+GIT_HOOKS_DIR="${HOME}/.git-hooks"
+mkdir -p "${GIT_HOOKS_DIR}"
+
+for src_dir in \
+    /opt/agentic/git-hooks \
+    "${AGENTIC_PLUGINS_DIR:-/opt/agentic/plugins}/observability/hooks/git"; do
+    [ -d "${src_dir}" ] || continue
+    for src in "${src_dir}"/*; do
+        [ -f "${src}" ] || continue
+        name=$(basename "${src}")
+        case "${name}" in install.py|*.md|*.txt) continue ;; esac
+        ln -sf "${src}" "${GIT_HOOKS_DIR}/${name}"
+    done
+done
+
+if [ -n "$(ls -A "${GIT_HOOKS_DIR}" 2>/dev/null)" ]; then
     git config --global core.hooksPath "${GIT_HOOKS_DIR}"
-    echo "[entrypoint] Git observability hooks installed from ${GIT_HOOKS_DIR}"
+    echo "[entrypoint] Workspace git hooks composed at ${GIT_HOOKS_DIR}"
 fi
 
 # Also set committer identity (git uses both for commits)

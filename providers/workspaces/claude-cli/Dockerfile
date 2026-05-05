@@ -171,16 +171,21 @@ RUN mkdir -p /workspace/artifacts/input \
 # NOTE: ~/.claude/settings.json is created by entrypoint.sh at runtime
 # because /home/agent is a tmpfs mount that wipes anything baked into the image.
 
-# Copy entrypoint script
+# Copy entrypoint script and workspace-shipped git hooks.
+# git-hooks/ holds non-observability git hooks owned by the workspace itself
+# (e.g. prepare-commit-msg for operator Co-authored-by attribution). These
+# are NOT Claude Code plugins — the entrypoint installs them into the
+# runtime git hooks directory alongside hooks contributed by plugins.
 COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
+COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 
 # Copy pre-staged plugins from build context (ADR-033)
 # Each plugin is a self-contained directory with .claude-plugin/plugin.json
 # and hooks/hooks.json using ${CLAUDE_PLUGIN_ROOT} for path resolution.
 COPY plugins/ /opt/agentic/plugins/
 
-# Set permissions on plugins and entrypoint
-RUN chmod -R 755 /opt/agentic/plugins \
+# Set permissions on plugins, entrypoint, and workspace-shipped hooks
+RUN chmod -R 755 /opt/agentic/plugins /opt/agentic/git-hooks \
     && find /opt/agentic/plugins -name "*.py" -exec chmod 755 {} \; \
     && chmod 755 /opt/agentic/entrypoint.sh \
     && chown -R agent:agent /opt/agentic
