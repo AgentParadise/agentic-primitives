@@ -61,9 +61,13 @@ def run_in_workspace(script: str, env: dict[str, str] | None = None) -> str:
     """
     env = env or {}
     cmd = [
-        "docker", "run", "--rm",
-        "-e", "GIT_AUTHOR_NAME=workspace-agent",
-        "-e", "GIT_AUTHOR_EMAIL=agent@workspace.test",
+        "docker",
+        "run",
+        "--rm",
+        "-e",
+        "GIT_AUTHOR_NAME=workspace-agent",
+        "-e",
+        "GIT_AUTHOR_EMAIL=agent@workspace.test",
     ]
     for key, value in env.items():
         cmd.extend(["-e", f"{key}={value}"])
@@ -203,7 +207,8 @@ class TestOperatorAttribution:
         msg = run_in_workspace(script)
         trailer_lines = [line for line in msg.splitlines() if line.startswith("Co-authored-by:")]
         assert len(trailer_lines) == 1, (
-            f"newline injection should be sanitized to a single trailer line; got {len(trailer_lines)}:\n{msg}"
+            f"newline injection should be sanitized to one trailer line; "
+            f"got {len(trailer_lines)}:\n{msg}"
         )
         # The single trailer's email field (last <...> on the line) must be the
         # operator email, not the attacker's. The attacker substring may still
