@@ -95,18 +95,23 @@ def stage_plugins(manifest: dict, build_context: Path) -> None:
 
 
 def stage_scripts(provider: str, build_context: Path) -> None:
-    """Copy scripts directory (e.g., entrypoint.sh) to build context."""
+    """Copy scripts directory (e.g., entrypoint.sh, git-hooks/) to build context.
+
+    Copies the entire scripts/ tree so subdirectories like git-hooks/ are
+    available to the Dockerfile via `COPY scripts/git-hooks/ ...`.
+    """
     scripts_src = PROVIDERS_DIR / provider / "scripts"
     if not scripts_src.exists():
         return  # No scripts directory
 
     scripts_dst = build_context / "scripts"
-    scripts_dst.mkdir(parents=True, exist_ok=True)
+    if scripts_dst.exists():
+        shutil.rmtree(scripts_dst)
+    shutil.copytree(scripts_src, scripts_dst)
 
-    for script in scripts_src.iterdir():
-        if script.is_file():
-            shutil.copy2(script, scripts_dst / script.name)
-            print(f"  ✓ Script: {script.name}")
+    for path in sorted(scripts_dst.rglob("*")):
+        if path.is_file():
+            print(f"  ✓ Script: {path.relative_to(scripts_dst)}")
 
 
 def build_wheels(build_context: Path) -> None:
