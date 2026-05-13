@@ -28,13 +28,17 @@ posture.
 - **Adapter-driven at the image layer.** Per-provider translation logic lives
   in the image at `/opt/agentic/memory/<provider>/init.sh`, baked at build
   time.
-- **Doctor as first-class diagnostic.** Misconfiguration must fail loud at
-  the *human* layer, even when the workspace itself fails soft at the agent
-  layer.
+- **Opting in is opting into hard-fail.** Setting `AGENTIC_MEMORY_PROVIDER`
+  is the user's signal that memory matters. Misconfiguration exits the
+  entrypoint non-zero. There is no soft-fail mode — if you don't want hard
+  fail, don't set the provider.
 - **Backwards compatible.** A workspace that doesn't set `AGENTIC_MEMORY_PROVIDER`
   is unaffected. Existing orchestrators don't need to change.
-- **Consistent with ADR-035 conventions.** Same env-var prefix, same
-  entrypoint-section pattern, same soft-fail default.
+- **Durable audit trail.** Doctor writes one JSON line per run to a host-mounted
+  log file. Operators can `tail`, `grep`, and dashboard the diagnostics across
+  every container start.
+- **Consistent with ADR-035 conventions** for env-var prefix, entrypoint-section
+  pattern, and the bind-mount-driven primitive shape.
 
 ## Non-goals
 
@@ -64,7 +68,12 @@ Three required env vars from the host, three optional:
 | `AGENTIC_MEMORY_NAMESPACE_KIND` | no, default `task` | semantic hint — `task` \| `domain` \| `workflow` \| `user` \| `session` \| `project` \| `custom` |
 | `AGENTIC_MEMORY_AUTH` | no | provider-specific token (passed verbatim) |
 | `AGENTIC_MEMORY_CONFIG_JSON` | no | adapter-specific config (JSON, escape hatch) |
-| `AGENTIC_MEMORY_REQUIRED` | no, default `false` | if `true`, doctor failure exits the entrypoint non-zero. Default soft-fails. |
+
+**No `AGENTIC_MEMORY_REQUIRED` flag.** Setting `AGENTIC_MEMORY_PROVIDER` is
+the user's opt-in to memory; the contract treats that as the user's
+authorization to fail loud on misconfiguration. If you want a workspace
+without memory, don't set the provider — the entrypoint skips section 5.6
+and 5.7 entirely, no doctor runs, no failure mode exists.
 
 The host **never** sets provider-specific vars like `HINDSIGHT_BANK_ID`. That
 mapping is the adapter's job.
@@ -102,21 +111,24 @@ fi
 ```bash
 # --- 5.7 Memory doctor preflight ---
 if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
-  # Run the doctor in --quick mode: minimal checks, machine-readable to stdout,
-  # human-readable summary to stderr. Adds <1s to container startup.
-  if ! /opt/agentic/memory/doctor --quick --json > /tmp/memory-doctor.json 2> /tmp/memory-doctor.log; then
-    cat /tmp/memory-doctor.log >&2
-    if [ "${AGENTIC_MEMORY_REQUIRED:-false}" = "true" ]; then
-      echo "[entrypoint] AGENTIC_MEMORY_REQUIRED=true and doctor failed; exiting." >&2
-      exit 1
-    fi
-    echo "[entrypoint] memory doctor reported issues (see /tmp/memory-doctor.log); continuing." >&2
+  # Full preflight: env-var contract, namespace shape, adapter file,
+  # backend DNS + /health, provider-specific checks. Pretty text to stderr,
+  # one-line JSON to the audit log on host bind-mount. Hard-fail on any
+  # check failure — opting into memory means opting into loud failure.
+  audit_dir="/var/agentic/memory-doctor"
+  mkdir -p "${audit_dir}"
+  audit_file="${audit_dir}/$(date -u +%Y-%m-%d).jsonl"
+  if ! /opt/agentic/memory/doctor --json >> "${audit_file}" 2>&1; then
+    echo "[entrypoint] memory doctor reported failure (audit: ${audit_file})" >&2
+    exit 1
   fi
 fi
 ```
 
-The doctor's full output stays on disk at `/tmp/memory-doctor.json` for later
-inspection by humans or `claude doctor memory`.
+`/var/agentic/memory-doctor/` is a host bind-mount the orchestrator provides
+(see "Audit trail" below). If the orchestrator forgets the mount, the directory
+is created as a normal container path and the log dies with the container —
+not great, but the doctor's `--json` is still on stderr.
 
 #### Per-provider adapter scripts
 
@@ -166,20 +178,21 @@ validation logic lives — not duplicated per-adapter.
 
 ```sh
 # 1. Automatic preflight at container start (section 5.7 entrypoint)
-#    Runs --quick by default; ~1s of checks; soft-fails by default.
-#    Behavior gated by AGENTIC_MEMORY_REQUIRED.
+#    Runs full checks. Hard-fail on any failure (exit 1).
 
-# 2. Explicit on-demand from inside the container or wrapper
-/opt/agentic/memory/doctor [--quick] [--fix] [--json] [--verbose] [--provider PROVIDER]
+# 2. Explicit on-demand from inside the container
+/opt/agentic/memory/doctor [--fix] [--json] [--verbose] [--provider PROVIDER]
 ```
 
-Modes:
+There is only one mode — full preflight. No `--quick`. Speed isn't the
+priority; honesty is.
+
+Flags:
 
 | Flag | Behavior |
 |---|---|
-| (default) | Full checks (env vars + adapter + backend health + bank reachability). Pretty output to stderr; exit 0/1/2. |
-| `--quick` | Minimal preflight (env vars + adapter file exists + backend `/health` 200). Used by section 5.7. |
-| `--fix` | Apply auto-correctable fixes. See "Auto-fix scope" below. Default is dry-run; pair with `--apply` to commit. |
+| (default) | Full checks. Pretty output to stderr; non-zero exit on failure. |
+| `--fix` | Apply auto-correctable fixes. Dry-run by default; pair with `--apply` to commit. |
 | `--apply` | Commit `--fix` changes (no-op without `--fix`). |
 | `--json` | Machine-readable JSON to stdout. Pretty text always goes to stderr. |
 | `--verbose` | Include adapter source, env-var values (redacted), backend response bodies, timings. |
@@ -188,10 +201,12 @@ Modes:
 Exit codes:
 
 - `0` — all checks pass
-- `1` — warnings present (issues exist but not blocking — agent will run)
-- `2` — failures present (backend unreachable, adapter missing, etc. — agent
-  will run with `AGENTIC_MEMORY_READY` unset, retain/recall hooks won't
-  function)
+- `1` — one or more checks failed (entrypoint exits non-zero with this; the
+  container does not start)
+
+There is no "warning" tier. A check is either fine or it's a failure. If a
+condition only deserves a warning, it's a candidate for `--fix` auto-correction
+instead.
 
 #### Checks performed
 
@@ -208,8 +223,7 @@ Standard checks (the contract layer — provider-agnostic):
 5. **`config_json_valid`** — if `AGENTIC_MEMORY_CONFIG_JSON` is set, it parses
    as JSON.
 
-Backend checks (require network — included in default, skipped in
-`--quick`):
+Backend checks (network):
 
 6. **`backend_dns`** — hostname in `AGENTIC_MEMORY_URL` resolves.
 7. **`backend_health`** — `GET <url>/health` returns 200.
@@ -218,7 +232,15 @@ Provider-specific checks (delegated to adapter's `doctor.sh`):
 
 8. **`provider_specific`** — adapter's `doctor.sh` runs additional checks
    relevant to that provider. For hindsight: bank existence (`GET /banks/<id>`
-   returns 200 or 404 — 404 is fine, lazy-create on first retain).
+   returns 200 or 404 — 404 is fine, lazy-create on first retain), plus the
+   `dynamicBankId` consistency check (see check 9).
+
+9. **`hindsight_config_consistency`** (hindsight only) — if
+   `~/.hindsight/claude-code.json` exists inside the container with
+   `dynamicBankId !== false`, the `HINDSIGHT_BANK_ID` env var the adapter
+   set is silently ignored by the hindsight plugin (verified at hindsight
+   `bank.py:97`). The doctor warns AND auto-fixes by rewriting the config
+   file with `dynamicBankId: false` (the contract's intent).
 
 #### Output schema (JSON)
 
@@ -334,6 +356,12 @@ Failure example (with auto-fixable issues):
   parent shell).
 - **Config-file generation** — if `AGENTIC_MEMORY_CONFIG_JSON` is set,
   write it to the provider's expected path (e.g. `~/.hindsight/claude-code.json`).
+- **Hindsight `dynamicBankId` correction** — if a stale
+  `~/.hindsight/claude-code.json` exists with `dynamicBankId !== false`,
+  rewrite the file with `dynamicBankId: false` so the contract's
+  `HINDSIGHT_BANK_ID` env var actually takes effect. This is a stale-state
+  issue, not an operator decision; silently fixing it preserves the
+  contract's intent.
 
 `--fix` **never** mutates the backend:
 - Does not create banks
@@ -431,45 +459,25 @@ Phased:
 5. **Phase 5 — Second provider adapter** (lossless-claw or whatever ships
    next).
 
-## Open questions
+## Decisions locked
 
-These are deferred to the user before drafting the implementation plan:
+Locked 2026-05-13 after author review. All previously-open questions resolved:
 
-1. **Should section 5.7 default to `--quick` or to a full preflight?**
-   `--quick` adds <1s; full adds ~5-15s depending on backend latency. Quick
-   misses some failure modes (DNS works but provider-specific check fails)
-   but lets the container start faster.
-
-   **Spec assumes `--quick`** for now. Open.
-
-2. **Should `AGENTIC_MEMORY_REQUIRED=true` be the default for production
-   deployments?** Soft-fail is friendly for development but masks
-   misconfiguration in production. Could be opted into via a host-side
-   policy (`agentic-domain-runner` sets `AGENTIC_MEMORY_REQUIRED=true` for
-   production domains).
-
-   **Spec assumes soft-fail default.** Open.
-
-3. **Should the doctor JSON output be persisted somewhere durable (not just
-   `/tmp/`)?** For audit trails, an `audit_logs` field on the hindsight bank
-   could record doctor results. Out of scope for v1.
-
-4. **Should there be a hindsight-specific check for `dynamicBankId=true`
-   conflicting with `HINDSIGHT_BANK_ID`?** The adapter sets `dynamicBankId=false`
-   explicitly via env, but if a `~/.hindsight/claude-code.json` exists with
-   `dynamicBankId: true`, the env var is ignored (verified in
-   `bank.py:97`). The doctor could warn about this.
-
-   **Spec includes this as a provider-specific check (hindsight's doctor.sh)
-   but doesn't auto-fix.** Open.
-
-5. **Where does `claude doctor memory` route to?** A wrapper around
-   `/opt/agentic/memory/doctor` from inside the Claude CLI? That couples
-   Claude CLI to the memory primitive. Alternative: just document that
-   users run `/opt/agentic/memory/doctor` directly.
-
-   **Spec leaves Claude CLI out.** Run `/opt/agentic/memory/doctor`
-   directly. Open.
+1. **No `--quick` mode.** One doctor, one mode: full preflight. Speed isn't
+   the priority; honesty is.
+2. **No `AGENTIC_MEMORY_REQUIRED` flag.** Setting `AGENTIC_MEMORY_PROVIDER` is
+   opt-in; opt-in is automatic hard-fail. If you don't want hard fail, don't
+   set the provider — the entrypoint then skips memory entirely.
+3. **Audit trail via host bind-mount** at `/var/agentic/memory-doctor/`.
+   One JSONL file per day (`YYYY-MM-DD.jsonl`), appended one entry per
+   container start.
+4. **Hindsight `dynamicBankId` conflict is a check AND an auto-fix.** Doctor
+   rewrites the stale config file with `dynamicBankId: false` so the
+   contract's env var takes effect.
+5. **No `claude doctor` integration.** Memory diagnostics are obtained by
+   running `/opt/agentic/memory/doctor` directly. Wrappers, if needed, live
+   in the orchestrator (e.g. an `agentic-domain-runner doctor` command can
+   run both Claude's doctor and memory doctor in sequence).
 
 ## Test plan
 

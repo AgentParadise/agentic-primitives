@@ -69,9 +69,16 @@ two coordinated extensions of the workspace injection contract (ADR-035):
    the contract is wired correctly, sniffs the backend's reachability,
    surfaces actionable diagnostics in both human-readable and
    machine-readable form, and optionally auto-corrects client-side issues
-   via `--fix`. Entrypoint section 5.7 runs `--quick` automatically at
-   container start; soft-fails by default (`AGENTIC_MEMORY_REQUIRED=true`
-   opts into hard fail).
+   via `--fix`. Entrypoint section 5.7 runs full preflight automatically
+   at container start. **Hard-fail on any failure.** Opting into memory
+   (setting `AGENTIC_MEMORY_PROVIDER`) is the user's authorization to
+   fail loud on misconfiguration; there is no soft-fail mode and no escape
+   hatch.
+
+3. **Audit trail** via host bind-mount at `/var/agentic/memory-doctor/`.
+   Doctor appends one JSON line per run to `YYYY-MM-DD.jsonl`. Operators
+   can `tail`, `grep`, and dashboard the diagnostics across every container
+   start.
 
 Detailed design lives in
 [the spec doc](../superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md).
@@ -147,26 +154,38 @@ flag for safety" — users skip it.
 
 ---
 
-### Alternative 4: Hard-fail on misconfiguration by default
+### Alternative 4: Soft-fail by default + `AGENTIC_MEMORY_REQUIRED=true` opt-in
 
-**Description**: If the doctor reports any failure, the entrypoint exits
-non-zero and the workspace doesn't start. No `AGENTIC_MEMORY_REQUIRED` flag.
+**Description**: If the doctor reports any failure, the entrypoint logs the
+issue but continues. An `AGENTIC_MEMORY_REQUIRED=true` env var opts into
+hard fail.
 
 **Pros**:
-- Misconfiguration is impossible to ignore.
-- Less surprising for production deployments — they want to fail loud.
+- Matches ADR-035's soft-fail-with-loud-logs posture exactly.
+- A flaky backend doesn't take down every workspace.
+- Development environments tolerate transient backend issues.
 
 **Cons**:
-- Breaks the "backwards compatible, soft-fail" posture of ADR-035.
-- A flaky backend (hindsight container restart, network blip) takes down
-  every workspace until the operator intervenes. Bad coupling.
-- Development environments often have backend issues that are okay to
-  ignore for the moment; this would block them.
+- Two env vars to remember instead of one (`PROVIDER` AND `REQUIRED`).
+- Misconfiguration in development looks like working code until the
+  agent's memory tools silently no-op mid-session — the exact silent-failure
+  pattern we're trying to escape.
+- The semantic of "setting `AGENTIC_MEMORY_PROVIDER` but not `REQUIRED`" is
+  fundamentally confused — why opt into memory if you don't care whether
+  it works?
 
-**Reason for rejection**: Coupling workspace startup to backend health is
-the wrong default. We add `AGENTIC_MEMORY_REQUIRED=true` for hosts that
-want to opt into hard fail, but keep soft-fail as the default to match
-ADR-035 and prevent backend outages from cascading.
+**Reason for rejection**: The user's reasoning during decision review:
+"if you enable memory, you want failure when misconfigured." Adding a
+second env var to allow ignoring the first is a workaround for not having
+designed the contract sharply. Opting in IS opting into hard fail; if you
+don't want hard fail, don't set the provider. The entrypoint then skips
+sections 5.6 and 5.7 entirely.
+
+This decision deliberately diverges from ADR-035's soft-fail default
+because the failure modes differ. ADR-035 deals with optional content
+(plugins, subagents) where missing pieces gracefully degrade. Memory is
+binary — either retain/recall works or it doesn't. There is no graceful
+degradation.
 
 ## Consequences
 
@@ -197,10 +216,18 @@ ADR-035 and prevent backend outages from cascading.
 - **The Python helper library is a new dependency** in the workspace image
   (already has Python; minor weight added). Future cleanup might extract
   the validation logic to a shared package.
-- **Soft-fail default means production misconfiguration can run unnoticed
-  if operators ignore the doctor's logged warnings.** Mitigated by
-  `AGENTIC_MEMORY_REQUIRED=true` opt-in, but the default is still
-  "agent runs even when memory is broken."
+- **Hard-fail couples workspace startup to backend health.** A flaky
+  hindsight container takes down every workspace that opts into memory
+  until the operator intervenes. Mitigated by the doctor's auto-fix
+  capability and clear audit logs; operators with a flaky backend should
+  unset `AGENTIC_MEMORY_PROVIDER` temporarily rather than work around the
+  doctor.
+
+- **Diverges from ADR-035's soft-fail default.** ADR-035 deals with
+  optional content (plugins, subagents); ADR-036 deals with a binary
+  feature (memory works or it doesn't). The divergence is intentional but
+  worth flagging — future ADRs that extend either contract should be
+  explicit about which posture they inherit.
 
 ## Implementation Notes
 
@@ -208,9 +235,10 @@ Phased implementation per the spec doc. Phases 1–2 cover contract + doctor
 skeleton + hindsight adapter; phases 3–5 cover host adoption, `--fix` mode,
 and second-provider adapter.
 
-ADR-035's "soft-fail by default, loud logs" pattern is mirrored deliberately.
-If a future ADR changes ADR-035 to hard-fail, this ADR should be reviewed
-to keep them consistent.
+**Divergence from ADR-035's soft-fail default is intentional.** ADR-035
+deals with optional content where missing pieces gracefully degrade.
+ADR-036 deals with a binary feature. If a future ADR consolidates the two
+postures or revisits one of them, both should be reviewed together.
 
 `tests/integration/test_entrypoint_memory_*.py` follows the existing test
 pattern from `test_entrypoint_workspace_injection.py`.
