@@ -100,68 +100,93 @@ That is the **entire** env-var contract introduced by this work. Three vars, all
 
 New section `5.5 — Workspace Context Composition`, slotted between the existing section 5 (workspace directories) and section 6 (Execute CMD).
 
-```bash
-# 5.5 Workspace Context Composition
-# Universal injection point for orchestrator-supplied context, plugins, and
-# subagents. All actions skip silently if the source is absent — backwards
-# compatible with deployments that don't yet bind-mount /etc/agentic/workspace/.
+The script defines configuration constants at the top so paths and defaults appear once. Helper functions handle the two "filter list or discover all" patterns shared between plugins and agents.
 
-if [ -d /etc/agentic/workspace ]; then
-    # 1. CLAUDE.md verbatim copy.
-    ctx_rel="${AGENTIC_WORKSPACE_CONTEXT:-CLAUDE.md}"
-    ctx_src="/etc/agentic/workspace/${ctx_rel}"
+```bash
+# -----------------------------------------------------------------------------
+# 5.5 Workspace Context Composition
+# -----------------------------------------------------------------------------
+# Universal inbound seam — copies orchestrator-supplied context, plugins,
+# and subagents from /etc/agentic/workspace/ (bind-mounted read-only) into
+# the agent-visible workspace + Claude config locations. Skips silently when
+# the bind-mount is absent so existing deployments stay backwards-compatible.
+#
+# See: docs/workspace.md and ADR-035 for the contract this implements.
+
+# --- Configuration constants ---------------------------------------------
+readonly WS_MOUNT="/etc/agentic/workspace"
+readonly WS_MOUNT_PLUGINS="${WS_MOUNT}/plugins"
+readonly WS_MOUNT_AGENTS="${WS_MOUNT}/agents"
+
+readonly WS_TARGET_CONTEXT="/workspace/CLAUDE.md"
+readonly WS_TARGET_PLUGINS="/workspace/.agentic-plugins"
+readonly WS_TARGET_AGENTS="${HOME}/.claude/agents"
+
+readonly WS_DEFAULT_CONTEXT="CLAUDE.md"
+readonly WS_PLUGIN_MANIFEST=".claude-plugin/plugin.json"
+
+# --- Helpers --------------------------------------------------------------
+# Echo each name in $1 (colon-separated) on its own line; if $1 is empty,
+# fall back to all immediate children of directory $2 with optional suffix
+# $3 stripped from the basenames.
+__ws_names() {
+    local explicit="$1" dir="$2" strip_ext="${3:-}"
+    if [ -n "${explicit}" ]; then
+        printf '%s\n' "${explicit}" | tr ':' '\n'
+        return
+    fi
+    [ -d "${dir}" ] || return
+    for f in "${dir}"/*${strip_ext}; do
+        [ -e "${f}" ] || continue
+        local base; base="$(basename "${f}")"
+        [ -n "${strip_ext}" ] && base="${base%${strip_ext}}"
+        printf '%s\n' "${base}"
+    done
+}
+
+# --- Actions --------------------------------------------------------------
+if [ -d "${WS_MOUNT}" ]; then
+    # 1. Context (CLAUDE.md).
+    ctx_src="${WS_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${WS_DEFAULT_CONTEXT}}"
     if [ -f "${ctx_src}" ]; then
-        cp "${ctx_src}" /workspace/CLAUDE.md
-        chmod 644 /workspace/CLAUDE.md
+        cp "${ctx_src}" "${WS_TARGET_CONTEXT}"
+        chmod 644 "${WS_TARGET_CONTEXT}"
     fi
 
-    # 2. Per-workspace plugins. Either filter via env var or discover all.
-    if [ -d /etc/agentic/workspace/plugins ]; then
-        if [ -n "${AGENTIC_WORKSPACE_PLUGINS:-}" ]; then
-            IFS=':' read -ra _plugins <<< "${AGENTIC_WORKSPACE_PLUGINS}"
-        else
-            _plugins=()
-            for d in /etc/agentic/workspace/plugins/*/; do
-                [ -d "${d}" ] || continue
-                _plugins+=("$(basename "${d}")")
-            done
-        fi
-        mkdir -p /workspace/.agentic-plugins
-        for plugin in "${_plugins[@]}"; do
-            src="/etc/agentic/workspace/plugins/${plugin}"
-            if [ -f "${src}/.claude-plugin/plugin.json" ]; then
-                cp -a "${src}" "/workspace/.agentic-plugins/${plugin}"
-                AGENTIC_PLUGIN_FLAGS="${AGENTIC_PLUGIN_FLAGS} --plugin-dir /workspace/.agentic-plugins/${plugin}"
-            fi
-        done
+    # 2. Per-workspace plugins (appended to existing AGENTIC_PLUGIN_FLAGS
+    # built by section 2 for baked-in plugins).
+    if [ -d "${WS_MOUNT_PLUGINS}" ]; then
+        mkdir -p "${WS_TARGET_PLUGINS}"
+        while IFS= read -r plugin; do
+            [ -n "${plugin}" ] || continue
+            src="${WS_MOUNT_PLUGINS}/${plugin}"
+            [ -f "${src}/${WS_PLUGIN_MANIFEST}" ] || continue
+            cp -a "${src}" "${WS_TARGET_PLUGINS}/${plugin}"
+            AGENTIC_PLUGIN_FLAGS="${AGENTIC_PLUGIN_FLAGS} --plugin-dir ${WS_TARGET_PLUGINS}/${plugin}"
+        done < <(__ws_names "${AGENTIC_WORKSPACE_PLUGINS:-}" "${WS_MOUNT_PLUGINS}")
         export AGENTIC_PLUGIN_FLAGS
     fi
 
-    # 3. Loose subagents (subagents not packaged in any plugin).
-    if [ -d /etc/agentic/workspace/agents ]; then
-        if [ -n "${AGENTIC_WORKSPACE_AGENTS:-}" ]; then
-            IFS=':' read -ra _agents <<< "${AGENTIC_WORKSPACE_AGENTS}"
-        else
-            _agents=()
-            for f in /etc/agentic/workspace/agents/*.md; do
-                [ -f "${f}" ] || continue
-                _agents+=("$(basename "${f}" .md)")
-            done
-        fi
-        mkdir -p ~/.claude/agents
-        for agent in "${_agents[@]}"; do
-            src="/etc/agentic/workspace/agents/${agent}.md"
-            if [ -f "${src}" ]; then
-                cp "${src}" ~/.claude/agents/"${agent}".md
-            fi
-        done
+    # 3. Loose subagents (plugin-bundled subagents come along for free via
+    # the --plugin-dir flag in action 2 — Claude auto-discovers them).
+    if [ -d "${WS_MOUNT_AGENTS}" ]; then
+        mkdir -p "${WS_TARGET_AGENTS}"
+        while IFS= read -r agent; do
+            [ -n "${agent}" ] || continue
+            src="${WS_MOUNT_AGENTS}/${agent}.md"
+            [ -f "${src}" ] || continue
+            cp "${src}" "${WS_TARGET_AGENTS}/${agent}.md"
+        done < <(__ws_names "${AGENTIC_WORKSPACE_AGENTS:-}" "${WS_MOUNT_AGENTS}" ".md")
     fi
 fi
 ```
 
-Existing `AGENTIC_PLUGIN_FLAGS` (built by section 2 for baked-in plugins) is **appended to**, not replaced — baked-in plugins still load, per-workspace plugins layer on top.
-
-Plugin-bundled subagents need no entrypoint action: Claude auto-loads `agents/` from any directory passed via `--plugin-dir`. They come along for free when their plugin is loaded.
+**Why this shape:**
+- All paths are defined once at the top. Any future move of `/etc/agentic/workspace/` or `/workspace/.agentic-plugins/` is a single-line edit.
+- The `__ws_names` helper collapses the two "filter via env var OR discover everything" patterns into one reusable function.
+- Each action is then a tight read-loop driven by the helper's stream of names.
+- `readonly` on the constants prevents accidental shadowing later in the script.
+- Existing `AGENTIC_PLUGIN_FLAGS` (built by section 2 for baked-in plugins) is **appended to**, not replaced — baked-in plugins still load, per-workspace plugins layer on top.
 
 ## 6. Python Helper — `WorkspaceFiles`
 
@@ -277,6 +302,56 @@ Coordinated two-repo rollout. Each phase ships green and is independently useful
 - **Per-domain scoped tokens** — captured as `agentic-domain-runner` issue [001](https://gitea.neuralempowerment.xyz/HomeLab/agentic-domain-runner/src/branch/main/docs/issues/001-per-domain-scoped-tokens.md). Runner concern, not workspace concern.
 - **Output artifact post-processing inside the entrypoint** — out of scope. The agent writes to `/workspace/artifacts/output/`, the orchestrator collects after container exit. No entrypoint involvement.
 
-## 11. Open Questions
+## 11. Documentation Deliverables
+
+The spec is the design artifact; production docs need three additions so a future reader doesn't have to dig through `docs/superpowers/specs/` to understand the workspace.
+
+### 11.1 `docs/workspace.md` — canonical workspace doc (NEW)
+
+A short page in the top-level `docs/` directory that's the single canonical reference for what the workspace is and what it does. Sections:
+
+- **What the workspace is** — the isolation + observability boundary; one paragraph framing.
+- **Inject / isolate / observe** — the three responsibilities described in §2 of this spec.
+- **What you put in** — bind-mount layout + env vars from §3 and §4.
+- **What lands inside** — the post-entrypoint state from §3 (file paths the agent sees).
+- **What comes out** — the existing observability story (git hooks, JSONL stderr, stream-json stdout, output artifacts).
+- **Pointers** — link to ADR-035 (the decision record), this spec (the design), and the entrypoint script (the source of truth for behavior).
+
+Lives at `docs/workspace.md`. Keep tight — under 200 lines. The spec carries the detail; this page is the orientation.
+
+### 11.2 README section — `## Workspace` (UPDATE)
+
+Add a focused section to the top-level `README.md` that:
+
+- Says what the workspace is in two sentences.
+- Lists the three responsibilities (inject / isolate / observe).
+- Links to `docs/workspace.md` as the canonical reference.
+- Removes any deeper detail currently in the README that now belongs in `docs/workspace.md`.
+
+The README's job is signposting; deep content lives elsewhere.
+
+### 11.3 ADR-035 — Workspace injection contract (NEW)
+
+`docs/adrs/035-workspace-injection-contract.md`. Captures the durable decisions:
+
+- The workspace image is the cross-orchestrator isolation + observability boundary.
+- Inbound injection happens through a single bind-mount at `/etc/agentic/workspace/` + three optional env vars.
+- Tool restrictions live inside subagent / plugin definitions, not in a separate env-var concept.
+- Identity vars (task id, session id, callback URLs, tokens) are orchestrator-specific and stay out of the workspace contract.
+- `WorkspaceFiles.bind_mount` + `WorkspaceFiles.inject` are the two complementary staging primitives — bind-mount for host-resident static content, inject for generated / remote-fetched / cross-daemon content.
+
+ADR template lives at `docs/adrs/000-adr-template.md`. Number 035 is the next available after the current 034.
+
+### 11.4 Sibling-repo doc sync
+
+`agentic-domain-runner` already has its consumer-side spec, plan, and ADRs (010–013) merged on `main`. When Phase A (env-rename) lands, those references update too:
+
+- Runner spec §4 path string `/etc/agentic/domain/` → `/etc/agentic/workspace/`
+- Runner spec / ADR-012 / ADR-013 env-var references `AGENTIC_DOMAIN_*` → `AGENTIC_WORKSPACE_*`
+- Voice OS handoff v2 env-var table updated.
+
+These are mechanical sed-style changes; captured in the implementation plan as Phase A.
+
+## 12. Open Questions
 
 None at time of writing. Update this section if review surfaces any.
