@@ -114,22 +114,22 @@ The script defines configuration constants at the top so paths and defaults appe
 # See: docs/workspace.md and ADR-035 for the contract this implements.
 
 # --- Configuration constants ---------------------------------------------
-readonly WS_MOUNT="/etc/agentic/workspace"
-readonly WS_MOUNT_PLUGINS="${WS_MOUNT}/plugins"
-readonly WS_MOUNT_AGENTS="${WS_MOUNT}/agents"
+readonly INJECT_MOUNT="/etc/agentic/workspace"
+readonly INJECT_MOUNT_PLUGINS="${INJECT_MOUNT}/plugins"
+readonly INJECT_MOUNT_AGENTS="${INJECT_MOUNT}/agents"
 
-readonly WS_TARGET_CONTEXT="/workspace/CLAUDE.md"
-readonly WS_TARGET_PLUGINS="/workspace/.agentic-plugins"
-readonly WS_TARGET_AGENTS="${HOME}/.claude/agents"
+readonly INJECT_TARGET_CONTEXT="/workspace/CLAUDE.md"
+readonly INJECT_TARGET_PLUGINS="/workspace/.agentic-plugins"
+readonly INJECT_TARGET_AGENTS="${HOME}/.claude/agents"
 
-readonly WS_DEFAULT_CONTEXT="CLAUDE.md"
-readonly WS_PLUGIN_MANIFEST=".claude-plugin/plugin.json"
+readonly INJECT_DEFAULT_CONTEXT="CLAUDE.md"
+readonly INJECT_PLUGIN_MANIFEST=".claude-plugin/plugin.json"
 
 # --- Helpers --------------------------------------------------------------
 # Echo each name in $1 (colon-separated) on its own line; if $1 is empty,
 # fall back to all immediate children of directory $2 with optional suffix
 # $3 stripped from the basenames.
-__ws_names() {
+__inject_names() {
     local explicit="$1" dir="$2" strip_ext="${3:-}"
     if [ -n "${explicit}" ]; then
         printf '%s\n' "${explicit}" | tr ':' '\n'
@@ -145,38 +145,38 @@ __ws_names() {
 }
 
 # --- Actions --------------------------------------------------------------
-if [ -d "${WS_MOUNT}" ]; then
+if [ -d "${INJECT_MOUNT}" ]; then
     # 1. Context (CLAUDE.md).
-    ctx_src="${WS_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${WS_DEFAULT_CONTEXT}}"
+    ctx_src="${INJECT_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${INJECT_DEFAULT_CONTEXT}}"
     if [ -f "${ctx_src}" ]; then
-        cp "${ctx_src}" "${WS_TARGET_CONTEXT}"
-        chmod 644 "${WS_TARGET_CONTEXT}"
+        cp "${ctx_src}" "${INJECT_TARGET_CONTEXT}"
+        chmod 644 "${INJECT_TARGET_CONTEXT}"
     fi
 
     # 2. Per-workspace plugins (appended to existing AGENTIC_PLUGIN_FLAGS
     # built by section 2 for baked-in plugins).
-    if [ -d "${WS_MOUNT_PLUGINS}" ]; then
-        mkdir -p "${WS_TARGET_PLUGINS}"
+    if [ -d "${INJECT_MOUNT_PLUGINS}" ]; then
+        mkdir -p "${INJECT_TARGET_PLUGINS}"
         while IFS= read -r plugin; do
             [ -n "${plugin}" ] || continue
-            src="${WS_MOUNT_PLUGINS}/${plugin}"
-            [ -f "${src}/${WS_PLUGIN_MANIFEST}" ] || continue
-            cp -a "${src}" "${WS_TARGET_PLUGINS}/${plugin}"
-            AGENTIC_PLUGIN_FLAGS="${AGENTIC_PLUGIN_FLAGS} --plugin-dir ${WS_TARGET_PLUGINS}/${plugin}"
-        done < <(__ws_names "${AGENTIC_WORKSPACE_PLUGINS:-}" "${WS_MOUNT_PLUGINS}")
+            src="${INJECT_MOUNT_PLUGINS}/${plugin}"
+            [ -f "${src}/${INJECT_PLUGIN_MANIFEST}" ] || continue
+            cp -a "${src}" "${INJECT_TARGET_PLUGINS}/${plugin}"
+            AGENTIC_PLUGIN_FLAGS="${AGENTIC_PLUGIN_FLAGS} --plugin-dir ${INJECT_TARGET_PLUGINS}/${plugin}"
+        done < <(__inject_names "${AGENTIC_WORKSPACE_PLUGINS:-}" "${INJECT_MOUNT_PLUGINS}")
         export AGENTIC_PLUGIN_FLAGS
     fi
 
     # 3. Loose subagents (plugin-bundled subagents come along for free via
     # the --plugin-dir flag in action 2 — Claude auto-discovers them).
-    if [ -d "${WS_MOUNT_AGENTS}" ]; then
-        mkdir -p "${WS_TARGET_AGENTS}"
+    if [ -d "${INJECT_MOUNT_AGENTS}" ]; then
+        mkdir -p "${INJECT_TARGET_AGENTS}"
         while IFS= read -r agent; do
             [ -n "${agent}" ] || continue
-            src="${WS_MOUNT_AGENTS}/${agent}.md"
+            src="${INJECT_MOUNT_AGENTS}/${agent}.md"
             [ -f "${src}" ] || continue
-            cp "${src}" "${WS_TARGET_AGENTS}/${agent}.md"
-        done < <(__ws_names "${AGENTIC_WORKSPACE_AGENTS:-}" "${WS_MOUNT_AGENTS}" ".md")
+            cp "${src}" "${INJECT_TARGET_AGENTS}/${agent}.md"
+        done < <(__inject_names "${AGENTIC_WORKSPACE_AGENTS:-}" "${INJECT_MOUNT_AGENTS}" ".md")
     fi
 fi
 ```

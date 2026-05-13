@@ -117,3 +117,5 @@ PROJECT-PLAN_*.md
 # Cursor config
 .cursorignore
 .context-docs/
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
