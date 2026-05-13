@@ -7,6 +7,17 @@ alwaysApply: true
 
 Atomic building blocks for AI agent systems. Claude Code plugins + Python libraries for reusable agent capabilities (SDLC, research, workspace management, observability, notifications).
 
+> **For fresh agent sessions:** The workspace contract is documented at
+> [`docs/workspace.md`](docs/workspace.md). It describes how the workspace
+> image takes inbound context (CLAUDE.md, plugins, subagents) via a
+> bind-mount at `/etc/agentic/workspace/` and three `AGENTIC_WORKSPACE_*`
+> env vars, then composes them into `/workspace/`. The entrypoint script
+> at [`providers/workspaces/claude-cli/scripts/entrypoint.sh`](providers/workspaces/claude-cli/scripts/entrypoint.sh)
+> (section 5.5) is the source of truth for behavior;
+> [ADR-035](docs/adrs/035-workspace-injection-contract.md) is the decision
+> record. The sibling consumer (the agentic-domain-runner) is at
+> `/Users/neural/Code/HomeLab/agentic-domain-runner`.
+
 ## Repo Structure
 
 ```
