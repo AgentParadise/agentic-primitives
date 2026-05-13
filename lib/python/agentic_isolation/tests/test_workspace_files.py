@@ -6,8 +6,6 @@ Run with: cd lib/python/agentic_isolation && uv run pytest tests/test_workspace_
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 
 def test_bind_mount_descriptor_shape(tmp_path: Path):
     """bind_mount() returns a docker.types.Mount with the expected

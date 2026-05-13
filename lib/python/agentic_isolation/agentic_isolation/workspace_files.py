@@ -35,14 +35,14 @@ class WorkspaceFiles:
     client — callers pass in whatever client they're already using.
     """
 
-    client: "docker.DockerClient"
+    client: docker.DockerClient
 
     def bind_mount(
         self,
         host_path: Path,
         container_path: str,
         read_only: bool = True,
-    ) -> "docker.types.Mount":
+    ) -> docker.types.Mount:
         """Build a Mount descriptor for `containers.create(mounts=[...])`.
 
         Relative host_paths are resolved to absolute paths (Docker rejects
