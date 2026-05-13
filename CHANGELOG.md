@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🏗 Workspace Injection Contract (ADR-035)
+
+A small, cross-orchestrator file-injection seam that any consumer of the workspace image (agentic-domain-runner, Syntropic137, future Codex/Gemini wrappers) can target.
+
+#### Added
+
+- **Workspace entrypoint section 5.5** — `providers/workspaces/claude-cli/scripts/entrypoint.sh` now reads a read-only bind-mount at `/etc/agentic/workspace/` plus three optional env vars (`AGENTIC_WORKSPACE_CONTEXT`, `AGENTIC_WORKSPACE_PLUGINS`, `AGENTIC_WORKSPACE_AGENTS`) and copies content into the agent-visible workspace:
+  - `CLAUDE.md` → `/workspace/CLAUDE.md` (chmod 600)
+  - `plugins/<name>/` → `/workspace/.agentic-plugins/<name>/` + appends `--plugin-dir` flags to `AGENTIC_PLUGIN_FLAGS`
+  - `agents/<name>.md` → `~/.claude/agents/<name>.md`
+- **`WorkspaceFiles` Python helper** — `lib/python/agentic_isolation/agentic_isolation/workspace_files.py`. Exposes `bind_mount(host, ctr, read_only)` and `inject(container_id, ctr_path, content)` as the two complementary staging primitives. Library import only — no daemon. Exported from `agentic_isolation` package root.
+- **Canonical docs**: [`docs/workspace.md`](docs/workspace.md) describes the workspace's three responsibilities (inject / isolate / observe); [ADR-035](docs/adrs/035-workspace-injection-contract.md) captures the decision; `docs/superpowers/specs/` + `docs/superpowers/plans/` hold the design + implementation plan.
+- **7 integration tests** in `tests/integration/test_entrypoint_workspace_injection.py` covering CLAUDE.md copy, plugin copy + flag append, loose subagent copy, env filter, no-mount skip, invalid-plugin skip, plugin-flags append-not-replace.
+- **5 unit tests** for `WorkspaceFiles` (descriptor shape, relative-path resolution, `put_archive` call shape, ValueError on non-absolute / empty-basename `container_path`).
+- **docs/issues/** convention introduced — numbered enhancement / follow-up notes (003 cosmetic items captured).
+
+#### Notes
+
+- Backwards compatible: when `/etc/agentic/workspace/` isn't bind-mounted, section 5.5 is a silent no-op.
+- Tool restrictions live inside subagent frontmatter (`tools: [...]`) or plugin permission settings, NOT in a separate workspace-contract env var — see ADR-035 alternative #3.
+- Sibling consumer (the [agentic-domain-runner](https://gitea.neuralempowerment.xyz/HomeLab/agentic-domain-runner)) renames its `AGENTIC_DOMAIN_*` env vars to `AGENTIC_WORKSPACE_*` in a coordinated branch.
+
+---
+
 ### 🎯 Agentic Prompts & Smart Sync
 
 Major additions for prompt primitives and improved install workflow.
