@@ -8,9 +8,7 @@ state.
 See spec: docs/superpowers/specs/2026-05-12-workspace-injection-contract-design.md
 """
 
-import json
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest

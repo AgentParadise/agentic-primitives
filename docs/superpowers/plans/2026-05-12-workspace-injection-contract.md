@@ -460,7 +460,10 @@ fi
 - [ ] **Step 3: Rebuild the workspace image**
 
 ```bash
-docker build -t agentic-workspace-claude-cli:latest providers/workspaces/claude-cli
+# Canonical build (uses scripts/build-provider.py under the hood — stages
+# the build context the Dockerfile expects). Raw `docker build` against
+# providers/workspaces/claude-cli/ does NOT work; see docs/issues/002.
+just build-workspace-claude-cli
 ```
 
 Expected: clean build, no shellcheck warnings on the new section.
@@ -1343,10 +1346,13 @@ Pick the next tag (e.g., if `latest` aliases `0.7.x`, tag `0.8.0`). Conventions 
 
 ```bash
 cd /Users/neural/Code/AgentParadise/agentic-primitives
-docker build -t agentic-workspace-claude-cli:0.8.0 \
-             -t agentic-workspace-claude-cli:latest \
-             providers/workspaces/claude-cli
+just build-workspace-claude-cli   # tags `latest` + the bundled Claude CLI version
+# (or: uv run scripts/build-provider.py claude-cli)
 ```
+
+`docker build -t ... providers/workspaces/claude-cli` does NOT work
+— the Dockerfile expects a staged build context that the script
+above produces. See docs/issues/002.
 
 - [ ] **Step 3: (Optional) Push to the registry**
 

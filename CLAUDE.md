@@ -15,8 +15,9 @@ Atomic building blocks for AI agent systems. Claude Code plugins + Python librar
 > at [`providers/workspaces/claude-cli/scripts/entrypoint.sh`](providers/workspaces/claude-cli/scripts/entrypoint.sh)
 > (section 5.5) is the source of truth for behavior;
 > [ADR-035](docs/adrs/035-workspace-injection-contract.md) is the decision
-> record. The sibling consumer (the agentic-domain-runner) is at
-> `/Users/neural/Code/HomeLab/agentic-domain-runner`.
+> record. The reference consumer is the
+> [agentic-domain-runner](https://gitea.neuralempowerment.xyz/HomeLab/agentic-domain-runner)
+> (a sibling repo).
 
 ## Repo Structure
 

@@ -234,7 +234,10 @@ if [ -d "${INJECT_MOUNT}" ]; then
     ctx_src="${INJECT_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${INJECT_DEFAULT_CONTEXT}}"
     if [ -f "${ctx_src}" ]; then
         cp "${ctx_src}" "${INJECT_TARGET_CONTEXT}"
-        chmod 644 "${INJECT_TARGET_CONTEXT}"
+        # 600 because orchestrators may embed credentials or
+        # private guidance in the workspace context. Matches the mode
+        # used for ~/.claude/settings.json and ~/.git-credentials above.
+        chmod 600 "${INJECT_TARGET_CONTEXT}"
     fi
 
     if [ -d "${INJECT_MOUNT_PLUGINS}" ]; then
@@ -243,6 +246,11 @@ if [ -d "${INJECT_MOUNT}" ]; then
             [ -n "${plugin}" ] || continue
             src="${INJECT_MOUNT_PLUGINS}/${plugin}"
             [ -f "${src}/${INJECT_PLUGIN_MANIFEST}" ] || continue
+            # rm first → idempotent across re-runs when /workspace is a
+            # persistent named volume. Without the rm, `cp -a src dst`
+            # against an existing dst/ creates a nested dst/<basename>/
+            # tree instead of overwriting.
+            rm -rf "${INJECT_TARGET_PLUGINS}/${plugin}"
             cp -a "${src}" "${INJECT_TARGET_PLUGINS}/${plugin}"
             AGENTIC_PLUGIN_FLAGS="${AGENTIC_PLUGIN_FLAGS} --plugin-dir ${INJECT_TARGET_PLUGINS}/${plugin}"
         done < <(__inject_names "${AGENTIC_WORKSPACE_PLUGINS:-}" "${INJECT_MOUNT_PLUGINS}")

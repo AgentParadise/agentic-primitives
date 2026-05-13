@@ -107,7 +107,8 @@ mount + env:
 ```python
 from agentic_isolation import WorkspaceFiles
 
-wf = WorkspaceFiles(client=docker_client)
+client = docker_client
+wf = WorkspaceFiles(client=client)
 
 # Bind-mount mode (host-resident content)
 mount = wf.bind_mount(workspace_dir, "/etc/agentic/workspace", read_only=True)

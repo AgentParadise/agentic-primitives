@@ -69,9 +69,21 @@ class WorkspaceFiles:
 
         Must be called after ``containers.create()`` and before
         ``container.start()`` — the put_archive API requires the container
-        to exist but works regardless of running state.
+        to exist but works regardless of running state. The
+        ``container_path``'s parent directory must already exist inside
+        the container; ``put_archive`` does not create intermediate
+        directories.
+
+        Raises ``ValueError`` if ``container_path`` is not an absolute
+        path or has an empty basename (e.g. ``/`` or trailing slash).
         """
         target = Path(container_path)
+        if not target.is_absolute():
+            raise ValueError(f"container_path must be absolute, got {container_path!r}")
+        if not target.name:
+            raise ValueError(
+                f"container_path must have a non-empty basename, got {container_path!r}"
+            )
         parent = str(target.parent)
         basename = target.name
 

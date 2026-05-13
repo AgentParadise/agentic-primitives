@@ -70,3 +70,29 @@ def test_inject_archives_and_calls_put_archive():
     # Quick sanity: tar archives start with the filename bytes in the
     # header at offset 0 — the basename should appear in the first 100 bytes.
     assert b"CLAUDE.md" in archive_bytes[:200]
+
+
+def test_inject_rejects_relative_path():
+    """inject() raises ValueError on non-absolute container_path."""
+    from agentic_isolation.workspace_files import WorkspaceFiles
+
+    wf = WorkspaceFiles(client=MagicMock())
+    try:
+        wf.inject("ctr", "relative/path", b"x")
+    except ValueError as e:
+        assert "absolute" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_inject_rejects_empty_basename():
+    """inject() raises ValueError on a path whose .name is empty (e.g. /)."""
+    from agentic_isolation.workspace_files import WorkspaceFiles
+
+    wf = WorkspaceFiles(client=MagicMock())
+    try:
+        wf.inject("ctr", "/", b"x")
+    except ValueError as e:
+        assert "basename" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
