@@ -46,9 +46,13 @@ posture.
   those are external services; this primitive only wires *into* them.
 - **Stacking multiple providers.** One workspace, one memory provider for
   v1. Stacking is a future concern.
-- **Cross-namespace recall configuration.** Hindsight's `recallAdditionalBanks`
+- ~~**Cross-namespace recall configuration.** Hindsight's `recallAdditionalBanks`
   is config-file-only, not env-overridable; defer until the contract gains
-  an `AGENTIC_MEMORY_CONFIG_JSON` consumer.
+  an `AGENTIC_MEMORY_CONFIG_JSON` consumer.~~ Shipped 2026-05-13: the
+  adapter consumes `AGENTIC_MEMORY_CONFIG_JSON` and writes it verbatim to
+  `~/.hindsight/claude-code.json`; agentic-domain-runner emits the JSON
+  from a per-domain `[memory] recall_additional_banks` in `domain.toml`.
+  E2E covered by `tests/integration/test_entrypoint_memory.py::test_config_json_writes_claude_code_config`.
 - **Namespace lifecycle (creation/deletion).** The adapter assumes the
   backend lazy-creates on first retain. Tear-down is operator-side.
 - **Replacing or wrapping `claude doctor`.** This doctor is scoped to the
