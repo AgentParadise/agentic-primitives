@@ -282,6 +282,52 @@ if [ -d "${INJECT_MOUNT}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
+# 5.6 Memory adapter initialization
+# -----------------------------------------------------------------------------
+# Per ADR-036. Translates the AGENTIC_MEMORY_* contract into provider-specific
+# env vars (e.g. HINDSIGHT_BANK_ID). No-op when AGENTIC_MEMORY_PROVIDER is
+# unset; the doctor in section 5.7 hard-fails if it's set but misconfigured.
+
+if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
+    AGENTIC_MEMORY_ADAPTER="/opt/agentic/memory/${AGENTIC_MEMORY_PROVIDER}/init.sh"
+    if [ -f "${AGENTIC_MEMORY_ADAPTER}" ]; then
+        echo "[entrypoint] memory adapter: ${AGENTIC_MEMORY_PROVIDER}"
+        # shellcheck disable=SC1090
+        if . "${AGENTIC_MEMORY_ADAPTER}"; then
+            export AGENTIC_MEMORY_READY=1
+        else
+            echo "[entrypoint] memory adapter init failed (exit $?); doctor in 5.7 will surface the cause." >&2
+        fi
+    else
+        echo "[entrypoint] no adapter at ${AGENTIC_MEMORY_ADAPTER}" >&2
+    fi
+fi
+
+# -----------------------------------------------------------------------------
+# 5.7 Memory doctor preflight
+# -----------------------------------------------------------------------------
+# Per ADR-036. Full preflight when memory is opted in. Hard-fail on any check
+# failure — opting into memory is opting into loud failure. JSON appended to
+# /var/agentic/memory-doctor/<date>.jsonl when the orchestrator bind-mounts
+# that directory.
+
+if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
+    AGENTIC_MEMORY_AUDIT_DIR="${AGENTIC_MEMORY_AUDIT_DIR:-/var/agentic/memory-doctor}"
+    mkdir -p "${AGENTIC_MEMORY_AUDIT_DIR}" 2>/dev/null || true
+    AGENTIC_MEMORY_AUDIT_FILE="${AGENTIC_MEMORY_AUDIT_DIR}/$(date -u +%Y-%m-%d).jsonl"
+
+    # Run the doctor. Pretty output → stderr (always shown). JSON → audit log
+    # (appended). Exit non-zero = workspace stops.
+    if /opt/agentic/memory/doctor --json >> "${AGENTIC_MEMORY_AUDIT_FILE}" 2>&1; then
+        echo "[entrypoint] memory doctor: pass (audit: ${AGENTIC_MEMORY_AUDIT_FILE})"
+    else
+        echo "[entrypoint] memory doctor: FAIL (audit: ${AGENTIC_MEMORY_AUDIT_FILE})" >&2
+        echo "[entrypoint] Unset AGENTIC_MEMORY_PROVIDER to bypass the memory contract entirely." >&2
+        exit 1
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
 # Pass through to the original command (e.g., bash, claude, etc.)

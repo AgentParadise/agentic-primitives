@@ -114,6 +114,27 @@ def stage_scripts(provider: str, build_context: Path) -> None:
             print(f"  ✓ Script: {path.relative_to(scripts_dst)}")
 
 
+def stage_memory(provider: str, build_context: Path) -> None:
+    """Copy the memory/ adapter directory to the build context (ADR-036).
+
+    Mirrors stage_scripts. The Dockerfile then COPYs build_context/memory/
+    to /opt/agentic/memory/ where the entrypoint section 5.6 + 5.7 expects it.
+    """
+    memory_src = PROVIDERS_DIR / provider / "memory"
+    if not memory_src.exists():
+        print("  ⊘ No memory adapters configured")
+        return
+
+    memory_dst = build_context / "memory"
+    if memory_dst.exists():
+        shutil.rmtree(memory_dst)
+    shutil.copytree(memory_src, memory_dst)
+
+    for path in sorted(memory_dst.rglob("*")):
+        if path.is_file():
+            print(f"  ✓ Memory: {path.relative_to(memory_dst)}")
+
+
 def build_wheels(build_context: Path) -> None:
     """Build wheels for agentic packages."""
     packages_dir = build_context / "packages"
@@ -121,7 +142,8 @@ def build_wheels(build_context: Path) -> None:
 
     # Packages to include in the image
     # agentic_events is the core observability package used by plugin hooks
-    required_packages = ["agentic_events"]
+    # agentic_memory is the memory contract + doctor (ADR-036)
+    required_packages = ["agentic_events", "agentic_memory"]
 
     for pkg_name in required_packages:
         pkg_path = PYTHON_PACKAGES_DIR / pkg_name
@@ -242,6 +264,7 @@ def main():
     stage_dockerfile(provider, build_context)
     stage_scripts(provider, build_context)
     stage_plugins(manifest, build_context)
+    stage_memory(provider, build_context)
     build_wheels(build_context)
 
     if args.stage_only:
