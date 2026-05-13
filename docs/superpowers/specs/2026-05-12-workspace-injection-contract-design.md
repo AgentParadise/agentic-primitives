@@ -183,7 +183,7 @@ fi
 
 **Why this shape:**
 - All paths are defined once at the top. Any future move of `/etc/agentic/workspace/` or `/workspace/.agentic-plugins/` is a single-line edit.
-- The `__ws_names` helper collapses the two "filter via env var OR discover everything" patterns into one reusable function.
+- The `__inject_names` helper collapses the two "filter via env var OR discover everything" patterns into one reusable function.
 - Each action is then a tight read-loop driven by the helper's stream of names.
 - `readonly` on the constants prevents accidental shadowing later in the script.
 - Existing `AGENTIC_PLUGIN_FLAGS` (built by section 2 for baked-in plugins) is **appended to**, not replaced — baked-in plugins still load, per-workspace plugins layer on top.
