@@ -192,6 +192,75 @@ mkdir -p /workspace/repos
 mkdir -p ~/.cargo
 
 # -----------------------------------------------------------------------------
+# 5.5 Workspace Context Composition
+# -----------------------------------------------------------------------------
+# Universal inbound seam — copies orchestrator-supplied context, plugins,
+# and subagents from /etc/agentic/workspace/ (bind-mounted read-only) into
+# the agent-visible workspace + Claude config locations. Skips silently when
+# the bind-mount is absent so existing deployments stay backwards-compatible.
+#
+# See: docs/workspace.md and ADR-035 for the contract this implements.
+
+# --- Configuration constants ---------------------------------------------
+readonly INJECT_MOUNT="/etc/agentic/workspace"
+readonly INJECT_MOUNT_PLUGINS="${INJECT_MOUNT}/plugins"
+readonly INJECT_MOUNT_AGENTS="${INJECT_MOUNT}/agents"
+
+readonly INJECT_TARGET_CONTEXT="/workspace/CLAUDE.md"
+readonly INJECT_TARGET_PLUGINS="/workspace/.agentic-plugins"
+readonly INJECT_TARGET_AGENTS="${HOME}/.claude/agents"
+
+readonly INJECT_DEFAULT_CONTEXT="CLAUDE.md"
+readonly INJECT_PLUGIN_MANIFEST=".claude-plugin/plugin.json"
+
+# --- Helpers --------------------------------------------------------------
+__inject_names() {
+    local explicit="$1" dir="$2" strip_ext="${3:-}"
+    if [ -n "${explicit}" ]; then
+        printf '%s\n' "${explicit}" | tr ':' '\n'
+        return
+    fi
+    [ -d "${dir}" ] || return
+    for f in "${dir}"/*${strip_ext}; do
+        [ -e "${f}" ] || continue
+        local base; base="$(basename "${f}")"
+        [ -n "${strip_ext}" ] && base="${base%${strip_ext}}"
+        printf '%s\n' "${base}"
+    done
+}
+
+# --- Actions --------------------------------------------------------------
+if [ -d "${INJECT_MOUNT}" ]; then
+    ctx_src="${INJECT_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${INJECT_DEFAULT_CONTEXT}}"
+    if [ -f "${ctx_src}" ]; then
+        cp "${ctx_src}" "${INJECT_TARGET_CONTEXT}"
+        chmod 644 "${INJECT_TARGET_CONTEXT}"
+    fi
+
+    if [ -d "${INJECT_MOUNT_PLUGINS}" ]; then
+        mkdir -p "${INJECT_TARGET_PLUGINS}"
+        while IFS= read -r plugin; do
+            [ -n "${plugin}" ] || continue
+            src="${INJECT_MOUNT_PLUGINS}/${plugin}"
+            [ -f "${src}/${INJECT_PLUGIN_MANIFEST}" ] || continue
+            cp -a "${src}" "${INJECT_TARGET_PLUGINS}/${plugin}"
+            AGENTIC_PLUGIN_FLAGS="${AGENTIC_PLUGIN_FLAGS} --plugin-dir ${INJECT_TARGET_PLUGINS}/${plugin}"
+        done < <(__inject_names "${AGENTIC_WORKSPACE_PLUGINS:-}" "${INJECT_MOUNT_PLUGINS}")
+        export AGENTIC_PLUGIN_FLAGS
+    fi
+
+    if [ -d "${INJECT_MOUNT_AGENTS}" ]; then
+        mkdir -p "${INJECT_TARGET_AGENTS}"
+        while IFS= read -r agent; do
+            [ -n "${agent}" ] || continue
+            src="${INJECT_MOUNT_AGENTS}/${agent}.md"
+            [ -f "${src}" ] || continue
+            cp "${src}" "${INJECT_TARGET_AGENTS}/${agent}.md"
+        done < <(__inject_names "${AGENTIC_WORKSPACE_AGENTS:-}" "${INJECT_MOUNT_AGENTS}" ".md")
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
 # Pass through to the original command (e.g., bash, claude, etc.)
