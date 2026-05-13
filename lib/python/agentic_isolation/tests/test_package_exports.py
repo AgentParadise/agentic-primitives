@@ -116,4 +116,5 @@ class TestPackageExports:
 
 def test_workspace_files_exported():
     import agentic_isolation
+
     assert hasattr(agentic_isolation, "WorkspaceFiles")
