@@ -207,6 +207,56 @@ def test_auto_fix_stale_dynamic_bank_id(tmp_path: Path):
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(not _hindsight_reachable(), reason="hindsight backend unreachable")
+def test_config_json_writes_claude_code_config(tmp_path: Path):
+    """`AGENTIC_MEMORY_CONFIG_JSON` is written verbatim to
+    ~/.hindsight/claude-code.json by the hindsight adapter. This is the
+    contract path agentic-domain-runner relies on to ship per-domain
+    `recallAdditionalBanks` (verified e2e in agentic-memory's
+    multi-bank-task-plus-domain experiment)."""
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
+
+    payload = json.dumps({
+        "llmProvider": "claude-code",
+        "dynamicBankId": False,
+        "bankId": "config-json-test",
+        "recallAdditionalBanks": ["shared-domain-bank"],
+    })
+
+    result = _run(
+        [
+            "bash", "-c",
+            "echo agent reached; "
+            "echo CONFIG_FILE_CONTENTS=$(cat /home/agent/.hindsight/claude-code.json)",
+        ],
+        env={
+            "AGENTIC_MEMORY_PROVIDER": "hindsight",
+            "AGENTIC_MEMORY_NAMESPACE": "config-json-test",
+            "AGENTIC_MEMORY_URL": "http://host.docker.internal:9077",
+            "AGENTIC_MEMORY_CONFIG_JSON": payload,
+        },
+        extra_mounts=[f"{audit_dir}:/var/agentic/memory-doctor"],
+        add_host_gateway=True,
+    )
+
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "agent reached" in result.stdout
+
+    # Extract the contents and parse — the test passes only if the file's
+    # JSON round-trips byte-for-byte through the adapter.
+    line = next(
+        ln for ln in result.stdout.splitlines()
+        if ln.startswith("CONFIG_FILE_CONTENTS=")
+    )
+    written = json.loads(line.removeprefix("CONFIG_FILE_CONTENTS="))
+    assert written == json.loads(payload), (
+        "adapter must write AGENTIC_MEMORY_CONFIG_JSON verbatim to "
+        f"~/.hindsight/claude-code.json; got: {written}"
+    )
+
+
+@pytest.mark.integration
 def test_doctor_binary_runs_without_provider():
     """`/opt/agentic/memory/doctor` invoked with no provider is a no-op (exit 0)."""
     result = _run(["/opt/agentic/memory/doctor"])
@@ -231,3 +281,156 @@ def test_doctor_binary_json_output():
     assert payload["status"] == "fail"
     assert payload["exit_code"] == 1
     assert any(c["name"] == "provider_known" and c["status"] == "fail" for c in payload["checks"])
+
+
+# -----------------------------------------------------------------------------
+# CROSS-SESSION test (the headline).
+#
+# Two separate container starts share a bank through AGENTIC_MEMORY_NAMESPACE.
+# Session 1 establishes a fact; session 2 (brand-new container) recalls it.
+# Session 3 with a different namespace verifies isolation.
+#
+# Requires:
+#   - hindsight backend reachable at host.docker.internal:9077
+#   - CLAUDE_CODE_OAUTH_TOKEN env var set in the host shell (provides
+#     auth for claude inside the container)
+#   - The hindsight plugin source available at $HINDSIGHT_PLUGIN_SRC
+#     (defaults to ../agentic-memory/lib/hindsight/hindsight-integrations/claude-code/)
+#
+# Skipped when any precondition is missing.
+# -----------------------------------------------------------------------------
+
+
+HINDSIGHT_PLUGIN_SRC = os.getenv(
+    "HINDSIGHT_PLUGIN_SRC",
+    "/Users/neural/Code/AgentParadise/agentic-memory/lib/hindsight/hindsight-integrations/claude-code",
+)
+
+
+def _claude_in_container_preconditions_met() -> tuple[bool, str]:
+    """Return (ok, reason) for whether we can run the cross-session test."""
+    if not _hindsight_reachable():
+        return False, "hindsight backend unreachable"
+    if not os.getenv("CLAUDE_CODE_OAUTH_TOKEN"):
+        return False, "CLAUDE_CODE_OAUTH_TOKEN not set"
+    if not Path(HINDSIGHT_PLUGIN_SRC, ".claude-plugin", "plugin.json").is_file():
+        return False, f"hindsight plugin source not found at {HINDSIGHT_PLUGIN_SRC}"
+    return True, ""
+
+
+@pytest.mark.integration
+def test_cross_session_recall_via_namespace(tmp_path: Path):
+    """Two fresh containers share a bank via AGENTIC_MEMORY_NAMESPACE.
+
+    Session 1 plants a verbatim, unguessable fact in the conversation
+    (a fictional code-named DB on an unusual schema version). Session 2,
+    in a brand-new container, asks claude what that fact was. The
+    answer must contain the fictional name to prove cross-session
+    memory retrieval — Claude has no way to know the name except via
+    the hindsight bank we wrote to from session 1.
+
+    Skipped when CLAUDE_CODE_OAUTH_TOKEN is missing or the hindsight
+    backend is unreachable.
+    """
+    ok, reason = _claude_in_container_preconditions_met()
+    if not ok:
+        pytest.skip(reason)
+
+    namespace = f"itest-cross-session-{os.urandom(4).hex()}"
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
+
+    # Stage the workspace injection: real copy (not symlink) so docker mount works.
+    workspace_dir = tmp_path / "workspace"
+    plugins_dir = workspace_dir / "plugins"
+    plugins_dir.mkdir(parents=True)
+    subprocess.run(
+        ["cp", "-R", HINDSIGHT_PLUGIN_SRC, str(plugins_dir / "hindsight-memory")],
+        check=True,
+    )
+    (workspace_dir / "CLAUDE.md").write_text("# Integration test workspace\n")
+
+    def _run_claude_session(ns: str, prompt: str) -> subprocess.CompletedProcess:
+        """Run one claude session in the workspace image with all the contract
+        env vars wired up. Returns the completed process. Critically: NEVER
+        embed the OAuth token in the args list — pass it through the parent
+        env using `docker run -e CLAUDE_CODE_OAUTH_TOKEN` (no `=value`), so
+        pytest assertion failures never leak it via CompletedProcess.args."""
+        cmd = [
+            "docker", "run", "--rm",
+            "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
+            "--add-host=host.docker.internal:host-gateway",
+            "-v", f"{audit_dir}:/var/agentic/memory-doctor",
+            "-v", f"{workspace_dir}:/etc/agentic/workspace:ro",
+            # CRITICAL: no `=value` here. Docker pulls the value from the
+            # parent process's env. The token is never in argv.
+            "-e", "CLAUDE_CODE_OAUTH_TOKEN",
+            "-e", "AGENTIC_WORKSPACE_PLUGINS=hindsight-memory",
+            "-e", "AGENTIC_MEMORY_PROVIDER=hindsight",
+            "-e", f"AGENTIC_MEMORY_NAMESPACE={ns}",
+            "-e", "AGENTIC_MEMORY_URL=http://host.docker.internal:9077",
+            "-e", f"HINDSIGHT_USER_ID=itest-{ns}",
+            IMAGE,
+            "sh", "-c",
+            'exec claude -p --dangerously-skip-permissions $AGENTIC_PLUGIN_FLAGS "$@"',
+            "_",  # sh -c $0 sentinel — required so $@ binds correctly
+            prompt,
+        ]
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+
+    # Session 1: plant a fact with an unguessable fictional name.
+    seed = _run_claude_session(
+        namespace,
+        "Important context for this task: we use the database name "
+        "'crimson-vault' on schema version '17.3.2-beta'. "
+        "Acknowledge you'll remember this for future sessions.",
+    )
+    # Custom assertions — bare assert pre-formatted message so pytest's
+    # auto-print of CompletedProcess fields doesn't expose anything sensitive.
+    if seed.returncode != 0:
+        # Don't print stderr in the failure message — it could contain secrets
+        # if anything ever changes. Tail-only.
+        pytest.fail(f"session 1 exited {seed.returncode}; stderr last line: {seed.stderr.strip().splitlines()[-1:] }")
+    assert "crimson-vault" in seed.stdout
+
+    # Allow async retain + consolidation to complete.
+    import time as _time
+    _time.sleep(30)
+
+    # Session 2: fresh container, same namespace, recall question. The
+    # fictional name must surface in the response — claude can only know it
+    # via the hindsight bank.
+    recall = _run_claude_session(
+        namespace,
+        "What database name and schema version are we using for this task? "
+        "Answer concisely.",
+    )
+    if recall.returncode != 0:
+        pytest.fail(f"session 2 exited {recall.returncode}")
+    assert "crimson-vault" in recall.stdout, (
+        "session 2 did not recall the fictional db name; "
+        f"got: {recall.stdout[-200:]}"
+    )
+
+    # Session 3: different namespace — must NOT recall.
+    different_namespace = f"itest-isolation-{os.urandom(4).hex()}"
+    isolation = _run_claude_session(
+        different_namespace,
+        "What database name and schema version are we using for this task? "
+        "Answer concisely.",
+    )
+    if isolation.returncode != 0:
+        pytest.fail(f"session 3 exited {isolation.returncode}")
+    assert "crimson-vault" not in isolation.stdout.lower(), (
+        "isolation breach: different namespace recalled the fact; "
+        f"got: {isolation.stdout[-200:]}"
+    )
+
+    # Cleanup: delete the banks so the daemon doesn't accumulate test banks.
+    for ns in (namespace, different_namespace):
+        bank_url = f"{HINDSIGHT_BACKEND_URL}/v1/default/banks/{ns}"
+        try:
+            req = urllib.request.Request(bank_url, method="DELETE")  # noqa: S310
+            urllib.request.urlopen(req, timeout=5)  # noqa: S310
+        except (urllib.error.URLError, OSError):
+            pass
