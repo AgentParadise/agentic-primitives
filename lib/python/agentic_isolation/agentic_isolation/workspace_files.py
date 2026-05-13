@@ -75,8 +75,12 @@ class WorkspaceFiles:
         directories.
 
         Raises ``ValueError`` if ``container_path`` is not an absolute
-        path or has an empty basename (e.g. ``/`` or trailing slash).
+        path, has an empty basename (e.g. ``/``), or has a trailing
+        slash (which would imply "this is a directory" and is not a
+        valid target for a single-file tar).
         """
+        if container_path.endswith("/"):
+            raise ValueError(f"container_path must not end with '/', got {container_path!r}")
         target = Path(container_path)
         if not target.is_absolute():
             raise ValueError(f"container_path must be absolute, got {container_path!r}")

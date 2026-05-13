@@ -150,7 +150,7 @@ if [ -d "${INJECT_MOUNT}" ]; then
     ctx_src="${INJECT_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${INJECT_DEFAULT_CONTEXT}}"
     if [ -f "${ctx_src}" ]; then
         cp "${ctx_src}" "${INJECT_TARGET_CONTEXT}"
-        chmod 644 "${INJECT_TARGET_CONTEXT}"
+        chmod 600 "${INJECT_TARGET_CONTEXT}"
     fi
 
     # 2. Per-workspace plugins (appended to existing AGENTIC_PLUGIN_FLAGS

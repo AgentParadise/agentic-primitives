@@ -254,7 +254,7 @@ just list-providers
 
 `agentic-primitives` ships the workspace image — the controlled boundary every AI agent runs inside. The workspace has three responsibilities:
 
-1. **Inject** orchestrator-supplied context (`CLAUDE.md`, plugins, subagents) via a bind-mount at `/etc/agentic/workspace/` + three optional env vars (`AGENTIC_WORKSPACE_CONTEXT` / `_PLUGINS` / `_AGENTS`).
+1. **Inject** orchestrator-supplied context (`CLAUDE.md`, plugins, subagents) via a bind-mount at `/etc/agentic/workspace/` + three optional env vars (`AGENTIC_WORKSPACE_CONTEXT`, `AGENTIC_WORKSPACE_PLUGINS`, `AGENTIC_WORKSPACE_AGENTS`).
 2. **Isolate** the agent's effects (tmpfs home, read-only context mount, network whitelisting, per-task volumes).
 3. **Observe** what the agent did (git hooks → JSONL on stderr, `--output-format stream-json` on stdout, output artifacts in `/workspace/artifacts/output/`).
 

@@ -115,8 +115,15 @@ mount = wf.bind_mount(workspace_dir, "/etc/agentic/workspace", read_only=True)
 container = client.containers.create(image, mounts=[mount], ...)
 
 # Inject mode (generated content)
+# Note: inject() requires the parent dir to already exist inside the
+# container. /workspace and /tmp are guaranteed by the image; arbitrary
+# paths under /etc/agentic/workspace/ are NOT — that path only exists
+# when an orchestrator also bind-mounts it. For generated context, the
+# common pattern is to inject into /workspace/ (which the image creates
+# at build time) and let the entrypoint's section 5.5 leave that copy
+# untouched (since /etc/agentic/workspace/ isn't mounted in this flow).
 container = client.containers.create(image, ...)
-wf.inject(container.id, "/etc/agentic/workspace/CLAUDE.md", composed_bytes)
+wf.inject(container.id, "/workspace/CLAUDE.md", composed_bytes)
 container.start()
 ```
 

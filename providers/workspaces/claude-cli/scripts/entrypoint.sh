@@ -214,10 +214,23 @@ readonly INJECT_DEFAULT_CONTEXT="CLAUDE.md"
 readonly INJECT_PLUGIN_MANIFEST=".claude-plugin/plugin.json"
 
 # --- Helpers --------------------------------------------------------------
+# Reject any name containing '/' or '..' so plugin/agent names supplied
+# via env can't escape the intended mount via path traversal. Caller
+# pipes a stream of names through this filter.
+__inject_safe_filter() {
+    while IFS= read -r name; do
+        [ -n "${name}" ] || continue
+        case "${name}" in
+            */*|*..*|"") continue ;;
+        esac
+        printf '%s\n' "${name}"
+    done
+}
+
 __inject_names() {
     local explicit="$1" dir="$2" strip_ext="${3:-}"
     if [ -n "${explicit}" ]; then
-        printf '%s\n' "${explicit}" | tr ':' '\n'
+        printf '%s\n' "${explicit}" | tr ':' '\n' | __inject_safe_filter
         return
     fi
     [ -d "${dir}" ] || return

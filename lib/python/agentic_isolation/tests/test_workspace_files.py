@@ -85,14 +85,28 @@ def test_inject_rejects_relative_path():
         raise AssertionError("expected ValueError")
 
 
-def test_inject_rejects_empty_basename():
-    """inject() raises ValueError on a path whose .name is empty (e.g. /)."""
+def test_inject_rejects_root_path():
+    """inject() raises ValueError on `/` (caught by the trailing-slash
+    check, which also covers the empty-basename case)."""
     from agentic_isolation.workspace_files import WorkspaceFiles
 
     wf = WorkspaceFiles(client=MagicMock())
     try:
         wf.inject("ctr", "/", b"x")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_inject_rejects_trailing_slash():
+    """inject() raises ValueError on a path ending with '/'."""
+    from agentic_isolation.workspace_files import WorkspaceFiles
+
+    wf = WorkspaceFiles(client=MagicMock())
+    try:
+        wf.inject("ctr", "/workspace/", b"x")
     except ValueError as e:
-        assert "basename" in str(e)
+        assert "slash" in str(e) or "/" in str(e)
     else:
         raise AssertionError("expected ValueError")
