@@ -112,6 +112,7 @@ docs/_reference/*.md
 # Planning & Research files (generally local only)
 PROJECT-PLAN_*.md
 **/RESEARCH*.md
+docs/superpowers/
 
 
 # Cursor config
