@@ -1,6 +1,6 @@
-# Changelog — claude-p plugin
+# Changelog - claude-p plugin
 
-## 1.0.0 — 2026-05-19
+## 1.0.0 - 2026-05-19
 
 Initial release.
 

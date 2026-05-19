@@ -1,6 +1,6 @@
 ---
 name: delegating-to-claude-p
-description: Use when authoring a non-interactive `claude -p` invocation or designing a delegation prompt for autonomous Claude on the consumer side. Provides the empirically-validated flag set, prompt template, steers-vs-needs-naming map, failure-mode catalog, recipe templates, and cost reference distilled from 22 sub-experiments (S1 → S22) in the agentic-harness-lab v0.8.0 dogfood arc. Trigger phrases include "delegate to claude -p", "claude -p flags", "autonomous claude", "one-shot claude", "claude -p prompt", "headless claude". Do NOT use for interactive Claude Code sessions, brainstorming, or genuine multi-turn work — `claude -p` is a one-shot contract; pick interactive Claude for those.
+description: Use when authoring a non-interactive `claude -p` invocation or designing a delegation prompt for autonomous Claude on the consumer side. Provides the empirically-validated flag set, prompt template, steers-vs-needs-naming map, failure-mode catalog, recipe templates, and cost reference distilled from 22 sub-experiments (S1 → S22) in the agentic-harness-lab v0.8.0 dogfood arc. Trigger phrases include "delegate to claude -p", "claude -p flags", "autonomous claude", "one-shot claude", "claude -p prompt", "headless claude". Do NOT use for interactive Claude Code sessions, brainstorming, or genuine multi-turn work - `claude -p` is a one-shot contract; pick interactive Claude for those.
 placement: "Domain skill. Lives at `plugins/claude-p/skills/delegating-to-claude-p/` in agentic-primitives. NOT in `.claude/skills/`; that scope is for meta skills."
 ---
 
@@ -26,13 +26,13 @@ claude -p --verbose \
 
 ### Per-flag rationale
 
-- **`--verbose` + `--output-format stream-json`** — required *together*. Text mode hides tool calls and is unscoreable (S7 footgun: stream-json with `--print` errors without `--verbose`). If you only set one, the transcript is useless for triage.
-- **`--permission-mode bypassPermissions`** — the realistic-autonomy mode. The default mode is read-only (S4 returned no-go because Claude could not write files). `acceptEdits` auto-approves Edit/Write but denies Bash (S5 no-go). Only `bypassPermissions` opens both, which you need for fmt/test/commit loops.
-- **`--append-system-prompt-file ./CLAUDE.md`** — injects project context. CWD auto-discovery also works (verified S11), but explicit is safer when invoking from a wrapper that may not cd into the project root.
-- **`--include-hook-events`** — lefthook firings become parseable events in the JSONL stream. Without this, gate-bounce-and-retry behavior (S7) is invisible.
-- **`--include-partial-messages`** — richer tool-call detail; useful when scoring or debugging a transcript.
-- **`--max-budget-usd <N>`** — the hard cap. macOS lacks `timeout` (G-19); this is the only enforced bound. Pick the value from the cost reference below.
-- **`--no-session-persistence`** — clean one-shot trials do not pollute interactive history.
+- **`--verbose` + `--output-format stream-json`** - required *together*. Text mode hides tool calls and is unscoreable (S7 footgun: stream-json with `--print` errors without `--verbose`). If you only set one, the transcript is useless for triage.
+- **`--permission-mode bypassPermissions`** - the realistic-autonomy mode. The default mode is read-only (S4 returned no-go because Claude could not write files). `acceptEdits` auto-approves Edit/Write but denies Bash (S5 no-go). Only `bypassPermissions` opens both, which you need for fmt/test/commit loops.
+- **`--append-system-prompt-file ./CLAUDE.md`** - injects project context. CWD auto-discovery also works (verified S11), but explicit is safer when invoking from a wrapper that may not cd into the project root.
+- **`--include-hook-events`** - lefthook firings become parseable events in the JSONL stream. Without this, gate-bounce-and-retry behavior (S7) is invisible.
+- **`--include-partial-messages`** - richer tool-call detail; useful when scoring or debugging a transcript.
+- **`--max-budget-usd <N>`** - the hard cap. macOS lacks `timeout` (G-19); this is the only enforced bound. Pick the value from the cost reference below.
+- **`--no-session-persistence`** - clean one-shot trials do not pollute interactive history.
 
 ## The validated prompt template
 
@@ -140,7 +140,7 @@ Expected: 1-2 commits across frontend, no CORS additions, cited library choice. 
 | /todos CRUD (Rust-only, ~4× S6) | $0.60 | 81s | 12 | S7 |
 | sqlx + migrations + tests | $1.14 | 195s | 25 | S12 |
 | JWT middleware + DELETE (2 commits) | $1.43 | 154s | 29 | S14 |
-| Frontend tasks wire-up (cross-stack) | $1.63 | ~10 min | — | S15 |
+| Frontend tasks wire-up (cross-stack) | $1.63 | ~10 min | - | S15 |
 | Supabase mapping probe (research) | $0.90 | 131s | 11 | S11 |
 | JWT frontend auth wiring | $2.89 | 6m20s | 53 | S16 |
 
@@ -151,18 +151,18 @@ Expected: 1-2 commits across frontend, no CORS additions, cited library choice. 
 - **Research-heavy** (mapping probe, WebSearch loop): `2.00`
 - **Defensive default** when unsure: `4.00`
 
-The most expensive trial in the arc (S16, JWT frontend auth wiring) ran $2.89; `4.00` covers it with margin. Below `1.00` is dangerous — even trivial tasks can spike if cog-verify rejects multiple commit messages.
+The most expensive trial in the arc (S16, JWT frontend auth wiring) ran $2.89; `4.00` covers it with margin. Below `1.00` is dangerous - even trivial tasks can spike if cog-verify rejects multiple commit messages.
 
 ## When NOT to use `claude -p`
 
-- **Interactive ideation or brainstorming** — use interactive Claude Code; the one-shot contract loses signal in genuine exploration.
-- **Tasks requiring genuine multi-turn back-and-forth** — `claude -p` is one prompt → one output stream. If you need clarification cycles, pick interactive.
-- **Subjective UX or design work where hard gates cannot enforce correctness** — there is no fmt/clippy/cog-verify for "does this feel right." Without deterministic gates, `claude -p` output quality is uncalibrated.
-- **Sensitive operations where you cannot safely use `bypassPermissions`** — production credentials, shared filesystems, untrusted dependencies. Run those interactively with explicit human approval per Bash call.
+- **Interactive ideation or brainstorming** - use interactive Claude Code; the one-shot contract loses signal in genuine exploration.
+- **Tasks requiring genuine multi-turn back-and-forth** - `claude -p` is one prompt → one output stream. If you need clarification cycles, pick interactive.
+- **Subjective UX or design work where hard gates cannot enforce correctness** - there is no fmt/clippy/cog-verify for "does this feel right." Without deterministic gates, `claude -p` output quality is uncalibrated.
+- **Sensitive operations where you cannot safely use `bypassPermissions`** - production credentials, shared filesystems, untrusted dependencies. Run those interactively with explicit human approval per Bash call.
 
 ## References
 
-- **Retrospective 023** (`agentic-harness-lab/docs/retrospectives/023-harness-dogfood-claude-p-steering.md`) — full S1 → S22 synthesis + addendum. Canonical evidence base for every claim in this skill.
-- **Pair with `sdlc:security-hardening`** — the CI-side supply-chain controls that `claude -p` retries against (not against). The two skills are complementary: this one tells you how to dispatch; that one tells you what gates to dispatch into.
-- **Pair with `experiments:running-experiments`** — the discipline that produced this skill's evidence. Use it when designing your own paired trial to extend or contest these findings.
+- **Retrospective 023** (`agentic-harness-lab/docs/retrospectives/023-harness-dogfood-claude-p-steering.md`) - full S1 → S22 synthesis + addendum. Canonical evidence base for every claim in this skill.
+- **Pair with `sdlc:security-hardening`** - the CI-side supply-chain controls that `claude -p` retries against (not against). The two skills are complementary: this one tells you how to dispatch; that one tells you what gates to dispatch into.
+- **Pair with `experiments:running-experiments`** - the discipline that produced this skill's evidence. Use it when designing your own paired trial to extend or contest these findings.
 - **Template doc**: `templates/polyglot-monorepo/files/CLAUDE.md` in `agentic-harness-lab` ships a condensed version of this recipe in scaffolded projects (v0.8.3+, commit `006036d`).

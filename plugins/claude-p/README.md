@@ -11,7 +11,7 @@ Recipes and patterns for delegating implementation work to non-interactive
   reference grounded in real arc data (5 paired trials + 22 sub-experiments
   total, from the agentic-harness-lab v0.8.0 dogfood arc).
 
-The skill body is generic — it documents how `claude -p` actually behaves,
+The skill body is generic - it documents how `claude -p` actually behaves,
 not project-specific conventions. Project-specific budget caps, hooks, and
 skills live in each consumer repo's CLAUDE.md.
 
@@ -30,7 +30,7 @@ in `agentic-harness-lab` (S1 → S21, 2026-05-18 → 2026-05-19).
 
 ## See also
 
-- `plugins/sdlc/skills/security-hardening/` — the CI side of the consumer
+- `plugins/sdlc/skills/security-hardening/` - the CI side of the consumer
   posture (hard gates that `claude -p` retries against, not against).
-- `plugins/experiments/skills/running-experiments/` — the experiment
+- `plugins/experiments/skills/running-experiments/` - the experiment
   discipline that produced this skill's evidence base.
