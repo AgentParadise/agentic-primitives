@@ -192,6 +192,142 @@ mkdir -p /workspace/repos
 mkdir -p ~/.cargo
 
 # -----------------------------------------------------------------------------
+# 5.5 Workspace Context Composition
+# -----------------------------------------------------------------------------
+# Universal inbound seam — copies orchestrator-supplied context, plugins,
+# and subagents from /etc/agentic/workspace/ (bind-mounted read-only) into
+# the agent-visible workspace + Claude config locations. Skips silently when
+# the bind-mount is absent so existing deployments stay backwards-compatible.
+#
+# See: docs/workspace.md and ADR-035 for the contract this implements.
+
+# --- Configuration constants ---------------------------------------------
+readonly INJECT_MOUNT="/etc/agentic/workspace"
+readonly INJECT_MOUNT_PLUGINS="${INJECT_MOUNT}/plugins"
+readonly INJECT_MOUNT_AGENTS="${INJECT_MOUNT}/agents"
+
+readonly INJECT_TARGET_CONTEXT="/workspace/CLAUDE.md"
+readonly INJECT_TARGET_PLUGINS="/workspace/.agentic-plugins"
+readonly INJECT_TARGET_AGENTS="${HOME}/.claude/agents"
+
+readonly INJECT_DEFAULT_CONTEXT="CLAUDE.md"
+readonly INJECT_PLUGIN_MANIFEST=".claude-plugin/plugin.json"
+
+# --- Helpers --------------------------------------------------------------
+# Reject any name containing '/' or '..' so plugin/agent names supplied
+# via env can't escape the intended mount via path traversal. Caller
+# pipes a stream of names through this filter.
+__inject_safe_filter() {
+    while IFS= read -r name; do
+        [ -n "${name}" ] || continue
+        case "${name}" in
+            */*|*..*|"") continue ;;
+        esac
+        printf '%s\n' "${name}"
+    done
+}
+
+__inject_names() {
+    local explicit="$1" dir="$2" strip_ext="${3:-}"
+    if [ -n "${explicit}" ]; then
+        printf '%s\n' "${explicit}" | tr ':' '\n' | __inject_safe_filter
+        return
+    fi
+    [ -d "${dir}" ] || return
+    for f in "${dir}"/*${strip_ext}; do
+        [ -e "${f}" ] || continue
+        local base; base="$(basename "${f}")"
+        [ -n "${strip_ext}" ] && base="${base%${strip_ext}}"
+        printf '%s\n' "${base}"
+    done
+}
+
+# --- Actions --------------------------------------------------------------
+if [ -d "${INJECT_MOUNT}" ]; then
+    ctx_src="${INJECT_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${INJECT_DEFAULT_CONTEXT}}"
+    if [ -f "${ctx_src}" ]; then
+        cp "${ctx_src}" "${INJECT_TARGET_CONTEXT}"
+        # 600 because orchestrators may embed credentials or
+        # private guidance in the workspace context. Matches the mode
+        # used for ~/.claude/settings.json and ~/.git-credentials above.
+        chmod 600 "${INJECT_TARGET_CONTEXT}"
+    fi
+
+    if [ -d "${INJECT_MOUNT_PLUGINS}" ]; then
+        mkdir -p "${INJECT_TARGET_PLUGINS}"
+        while IFS= read -r plugin; do
+            [ -n "${plugin}" ] || continue
+            src="${INJECT_MOUNT_PLUGINS}/${plugin}"
+            [ -f "${src}/${INJECT_PLUGIN_MANIFEST}" ] || continue
+            # rm first → idempotent across re-runs when /workspace is a
+            # persistent named volume. Without the rm, `cp -a src dst`
+            # against an existing dst/ creates a nested dst/<basename>/
+            # tree instead of overwriting.
+            rm -rf "${INJECT_TARGET_PLUGINS}/${plugin}"
+            cp -a "${src}" "${INJECT_TARGET_PLUGINS}/${plugin}"
+            AGENTIC_PLUGIN_FLAGS="${AGENTIC_PLUGIN_FLAGS} --plugin-dir ${INJECT_TARGET_PLUGINS}/${plugin}"
+        done < <(__inject_names "${AGENTIC_WORKSPACE_PLUGINS:-}" "${INJECT_MOUNT_PLUGINS}")
+        export AGENTIC_PLUGIN_FLAGS
+    fi
+
+    if [ -d "${INJECT_MOUNT_AGENTS}" ]; then
+        mkdir -p "${INJECT_TARGET_AGENTS}"
+        while IFS= read -r agent; do
+            [ -n "${agent}" ] || continue
+            src="${INJECT_MOUNT_AGENTS}/${agent}.md"
+            [ -f "${src}" ] || continue
+            cp "${src}" "${INJECT_TARGET_AGENTS}/${agent}.md"
+        done < <(__inject_names "${AGENTIC_WORKSPACE_AGENTS:-}" "${INJECT_MOUNT_AGENTS}" ".md")
+    fi
+fi
+
+# -----------------------------------------------------------------------------
+# 5.6 Memory adapter initialization
+# -----------------------------------------------------------------------------
+# Per ADR-036. Translates the AGENTIC_MEMORY_* contract into provider-specific
+# env vars (e.g. HINDSIGHT_BANK_ID). No-op when AGENTIC_MEMORY_PROVIDER is
+# unset; the doctor in section 5.7 hard-fails if it's set but misconfigured.
+
+if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
+    AGENTIC_MEMORY_ADAPTER="/opt/agentic/memory/${AGENTIC_MEMORY_PROVIDER}/init.sh"
+    if [ -f "${AGENTIC_MEMORY_ADAPTER}" ]; then
+        echo "[entrypoint] memory adapter: ${AGENTIC_MEMORY_PROVIDER}"
+        # shellcheck disable=SC1090
+        if . "${AGENTIC_MEMORY_ADAPTER}"; then
+            export AGENTIC_MEMORY_READY=1
+        else
+            echo "[entrypoint] memory adapter init failed (exit $?); doctor in 5.7 will surface the cause." >&2
+        fi
+    else
+        echo "[entrypoint] no adapter at ${AGENTIC_MEMORY_ADAPTER}" >&2
+    fi
+fi
+
+# -----------------------------------------------------------------------------
+# 5.7 Memory doctor preflight
+# -----------------------------------------------------------------------------
+# Per ADR-036. Full preflight when memory is opted in. Hard-fail on any check
+# failure — opting into memory is opting into loud failure. JSON appended to
+# /var/agentic/memory-doctor/<date>.jsonl when the orchestrator bind-mounts
+# that directory.
+
+if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
+    AGENTIC_MEMORY_AUDIT_DIR="${AGENTIC_MEMORY_AUDIT_DIR:-/var/agentic/memory-doctor}"
+    mkdir -p "${AGENTIC_MEMORY_AUDIT_DIR}" 2>/dev/null || true
+    AGENTIC_MEMORY_AUDIT_FILE="${AGENTIC_MEMORY_AUDIT_DIR}/$(date -u +%Y-%m-%d).jsonl"
+
+    # Run the doctor. Pretty output → stderr (always shown). JSON → audit log
+    # (appended). Exit non-zero = workspace stops.
+    if /opt/agentic/memory/doctor --json >> "${AGENTIC_MEMORY_AUDIT_FILE}" 2>&1; then
+        echo "[entrypoint] memory doctor: pass (audit: ${AGENTIC_MEMORY_AUDIT_FILE})"
+    else
+        echo "[entrypoint] memory doctor: FAIL (audit: ${AGENTIC_MEMORY_AUDIT_FILE})" >&2
+        echo "[entrypoint] Unset AGENTIC_MEMORY_PROVIDER to bypass the memory contract entirely." >&2
+        exit 1
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
 # Pass through to the original command (e.g., bash, claude, etc.)

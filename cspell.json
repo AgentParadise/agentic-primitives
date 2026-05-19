@@ -1,0 +1,30 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "adrs",
+    "agentic",
+    "AGENTIC",
+    "dataclass",
+    "dataclasses",
+    "frontmatter",
+    "homelab",
+    "keepalive",
+    "neuralempowerment",
+    "pathlib",
+    "Pytest",
+    "sdlc",
+    "subdirs",
+    "Syntropic",
+    "Tmpfs",
+    "tmpfs",
+    "untar"
+  ],
+  "ignorePaths": [
+    "node_modules/**",
+    "target/**",
+    ".venv/**",
+    "uv.lock",
+    "Cargo.lock"
+  ]
+}

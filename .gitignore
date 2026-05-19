@@ -112,8 +112,11 @@ docs/_reference/*.md
 # Planning & Research files (generally local only)
 PROJECT-PLAN_*.md
 **/RESEARCH*.md
+docs/superpowers/
 
 
 # Cursor config
 .cursorignore
 .context-docs/
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
