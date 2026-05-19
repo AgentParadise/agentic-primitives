@@ -1,0 +1,9 @@
+{
+  "name": "experiments",
+  "version": "1.0.0",
+  "description": "Hypothesis-first experiment workflow. Scaffolding, eval packs, results, verdicts, and the two-commit discipline.",
+  "author": {
+    "name": "NeuralEmpowerment"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}
