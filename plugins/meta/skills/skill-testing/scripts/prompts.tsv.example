@@ -1,0 +1,40 @@
+P01	worktree-isolation	Two agents started parallel tasks and they're both trying to bind to port 3000. What should I do?
+P02	worktree-isolation	Set up git worktrees so each task gets its own database.
+P03	worktree-isolation	How do I clean up orphaned worktrees from yesterday's runs?
+P04	browser-legibility	The agent keeps asking me for screenshots when it can't tell what the page looks like.
+P05	browser-legibility	Wire up Playwright so the agent can capture console errors automatically.
+P06	browser-legibility	We need before/after video evidence that the bug is actually fixed.
+P07	telemetry-pipeline	Set up an OTel Collector that fans out to VictoriaLogs and VictoriaMetrics.
+P08	telemetry-pipeline	How do I buffer logs when the backend goes down?
+P09	telemetry-pipeline	We're switching from Vector to OTel Collector. What needs to change?
+P10	telemetry-query	Agent needs to look up the trace for a failed checkout request.
+P11	telemetry-query	What's the p95 latency on /checkout in the last hour?
+P12	telemetry-query	How do I list all available labels in our Prometheus?
+P13	autonomous-validation-loop	Build the observe-fix-restart-rerun loop for the agent.
+P14	autonomous-validation-loop	My agent ran for 3 hours and never converged on a fix.
+P15	autonomous-validation-loop	I want the agent to grade its own fix with structured evidence before opening a PR.
+P16	performance-gates	Gate this PR if p95 startup time goes above 800ms.
+P17	performance-gates	Wire up k6 in CI as a performance gate.
+P18	performance-gates	The agent shipped a perf regression silently and nobody noticed.
+P19	long-running-durability	Agent task crashed at hour 4 and lost everything.
+P20	long-running-durability	How do I set a token budget for a multi-hour agent task?
+P21	long-running-durability	Add checkpointing so the resume works after a host restart.
+P22	repo-knowledge-map	Our AGENTS.md is 5000 lines and the agent doesn't read it.
+P23	repo-knowledge-map	Where should I put a skills index in this repo?
+P24	repo-knowledge-map	How do I keep CLAUDE.md and AGENTS.md from drifting?
+P25	application-legibility	The app is opaque at runtime, the agent can't tell what's actually running.
+P26	application-legibility	How do I propagate trace IDs through background jobs?
+P27	application-legibility	Make our errors structured so the agent can reason over them instead of grepping 500s.
+P28	approved-scenarios	What can the agent do without asking the human?
+P29	approved-scenarios	Define an approval policy for the agent's destructive actions.
+P30	approved-scenarios	When should the agent escalate to a human vs just proceed?
+P31	harness-review	Run a full harness audit on this repo.
+P32	harness-review	Review my PR against all the agent-operational concerns.
+P33	authoring-skills	Help me write a new SKILL.md for our internal skill catalog.
+P34	authoring-skills	Audit this skill for chassis compliance.
+P35	authoring-skills	My skill isn't triggering when I expect it to.
+N01	NONE	Refactor this Python module to use dependency injection.
+N02	NONE	Pick a database for a new microservice we're building.
+N03	NONE	Add JSON formatting to our logger.
+N04	NONE	Write a unit test for this function.
+N05	NONE	Set up the merge queue on our main branch.

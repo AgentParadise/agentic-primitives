@@ -316,12 +316,13 @@ Same shape as principle-doc.
 ## Frontmatter rules
 
 The YAML frontmatter is required at the top of every `SKILL.md`. It has
-exactly two fields:
+two required fields and one optional metadata field:
 
 ```
 ---
 name: <kebab-case-name>
 description: <routing description>
+placement: <optional installation-target metadata>
 ---
 ```
 
@@ -334,8 +335,12 @@ Rules:
   phrases (verbs and nouns the user is likely to say), the contexts where the
   skill applies, and explicit non-triggers when the skill is easily confused
   with a sibling.
+- `placement` is optional. When present, it documents where the skill
+  should live across consumer repos (meta scope, domain-plugin scope,
+  flat-skill scope). It carries no routing weight; auditors and porters
+  use it to keep installations consistent.
 - No other top-level frontmatter fields are permitted. Versioning, owners,
-  and metadata live elsewhere (in a manifest or in the README).
+  authorship, and tags live elsewhere (in a manifest or in the README).
 
 For the full trigger-phrase grammar, see `description-trigger-rules.md`.
 

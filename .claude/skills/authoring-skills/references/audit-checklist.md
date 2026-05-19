@@ -26,8 +26,8 @@ A criterion that does not apply (for example, procedural-skill checks against a 
 
 ## Section 1: Frontmatter and routing
 
-1. **Frontmatter present and well-formed.** Pass if YAML frontmatter sits at the top of `SKILL.md` enclosed in `---` fences, containing exactly two fields: `name` and `description`. No extra fields, no trailing whitespace inside the fences.
-   - *Common failure:* author adds `version`, `author`, or `tags`. Strip them; the harness ignores everything beyond `name` and `description`.
+1. **Frontmatter present and well-formed.** Pass if YAML frontmatter sits at the top of `SKILL.md` enclosed in `---` fences, containing `name` and `description` (required) and optionally `placement` (installation-target metadata, no routing weight). No other fields, no trailing whitespace inside the fences.
+   - *Common failure:* author adds `version`, `author`, or `tags`. Strip them; the harness ignores everything beyond the three permitted fields.
 
 2. **`name` matches the directory.** Pass if `name: foo-bar` and the skill file lives at `skills/foo-bar/SKILL.md`. A mismatch breaks routing and discovery.
    - *Common failure:* renamed directory but did not update frontmatter, or vice versa.
