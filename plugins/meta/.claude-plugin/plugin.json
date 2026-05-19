@@ -1,6 +1,6 @@
 {
   "name": "meta",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Primitive generators — tools that create commands, skills, prompts, and other agentic primitives",
   "author": {
     "name": "NeuralEmpowerment"
