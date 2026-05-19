@@ -1,0 +1,9 @@
+{
+  "name": "claude-p",
+  "version": "1.0.0",
+  "description": "Empirically-validated recipes for autonomous `claude -p` delegation. Flag set, prompt template, failure modes, and cost reference distilled from 22 sub-experiments.",
+  "author": {
+    "name": "NeuralEmpowerment"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}
