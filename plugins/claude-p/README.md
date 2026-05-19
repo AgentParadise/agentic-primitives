@@ -26,7 +26,7 @@ plus the failure-mode catalog without re-deriving it.
 ## Source evidence
 
 Retrospective: `docs/retrospectives/023-harness-dogfood-claude-p-steering.md`
-in `agentic-harness-lab` (S1 → S21, 2026-05-18 → 2026-05-19).
+in `agentic-harness-lab` (S1 → S22, 2026-05-18 → 2026-05-19).
 
 ## See also
 
