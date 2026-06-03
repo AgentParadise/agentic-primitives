@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<!--
+  system-infographic starter template.
+  Copy this file, then fill the marked {{PLACEHOLDERS}} and the commented blocks.
+  Keep it self-contained: inline CSS, one Google Fonts link, no JS libraries.
+  Colors carry MEANING (see references/aesthetic-system.md):
+    amber = local / secret    teal = data flow    red = boundary    green = ok
+  Override the palette per context, but keep one-color-one-meaning.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>{{TITLE}} · how it works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- Swap the families for your tone; avoid Inter/Roboto/Arial. -->
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#080b10; --ink-2:#0d1218; --panel:#121821; --panel-2:#161e29;
+    --line:rgba(120,160,180,.14); --line-bright:rgba(120,200,210,.34);
+    --text:#dfe8ef; --text-dim:#8595a3; --text-faint:#5d6b78;
+    --amber:#ffb454; --amber-dim:rgba(255,180,84,.16);   /* local / secret */
+    --teal:#54d6cc;  --teal-dim:rgba(84,214,204,.14);     /* data flow */
+    --red:#ff6b6b;   --red-dim:rgba(255,107,107,.14);     /* boundary */
+    --green:#7ee787;                                      /* ok */
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1100px 600px at 78% -8%, rgba(84,214,204,.10), transparent 60%),
+      radial-gradient(900px 500px at 8% 4%, rgba(255,180,84,.08), transparent 55%),
+      var(--ink);
+    color:var(--text); font-family:"Chakra Petch", sans-serif; font-weight:300;
+    line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  body::before{ /* faint blueprint grid, masked to fade at edges */
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(var(--line) 1px, transparent 1px),linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:46px 46px;
+    -webkit-mask-image:radial-gradient(circle at 50% 30%, #000 0%, transparent 78%);
+            mask-image:radial-gradient(circle at 50% 30%, #000 0%, transparent 78%);
+    opacity:.5;
+  }
+  .wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 22px 90px;}
+  .mono{font-family:"JetBrains Mono", monospace;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 4px;border-bottom:1px solid var(--line);font-family:"JetBrains Mono",monospace;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);flex-wrap:wrap;}
+  .topbar .brand{color:var(--text-dim);display:flex;align-items:center;gap:10px;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .chip-secure{color:var(--amber);border:1px solid var(--amber-dim);background:var(--amber-dim);padding:4px 10px;border-radius:30px;}
+
+  .hero{padding:64px 0 26px;}
+  .kicker{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.34em;text-transform:uppercase;color:var(--teal);margin-bottom:18px;}
+  h1{font-weight:700;font-size:clamp(38px,7vw,76px);line-height:.98;letter-spacing:-.01em;margin:0;text-transform:uppercase;}
+  h1 .b{color:var(--amber);} h1 .c{color:var(--teal);}
+  .lede{max-width:620px;margin:24px 0 0;font-size:17px;color:var(--text-dim);font-weight:300;}
+  .lede b{color:var(--text);font-weight:500;}
+
+  section{margin-top:78px;}
+  .shead{display:flex;align-items:baseline;gap:16px;margin-bottom:26px;}
+  .shead .num{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--text-faint);letter-spacing:.2em;border:1px solid var(--line);border-radius:6px;padding:3px 8px;}
+  .shead h2{font-weight:600;font-size:clamp(22px,3.4vw,30px);margin:0;letter-spacing:.01em;text-transform:uppercase;}
+  .shead .rule{flex:1;height:1px;background:linear-gradient(90deg,var(--line-bright),transparent);align-self:center;}
+
+  /* ---- perimeter map (the centerpiece) ---- */
+  .map{border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(180deg, rgba(255,180,84,.04), transparent 30%),var(--ink-2);padding:26px;position:relative;overflow:hidden;}
+  .perimeter{border:1.5px dashed rgba(255,180,84,.5);border-radius:12px;padding:22px 20px 24px;position:relative;background:rgba(255,180,84,.035);}
+  .perimeter > .tag{position:absolute;top:-11px;left:18px;background:var(--ink-2);padding:0 10px;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber);}
+  .seal{position:absolute;top:-13px;right:16px;background:var(--ink-2);padding:2px 11px;border:1px solid var(--red-dim);border-radius:30px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);}
+  .pipe{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;}
+  .node{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px;position:relative;transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease;}
+  .node:hover{transform:translateY(-3px);border-color:var(--line-bright);box-shadow:0 10px 30px -16px rgba(84,214,204,.5);}
+  .node .ic{font-size:20px;line-height:1;margin-bottom:9px;display:block;}
+  .node .nt{font-weight:600;font-size:14.5px;}
+  .node .nd{font-size:12px;color:var(--text-dim);margin-top:4px;font-weight:300;line-height:1.45;}
+  .node .pin{position:absolute;top:11px;right:12px;font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.1em;color:var(--text-faint);text-transform:uppercase;}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--teal);font-size:20px;min-width:34px;flex:0 0 auto;}
+  .arrow span{animation:flow 1.8s linear infinite;}
+  @keyframes flow{0%{opacity:.2;}50%{opacity:1;}100%{opacity:.2;}}
+  .crossings{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;}
+  .cross{border:1px solid var(--line);border-radius:11px;padding:15px 16px;background:var(--panel-2);}
+  .cross.flow{border-color:var(--teal-dim);} .cross.egress{border-color:var(--amber-dim);}
+  .cross .wire{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:9px;}
+  .cross.flow .wire{color:var(--teal);} .cross.egress .wire{color:var(--amber);}
+  .cross .big{font-weight:600;font-size:15px;} .cross .sub{font-size:12.5px;color:var(--text-dim);margin-top:4px;font-weight:300;}
+  .barred{color:var(--red);font-weight:500;}
+
+  /* ---- phase cards ---- */
+  .phases{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  .phase{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:22px 20px 20px;position:relative;overflow:hidden;}
+  .phase::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;}
+  .phase.p1::before{background:linear-gradient(90deg,var(--amber),transparent);}
+  .phase.p2::before{background:linear-gradient(90deg,var(--teal),transparent);}
+  .phase.p3::before{background:linear-gradient(90deg,var(--green),transparent);}
+  .phase .pn{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.2em;color:var(--text-faint);}
+  .phase h3{font-weight:600;font-size:18px;margin:8px 0 4px;text-transform:uppercase;}
+  .phase .when{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;}
+  .phase.p1 .when{color:var(--amber);} .phase.p2 .when{color:var(--teal);} .phase.p3 .when{color:var(--green);}
+  .phase ol{margin:16px 0 0;padding:0;list-style:none;counter-reset:s;}
+  .phase ol li{position:relative;padding:0 0 13px 30px;font-size:13.5px;color:var(--text-dim);font-weight:300;counter-increment:s;}
+  .phase ol li::before{content:counter(s);position:absolute;left:0;top:0;width:20px;height:20px;border-radius:6px;font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;background:var(--panel-2);border:1px solid var(--line);color:var(--text);}
+  .phase ol li b{color:var(--text);font-weight:600;}
+
+  /* ---- invariant chips ---- */
+  .invs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+  .inv{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;padding:16px 17px;background:var(--ink-2);}
+  .inv .ic{font-size:20px;flex:0 0 auto;margin-top:1px;}
+  .inv .t{font-weight:600;font-size:14.5px;} .inv .d{font-size:13px;color:var(--text-dim);margin-top:3px;font-weight:300;line-height:1.5;}
+
+  /* ---- setup checklist ---- */
+  .setup{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink-2);overflow:hidden;}
+  .step{display:grid;grid-template-columns:54px 1fr;border-top:1px solid var(--line);}
+  .step:first-child{border-top:none;}
+  .step .sn{display:flex;align-items:center;justify-content:center;font-family:"JetBrains Mono",monospace;font-weight:700;font-size:15px;color:var(--ink);background:linear-gradient(180deg,var(--teal),#3fb6ad);}
+  .step.key .sn{background:linear-gradient(180deg,var(--amber),#e8973a);} /* mark risky steps */
+  .step .body{padding:16px 18px;}
+  .step .st{font-weight:600;font-size:15px;} .step .sd{font-size:13px;color:var(--text-dim);margin-top:3px;font-weight:300;}
+  .cmd{font-family:"JetBrains Mono",monospace;font-size:12.5px;margin-top:10px;display:block;background:#0a0f15;border:1px solid var(--line);border-left:2px solid var(--teal);border-radius:7px;padding:9px 12px;color:#cfe8e4;white-space:pre-wrap;overflow-x:auto;}
+  .step.key .cmd{border-left-color:var(--amber);}
+  .cmd .cm{color:var(--text-faint);} .cmd .ok{color:var(--green);}
+  .note{margin-top:9px;font-size:12px;color:var(--amber);}
+
+  .rv{opacity:0;transform:translateY(16px);transition:opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1);}
+  .rv.in{opacity:1;transform:none;}
+  footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.1em;color:var(--text-faint);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;text-transform:uppercase;}
+
+  @media (max-width:820px){
+    .phases,.crossings,.invs{grid-template-columns:1fr;}
+    .arrow{transform:rotate(90deg);min-width:0;width:100%;height:26px;}
+    .node{min-width:100%;}
+  }
+  @media print{
+    body{background:#fff;color:#000;} body::before{display:none;}
+    .rv{opacity:1;transform:none;}
+    .node,.phase,.inv,.cross,.setup,.map{break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="brand"><span class="dot"></span> {{PROJECT_NAME}}</span>
+    <span class="chip-secure">{{STATUS_CHIP}}</span>
+  </div>
+
+  <!-- HERO: one-line thesis the reader should remember; color 2-3 key words. -->
+  <header class="hero rv">
+    <div class="kicker">{{KICKER}}</div>
+    <h1>{{LINE 1}}<br><span class="b">{{KEY WORD}}</span> {{LINE 2}}<br>{{LINE 3}} <span class="c">{{KEY WORD}}</span>.</h1>
+    <p class="lede">{{One paragraph: what this system does and the single thing that makes it work.}} <b>{{the punchy clause}}</b></p>
+  </header>
+
+  <!-- MAP: the centerpiece. Use a perimeter when the key insight is what stays
+       inside a boundary vs what crosses. Each node = one stage; each crossing =
+       one thing that leaves the boundary, labeled with what it carries. -->
+  <section class="rv">
+    <div class="shead"><span class="num">MAP</span><h2>{{The shape of it}}</h2><span class="rule"></span></div>
+    <div class="map">
+      <div class="perimeter">
+        <span class="tag">{{🖥 inside the boundary, e.g. "your machine"}}</span>
+        <span class="seal">{{🔒 the invariant, e.g. "secrets never cross"}}</span>
+        <div class="pipe">
+          <div class="node"><span class="pin">{{stage tag}}</span><span class="ic">{{icon}}</span><div class="nt">{{Node A}}</div><div class="nd">{{what it is / holds}}</div></div>
+          <div class="arrow"><span>▸</span></div>
+          <div class="node"><span class="pin">{{stage tag}}</span><span class="ic">{{icon}}</span><div class="nt">{{Node B}}</div><div class="nd">{{what happens here}}</div></div>
+          <div class="arrow"><span>▸</span></div>
+          <div class="node"><span class="pin">{{stage tag}}</span><span class="ic">{{icon}}</span><div class="nt">{{Node C}}</div><div class="nd">{{output / discard}}</div></div>
+        </div>
+      </div>
+      <div class="crossings">
+        <div class="cross flow"><div class="wire">⇄ {{channel, e.g. tailscale}}</div><div class="big">{{what crosses, the happy path}}</div><div class="sub">{{who calls it / why}}</div></div>
+        <div class="cross egress"><div class="wire">→ {{the one egress}}</div><div class="big">{{what leaves to a third party}}</div><div class="sub">{{carries X · <span class="barred">no secrets</span>}}</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PHASES: tag each with its cadence (once / per-call / continuous). -->
+  <section class="rv">
+    <div class="shead"><span class="num">FLOW</span><h2>{{Phases}}</h2><span class="rule"></span></div>
+    <div class="phases">
+      <div class="phase p1"><div class="pn">PHASE 01</div><h3>{{Phase one}}</h3><div class="when">{{when it runs}}</div>
+        <ol><li>{{step}}</li><li>{{step}}</li><li>{{step}}</li></ol></div>
+      <div class="phase p2"><div class="pn">PHASE 02</div><h3>{{Phase two}}</h3><div class="when">{{when it runs}}</div>
+        <ol><li>{{step}}</li><li>{{step}}</li><li>{{step}}</li></ol></div>
+      <div class="phase p3"><div class="pn">PHASE 03</div><h3>{{Phase three}}</h3><div class="when">{{when it runs}}</div>
+        <ol><li>{{step}}</li><li>{{step}}</li><li>{{step}}</li></ol></div>
+    </div>
+  </section>
+
+  <!-- INVARIANTS: the rules that make the system safe or correct. -->
+  <section class="rv">
+    <div class="shead"><span class="num">RULES</span><h2>{{What keeps it true}}</h2><span class="rule"></span></div>
+    <div class="invs">
+      <div class="inv"><span class="ic">{{icon}}</span><div><div class="t">{{Invariant}}</div><div class="d">{{why it holds}}</div></div></div>
+      <div class="inv"><span class="ic">{{icon}}</span><div><div class="t">{{Invariant}}</div><div class="d">{{why it holds}}</div></div></div>
+      <div class="inv"><span class="ic">{{icon}}</span><div><div class="t">{{Invariant}}</div><div class="d">{{why it holds}}</div></div></div>
+      <div class="inv"><span class="ic">{{icon}}</span><div><div class="t">{{Invariant}}</div><div class="d">{{why it holds}}</div></div></div>
+    </div>
+  </section>
+
+  <!-- SETUP: numbered, with real commands. Add class="key" to risky steps. -->
+  <section class="rv">
+    <div class="shead"><span class="num">SETUP</span><h2>{{Set it up}}</h2><span class="rule"></span></div>
+    <div class="setup">
+      <div class="step"><div class="sn">1</div><div class="body"><div class="st">{{Step}}</div><div class="sd">{{what it does}}</div><span class="cmd">{{command}}</span></div></div>
+      <div class="step key"><div class="sn">2</div><div class="body"><div class="st">{{Risky step}}</div><div class="sd">{{what it does}}</div><span class="cmd">{{command}}</span><div class="note">▲ {{the gotcha to call out}}</div></div></div>
+      <div class="step"><div class="sn">3</div><div class="body"><div class="st">{{Verify}}</div><div class="sd">{{expected result}}</div><span class="cmd">{{command}}
+<span class="ok"># → expected output</span></span></div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>{{project · one-line summary}}</span>
+    <span>{{tags}}</span>
+  </footer>
+
+</div>
+<script>
+  // staggered reveal on scroll
+  const obs = new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');obs.unobserve(e.target);}})},{threshold:.12});
+  document.querySelectorAll('.rv').forEach(el=>obs.observe(el));
+</script>
+</body>
+</html>
