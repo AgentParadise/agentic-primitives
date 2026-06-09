@@ -137,7 +137,7 @@ claude plugin uninstall sdlc@agentic-primitives
 /sdlc:validate_security-hooks
 ```
 
-Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in the commands above.
+Replace `sdlc` with any plugin name from the [Available Plugins](#available-plugins) table in the commands above.
 
 ---
 
@@ -152,6 +152,8 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 | **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |
 | **notifications** | `claude plugin install notifications@agentic-primitives --scope user` | Push notifications (ntfy, macOS, Pushover) |
 | **observability** | `claude plugin install observability@agentic-primitives --scope user` | Full-spectrum JSONL event observability |
+| **delegation** | `claude plugin install delegation@agentic-primitives --scope user` | Delegating work — `claude -p`, Codex, and session handoffs |
+| **experiments** | `claude plugin install experiments@agentic-primitives --scope user` | Hypothesis-first experiment workflow |
 
 ### What's in each plugin
 
@@ -164,6 +166,8 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 | **docs** | -- | `fuma` (Fumadocs integration), `system-infographic` | -- | -- |
 | **notifications** | -- | -- | -- | Notification, Stop, TaskCompleted → ntfy/macOS/Pushover with sound themes |
 | **observability** | -- | -- | -- | All 14 lifecycle events → structured JSONL via agentic_events |
+| **delegation** | -- | `delegating-to-claude-p`, `delegating-to-codex`, `writing-handoffs` | -- | -- |
+| **experiments** | -- | `running-experiments` | -- | -- |
 
 ---
 

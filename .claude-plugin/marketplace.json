@@ -47,6 +47,18 @@
       "description": "Full-spectrum agent observability — hooks every Claude Code lifecycle event and emits structured JSONL events",
       "source": "./plugins/observability",
       "category": "observability"
+    },
+    {
+      "name": "delegation",
+      "description": "Handing work off to other agents — autonomous `claude -p` delegation and structured session-to-session handoff documents",
+      "source": "./plugins/delegation",
+      "category": "development"
+    },
+    {
+      "name": "experiments",
+      "description": "Hypothesis-first experiment workflow — scaffolding, eval packs, results, verdicts, and the two-commit discipline",
+      "source": "./plugins/experiments",
+      "category": "development"
     }
   ]
 }
