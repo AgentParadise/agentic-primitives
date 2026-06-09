@@ -137,7 +137,7 @@ claude plugin uninstall sdlc@agentic-primitives
 /sdlc:validate_security-hooks
 ```
 
-Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in the commands above.
+Replace `sdlc` with any plugin name from the [Available Plugins](#available-plugins) table in the commands above.
 
 ---
 

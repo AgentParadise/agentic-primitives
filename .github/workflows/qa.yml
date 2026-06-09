@@ -393,6 +393,21 @@ jobs:
             head_version=$(jq -r '.version' "$plugin_json")
             base_version=$(git show "${base}:${plugin_json}" 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
 
+            # Absent at this path on base? The plugin dir may have been renamed.
+            # The manifest itself is a poor rename signal (name/version/description
+            # all change), so detect the directory rename via any file moved INTO
+            # this plugin dir, then read the version from the old plugin's manifest
+            # — so the version bump is still enforced across a rename.
+            if [[ -z "$base_version" ]]; then
+              old_dir=$(git diff --find-renames=40% --name-status "$base"...HEAD -- plugins/ \
+                | awk -v p="plugins/${plugin_name}/" '$1 ~ /^R/ && index($NF, p) == 1 { print $(NF-1) }' \
+                | sed -E 's#^(plugins/[^/]+)/.*#\1#' | sort -u | head -1)
+              if [[ -n "$old_dir" ]]; then
+                base_version=$(git show "${base}:${old_dir}/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+                echo "  ($plugin_name renamed from ${old_dir})"
+              fi
+            fi
+
             if [[ -z "$base_version" ]]; then
               echo "✓ $plugin_name — new plugin (no base version)"
               continue

@@ -33,13 +33,26 @@ Three related changes, one spec:
 
 ## Non-goals
 
-- No `delegating-to-codex` skill yet (named only as future direction).
 - No slash command for handoffs — skills are directly invocable and
   auto-dispatch on triggers; a command would be redundant.
 - No changes to the `delegating-to-claude-p` skill *content* beyond its
   `placement:` path line.
 - No local (`just qa`) mirror of the registration check — CI `plugin-validate`
   is the canonical gate and the natural fit.
+
+## Scope addendum (mid-implementation)
+
+After the original design was approved, two additions were made in the same PR:
+
+- **`delegating-to-codex` skill** (originally a non-goal). Added at the user's
+  request — the empirically-validated `codex exec` recipe, grounded in two real
+  trials. This makes `delegation` the home for both autonomous-Claude and
+  autonomous-Codex dispatch. Consequences carried through below: plugin version
+  is **1.2.0** (not 1.1.0), the feature matrix lists **3 skills**, and the
+  plugin description/README/CHANGELOG cover Codex.
+- **`experiments` registration.** The new CI guard (Piece C) revealed that
+  `experiments` — a complete plugin merged in #176 — was also never registered.
+  It is registered here alongside `delegation`.
 
 ---
 
@@ -54,7 +67,7 @@ Three related changes, one spec:
 
 ### `plugins/delegation/.claude-plugin/plugin.json`
 - `name`: `claude-p` → `delegation`
-- `version`: `1.0.0` → `1.1.0` (content + identity change; CI enforces bump)
+- `version`: `1.0.0` → `1.2.0` (rename + `writing-handoffs` + `delegating-to-codex`)
 - `description`: broaden to cover the plugin's theme, e.g.
   *"Handing work off to other agents — empirically-validated `claude -p`
   delegation and structured session-to-session handoff documents."*
@@ -65,11 +78,11 @@ Three related changes, one spec:
   (`source: ./plugins/delegation`, `category: development`).
 - **README install table** (around line 146): add a `delegation` row.
 - **README feature matrix** (around line 158): add `delegation` —
-  0 commands / 2 skills / 0 agents / 0 hooks.
+  0 commands / 3 skills / 0 agents / 0 hooks.
 - **`plugins/delegation/README.md`**: rewrite to describe the plugin as a home
-  for delegation/handoff skills and document both skills.
-- **`plugins/delegation/CHANGELOG.md`**: add `1.1.0` entry — renamed from
-  `claude-p`, added `writing-handoffs` skill.
+  for delegation/handoff skills and document its skills.
+- **`plugins/delegation/CHANGELOG.md`**: `1.1.0` (rename + `writing-handoffs`)
+  and `1.2.0` (`delegating-to-codex`) entries.
 
 ---
 
