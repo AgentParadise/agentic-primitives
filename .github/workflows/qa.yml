@@ -201,6 +201,19 @@ jobs:
               passes=$((passes + 1))
             fi
 
+            # 3b. Registered in marketplace.json (source matches ./plugins/<name>)
+            marketplace_json=".claude-plugin/marketplace.json"
+            registered=$(jq -r --arg src "./${plugin_dir%/}" \
+              '.plugins[]? | select(.source == $src) | .name' \
+              "$marketplace_json" 2>/dev/null)
+            if [[ -z "$registered" ]]; then
+              echo "  [ERROR] ${plugin_name} not registered in ${marketplace_json} (expected an entry with source \"./${plugin_dir%/}\")"
+              errors=$((errors + 1))
+            else
+              echo "  [PASS] Registered in marketplace.json"
+              passes=$((passes + 1))
+            fi
+
             # --- Hooks checks ---
 
             if [[ -f "$hooks_json" ]]; then

@@ -1,7 +1,7 @@
 ---
 name: delegating-to-claude-p
 description: Use when authoring a non-interactive `claude -p` invocation or designing a delegation prompt for autonomous Claude on the consumer side. Provides the empirically-validated flag set, prompt template, steers-vs-needs-naming map, failure-mode catalog, recipe templates, and cost reference distilled from 22 sub-experiments (S1 → S22) in the agentic-harness-lab v0.8.0 dogfood arc. Trigger phrases include "delegate to claude -p", "claude -p flags", "autonomous claude", "one-shot claude", "claude -p prompt", "headless claude". Do NOT use for interactive Claude Code sessions, brainstorming, or genuine multi-turn work - `claude -p` is a one-shot contract; pick interactive Claude for those.
-placement: "Domain skill. Lives at `plugins/claude-p/skills/delegating-to-claude-p/` in agentic-primitives. NOT in `.claude/skills/`; that scope is for meta skills."
+placement: "Domain skill. Lives at `plugins/delegation/skills/delegating-to-claude-p/` in agentic-primitives. NOT in `.claude/skills/`; that scope is for meta skills."
 ---
 
 # Delegating to `claude -p`

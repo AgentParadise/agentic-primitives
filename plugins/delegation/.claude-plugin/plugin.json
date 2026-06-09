@@ -1,0 +1,9 @@
+{
+  "name": "delegation",
+  "version": "1.2.0",
+  "description": "Handing work off to other agents — autonomous `claude -p` and OpenAI Codex (`codex exec`) delegation, plus structured session-to-session handoff documents.",
+  "author": {
+    "name": "NeuralEmpowerment"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}
