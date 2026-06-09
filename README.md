@@ -157,7 +157,7 @@ Replace `sdlc` with any plugin name (`workspace`, `research`, `meta`, `docs`) in
 
 | Plugin | Commands | Skills | Agents | Hooks |
 |--------|----------|--------|--------|-------|
-| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks`, `browser`, `browser_ui-review` | `git`, `commit`, `pre-commit-qa`, `qa-setup`, `testing-expert`, `review`, `prioritize`, `env-management`, `centralized-configuration`, `macos-keychain-secrets`, `browser` | `env-reviewer`, `browser-qa-agent` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
+| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks`, `browser`, `browser_ui-review` | `git`, `git-worktree`, `commit`, `pre-commit-qa`, `qa-setup`, `testing-expert`, `review`, `prioritize`, `env-management`, `centralized-configuration`, `macos-keychain-secrets`, `browser` | `env-reviewer`, `browser-qa-agent` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |
 | **workspace** | -- | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
 | **research** | `scrape_docs` | -- | -- | -- |
 | **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |

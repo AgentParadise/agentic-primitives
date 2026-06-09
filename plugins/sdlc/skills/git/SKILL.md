@@ -44,6 +44,10 @@ If ACTION is blank, infer from context:
 
 ### Worktree (isolated feature branches)
 
+For anything beyond a one-off `git worktree add`, defer to the dedicated
+**`git-worktree`** skill — it enforces sibling-directory layout, `YYYYMMDD_`
+naming, PR-ref resolution, and clean removal. Quick inline form:
+
 1. Determine worktree base dir (sibling to repo root, e.g. `../repo_worktrees/`)
 2. Create branch: `git worktree add ../repo_worktrees/<name> -b <branch>`
 3. Report the path — agent or human navigates there to work in isolation
