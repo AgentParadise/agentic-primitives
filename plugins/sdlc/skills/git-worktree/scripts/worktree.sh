@@ -62,11 +62,12 @@ cmd_create() {
     fi
   fi
 
-  local branch_name dir_slug worktree_name
+  local branch_name dir_slug worktree_name is_pr="" pr_num=""
 
   if echo "$input" | grep -qE '^(PR)?#[0-9]+$'; then
     # PR reference: PR#<N> or #<N>
-    local pr_num pr_branch
+    local pr_branch
+    is_pr=1
     pr_num=$(echo "$input" | grep -oE '[0-9]+')
     echo "Fetching branch for PR #${pr_num}..."
     pr_branch=$(gh pr view "$pr_num" --json headRefName -q '.headRefName' 2>/dev/null || true)
@@ -74,6 +75,8 @@ cmd_create() {
       echo "Could not find PR #${pr_num}" >&2
       exit 1
     fi
+    # Use a local branch name for the worktree. Fetch pull/<N>/head so this
+    # works for fork PRs too, where origin/<headRefName> does not exist.
     branch_name="$pr_branch"
     dir_slug=$(strip_prefix "$pr_branch")
     worktree_name="${DATE_PREFIX}_${dir_slug}"
@@ -99,7 +102,14 @@ cmd_create() {
   mkdir -p "$WORKTREE_DIR"
   git fetch origin
 
-  if git show-ref --verify --quiet "refs/remotes/origin/${branch_name}" 2>/dev/null; then
+  if [ -n "$is_pr" ]; then
+    # Fetch the PR head into a local branch — covers same-repo and fork PRs,
+    # since origin/<branch_name> may not exist for forks.
+    echo "Fetching pull/${pr_num}/head into ${branch_name}..."
+    git fetch origin "pull/${pr_num}/head:${branch_name}" 2>/dev/null \
+      || git fetch origin "+refs/pull/${pr_num}/head:${branch_name}"
+    git worktree add "$WORKTREE_DIR/$worktree_name" "$branch_name"
+  elif git show-ref --verify --quiet "refs/remotes/origin/${branch_name}" 2>/dev/null; then
     echo "Branch exists on remote, checking out..."
     git worktree add "$WORKTREE_DIR/$worktree_name" "$branch_name"
   elif git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
@@ -130,6 +140,11 @@ cmd_status() {
     echo ""
     echo "--- $(basename "$wt_path") ---"
     echo "Path: ${wt_path}"
+
+    if [ ! -d "$wt_path" ]; then
+      echo "Status: missing on disk (run 'worktree.sh remove' to prune)"
+      continue
+    fi
 
     local branch changes ahead_behind ahead behind pr_info
     branch=$(cd "$wt_path" && git branch --show-current 2>/dev/null || true)
@@ -171,27 +186,44 @@ cmd_remove() {
     exit 1
   fi
 
-  local wt_path match
+  local wt_path matches match_count
   if [ -d "$WORKTREE_DIR/$target" ]; then
     wt_path="$WORKTREE_DIR/$target"
   elif [ -d "$target" ]; then
     wt_path="$target"
   else
-    match=$(ls -d "$WORKTREE_DIR"/*"$target"* 2>/dev/null | head -1 || true)
-    if [ -n "$match" ]; then
-      wt_path="$match"
-      echo "Matched: $(basename "$wt_path")"
-    else
+    # Fuzzy match — refuse to act if it is ambiguous, so we never force-remove
+    # the wrong worktree (and lose uncommitted work in it).
+    matches=$(ls -d "$WORKTREE_DIR"/*"$target"* 2>/dev/null || true)
+    match_count=$(printf '%s\n' "$matches" | grep -c . || true)
+    if [ "$match_count" -eq 0 ]; then
       echo "Worktree not found: ${target}" >&2
       echo ""
       echo "Available worktrees:" >&2
       git worktree list >&2
       exit 1
+    elif [ "$match_count" -gt 1 ]; then
+      echo "Ambiguous target '${target}' matches ${match_count} worktrees:" >&2
+      printf '%s\n' "$matches" | while read -r m; do echo "  $(basename "$m")" >&2; done
+      echo "Re-run with the full directory name." >&2
+      exit 1
     fi
+    wt_path="$matches"
+    echo "Matched: $(basename "$wt_path")"
   fi
 
   echo "=== Removing Worktree ==="
   echo "Path: ${wt_path}"
+
+  # Surface uncommitted changes before the force-remove discards them.
+  if [ -d "$wt_path" ]; then
+    local dirty
+    dirty=$(cd "$wt_path" && git status --short 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${dirty:-0}" -gt 0 ]; then
+      echo "⚠️  ${dirty} uncommitted change(s) in this worktree will be lost:"
+      (cd "$wt_path" && git status --short 2>/dev/null) || true
+    fi
+  fi
 
   git worktree remove --force "$wt_path"
   git worktree prune

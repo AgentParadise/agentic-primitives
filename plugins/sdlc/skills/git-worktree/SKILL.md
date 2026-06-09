@@ -33,11 +33,11 @@ ${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree.sh <action> [name] [b
 
 1. **Parse intent into an action.** Map the request to one of `create`, `list`, `status`, `remove`. If ambiguous, ask which.
 2. **Run the script** with the parsed arguments. It handles base-branch auto-detection (`origin/HEAD`), PR-ref lookup via `gh`, branch-prefix stripping for clean directory names, and existing-branch reuse (remote → local → new).
-3. **For `remove`, confirm the target first** when the user gave a partial or fuzzy name — the script force-removes and prunes, which is hard to undo. Show `list` output and confirm before running.
+3. **For `remove`, confirm the target first** when the user gave a partial or fuzzy name — the script force-removes and prunes, which is hard to undo. It refuses ambiguous fuzzy matches and warns about uncommitted changes before removing, but still show `list` output and confirm before running.
 4. **Report** the resulting path and branch. After `create`, tell the user to `cd` into the printed path to start working.
 
 Input parsing the script applies on `create`:
-- `PR#42` / `#42` → resolves the PR's head branch via `gh`, dir becomes `YYYYMMDD_<branch-without-prefix>`.
+- `PR#42` / `#42` → resolves the PR's head via `gh`, fetches `pull/42/head` into a local branch (works for fork PRs too), dir becomes `YYYYMMDD_<branch-without-prefix>`.
 - `feat/foo` (or `fix/`, `chore/`, `hotfix/`, `release/`) → uses it as the branch, strips the prefix for the dir name.
 - Plain text → kebab-cased as both dir slug and (by default) branch name.
 
