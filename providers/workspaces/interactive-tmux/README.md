@@ -139,6 +139,31 @@ automatically. Consumers reimplementing this mount layout (e.g. without
 the driver) must mount both, side by side, at `$HOME` inside the
 container.
 
+### Synthetic `~/.claude.json` fallback (this provider's stance)
+
+EXP-05a's matrix above measures the OS-level question ("what must be
+mounted?"). This provider answers a layered question on top: even when
+the host has no `~/.claude.json` of its own, the driver **always
+synthesizes one inside the container**. The synthesized file carries
+onboarding-skip markers, the workspace's project-trust map, and (when
+available) the host's `oauthAccount` metadata. It carries **no token
+material** — tokens are read only from the host's
+`~/.claude/.credentials.json`, which MUST exist.
+
+Practical consequence for consumers:
+
+| Host state                                | Driver behavior                                                                                  |
+|-------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `~/.claude/` exists, `~/.claude.json` too | both copied; matches EXP-05a "both" cell (authenticated, no wizards)                            |
+| `~/.claude/` exists, `~/.claude.json` not | `~/.claude/.credentials.json` copied; `~/.claude.json` **synthesized** inside the container — functionally equivalent to EXP-05a "both" |
+| `~/.claude/.credentials.json` missing     | `prepare_host_auth` raises `FileNotFoundError`                                                  |
+
+So callers do NOT need to author `~/.claude.json` themselves; the
+synthetic fallback is the supported path. Consumers that want strict
+byte-for-byte parity with the host's `~/.claude.json` should ensure both
+files exist on the host before calling — the driver still mounts the
+host file when it's present (it never overrides it).
+
 ## Credentials are NEVER baked or committed
 
 `docker run` mounts throwaway host-side copies. The image contains zero
@@ -170,31 +195,74 @@ Starts a workspace, sends one echo-token prompt per agent, captures the
 response, verifies each token appears in its transcript. Writes
 `runs/smoke-<agent>.txt` files as evidence.
 
+## Startup readiness & structured results
+
+`start_workspace` and `await_completion` both return structured results
+shaped to mirror `agentic_isolation.ExecuteResult`. EXP-05's codex
+cross-review (M1 + M3) flagged that the prior bare-bool returns and
+warning-only startup misses made the provider hard to integrate.
+
+- `InteractiveTmuxWorkspace.start_workspace(..., strict_startup=True)`
+  (the default) raises `StartupReadinessError` if any enabled agent's
+  pane fails to reach `is_ready()` within `startup_timeout_s`. The
+  exception carries `.startup_status: dict[agent, AwaitResult]` so
+  callers can see exactly which pane failed and why.
+- `strict_startup=False` returns the workspace anyway and populates
+  `ws.startup_status` with the per-agent `AwaitResult`s for inspection.
+  The bundled `scripts/smoke.sh` CLI defaults to lax (and echoes the
+  status as JSON) so a missed gemini gate doesn't fail the whole smoke,
+  but Python callers should keep the strict default for orchestrator
+  safety.
+- `ws.await_completion(agent, timeout=…)` now returns an `AwaitResult`
+  with `ready / timed_out / reason / duration_ms / stable_polls_observed
+  / pane`. Existing call sites can read `.ready` for the old boolean.
+  Failure modes are now distinguishable: `reason="timeout_never_ready"`
+  vs `"timeout_unstable"` vs `"error"`.
+
+### `WorkspaceProvider` adapter for `agentic_isolation`
+
+If you're already orchestrating with `agentic_isolation.WorkspaceProvider`
+(create / destroy / execute / write_file / read_file / file_exists), use
+the adapter at
+`agentic_isolation.providers.interactive_tmux.InteractiveTmuxProvider` —
+it satisfies the protocol on top of this provider's start/send/await/
+capture. The underlying driver workspace stays reachable on
+`workspace._handle` for the richer prompt round-trip API:
+
+```python
+from agentic_isolation.providers.interactive_tmux import InteractiveTmuxProvider
+from agentic_isolation.config import WorkspaceConfig
+
+provider = InteractiveTmuxProvider()
+ws = await provider.create(WorkspaceConfig(working_dir="/workspace"))
+res = await provider.execute(ws, "echo hello")
+assert res.exit_code == 0 and res.stdout.strip() == "hello"
+await provider.write_file(ws, "note.txt", "from adapter")
+assert await provider.file_exists(ws, "note.txt")
+assert (await provider.read_file(ws, "note.txt")) == "from adapter"
+
+ws._handle.send_message("claude", "ping")
+result = ws._handle.await_completion("claude", timeout=60)
+print(result.reason, result.duration_ms)
+
+await provider.destroy(ws)
+```
+
 ## What this provider does NOT do (today)
 
-- Stream partial responses. The API is poll-then-capture.
-- Reconnect to a running workspace from a different driver process.
-- Implement the `agentic_isolation.WorkspaceProvider` Protocol parity
-  (that protocol is shaped around `execute(cmd) → result`, not around
-  prompt round-trips; bridging is a separate decision).
-- Plugin baking. The three CLIs run as humans run them; plugin
+- **Stream partial responses.** The API is poll-then-capture. A
+  structured event stream / token-level partial-output contract is the
+  next API surface to add (tracked as future work for Syntropic137
+  integration); poll-then-capture is the v1.
+- **Reconnect to a running workspace from a different driver process.**
+- **Plugin baking.** The three CLIs run as humans run them; plugin
   participation through the interactive transport is a separate arc.
-
-## Known benign warning during `start`
-
-`start_workspace` (and the CLI shim's `start`) returns as soon as the
-first agent pane reaches its readiness signal. Per-agent readiness probes
-that miss their pattern within the internal timeout emit warnings but do
-not fail the call. The one you will see most often is:
-
-```
-WARNING wait_for_text(codex, 'gpt-') timed out after 45.0s
-```
-
-`start` still returns a populated workspace dict (`name`, `container`,
-`agents`) and the workspace is usable. Validate readiness per-agent
-before sending if you care (e.g. send a no-op `await_completion` or
-`capture_response` first); do not treat this WARNING as a failure.
+- **Plumb every `WorkspaceConfig` field through `create()`.** The
+  `InteractiveTmuxProvider` adapter honors `image`, `working_dir`, and
+  `labels["agents"]`; the rest (mounts, secrets, env, security, limits)
+  are not yet plumbed because this driver does its own bind-mount layout
+  for credentials. Adding pass-through is tracked alongside the streaming
+  roadmap.
 
 ## See also
 
