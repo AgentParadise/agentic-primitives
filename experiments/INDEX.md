@@ -17,9 +17,9 @@ overlays specific to per-agent probes) remain on their source branches.
 | EXP-03   | gemini interactive in tmux in docker                                 | `go`           | `agentprims-exp03` @ 45bf05e                      | `experiments/EXP-03-gemini-tmux-workspace.md`                        |
 | EXP-04   | combined swarm-in-a-container (claude + codex + gemini)              | `go`           | `agentprims-exp03` @ 45bf05e                      | `experiments/EXP-04-combined-swarm-container.md`                     |
 | EXP-04b  | EXP-04 hardening + run count (sub-experiment, same report)           | `go`           | `agentprims-exp03` @ 45bf05e                      | `experiments/EXP-04-combined-swarm-container.md` (section `## EXP-04b`) |
-| EXP-05   | `interactive-tmux` workspace provider (productionised EXP-01..04)    | `go`           | `agentprims-exp05` @ b534ec2                      | `experiments/EXP-05-interactive-tmux-provider.md`                    |
-| EXP-05a  | claude auth-file matrix (deeper probe of `.credentials.json` vs `.claude.json`) | _in flight_   | sibling branch (do not consolidate yet)            | _not imported_ (per orchestrator dispatch)                            |
-| EXP-06   | fresh-agent validation of `interactive-tmux` provider docs           | _in flight_   | `agentprims-exp06` @ b534ec2 (started; verdict pending) | _not imported_ (per orchestrator dispatch)                       |
+| EXP-05   | `interactive-tmux` workspace provider (productionised EXP-01..04)    | `go`           | `agentprims-exp05` @ b534ec2 (docs patch on `agentprims-exp05` @ 6373b8e) | `experiments/EXP-05-interactive-tmux-provider.md`                    |
+| EXP-05a  | claude auth-file matrix (`.credentials.json` vs `.claude.json` — 2×2 mount probe) | `go` (both files required) | `agentprims-exp02` @ 44ca031                      | `experiments/EXP-05a-claude-auth-matrix.md`                          |
+| EXP-06   | fresh-agent validation of `interactive-tmux` provider docs           | `go` (6/6 agents × paths; 4 small README gaps, all patched on `agentprims-exp05` @ 6373b8e) | `agentprims-exp06` @ 05d926b | `experiments/EXP-06-fresh-agent-validation.md`                       |
 
 ## Companion files
 
@@ -42,9 +42,9 @@ overlays specific to per-agent probes) remain on their source branches.
 - Provider deliverables that have their own home outside `experiments/`
   (e.g., `providers/workspaces/interactive-tmux/` — that lives at the
   repo path, not under `experiments/`, and is on `agentprims-exp05`).
-- EXP-05a and EXP-06 reports: explicitly held back per the orchestrator
-  dispatch — both are still in flight. This INDEX will be updated when
-  the orchestrator promotes them.
+- ~~EXP-05a and EXP-06 reports: explicitly held back per the orchestrator
+  dispatch — both are still in flight.~~ Both promoted 2026-06-10 (this
+  commit) — see EXP-05a / EXP-06 rows in the main table.
 
 ## How this was assembled
 
@@ -59,9 +59,9 @@ branches were merged wholesale.
 
 ```
 ntm/agentprims/cc_1   22ddf30
-agentprims-exp02      100a3b0
+agentprims-exp02      44ca031  (EXP-05a evidence)
 agentprims-exp03      45bf05e
-agentprims-exp05      b534ec2
-agentprims-exp06      b534ec2  (in flight; pinned for traceability)
+agentprims-exp05      6373b8e  (EXP-05 + EXP-06 docs patch)
+agentprims-exp06      05d926b  (EXP-06 evidence)
 origin/main           d807ab0
 ```
