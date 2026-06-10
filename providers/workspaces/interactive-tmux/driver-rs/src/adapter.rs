@@ -141,17 +141,81 @@ pub fn is_started(agent: Agent, pane: &str) -> bool {
 // ---------------------------------------------------------------------------
 // Launch + submit (the per-agent matrix)
 
+/// Build the shell command this driver sends to tmux to launch `claude`.
+///
+/// `plugin_dirs` is a list of container-side paths to load as Claude Code
+/// plugin dirs (one `--plugin-dir` flag per entry). Paths are shell-quoted
+/// with `shell_quote` below so directory names with spaces survive the
+/// tmux send-keys path. When the list is empty, returns the bare `"claude"`
+/// — identical to the pre-plugins behaviour.
+///
+/// Exposed for unit tests so they can assert the flags land verbatim
+/// without spawning a container. Mirrors `launch_in_window`'s string
+/// construction one-to-one.
+///
+/// Surfaced by Syntropic137's workflow-skills bridge experiment
+/// (`docs/plans/workflow-skills.md` §9): `~/.claude.json`
+/// `installedPlugins` injection is silently ignored by the TUI; only
+/// `--plugin-dir` is honoured.
+pub fn claude_launch_command(plugin_dirs: &[std::path::PathBuf]) -> String {
+    if plugin_dirs.is_empty() {
+        return "claude".to_string();
+    }
+    let mut parts: Vec<String> = vec!["claude".to_string()];
+    for p in plugin_dirs {
+        parts.push("--plugin-dir".to_string());
+        parts.push(shell_quote(&p.display().to_string()));
+    }
+    parts.join(" ")
+}
+
+/// Single-quote `s` if it contains characters that need shell escaping.
+/// Empty strings are quoted as `''`. Mirrors Python's `shlex.quote`
+/// behaviour for the small set of characters this driver actually emits.
+fn shell_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    let safe = s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.' | ':' | '@' | ','));
+    if safe {
+        s.to_string()
+    } else {
+        // Escape embedded single quotes by closing/escaping/reopening.
+        let escaped = s.replace('\'', "'\\''");
+        format!("'{escaped}'")
+    }
+}
+
 /// Launch the agent CLI in its tmux window and walk init gates.
 ///
 /// Per ANALYTICS.md §4:
-/// * Claude: `claude` + Enter.
+/// * Claude: `claude` + Enter (with optional `--plugin-dir <path>` flags).
 /// * Codex:  `codex --no-alt-screen` + Enter, then `1` Enter (trust banner),
 ///   then Escape (hooks-review modal).
 /// * Gemini: `gemini` + Enter.
-pub fn launch_in_window(container: &str, agent: Agent) -> std::io::Result<()> {
+///
+/// `claude_plugin_dirs` only affects the claude window; codex/gemini ignore
+/// it (no equivalent `--plugin-dir` flag).
+pub fn launch_in_window(
+    container: &str,
+    agent: Agent,
+    claude_plugin_dirs: &[std::path::PathBuf],
+) -> std::io::Result<()> {
     match agent {
         Agent::Claude => {
-            tmux::send_keys(container, agent.window(), &["claude", "Enter"])?;
+            let cmd = claude_launch_command(claude_plugin_dirs);
+            if claude_plugin_dirs.is_empty() {
+                // Bare `claude` + Enter — preserves the pre-plugins keystroke
+                // sequence exactly so the smoke fixtures stay byte-equal.
+                tmux::send_keys(container, agent.window(), &["claude", "Enter"])?;
+            } else {
+                // `claude --plugin-dir P1 --plugin-dir P2 ...` — sent literal
+                // so the spaces survive tmux's argument tokenizer; then Enter.
+                tmux::send_literal(container, agent.window(), &cmd)?;
+                tmux::send_keys(container, agent.window(), &["Enter"])?;
+            }
         }
         Agent::Codex => {
             tmux::send_keys(

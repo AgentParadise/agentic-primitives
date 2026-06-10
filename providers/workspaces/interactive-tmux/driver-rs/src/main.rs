@@ -140,6 +140,31 @@ fn default_host_auth(wanted: &[Agent]) -> HashMap<Agent, Option<PathBuf>> {
     out
 }
 
+/// Parse `ITMUX_CLAUDE_PLUGIN_DIRS` (colon-separated, like `$PATH`).
+///
+/// Returns an empty vec when the env var is unset or empty. The driver
+/// translates each entry to a `claude --plugin-dir <path>` flag at
+/// launch. Paths are NOT existence-checked here — they point at
+/// container-side paths that may not exist in the calling process's
+/// filesystem (typical layout: the integrator bind-mounts a host
+/// directory into the container at the same path, sets the env var to
+/// that container path).
+///
+/// Surfaced by Syntropic137's workflow-skills bridge experiment
+/// (`docs/plans/workflow-skills.md` §9): settings.json injection of
+/// `installedPlugins` is silently ignored by the TUI; only the
+/// `--plugin-dir` CLI flag actually loads plugins.
+fn default_claude_plugin_dirs() -> Vec<PathBuf> {
+    match std::env::var("ITMUX_CLAUDE_PLUGIN_DIRS") {
+        Ok(raw) if !raw.is_empty() => raw
+            .split(':')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Resolve `~/.claude.json`, honoring `ITMUX_CLAUDE_JSON` first, then
 /// `$HOME/.claude.json`. Returns `None` if neither resolves to an existing
 /// file — `prepare_claude` synthesises a fresh dotjson in that case
@@ -199,6 +224,7 @@ fn handle_start(
     opts.strict_startup = strict_startup;
     opts.host_auth = default_host_auth(&wanted);
     opts.host_claude_dotjson = default_host_claude_dotjson();
+    opts.claude_plugin_dirs = default_claude_plugin_dirs();
 
     match Workspace::start(opts) {
         Ok(ws) => {

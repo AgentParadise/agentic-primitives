@@ -254,6 +254,44 @@ The same `host_claude_dotjson` kwarg exists on
 `InteractiveTmuxProvider(default_host_claude_dotjson=)` and on the
 provider's `__init__` defaults (which read the env vars automatically).
 
+## Loading Claude Code plugins into the workspace
+
+Plugins for the in-container `claude` TUI must be passed at launch via
+`claude --plugin-dir <path>`. The driver builds one such flag per entry.
+**`~/.claude.json`'s `installedPlugins` field is silently ignored by the
+tmux-driven TUI** — proven by Syntropic137's workflow-skills bridge
+experiment (`docs/plans/workflow-skills.md` §9). The `--plugin-dir` flag
+is the only mechanism that actually loads plugins.
+
+| Config surface                          | How to set                                        |
+|-----------------------------------------|---------------------------------------------------|
+| `ITMUX_CLAUDE_PLUGIN_DIRS` env var      | Colon-separated list of container-side paths (like `$PATH`) |
+| `start_workspace(claude_plugin_dirs=)`  | `list[Path]` — Python API equivalent              |
+| `InteractiveTmuxProvider(default_claude_plugin_dirs=)` | Adapter constructor kwarg          |
+
+```bash
+export ITMUX_CLAUDE_PLUGIN_DIRS=/opt/skills:/opt/observability
+python3 driver/interactive_tmux.py start --name w1
+# launches: claude --plugin-dir /opt/skills --plugin-dir /opt/observability
+```
+
+```python
+ws = InteractiveTmuxWorkspace.start_workspace(
+    name="w1",
+    host_auth={"claude": Path("~/.claude").expanduser()},
+    claude_plugin_dirs=[Path("/opt/skills"), Path("/opt/observability")],
+)
+```
+
+The paths are container-side — the caller must already have arranged for
+them to exist inside the workspace container (typical setup: the
+integrator bind-mounts a host directory in at the same path). Paths with
+spaces and other shell-special characters are quoted with `shlex.quote`
+so they survive the tmux send-keys path.
+
+Codex and Gemini ignore `claude_plugin_dirs` (no equivalent CLI flag);
+the signature parity exists for future agent additions.
+
 ## Credentials are NEVER baked or committed
 
 `docker run` mounts throwaway host-side copies. The image contains zero

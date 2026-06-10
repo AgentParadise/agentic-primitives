@@ -48,12 +48,14 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -356,8 +358,41 @@ class _ClaudeAdapter:
         }
 
     @staticmethod
-    def launch_in_window(container: str, _workdir: str) -> None:
-        _tmux_send_keys(container, _ClaudeAdapter.window, "claude", "Enter")
+    def launch_in_window(
+        container: str,
+        _workdir: str,
+        plugin_dirs: Sequence[Path] | None = None,
+    ) -> None:
+        """Start `claude` in its tmux window, with optional `--plugin-dir` flags.
+
+        The Syntropic137 workflow-skills bridge experiment
+        (`docs/plans/workflow-skills.md` §9) showed that injecting plugins
+        via `~/.claude.json` `installedPlugins` is silently ignored by the
+        TUI; only the `--plugin-dir` CLI flag is honored. This adapter
+        builds one flag per entry — paths are passed through `shlex.quote`
+        so directory names with spaces or special characters survive the
+        tmux send-keys path.
+        """
+        if plugin_dirs:
+            flags = " ".join(f"--plugin-dir {shlex.quote(str(p))}" for p in plugin_dirs)
+            cmd = f"claude {flags}"
+            _tmux_send_literal(container, _ClaudeAdapter.window, cmd)
+            _tmux_send_keys(container, _ClaudeAdapter.window, "Enter")
+        else:
+            _tmux_send_keys(container, _ClaudeAdapter.window, "claude", "Enter")
+
+    @staticmethod
+    def build_launch_command(plugin_dirs: Sequence[Path] | None = None) -> str:
+        """Return the exact shell command this adapter will send to tmux.
+
+        Exposed for unit tests so they can assert the `--plugin-dir` flags
+        land verbatim without spawning a container. Mirrors
+        `launch_in_window`'s string construction one-to-one.
+        """
+        if not plugin_dirs:
+            return "claude"
+        flags = " ".join(f"--plugin-dir {shlex.quote(str(p))}" for p in plugin_dirs)
+        return f"claude {flags}"
 
     @staticmethod
     def submit(container: str, text: str) -> None:
@@ -453,7 +488,15 @@ class _CodexAdapter:
         return {"codex_dir": (dst_dir, "/home/agent/.codex")}
 
     @staticmethod
-    def launch_in_window(container: str, _workdir: str) -> None:
+    def launch_in_window(
+        container: str,
+        _workdir: str,
+        plugin_dirs: Sequence[Path] | None = None,
+    ) -> None:
+        # `plugin_dirs` is accepted for signature parity with the claude
+        # adapter; codex has no equivalent `--plugin-dir` flag, so any
+        # value is silently ignored.
+        del plugin_dirs
         # --no-alt-screen so capture-pane sees the same buffer the TUI uses.
         _tmux_send_keys(
             container, _CodexAdapter.window, "codex --no-alt-screen", "Enter"
@@ -548,7 +591,15 @@ class _GeminiAdapter:
         return {"gemini_dir": (dst_dir, "/home/agent/.gemini")}
 
     @staticmethod
-    def launch_in_window(container: str, _workdir: str) -> None:
+    def launch_in_window(
+        container: str,
+        _workdir: str,
+        plugin_dirs: Sequence[Path] | None = None,
+    ) -> None:
+        # `plugin_dirs` is accepted for signature parity with the claude
+        # adapter; gemini has no equivalent `--plugin-dir` flag, so any
+        # value is silently ignored.
+        del plugin_dirs
         _tmux_send_keys(container, _GeminiAdapter.window, "gemini", "Enter")
         time.sleep(1)
 
@@ -678,6 +729,13 @@ class InteractiveTmuxWorkspace:
     # works in both positions per EXP-02).
     _started: dict[str, bool] = field(default_factory=dict)
 
+    # Per-agent launch-time CLI extras (currently only `claude_plugin_dirs`
+    # — paths to load via `claude --plugin-dir <path>`). Set by
+    # `start_workspace` from its kwargs before the bootstrap runs; consumed
+    # by `_bootstrap_tmux_and_launch` when it calls each adapter's
+    # `launch_in_window`. Lists of pathlib.Path values.
+    _launch_extras: dict[str, list[Path]] = field(default_factory=dict)
+
     # -----------------------------------------------------------------------
     # Lifecycle
 
@@ -692,6 +750,7 @@ class InteractiveTmuxWorkspace:
         startup_timeout_s: float = 45.0,
         strict_startup: bool = True,
         host_claude_dotjson: Path | None = None,
+        claude_plugin_dirs: Sequence[Path] | None = None,
     ) -> InteractiveTmuxWorkspace:
         """Start a new interactive-tmux workspace.
 
@@ -725,6 +784,14 @@ class InteractiveTmuxWorkspace:
                 path; pass it explicitly here. Equivalent to setting
                 `ITMUX_CLAUDE_JSON` in the environment. Surfaced as a bug fix
                 for the Syntropic137 integration e2e (PR #202 follow-up).
+            claude_plugin_dirs: list of container-side paths to load as Claude
+                Code plugin dirs. The driver launches `claude --plugin-dir P1
+                --plugin-dir P2 ...` — the only mechanism that actually loads
+                plugins into the tmux-driven TUI (settings.json injection is
+                silently ignored; proven by Syntropic137's workflow-skills
+                bridge experiment, `docs/plans/workflow-skills.md` §9).
+                Equivalent to setting `ITMUX_CLAUDE_PLUGIN_DIRS` (colon-
+                separated, like `$PATH`).
 
         Returns:
             InteractiveTmuxWorkspace. In both strict and lax modes,
@@ -791,6 +858,11 @@ class InteractiveTmuxWorkspace:
             host_throwaway_dir=host_throwaway_dir,
             enabled_agents=tuple(enabled),
         )
+        # Per-agent launch options. Today only claude has plugin-dir
+        # support; codex/gemini ignore the kwarg with `del plugin_dirs`.
+        # If other agents grow a plugin loading mechanism, plumb their
+        # own list through here.
+        ws._launch_extras = {"claude": list(claude_plugin_dirs or [])}
         try:
             ws._bootstrap_tmux_and_launch(startup_timeout_s, strict_startup)
         except Exception:
@@ -843,7 +915,8 @@ class InteractiveTmuxWorkspace:
         # benign warning.
         for agent in self.enabled_agents:
             adapter = _ADAPTERS[agent]
-            adapter.launch_in_window(self.container, self.workdir)
+            extras = self._launch_extras.get(agent) or None
+            adapter.launch_in_window(self.container, self.workdir, plugin_dirs=extras)
             self._started[agent] = True
             self.startup_status[agent] = self._wait_for_started(
                 agent, startup_timeout_s
@@ -1054,6 +1127,14 @@ _HOST_HOME_ENV = {
 # at unrelated paths).
 _HOST_CLAUDE_JSON_ENV = "ITMUX_CLAUDE_JSON"
 
+# Colon-separated list of host paths to load as Claude Code plugin dirs
+# (`claude --plugin-dir <path>` per entry). settings.json injection does
+# NOT work for loading plugins into tmux-driven claude — the workflow-skills
+# bridge experiment proved this. Surfaced by Syntropic137
+# `feat/workflow-skills`, `docs/plans/workflow-skills.md` §9. Path syntax
+# mirrors $PATH: `/p1:/p2:/p3`. Empty entries are silently dropped.
+_CLAUDE_PLUGIN_DIRS_ENV = "ITMUX_CLAUDE_PLUGIN_DIRS"
+
 
 def _default_host_auth_from_env() -> dict[str, Path | None]:
     """Build a host_auth dict honoring `ITMUX_{AGENT}_HOME` env vars first.
@@ -1079,6 +1160,27 @@ def _default_host_auth_from_env() -> dict[str, Path | None]:
         fallback = home / f".{agent}"
         out[agent] = fallback if fallback.is_dir() else None
     return out
+
+
+def _default_claude_plugin_dirs_from_env() -> list[Path]:
+    """Parse `ITMUX_CLAUDE_PLUGIN_DIRS` (`:`-separated, like $PATH).
+
+    Returns an empty list when the env var is unset or empty. The
+    driver translates each path to a `claude --plugin-dir <path>` flag
+    when launching the claude TUI inside the container. Paths point at
+    HOST directories that the caller has already arranged to be mounted
+    into the container at the same path (typical setup: the integrator
+    bind-mounts `/opt/plugins` host-side into `/opt/plugins` container-
+    side; the env var holds container-side paths because that's what
+    `claude` resolves at launch time).
+
+    No `is_dir()` check on the host side — these may be container-only
+    paths that don't exist in the calling process's filesystem.
+    """
+    raw = os.environ.get(_CLAUDE_PLUGIN_DIRS_ENV, "")
+    if not raw:
+        return []
+    return [Path(entry) for entry in raw.split(":") if entry]
 
 
 def _default_claude_dotjson_from_env() -> Path | None:
@@ -1196,6 +1298,11 @@ def _cli() -> int:
                 # from inside another container where `$HOME/.claude.json`
                 # is not the operator's actual file.
                 host_claude_dotjson=_default_claude_dotjson_from_env(),
+                # Plugin-dirs: honor ITMUX_CLAUDE_PLUGIN_DIRS (colon-separated)
+                # so the launched `claude` TUI loads the requested plugin
+                # directories. settings.json injection is silently ignored
+                # by the TUI (Syntropic137 workflow-skills bridge).
+                claude_plugin_dirs=_default_claude_plugin_dirs_from_env(),
             )
         except StartupReadinessError as exc:
             # M1: surface per-agent failure structurally instead of an

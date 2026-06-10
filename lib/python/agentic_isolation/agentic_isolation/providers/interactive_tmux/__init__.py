@@ -143,6 +143,7 @@ class InteractiveTmuxProvider(BaseProvider):
         startup_timeout_s: float = 45.0,
         strict_startup: bool = True,
         default_host_claude_dotjson: Path | None = None,
+        default_claude_plugin_dirs: list[Path] | None = None,
     ) -> None:
         # `default_host_auth` resolution mirrors the driver CLI:
         # `ITMUX_{AGENT}_HOME` env vars > `$HOME/.{agent}` > None.
@@ -150,12 +151,20 @@ class InteractiveTmuxProvider(BaseProvider):
         # exist so the adapter works inside another container (DooD), where
         # `$HOME` does not point at the operator's real credentials —
         # surfaced by the Syntropic137 integration e2e on PR #202.
+        # `default_claude_plugin_dirs` mirrors `ITMUX_CLAUDE_PLUGIN_DIRS`
+        # (colon-separated), the only mechanism that actually loads
+        # plugins into the tmux-driven `claude` TUI (settings.json
+        # injection is silently ignored — Syntropic137 workflow-skills
+        # bridge).
         if default_host_auth is None:
             default_host_auth = _driver._default_host_auth_from_env()
         if default_host_claude_dotjson is None:
             default_host_claude_dotjson = _driver._default_claude_dotjson_from_env()
+        if default_claude_plugin_dirs is None:
+            default_claude_plugin_dirs = _driver._default_claude_plugin_dirs_from_env()
         self._default_host_auth = default_host_auth
         self._default_host_claude_dotjson = default_host_claude_dotjson
+        self._default_claude_plugin_dirs = default_claude_plugin_dirs
         self._default_image = default_image
         self._default_enabled_agents = tuple(default_enabled_agents)
         self._startup_timeout_s = startup_timeout_s
@@ -218,6 +227,7 @@ class InteractiveTmuxProvider(BaseProvider):
             startup_timeout_s=self._startup_timeout_s,
             strict_startup=self._strict_startup,
             host_claude_dotjson=self._default_host_claude_dotjson,
+            claude_plugin_dirs=self._default_claude_plugin_dirs,
         )
 
         # Ensure the container workdir exists so write_file/read_file have a

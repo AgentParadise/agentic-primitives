@@ -38,6 +38,15 @@ pub struct StartOptions {
     /// container-side dotjson can carry the host's `oauthAccount` through.
     /// Surfaced as a bug fix for the Syntropic137 integration e2e (PR #202).
     pub host_claude_dotjson: Option<PathBuf>,
+    /// Container-side paths to load as Claude Code plugin dirs (one
+    /// `claude --plugin-dir <path>` flag per entry). Empty list = bare
+    /// `claude` launch (pre-plugin behaviour preserved). Mirrors the
+    /// Python `claude_plugin_dirs` kwarg and `ITMUX_CLAUDE_PLUGIN_DIRS`
+    /// env var. Surfaced by Syntropic137's workflow-skills bridge
+    /// (`docs/plans/workflow-skills.md` §9): settings.json `installedPlugins`
+    /// injection is silently ignored by the TUI; the CLI flag is the only
+    /// mechanism that actually loads plugins.
+    pub claude_plugin_dirs: Vec<PathBuf>,
 }
 
 impl StartOptions {
@@ -51,6 +60,7 @@ impl StartOptions {
             strict_startup: true,
             host_auth: HashMap::new(),
             host_claude_dotjson: None,
+            claude_plugin_dirs: Vec::new(),
         }
     }
 }
@@ -65,6 +75,11 @@ pub struct Workspace {
     pub host_throwaway_dir: PathBuf,
     pub enabled_agents: Vec<Agent>,
     pub startup_status: HashMap<Agent, AwaitResult>,
+    /// Per-agent CLI extras used at launch time. Today only claude has a
+    /// non-default entry (`--plugin-dir` paths). Populated by
+    /// `Workspace::start` from `StartOptions::claude_plugin_dirs`;
+    /// consumed by `bootstrap_tmux_and_launch`.
+    pub claude_plugin_dirs: Vec<PathBuf>,
 }
 
 fn random_suffix() -> String {
@@ -177,6 +192,7 @@ impl Workspace {
             host_throwaway_dir: throwaway,
             enabled_agents: enabled,
             startup_status: HashMap::new(),
+            claude_plugin_dirs: opts.claude_plugin_dirs.clone(),
         };
         if let Err(e) = ws.bootstrap_tmux_and_launch(opts.startup_timeout_s, opts.strict_startup) {
             let _ = ws.stop();
@@ -197,8 +213,9 @@ impl Workspace {
             tmux::new_window(&self.container, agent.window())?;
         }
 
+        let plugin_dirs = self.claude_plugin_dirs.clone();
         for &agent in &self.enabled_agents.clone() {
-            adapter::launch_in_window(&self.container, agent)?;
+            adapter::launch_in_window(&self.container, agent, &plugin_dirs)?;
             let result = self.wait_for_started(agent, startup_timeout_s);
             self.startup_status.insert(agent, result);
         }
@@ -387,6 +404,12 @@ impl Workspace {
             host_throwaway_dir: PathBuf::from(&record.host_throwaway_dir),
             enabled_agents: enabled,
             startup_status: HashMap::new(),
+            // `claude_plugin_dirs` lives on the in-memory `StartOptions` /
+            // `Workspace`; it's not persisted in the registry (the launch
+            // already happened by the time we save). Restored as empty so
+            // re-launches via load_from_registry don't accidentally drop
+            // or duplicate plugin flags.
+            claude_plugin_dirs: Vec::new(),
         })
     }
 
