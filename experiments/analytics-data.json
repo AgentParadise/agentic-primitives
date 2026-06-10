@@ -1,0 +1,475 @@
+{
+  "meta": {
+    "generated_by": "ANALYTICS R1 (claude-sonnet-4-6)",
+    "source_branch": "agentprims-lab",
+    "lab_wall_clock_utc": {"start": "2026-06-10T00:54Z", "end": "2026-06-10T05:50Z", "duration_min": 296},
+    "worker_sessions": ["agentprims (3-lane)", "agentprims6 (fresh-agent)"],
+    "branches_pushed": 6
+  },
+
+  "experiments": [
+    {
+      "id": "EXP-01",
+      "title": "claude interactive in tmux in docker",
+      "owner": "cc_1 (Claude)",
+      "verdict": "go",
+      "branch_of_record": "ntm/agentprims/cc_1",
+      "hypothesis_commit": {"sha": "d62ff55", "timestamp_utc": "2026-06-10T01:05:39Z"},
+      "results_commit": {"sha": "22ddf30", "timestamp_utc": "2026-06-10T01:26:50Z"},
+      "duration_min": 21,
+      "report_bytes": 15234,
+      "report_lines": 254,
+      "run_count": 3,
+      "legs_per_run": 5,
+      "total_legs": 15,
+      "hypothesis_score": {"pass": 4, "partial": 2, "fail": 0},
+      "falsifying_modes_observed": 0,
+      "companion": "FRICTION-claude.md"
+    },
+    {
+      "id": "EXP-02",
+      "title": "codex interactive in tmux in docker",
+      "owner": "cod_1 (Codex)",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp02",
+      "hypothesis_commit": {"sha": "not_isolated_in_log", "timestamp_utc": null},
+      "results_commit": {"sha": "4fa03c8", "timestamp_utc": "2026-06-10T01:19:15Z"},
+      "duration_min": null,
+      "duration_note": "hypothesis commit not isolated in consolidated log; ran parallel to EXP-01/03, est. ~15 min",
+      "report_bytes": 4836,
+      "report_lines": 121,
+      "run_count": 1,
+      "legs_per_run": null,
+      "total_legs": null,
+      "hypothesis_score": {"pass": 4, "partial": 0, "fail": 0},
+      "falsifying_modes_observed": 0,
+      "companion": "FRICTION-codex.md"
+    },
+    {
+      "id": "EXP-03",
+      "title": "gemini interactive in tmux in docker",
+      "owner": "gmi_1 (Gemini)",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp03",
+      "hypothesis_commit": {"sha": "c0079757", "timestamp_utc": "2026-06-10T01:00:11Z"},
+      "results_commit": {"sha": "11a5cc3", "timestamp_utc": "2026-06-10T01:14:40Z"},
+      "duration_min": 15,
+      "report_bytes": 3994,
+      "report_lines": 49,
+      "run_count": 1,
+      "run_count_note": "observed in 1 run per report",
+      "hypothesis_score": {"pass": 5, "partial": 0, "fail": 0},
+      "falsifying_modes_observed": 0,
+      "companion": "FRICTION-gemini.md"
+    },
+    {
+      "id": "EXP-04",
+      "title": "combined swarm-in-a-container (claude+codex+gemini)",
+      "owner": "gmi_1 (Gemini)",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp03",
+      "hypothesis_commit": {"sha": "6a978b4", "timestamp_utc": "2026-06-10T01:24:09Z"},
+      "results_commit": {"sha": "9fdc74e", "timestamp_utc": "2026-06-10T01:34:47Z"},
+      "duration_min": 11,
+      "report_bytes": 7675,
+      "report_lines": 86,
+      "run_count": 1,
+      "hypothesis_score": {"pass": 5, "partial": 0, "fail": 0},
+      "falsifying_modes_observed": 0,
+      "image_size_gb": 3.03,
+      "idle_rss_mb": {"claude": 300, "codex": 173, "gemini": 433, "total": 906}
+    },
+    {
+      "id": "EXP-04b",
+      "title": "EXP-04 hardening and run count",
+      "owner": "gmi_1 (Gemini)",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp03",
+      "hypothesis_commit": {"sha": "73bb808", "timestamp_utc": "2026-06-10T01:41:13Z"},
+      "results_commit": {"sha": "45bf05e", "timestamp_utc": "2026-06-10T01:46:34Z"},
+      "duration_min": 5,
+      "report_bytes": null,
+      "report_lines": null,
+      "report_note": "section within EXP-04 report",
+      "run_count": 3,
+      "hypothesis_score": {"pass": 4, "partial": 0, "fail": 0},
+      "falsifying_modes_observed": 0
+    },
+    {
+      "id": "EXP-05a",
+      "title": "claude auth-file matrix (.credentials.json vs .claude.json 2x2 mount probe)",
+      "owner": "cod_1 (Codex)",
+      "verdict": "go — both files required",
+      "branch_of_record": "agentprims-exp02",
+      "hypothesis_commit": {"sha": "100a3b0", "timestamp_utc": "2026-06-10T01:42:15Z"},
+      "results_commit": {"sha": "44ca031", "timestamp_utc": "2026-06-10T02:30:18Z"},
+      "duration_min": 48,
+      "report_bytes": 3910,
+      "report_lines": 62,
+      "run_count": 8,
+      "run_count_note": "N=2 per cell x 4 cells in mount matrix",
+      "mount_cells_tested": 4,
+      "mount_cells_pass": 1,
+      "mount_cells_notes": {
+        "none": "needs login",
+        "claude_dir_only": "needs login (config file not found)",
+        "claude_json_only": "session starts but not authenticated (API billing, no Max plan)",
+        "both": "authenticated Max-plan startup — PASS"
+      }
+    },
+    {
+      "id": "EXP-05",
+      "title": "interactive-tmux workspace provider (productionised EXP-01..04)",
+      "owner": "cc_1 (Claude)",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp05",
+      "hypothesis_commit": {"sha": "cb9540f", "timestamp_utc": "2026-06-10T01:46:53Z"},
+      "results_commit": {"sha": "b534ec2", "timestamp_utc": "2026-06-10T02:20:16Z"},
+      "docs_patch_commit": {"sha": "6373b8e", "timestamp_utc": "2026-06-10T02:54:32Z"},
+      "review_fixes_commit": {"sha": "8e4d621", "timestamp_utc": "2026-06-10T03:44:50Z"},
+      "duration_hypothesis_to_results_min": 33,
+      "duration_hypothesis_to_docs_min": 68,
+      "duration_hypothesis_to_final_min": 118,
+      "report_bytes": 29082,
+      "report_lines": 539,
+      "smoke_run_count": 2,
+      "smoke_run_count_post_review": 2,
+      "smoke_agents_per_run": 3,
+      "smoke_legs_total": 6,
+      "build_image_mb": 544,
+      "build_wall_clock_min": 5,
+      "cli_versions": {
+        "claude": "2.1.126",
+        "codex": "0.139.0",
+        "gemini": "0.46.0"
+      },
+      "hypothesis_score": {"pass": 4, "partial": 2, "fail": 0},
+      "integration_issues_found_during_smoke": 3,
+      "falsifying_modes_observed": 0
+    },
+    {
+      "id": "EXP-05-review",
+      "title": "codex lead cross-review of EXP-05 provider implementation",
+      "owner": "cod_1 (Codex)",
+      "verdict": "go — no blockers; 4 majors + 2 minors all applied",
+      "branch_of_record": "agentprims-exp02",
+      "review_commit": {"sha": "513d7fa", "timestamp_utc": "2026-06-10T03:10:30Z"},
+      "indexed_commit": {"sha": "edd5a8f", "timestamp_utc": "2026-06-10T03:45:46Z"},
+      "duration_from_exp05_results_min": 50,
+      "report_bytes": 6929,
+      "report_lines": 75,
+      "findings": {
+        "blockers": 0,
+        "majors": 4,
+        "minors": 2,
+        "pass_dimensions": 4
+      },
+      "major_findings": [
+        "M1: start_workspace returns success without startup gate success",
+        "M2: WorkspaceProvider protocol incompatibility (no adapter layer)",
+        "M3: await_completion returns bare bool, no reason/phase code",
+        "M4: Claude readiness uses 2 signals where 3 were measured"
+      ],
+      "minor_findings": [
+        "m1: .claude mount/auth diverges from EXP-05a matrix assumptions",
+        "m2: No structured streaming/output abstraction"
+      ],
+      "all_findings_applied": true,
+      "applied_commit": "8e4d621"
+    },
+    {
+      "id": "EXP-06",
+      "title": "fresh-agent validation of interactive-tmux provider docs",
+      "owner": "fresh-agent (agentprims6 session)",
+      "verdict": "go — 6/6 agents x paths PASS; 4 small README gaps all patched",
+      "branch_of_record": "agentprims-exp06",
+      "hypothesis_commit": {"sha": "3df25a785", "timestamp_utc": "2026-06-10T02:26:55Z"},
+      "results_commit": {"sha": "05d926b", "timestamp_utc": "2026-06-10T02:42:10Z"},
+      "duration_min": 15,
+      "report_bytes": 11358,
+      "report_lines": 222,
+      "paths_tested": 3,
+      "path_descriptions": ["A: build", "B: smoke test (3 agents)", "C: Python driver round-trip (3 agents)"],
+      "agent_round_trips": 6,
+      "path_results": {
+        "A_build": "PASS",
+        "B_smoke_3agents": "PASS 3/3",
+        "C_python_3agents": "PASS 3/3"
+      },
+      "doc_gaps_found": 4,
+      "doc_gaps_patched": 4,
+      "doc_gaps": [
+        {"id": "G1", "severity": "low/blocking for step C", "issue": "Python import path (PYTHONPATH) not documented"},
+        {"id": "G2", "severity": "low/non-blocking", "issue": "CLI shim cwd not stated"},
+        {"id": "G3", "severity": "low/non-blocking", "issue": "smoke.sh prereqs not in README"},
+        {"id": "G4", "severity": "cosmetic", "issue": "undocumented startup warning from codex pane"}
+      ]
+    }
+  ],
+
+  "lab_summary": {
+    "total_experiments": 9,
+    "named_experiments": 6,
+    "sub_experiments": 2,
+    "cross_review_experiments": 1,
+    "all_verdicts_go": true,
+    "total_wall_clock_min": 296,
+    "total_report_bytes": 104781,
+    "total_report_lines": 1458,
+    "lab_incidents": [
+      {"description": "ntm first-send sat unsubmitted 3x; recovered by clear+resend", "severity": "low", "lost_work": false},
+      {"description": "unrelated project apss fork-bomb to 28,683 processes; VPS SSH lockout; reaped as root", "severity": "high", "lost_work": false},
+      {"description": "gemini committed to local main; moved to branch; main reset; never pushed", "severity": "medium", "lost_work": false}
+    ]
+  },
+
+  "per_cli_driving_recipe": {
+    "claude": {
+      "submit_key_sequence": "send-keys -l TEXT then send-keys Enter (two-step)",
+      "submit_variant": "one-shot 'TEXT Enter' also works but two-step preferred",
+      "readiness_signals": [
+        "! grep -q 'esc to interrupt' (generation in progress marker absent)",
+        "grep -qE '^❯[[:space:]]*$' (empty prompt line)",
+        "grep -q '? for shortcuts' (footer in steady state)"
+      ],
+      "readiness_strategy": "three-signal AND; response-token strategy preferred for test prompts",
+      "init_gates": [
+        "pre-seed ~/.claude.json with hasCompletedOnboarding:true + projects.workspace.hasTrustDialogAccepted:true",
+        "set installMethod: npm-global (not native)",
+        "tmux new-session -d -x 200 -y 50 (explicit size)"
+      ],
+      "auth_mount": {
+        "required": ["~/.claude/ (dir, for .credentials.json OAuth tokens)", "~/.claude.json (file, for metadata + onboarding markers)"],
+        "token_file": "~/.claude/.credentials.json",
+        "metadata_file": "~/.claude.json",
+        "driver_synthesizes_json": true
+      },
+      "first_prompt_quirk": "none — two-step works immediately after init gates"
+    },
+    "codex": {
+      "submit_key_sequence": "TEXT then C-j then C-m (first message); subsequent may use Enter alone",
+      "readiness_signals": [
+        "'• Working' marker absent",
+        "pane content byte-for-byte identical across N stable polls (filters transient redraws)"
+      ],
+      "readiness_strategy": "dual invariant: working-absent AND stable-content; single invariant false-passes ~1/3",
+      "init_gates": [
+        "launch with --no-alt-screen flag",
+        "send '1' + Enter (trust banner dismissal)",
+        "send Escape (hooks-review screen dismissal)"
+      ],
+      "auth_mount": {
+        "required": ["~/.codex/ (dir)"],
+        "skip_on_copy": ["tmp/", "log/", "logs/"]
+      },
+      "first_prompt_quirk": "C-j C-m required; single C-m places text but does not dispatch"
+    },
+    "gemini": {
+      "submit_key_sequence": "TEXT then Enter (never C-m — unreliable through docker exec)",
+      "readiness_signals": [
+        "'Type your message or @path/to/file' prompt indicator visible"
+      ],
+      "readiness_strategy": "single prompt-indicator check sufficient",
+      "init_gates": [
+        "base image must be node:22 (node:18 crashes with undici File error)",
+        "pre-patch ~/.gemini/settings.json: security.folderTrust.enabled = false"
+      ],
+      "auth_mount": {
+        "required": ["~/.gemini/ (dir, OAuth credentials)"]
+      },
+      "first_prompt_quirk": "none after settings.json patch removes trust gate"
+    }
+  },
+
+  "friction_items": {
+    "by_agent": {
+      "claude": {
+        "total": 9,
+        "by_category": {
+          "config": 3,
+          "workaround-found": 4,
+          "tooling-bug": 1,
+          "docs-gap": 1
+        },
+        "items": [
+          {"id": "F-1", "category": ["config", "workaround-found"], "summary": "Onboarding wizard fires on first launch; requires pre-seeded ~/.claude.json"},
+          {"id": "F-2", "category": ["config"], "summary": "Entrypoint clobbers ~/.claude/settings.json on restart; use ~/.claude.json instead"},
+          {"id": "F-3", "category": ["workaround-found"], "summary": "Default tmux 80x24 TTY truncates Claude TUI; use -x 200 -y 50"},
+          {"id": "F-4", "category": ["tooling-bug"], "summary": "installMethod:native triggers footer warning when CLI is npm-installed"},
+          {"id": "F-5", "category": ["workaround-found"], "summary": "Prompt-ready detection is heuristic; TUI redraws on every keystroke"},
+          {"id": "F-6", "category": ["workaround-found"], "summary": "Two-step send-keys preferred; one-shot also works; both documented"},
+          {"id": "F-7", "category": ["workaround-found"], "summary": "docker exec is cleanest transport; docker attach and socket approaches not needed"},
+          {"id": "F-8", "category": ["docs-gap"], "summary": "~/.claude.json lives at HOME, not inside ~/.claude/ — easy to conflate"},
+          {"id": "F-9", "category": ["config"], "summary": "Runtime artifacts appear in bound mount post-launch; treat as ephemeral per-run"}
+        ]
+      },
+      "codex": {
+        "total": 5,
+        "by_category": {
+          "tooling-bug": 2,
+          "docs-gap": 1,
+          "config": 1,
+          "workaround-found": 1
+        },
+        "items": [
+          {"id": "C-1", "category": ["tooling-bug"], "summary": "First prompt submit requires two-stage C-j C-m; single C-m does not dispatch"},
+          {"id": "C-2", "category": ["tooling-bug"], "summary": "Hook review screen steals key input immediately after startup"},
+          {"id": "C-3", "category": ["docs-gap"], "summary": "codex interactive onboarding + first-submit behavior underdocumented for tmux driving"},
+          {"id": "C-4", "category": ["config"], "summary": "Mounted .codex triggers mcp_agent_mail MCP warning (non-fatal)"},
+          {"id": "C-5", "category": ["workaround-found"], "summary": "Working headless sequence: trust accept -> Escape hooks -> C-j C-m first prompt"}
+        ]
+      },
+      "gemini": {
+        "total": 6,
+        "by_category": {
+          "config": 3,
+          "tooling-bug": 1,
+          "docs-gap": 2
+        },
+        "items": [
+          {"id": "G-1", "category": ["config"], "summary": "Node 18 (ubuntu:24.04 default) crashes gemini-cli; must use node:22 base image"},
+          {"id": "G-2", "category": ["config"], "summary": "--yolo does not bypass folder trust gate; must patch settings.json directly"},
+          {"id": "G-3", "category": ["tooling-bug"], "summary": "C-m unreliable through docker exec; use Enter keyword instead"},
+          {"id": "G-4", "category": ["config"], "summary": "Claude auth requires explicit ~/.claude.json mount in addition to ~/.claude/ dir"},
+          {"id": "G-5", "category": ["docs-gap"], "summary": "Claude folder-trust prompt underdocumented; must send Enter to bypass"},
+          {"id": "G-6", "category": ["docs-gap"], "summary": "Codex hooks-review prompt underdocumented; must send Escape before first prompt"}
+        ]
+      }
+    },
+    "grand_totals": {
+      "total_items": 20,
+      "config": 7,
+      "tooling-bug": 4,
+      "docs-gap": 4,
+      "workaround-found": 5
+    }
+  },
+
+  "review_findings": {
+    "experiment": "EXP-05-review",
+    "reviewer": "cod_1 (Codex)",
+    "target": "EXP-05 interactive-tmux provider",
+    "blockers": 0,
+    "majors": 4,
+    "minors": 2,
+    "pass_dimensions": 4,
+    "all_applied": true,
+    "major_findings_detail": [
+      {
+        "id": "M1",
+        "title": "start_workspace returns success without startup gate success",
+        "fix": "strict_startup=True default raises StartupReadinessError; per-agent is_started() predicate added",
+        "status": "applied"
+      },
+      {
+        "id": "M2",
+        "title": "WorkspaceProvider protocol incompatibility",
+        "fix": "New adapter module agentic_isolation/providers/interactive_tmux/ implementing all 6 protocol methods",
+        "status": "applied"
+      },
+      {
+        "id": "M3",
+        "title": "await_completion bare bool, no reason/phase code",
+        "fix": "AwaitResult dataclass mirrors ExecuteResult with ready/timed_out/reason/duration_ms/stable_polls_observed/pane/error",
+        "status": "applied"
+      },
+      {
+        "id": "M4",
+        "title": "Claude readiness uses 2 signals where 3 were measured in EXP-01",
+        "fix": "Third signal (empty ❯\\s*$ prompt line via precompiled regex) added to is_ready(); is_started() tolerates chevron placeholder",
+        "status": "applied"
+      }
+    ],
+    "minor_findings_detail": [
+      {
+        "id": "m1",
+        "title": "Synthetic ~/.claude.json fallback stance undocumented",
+        "fix": "Documented in _ClaudeAdapter docstring and README",
+        "status": "applied"
+      },
+      {
+        "id": "m2",
+        "title": "No structured streaming/output abstraction",
+        "fix": "poll-then-capture noted as v1; event stream noted as next arc in README",
+        "status": "applied"
+      }
+    ]
+  },
+
+  "fresh_agent_validation": {
+    "experiment": "EXP-06",
+    "total_round_trips": 6,
+    "agents_tested": ["claude", "codex", "gemini"],
+    "paths_tested": ["smoke", "python_driver"],
+    "per_agent": {
+      "claude": {"smoke": "PASS", "python_driver": "PASS"},
+      "codex":  {"smoke": "PASS", "python_driver": "PASS"},
+      "gemini": {"smoke": "PASS", "python_driver": "PASS"}
+    },
+    "overall": "6/6 PASS",
+    "doc_gaps_found": 4,
+    "doc_gaps_patched": 4,
+    "gaps_were_architectural": false,
+    "docs_positively_prevented_mistakes": 2
+  },
+
+  "budget_burn": {
+    "period": "2026-06-10 lab session",
+    "note": "percent-remaining values from orchestrator handoff",
+    "providers": [
+      {
+        "provider": "claude",
+        "plan": "weekly",
+        "start_pct": 93,
+        "end_pct": 78,
+        "burned_pct": 15
+      },
+      {
+        "provider": "codex",
+        "plan": "weekly",
+        "start_pct": 63,
+        "end_pct": 57,
+        "burned_pct": 6
+      },
+      {
+        "provider": "codex-spark",
+        "plan": "weekly",
+        "start_pct": 61,
+        "end_pct": 36,
+        "burned_pct": 25
+      },
+      {
+        "provider": "gemini",
+        "plan": "pro",
+        "start_pct": 100,
+        "end_pct": 7,
+        "burned_pct": 93
+      },
+      {
+        "provider": "gemini",
+        "plan": "flash",
+        "start_pct": 100,
+        "end_pct": 96,
+        "burned_pct": 4
+      }
+    ]
+  },
+
+  "provider_deliverable": {
+    "path": "providers/workspaces/interactive-tmux/",
+    "files": [
+      {"file": "Dockerfile", "lines": 114, "type": "build"},
+      {"file": "manifest.yaml", "lines": 130, "type": "config"},
+      {"file": "README.md", "lines": 274, "type": "docs"},
+      {"file": "driver/__init__.py", "lines": 9, "type": "python"},
+      {"file": "driver/interactive_tmux.py", "lines": 1064, "type": "python"},
+      {"file": "scripts/entrypoint.sh", "lines": 41, "type": "shell"},
+      {"file": "scripts/smoke.sh", "lines": 82, "type": "shell"},
+      {"file": "scripts/smoke_provider_adapter.py", "lines": 201, "type": "python"}
+    ],
+    "total_lines": 1915,
+    "run_artifacts": 10,
+    "image_size_mb": 544,
+    "claude_cli_provider_modified": false
+  }
+}
