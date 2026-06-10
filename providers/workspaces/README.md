@@ -6,7 +6,8 @@ Pre-configured Docker images for running AI agents in isolated environments.
 
 | Provider | Description | OTel Support |
 |----------|-------------|--------------|
-| `claude-cli` | Claude CLI with native OpenTelemetry | ✅ Native |
+| `claude-cli` | Claude CLI with native OpenTelemetry (drives `claude -p` from the orchestrator) | ✅ Native |
+| `interactive-tmux` | Claude + Codex + Gemini interactive CLIs in one tmux session, driven from host via `docker exec tmux send-keys`/`capture-pane`. Built for Max-plan subscription billing where `-p` is unavailable. See [provider README](./interactive-tmux/README.md) and `experiments/EXP-05-interactive-tmux-provider.md`. | ❌ (interactive TUIs do not emit the stream-json events `-p` mode produces; see provider README for the planned event-capture arc) |
 | `base` | Minimal secure base (no agent) | N/A |
 
 ## Building Images

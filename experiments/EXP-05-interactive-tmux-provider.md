@@ -278,15 +278,155 @@ Add the `interactive-tmux` row to the provider table.
 
 ## Results
 
-> Filled in the run commit. Empty at hypothesis-commit time.
+### Build
+
+`uv run scripts/build-provider.py interactive-tmux` ran clean against the
+existing convention with **zero modifications** to `scripts/build-provider.py`.
+The build read `providers/workspaces/interactive-tmux/manifest.yaml`,
+staged the Dockerfile + entrypoint into `build/interactive-tmux/`, and
+produced `agentic-workspace-interactive-tmux:latest`.
+
+- Final image size: **544 MB** (vs. claude-cli's 688 MB — smaller because
+  no Rust toolchain or pyright/typescript-language-server).
+- Build wall-clock: ~5 minutes on the VPS.
+- CLI versions baked in: `claude@2.1.126`, `codex@0.139.0`, `gemini@0.46.0`.
+
+### Smoke (N=2 reproducible runs through the final driver)
+
+Both runs of `providers/workspaces/interactive-tmux/scripts/smoke.sh`
+passed cleanly: 3/3 agents, response-marker-validated against echoed
+tokens. Evidence is six capture-pane snapshots:
+
+| Run | Agent  | Response marker + token captured           | File                              |
+|-----|--------|---------------------------------------------|-----------------------------------|
+| 1   | claude | `● SMOKE-CLAUDE-2352004`                    | `runs/smoke-run1-claude.txt`      |
+| 1   | codex  | `• SMOKE-CODEX-2352004`                     | `runs/smoke-run1-codex.txt`       |
+| 1   | gemini | `✦ SMOKE-GEMINI-2352004`                    | `runs/smoke-run1-gemini.txt`      |
+| 2   | claude | `● SMOKE-CLAUDE-2400276`                    | `runs/smoke-run2-claude.txt`      |
+| 2   | codex  | `• SMOKE-CODEX-2400276`                     | `runs/smoke-run2-codex.txt`       |
+| 2   | gemini | `✦ SMOKE-GEMINI-2400276`                    | `runs/smoke-run2-gemini.txt`      |
+
+The smoke validates each pass with `grep -qF "${MARKER}${TOKEN}"` — the
+agent-specific response marker (`● ` / `• ` / `✦ `) MUST appear before
+the token. That marker prefix distinguishes the model's reply from the
+echoed prompt that also contains the same token; an earlier smoke
+iteration that grepped on the token alone false-passed for Gemini (the
+prompt-echo line `>   Reply only with: SMOKE-GEMINI-...` matched while
+the model was still in `Thinking…`).
+
+### Iterations needed during smoke development
+
+The integration cycle exposed three issues that the per-agent unit
+experiments (EXP-01..04) had not stressed; each became a real fix in the
+driver before the N=2 clean runs above were declared:
+
+1. **Codex `~/.codex/tmp/arg0/` race.** The driver's throwaway copy of
+   `~/.codex/` raced with live codex processes on the host that create
+   and delete `tmp/arg0/codex-*` files mid-copy, raising `shutil.Error`.
+   Fix: `_CodexAdapter.prepare_host_auth` now skips `tmp/`, `log/`,
+   `logs/` when copying — only auth + config + sessions cross over. Auth
+   continued to work because the token file was untouched.
+2. **Claude welcome-marker fragility.** The hypothesis named `Welcome back`
+   as the post-launch wait marker. Observed: on at least one account this
+   renders as `Welcome to Opus 4.7 xhigh!` instead. Fix: switch the
+   marker to `Claude Max` (the plan-line text), which is universal across
+   accounts and shows up unconditionally after auth resolves.
+3. **Codex `is_ready` transient false-pass.** The original `await_completion`
+   declared ready after `stable_polls` consecutive `is_ready` observations.
+   Codex's `• Working (Ns • esc to interrupt)` line updates each second,
+   and tmux `capture-pane` occasionally caught a frame between updates
+   where `Working` was momentarily absent — those frames satisfied
+   `is_ready` and accumulated 4 in a row faster than the model finished.
+   The fix layers a second invariant: the pane content must be **byte-for-
+   byte identical** across the `stable_polls` consecutive captures. A
+   redrawing TUI does not produce identical captures, so the transient
+   frames are filtered out automatically. With this fix in place, codex
+   passes 2/2 runs (the failing run was reproduced once with the
+   single-invariant heuristic; after the fix, two consecutive runs
+   passed).
+
+### Open-contradiction resolution (committed in the hypothesis-commit)
+
+Pre-implementation, the EXP-01 vs EXP-04 disagreement on where Claude's
+OAuth tokens live was resolved by two isolated mount tests on the VPS:
+
+- Only `~/.claude/.credentials.json` mounted → **Max plan** (`Opus 4.7 ·
+  Claude Max`); onboarding wizard fires.
+- Only `~/.claude.json` mounted → **API Usage Billing** (`Sonnet 4.6`);
+  no Max plan, but "Welcome back" name renders.
+
+The driver mounts **both** for unattended Max-plan operation. EXP-01's
+claim that `.credentials.json` is the token file is correct; EXP-04 was
+practically right to mount `.claude.json` too, but for a different reason
+than reported (account metadata + onboarding markers, not tokens).
+Encoded in `providers/workspaces/interactive-tmux/README.md` for future
+readers.
 
 ## Verdict
 
-> Filled in the run commit.
+**`go`** — `providers/workspaces/interactive-tmux/` is the
+interactive-mode-friendly sibling to `providers/workspaces/claude-cli/`,
+buildable via the existing `scripts/build-provider.py` convention without
+modification, hosting all three CLIs (claude/codex/gemini) in a single
+container, drivable from the host through a five-primitive API that
+hides the per-agent submit/readiness/init matrix from callers. The N=2
+smoke runs prove an end-to-end prompt+response round-trip works for all
+three agents simultaneously in the same workspace. `claude-cli` provider
+is untouched (verified: `git diff origin/main..HEAD --
+providers/workspaces/claude-cli/` is empty).
 
 ### Hypothesis scorecard
 
-> Filled in the run commit.
+| # | Prediction                                                                       | Observed                                                                                          | Score |
+|---|----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|-------|
+| 1 | (a) Build via existing `scripts/build-provider.py` convention                    | Built without script modification; staged context produced from `manifest.yaml`; both `latest` and `claude` version tags applied | ✅    |
+| 2 | (b) Three CLIs, one container, one tmux session, three independently-addressable windows | All three launched in same tmux session under `agent` user (uid 1000); driver addresses them by window name | ✅    |
+| 3 | (c) Per-agent submit matrix encoded                                              | All three submit patterns work (Claude two-step, Codex literal+C-j+C-m, Gemini literal+Enter); callers use one API | ✅    |
+| 4 | (d) Per-agent readiness matrix encoded                                           | Encoded — but the initial heuristic-only approach false-passed for Codex; final driver layers identity-across-N-captures invariant to filter transients | 🟡    |
+| 5 | (e) Per-agent init matrix encoded                                                | All three init flows work programmatically; Gemini settings.json auto-patch in driver; Claude .claude.json synthesised in driver from host metadata | ✅    |
+| 6 | (f) Three-agent smoke passes, N≥1                                                | N=2 runs, 6/6 response markers captured; smoke promoted from token-only grep to marker+token grep mid-development (would have false-passed Gemini otherwise) | ✅    |
+| 7 | F1 (build-provider.py requires modification)                                     | Not observed; convention held                                                                     | n/a   |
+| 8 | F2 (three CLIs cannot coexist)                                                   | Not observed; all three coexist with no port / config / Node-version conflicts                    | n/a   |
+| 9 | F3 (per-agent differences leak to caller)                                        | Not observed; the public API is agent-name-keyed only                                             | n/a   |
+| 10| F4 (non-deterministic readiness at integration)                                  | Observed for Codex (~1/3 fail under the naive heuristic); fixed by stable-content check; documented under "Iterations" | 🟡    |
+
+**Misses get the headline (per skill rule):**
+
+- **#4 partial** — the per-agent readiness heuristic that EXP-01..03
+  reported as sufficient in isolation turned out to be insufficient
+  under fast back-to-back integration. The stable-content layer is the
+  fix; future provider versions should consider also exposing a
+  "send-and-await-response" combined primitive that uses the per-agent
+  response marker as the explicit done signal rather than purely a
+  readiness heuristic.
+- **#10 partial** — pre-registered as a falsifying failure mode "if
+  non-determinism appears at integration even though it worked in
+  isolation." Codex specifically hit this; the empirical fix is in the
+  driver and documented.
+
+## Follow-ups
+
+These do not block this experiment but should land in subsequent commits
+/ probes:
+
+- **EXP-06 fresh-agent docs validation** (per LAB-PLAN) — a fresh agent
+  with no prior context runs `providers/workspaces/interactive-tmux/README.md`
+  from the top and either succeeds or surfaces a docs gap.
+- **Bridge to `agentic_isolation.WorkspaceProvider` Protocol.** The
+  existing protocol is exec/file-shaped, not prompt-shaped. The right
+  bridge probably adds a new prompt-shaped protocol next to it rather
+  than coercing one onto the other.
+- **`send_and_await` combined primitive** that uses the per-agent
+  response marker as the explicit done signal (cleaner than the
+  current `send` + `await` + `capture` triple-call pattern).
+- **Streaming partial responses** for callers that want token-by-token
+  updates.
+- **OTel / event capture from the interactive transport.** The `-p`-mode
+  claude-cli provider gets stream-json events for free; the interactive
+  provider doesn't. The future arc is either (a) plugin hooks against
+  the interactive claude TUI, or (b) screen-scraping for known event
+  shapes — both should be probed independently.
+
 
 ## Cross-references
 
