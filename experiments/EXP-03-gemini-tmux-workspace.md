@@ -29,7 +29,7 @@ We predict that:
 - Second prompt correctly references the first.
 
 ## Results
-The experiment ran successfully.
+The experiment ran successfully (observed in 1 run).
 - **Node.js version**: `ubuntu:24.04` installs Node 18 natively, which fails with `gemini` CLI due to missing `File` in `undici`. Using `node:22` base image resolved this.
 - **Session startup**: Running `docker exec exp03-gemini tmux new-session -s geminisession -d 'gemini'` successfully starts the CLI in the background without hanging, since `folderTrust.enabled` is `false`.
 - **Authentication**: Using a mounted `~/.gemini` copy successfully authenticates the CLI instance.

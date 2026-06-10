@@ -52,5 +52,14 @@
       "Bash(gh issue list:*)",
       "Bash(gh issue create:*)"
     ]
+  },
+  "mcpServers": {
+    "mcp-agent-mail": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp/",
+      "headers": {
+        "Authorization": "Bearer 6e562abc38d8b534345064bd35e00f8bd3d2221ab47b2f240ecbadfe1f253501"
+      }
+    }
   }
 }

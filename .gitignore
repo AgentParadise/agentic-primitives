@@ -117,3 +117,4 @@ PROJECT-PLAN_*.md
 # Cursor config
 .cursorignore
 .context-docs/
+.claude/settings.local.json
