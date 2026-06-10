@@ -1,0 +1,15 @@
+/root/.gemini/antigravity-cli/builtin/.checksum
+/root/.gemini/antigravity-cli/builtin/keep.txt
+/root/.gemini/antigravity-cli/cache/projects.json
+/root/.gemini/antigravity-cli/implicit/93b6b47f-05ee-499b-88b8-da86c2e111da.pb
+/root/.gemini/antigravity-cli/installation_id
+/root/.gemini/antigravity-cli/keybindings.json
+/root/.gemini/antigravity-cli/knowledge/knowledge.lock
+/root/.gemini/antigravity-cli/last_check.timestamp
+/root/.gemini/antigravity-cli/log/cli-20260610_233450.log
+/root/.gemini/antigravity-cli/log/cli-20260610_233544.log
+/root/.gemini/antigravity-cli/log/cli-20260610_233600.log
+/root/.gemini/antigravity-cli/updater/update.lock
+/root/.gemini/config/.migrated
+/root/.gemini/config/mcp_config.json
+/root/.gemini/config/projects/fee7e510-cb5f-4168-843f-88086c8beb2e.json
