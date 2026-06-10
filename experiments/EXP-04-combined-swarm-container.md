@@ -69,3 +69,18 @@ The experiment ran successfully (observed in 1 run).
 3. Stop the container `docker stop exp04-swarm` and start it `docker start exp04-swarm`. Restart the tmux panes for each agent. Prove they authenticate and accept a prompt.
 4. Run `docker image inspect` or `docker images` to get image size. Use `docker exec` with `ps` or `top` to get idle RSS for the node processes running `claude`, `codex`, and `gemini`.
 5. Append findings to this document with updated run counts.
+
+### Results (EXP-04b)
+The extended experiment completed successfully across N=3 independent runs.
+- **Run Count**: The successful setup and execution of the 3-agent swarm was reliably reproduced 3 out of 3 times.
+- **Concurrent Execution**: Submitting prompts simultaneously via `docker exec ... &` to all three agents (including Codex) worked flawlessly. There was no cross-talk, and each agent independently responded to its respective prompt (e.g., Claude `160`, Codex `200`, Gemini `180`).
+- **Restart Survival**: Stopping the Docker container (`docker stop exp04-swarm`) and starting it again successfully preserved the mounted throwaway credentials. Restarting the `tmux` session and bypassing the initialization gates allowed all three agents to accept new prompts without requiring a manual re-authentication or a browser login flow.
+- **Footprint Measurements**:
+  - **Docker Image Size**: `3.03GB` (Ubuntu/Node22 base with all three agent CLI packages installed).
+  - **Idle Memory (RSS)**:
+    - **Claude**: `~300 MB` (runs as a compiled node binary).
+    - **Codex**: `~173 MB` total (`~126 MB` for the rust binary + `~47 MB` for its Node wrapper).
+    - **Gemini**: `~433 MB` total (spawns two Node processes: `~278 MB` and `~155 MB`).
+
+### Conclusions (Verdict: go)
+**go**: The swarm container design is robust and survives restarts. All three interactive agents can be effectively driven concurrently inside a single container without interference. Memory usage is well within acceptable limits for a typical workspace container (total ~900 MB RSS for all three active agents), and the single 3GB image is efficient for provisioning.
