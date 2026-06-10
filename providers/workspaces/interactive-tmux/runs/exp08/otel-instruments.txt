@@ -1,0 +1,8 @@
+claude_code.active_time.total
+claude_code.api_request
+claude_code.cost.usage
+claude_code.events
+claude_code.hook_execution_start
+claude_code.session.count
+claude_code.token.usage
+claude_code.user_prompt

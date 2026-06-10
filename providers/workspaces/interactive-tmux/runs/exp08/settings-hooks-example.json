@@ -1,0 +1,17 @@
+{
+  "env": {"DISABLE_AUTOUPDATER": "1"},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/home/agent/hook-emit.sh PreToolUse"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/home/agent/hook-emit.sh PostToolUse"}]}
+    ],
+    "UserPromptSubmit": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/home/agent/hook-emit.sh UserPromptSubmit"}]}
+    ],
+    "Stop": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/home/agent/hook-emit.sh Stop"}]}
+    ]
+  }
+}
