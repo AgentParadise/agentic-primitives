@@ -89,6 +89,49 @@ python3 driver/interactive_tmux.py capture --name w1 --agent gemini
 python3 driver/interactive_tmux.py stop   --name w1
 ```
 
+## Rust driver (alternative implementation)
+
+A parity-faithful Rust port of the driver lives at
+[`driver-rs/`](driver-rs/) and ships as a single static binary `itmux`.
+The protocol, per-agent matrix, structured-result shape, and on-disk
+workspace registry (`/tmp/interactive-tmux-workspaces/<name>.json`) are
+byte-compatible with the Python driver, so a Rust `start` round-trips
+with a Python `stop` and vice versa.
+
+Why pick it: no Python interpreter on the consumer's PATH, no
+`PYTHONPATH` shim, and ~25× faster cold start per invocation when an
+orchestrator drives many `send`/`await`/`capture` cycles back-to-back.
+Not a behavioural fork — same EXP-01..04 friction encodings, same
+readiness predicates, same `AwaitResult` JSON shape.
+
+```bash
+# Build (release):
+cd providers/workspaces/interactive-tmux/driver-rs/
+cargo build --release
+# Binary path (honours CARGO_TARGET_DIR if set):
+ls target/release/itmux
+
+# Same subcommand surface as the Python CLI shim:
+target/release/itmux start    --name w1
+target/release/itmux send     --name w1 --agent gemini --text "..."
+target/release/itmux await    --name w1 --agent gemini --timeout 60
+target/release/itmux capture  --name w1 --agent gemini
+target/release/itmux exec     --name w1 -- bash -lc 'ls /workspace'
+target/release/itmux stop     --name w1
+```
+
+`itmux exec` is the only addition over the Python surface — it shells
+out to `docker exec` for ad-hoc commands in the workspace container
+(useful for liveness checks without going through tmux).
+
+Parity smoke: `bash scripts/smoke-rs.sh` (mirrors `scripts/smoke.sh`,
+auto-builds the release binary on first run). Per-agent transcripts
+land at `runs/smoke-rs-<agent>.txt` so you can diff against the
+Python smoke's outputs.
+
+Implementation notes and the full per-agent matrix encoding live at
+[`driver-rs/README.md`](driver-rs/README.md).
+
 ## Per-agent matrix (encoded in the driver — callers should not need this)
 
 | Concern    | Claude                                                                 | Codex                                                                                  | Gemini                                                       |

@@ -1,0 +1,7 @@
+ ▝▜▄     Gemini CLI v0.46.0
+
+ > Refactor lib/foo.py to use dataclasses.
+
+ Thinking... (esc to cancel)
+
+ >   Type your message or @path/to/file
