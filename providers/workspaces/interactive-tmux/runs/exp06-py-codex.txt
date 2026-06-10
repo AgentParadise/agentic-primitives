@@ -1,0 +1,50 @@
+╭─────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.139.0)              │
+│                                         │
+│ model:       gpt-5.5   /model to change │
+│ directory:   /workspace                 │
+│ permissions: YOLO mode                  │
+╰─────────────────────────────────────────╯
+
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+
+⚠ MCP client for `mcp_agent_mail` failed to start: MCP startup failed: handshaking with MCP server failed: Send message error Transport
+  [rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<codex_rmcp_client::http_client_adapter::StreamableHttpClientAdapter>>] error: Client
+  error: HTTP request failed: http/request failed: error sending request for url (http://127.0.0.1:8765/mcp/), when send initialize request
+
+⚠ MCP startup incomplete (failed: mcp_agent_mail)
+
+
+› Reply only with: EXP06-PY-CODEX
+
+
+• EXP06-PY-CODEX
+
+
+› Run /review on my current changes
+
+  gpt-5.5 default · /workspace
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
