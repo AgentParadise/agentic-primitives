@@ -815,38 +815,53 @@ class InteractiveTmuxWorkspace:
             host_throwaway_dir=host_throwaway_dir,
             host_claude_dotjson=host_claude_dotjson,
         )
-        for agent in AGENTS:
-            adapter = _ADAPTERS[agent]
-            src = host_auth.get(agent)
-            if src is None:
-                continue
-            mounts = adapter.prepare_host_auth(Path(src), ctx)
-            if not mounts:
-                continue
-            enabled.append(agent)
-            for _mount_id, pair in mounts.items():
-                all_mounts.append(pair)
+        # Everything between mkdtemp above and the workspace object taking
+        # ownership of host_throwaway_dir (via `cls(...)` below) must remove
+        # the throwaway credential copies on failure; otherwise a failed
+        # `docker run` (or a bad host auth dir) leaks staged auth material
+        # under /tmp.
+        try:
+            for agent in AGENTS:
+                adapter = _ADAPTERS[agent]
+                src = host_auth.get(agent)
+                if src is None:
+                    continue
+                mounts = adapter.prepare_host_auth(Path(src), ctx)
+                if not mounts:
+                    continue
+                enabled.append(agent)
+                for _mount_id, pair in mounts.items():
+                    all_mounts.append(pair)
 
-        if not enabled:
-            shutil.rmtree(host_throwaway_dir, ignore_errors=True)
-            raise ValueError(
-                "start_workspace called with no enabled agents (host_auth empty)"
+            if not enabled:
+                raise ValueError(
+                    "start_workspace called with no enabled agents (host_auth empty)"
+                )
+
+            # Run the container with bind mounts (each mount is a -v arg).
+            run_cmd = [
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                container,
+                "--workdir",
+                workdir,
+            ]
+            for host_path, container_path in all_mounts:
+                run_cmd.extend(["-v", f"{host_path}:{container_path}"])
+            run_cmd.extend([image, "sleep", "infinity"])
+            _run(run_cmd)
+        except Exception:
+            # Best-effort: `docker run -d` can fail after the container is
+            # created (e.g. start failure), so remove it too.
+            subprocess.run(
+                ["docker", "rm", "-f", container],
+                check=False,
+                capture_output=True,
             )
-
-        # Run the container with bind mounts (each mount is a -v arg).
-        run_cmd = [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            container,
-            "--workdir",
-            workdir,
-        ]
-        for host_path, container_path in all_mounts:
-            run_cmd.extend(["-v", f"{host_path}:{container_path}"])
-        run_cmd.extend([image, "sleep", "infinity"])
-        _run(run_cmd)
+            shutil.rmtree(host_throwaway_dir, ignore_errors=True)
+            raise
 
         # Container is up; bootstrap tmux + one window per enabled agent.
         ws = cls(

@@ -145,43 +145,62 @@ impl Workspace {
             host_claude_dotjson: opts.host_claude_dotjson.clone(),
         };
 
-        let mut enabled: Vec<Agent> = Vec::new();
-        let mut mounts: Vec<Mount> = Vec::new();
-        for agent in adapter::AGENTS {
-            let Some(Some(src)) = opts.host_auth.get(&agent) else {
-                continue;
-            };
-            let prepared = auth::prepare(agent, src, &auth_ctx)?;
-            if prepared.is_empty() {
-                continue;
+        // Everything between creating `throwaway` and the Workspace taking
+        // ownership of it (the `Self { .. }` below, whose stop() removes it)
+        // must clean up the staged credential copies on failure; otherwise
+        // a failed `docker run` (or a bad host auth dir) leaks auth
+        // material under the temp dir.
+        let docker_run = (|| -> Result<Vec<Agent>> {
+            let mut enabled: Vec<Agent> = Vec::new();
+            let mut mounts: Vec<Mount> = Vec::new();
+            for agent in adapter::AGENTS {
+                let Some(Some(src)) = opts.host_auth.get(&agent) else {
+                    continue;
+                };
+                let prepared = auth::prepare(agent, src, &auth_ctx)?;
+                if prepared.is_empty() {
+                    continue;
+                }
+                enabled.push(agent);
+                mounts.extend(prepared);
             }
-            enabled.push(agent);
-            mounts.extend(prepared);
-        }
 
-        if enabled.is_empty() {
-            let _ = fs::remove_dir_all(&throwaway);
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "start_workspace called with no enabled agents (host_auth empty)",
-            ));
-        }
+            if enabled.is_empty() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "start_workspace called with no enabled agents (host_auth empty)",
+                ));
+            }
 
-        // docker run -d --name <c> --workdir <wd> [-v host:container ...] <image> sleep infinity
-        let mut run = Command::new("docker");
-        run.args([
-            "run",
-            "-d",
-            "--name",
-            &container,
-            "--workdir",
-            &opts.workdir,
-        ]);
-        for m in &mounts {
-            run.arg("-v").arg(m.as_docker_arg());
-        }
-        run.arg(&opts.image).args(["sleep", "infinity"]);
-        run_capture(&mut run, "docker run")?;
+            // docker run -d --name <c> --workdir <wd> [-v host:container ...] <image> sleep infinity
+            let mut run = Command::new("docker");
+            run.args([
+                "run",
+                "-d",
+                "--name",
+                &container,
+                "--workdir",
+                &opts.workdir,
+            ]);
+            for m in &mounts {
+                run.arg("-v").arg(m.as_docker_arg());
+            }
+            run.arg(&opts.image).args(["sleep", "infinity"]);
+            run_capture(&mut run, "docker run")?;
+            Ok(enabled)
+        })();
+        let enabled = match docker_run {
+            Ok(enabled) => enabled,
+            Err(e) => {
+                // Best-effort: `docker run -d` can fail after the container
+                // is created (e.g. start failure), so remove it too.
+                let _ = Command::new("docker")
+                    .args(["rm", "-f", &container])
+                    .output();
+                let _ = fs::remove_dir_all(&throwaway);
+                return Err(e);
+            }
+        };
 
         let mut ws = Self {
             name: opts.name.clone(),
