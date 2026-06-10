@@ -17,7 +17,8 @@ overlays specific to per-agent probes) remain on their source branches.
 | EXP-03   | gemini interactive in tmux in docker                                 | `go`           | `agentprims-exp03` @ 45bf05e                      | `experiments/EXP-03-gemini-tmux-workspace.md`                        |
 | EXP-04   | combined swarm-in-a-container (claude + codex + gemini)              | `go`           | `agentprims-exp03` @ 45bf05e                      | `experiments/EXP-04-combined-swarm-container.md`                     |
 | EXP-04b  | EXP-04 hardening + run count (sub-experiment, same report)           | `go`           | `agentprims-exp03` @ 45bf05e                      | `experiments/EXP-04-combined-swarm-container.md` (section `## EXP-04b`) |
-| EXP-05   | `interactive-tmux` workspace provider (productionised EXP-01..04)    | `go`           | `agentprims-exp05` @ b534ec2 (docs patch on `agentprims-exp05` @ 6373b8e) | `experiments/EXP-05-interactive-tmux-provider.md`                    |
+| EXP-05   | `interactive-tmux` workspace provider (productionised EXP-01..04)    | `go`           | `agentprims-exp05` @ b534ec2 (docs patch @ 6373b8e; review fixes M1..M4 + m1..m2 @ 8e4d621) | `experiments/EXP-05-interactive-tmux-provider.md`                    |
+| EXP-05-review | codex lead's cross-review of the EXP-05 provider implementation | `go` (no blockers; 4 majors + 2 minors all applied on `agentprims-exp05` @ 8e4d621) | `agentprims-exp02` @ 44ca031 | `experiments/EXP-05-review-codex.md`                                 |
 | EXP-05a  | claude auth-file matrix (`.credentials.json` vs `.claude.json` — 2×2 mount probe) | `go` (both files required) | `agentprims-exp02` @ 44ca031                      | `experiments/EXP-05a-claude-auth-matrix.md`                          |
 | EXP-06   | fresh-agent validation of `interactive-tmux` provider docs           | `go` (6/6 agents × paths; 4 small README gaps, all patched on `agentprims-exp05` @ 6373b8e) | `agentprims-exp06` @ 05d926b | `experiments/EXP-06-fresh-agent-validation.md`                       |
 
@@ -59,9 +60,9 @@ branches were merged wholesale.
 
 ```
 ntm/agentprims/cc_1   22ddf30
-agentprims-exp02      44ca031  (EXP-05a evidence)
+agentprims-exp02      44ca031  (EXP-05a evidence + EXP-05-review-codex)
 agentprims-exp03      45bf05e
-agentprims-exp05      6373b8e  (EXP-05 + EXP-06 docs patch)
+agentprims-exp05      8e4d621  (EXP-05 + EXP-06 docs patch + cross-review M1..M4 / m1..m2 fixes)
 agentprims-exp06      05d926b  (EXP-06 evidence)
 origin/main           d807ab0
 ```
