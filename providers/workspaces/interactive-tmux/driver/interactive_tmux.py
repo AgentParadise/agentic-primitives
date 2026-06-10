@@ -141,7 +141,9 @@ class StartupReadinessError(RuntimeError):
 # tmux send-keys helpers (the only place that talks to docker exec tmux)
 
 
-def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+def _run(
+    cmd: list[str], check: bool = True, capture: bool = True
+) -> subprocess.CompletedProcess:
     """Run a subprocess; return CompletedProcess. Raises on non-zero unless
     `check=False`."""
     logger.debug("exec: %s", " ".join(cmd))
@@ -153,7 +155,9 @@ def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess
     )
 
 
-def _docker_exec(container: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+def _docker_exec(
+    container: str, *args: str, check: bool = True
+) -> subprocess.CompletedProcess:
     return _run(["docker", "exec", container, *args], check=check)
 
 
@@ -195,6 +199,15 @@ class _AdapterContext:
     container: str
     workdir: str  # container path (e.g., /workspace)
     host_throwaway_dir: Path  # per-workspace temp dir on the host
+    # Optional explicit `.claude.json` path. When set, `_ClaudeAdapter` uses
+    # this as the source for the synthesized container-side `~/.claude.json`
+    # instead of looking for a sibling of `host_src`. Set via the
+    # `start_workspace(host_claude_dotjson=...)` kwarg or the
+    # `ITMUX_CLAUDE_JSON` env var (see `_default_claude_dotjson_from_env`).
+    # Surfaces the DooD case: when the caller runs the driver inside another
+    # container with credentials mounted at unrelated paths, the parent-of-
+    # CLAUDE_HOME heuristic does not find the host's dotjson.
+    host_claude_dotjson: Path | None = None
 
 
 class _ClaudeAdapter:
@@ -276,7 +289,17 @@ class _ClaudeAdapter:
         # the workspace project trust pre-accepted, and (if available) the
         # host's oauthAccount metadata copied through so "Welcome back" lands
         # cleanly instead of triggering a fresh-account flow.
-        dotjson_src = host_src.parent / ".claude.json"
+        #
+        # Source resolution order (caller > sibling > nothing):
+        #   1. `ctx.host_claude_dotjson` (explicit; set by
+        #      `ITMUX_CLAUDE_JSON` or `start_workspace(host_claude_dotjson=)`)
+        #   2. `host_src.parent / ".claude.json"` — the historical default for
+        #      callers running outside a container, where `host_src` is the
+        #      operator's `~/.claude` and the dotjson sits next to it.
+        # If neither resolves, `_build_seeded_claude_dotjson` synthesizes a
+        # fresh dotjson with onboarding/trust markers only (no oauthAccount
+        # passthrough) — see EXP-05a for which cells survive that mode.
+        dotjson_src = ctx.host_claude_dotjson or (host_src.parent / ".claude.json")
         dotjson_dst = ctx.host_throwaway_dir / "claude.json"
         seeded = _build_seeded_claude_dotjson(dotjson_src, ctx.workdir)
         dotjson_dst.write_text(json.dumps(seeded, indent=2))
@@ -377,7 +400,9 @@ class _CodexAdapter:
                 continue
             target = dst_dir / item.name
             if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True, ignore_dangling_symlinks=True)
+                shutil.copytree(
+                    item, target, dirs_exist_ok=True, ignore_dangling_symlinks=True
+                )
             else:
                 shutil.copy2(item, target)
         _chown_recursive(dst_dir, 1000, 1000)
@@ -386,7 +411,9 @@ class _CodexAdapter:
     @staticmethod
     def launch_in_window(container: str, _workdir: str) -> None:
         # --no-alt-screen so capture-pane sees the same buffer the TUI uses.
-        _tmux_send_keys(container, _CodexAdapter.window, "codex --no-alt-screen", "Enter")
+        _tmux_send_keys(
+            container, _CodexAdapter.window, "codex --no-alt-screen", "Enter"
+        )
         # Trust banner: select option 1 ("Yes, trust"), confirm with Enter.
         time.sleep(2)
         _tmux_send_keys(container, _CodexAdapter.window, "1", "Enter")
@@ -413,7 +440,11 @@ class _CodexAdapter:
         # together so a transient hint loss doesn't false-fail.
         if "• Working" in pane_text:
             return False
-        return ("› " in pane_text) or ("Write tests for" in pane_text) or ("Tip:" in pane_text)
+        return (
+            ("› " in pane_text)
+            or ("Write tests for" in pane_text)
+            or ("Tip:" in pane_text)
+        )
 
     @staticmethod
     def is_started(pane_text: str) -> bool:
@@ -616,6 +647,7 @@ class InteractiveTmuxWorkspace:
         tmux_size: tuple[int, int] = DEFAULT_TMUX_SIZE,
         startup_timeout_s: float = 45.0,
         strict_startup: bool = True,
+        host_claude_dotjson: Path | None = None,
     ) -> InteractiveTmuxWorkspace:
         """Start a new interactive-tmux workspace.
 
@@ -641,6 +673,14 @@ class InteractiveTmuxWorkspace:
                 a footgun for orchestrators like Syntropic137. Strict is the
                 safer default; lax is opt-in for callers who already check
                 `ws.startup_status` themselves.
+            host_claude_dotjson: explicit host-side path to `~/.claude.json`.
+                If `None` (default), the driver looks for it as a sibling of
+                `host_auth["claude"]` — which is correct when the caller runs
+                outside a container. Inside a container (docker-out-of-docker),
+                the operator's `.claude.json` may be mounted at an unrelated
+                path; pass it explicitly here. Equivalent to setting
+                `ITMUX_CLAUDE_JSON` in the environment. Surfaced as a bug fix
+                for the Syntropic137 integration e2e (PR #202 follow-up).
 
         Returns:
             InteractiveTmuxWorkspace. In both strict and lax modes,
@@ -658,7 +698,12 @@ class InteractiveTmuxWorkspace:
         # their per-agent mounts.
         enabled: list[str] = []
         all_mounts: list[tuple[Path, str]] = []
-        ctx = _AdapterContext(container=container, workdir=workdir, host_throwaway_dir=host_throwaway_dir)
+        ctx = _AdapterContext(
+            container=container,
+            workdir=workdir,
+            host_throwaway_dir=host_throwaway_dir,
+            host_claude_dotjson=host_claude_dotjson,
+        )
         for agent in AGENTS:
             adapter = _ADAPTERS[agent]
             src = host_auth.get(agent)
@@ -673,13 +718,19 @@ class InteractiveTmuxWorkspace:
 
         if not enabled:
             shutil.rmtree(host_throwaway_dir, ignore_errors=True)
-            raise ValueError("start_workspace called with no enabled agents (host_auth empty)")
+            raise ValueError(
+                "start_workspace called with no enabled agents (host_auth empty)"
+            )
 
         # Run the container with bind mounts (each mount is a -v arg).
         run_cmd = [
-            "docker", "run", "-d",
-            "--name", container,
-            "--workdir", workdir,
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            container,
+            "--workdir",
+            workdir,
         ]
         for host_path, container_path in all_mounts:
             run_cmd.extend(["-v", f"{host_path}:{container_path}"])
@@ -712,14 +763,29 @@ class InteractiveTmuxWorkspace:
         first = self.enabled_agents[0]
         # Create the session with the first agent's window name.
         _docker_exec(
-            self.container, "tmux", "new-session", "-d", "-s", TMUX_SESSION,
-            "-n", first, "-x", str(cols), "-y", str(rows),
+            self.container,
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            TMUX_SESSION,
+            "-n",
+            first,
+            "-x",
+            str(cols),
+            "-y",
+            str(rows),
         )
         # Create additional windows for the rest.
         for agent in self.enabled_agents[1:]:
             _docker_exec(
-                self.container, "tmux", "new-window", "-t", TMUX_SESSION,
-                "-n", agent,
+                self.container,
+                "tmux",
+                "new-window",
+                "-t",
+                TMUX_SESSION,
+                "-n",
+                agent,
             )
 
         # Launch each agent's CLI in its window, then wait until each pane
@@ -735,7 +801,9 @@ class InteractiveTmuxWorkspace:
             adapter = _ADAPTERS[agent]
             adapter.launch_in_window(self.container, self.workdir)
             self._started[agent] = True
-            self.startup_status[agent] = self._wait_for_started(agent, startup_timeout_s)
+            self.startup_status[agent] = self._wait_for_started(
+                agent, startup_timeout_s
+            )
 
         failed = {a: r for a, r in self.startup_status.items() if not r.ready}
         if failed:
@@ -743,7 +811,9 @@ class InteractiveTmuxWorkspace:
                 raise StartupReadinessError(self.startup_status)
             logger.warning(
                 "start_workspace: %d agent(s) not ready within %.1fs (strict_startup=False): %s",
-                len(failed), startup_timeout_s, sorted(failed),
+                len(failed),
+                startup_timeout_s,
+                sorted(failed),
             )
 
     def _wait_for_started(self, agent: str, timeout_s: float) -> AwaitResult:
@@ -768,7 +838,8 @@ class InteractiveTmuxWorkspace:
         duration_ms = (time.monotonic() - start) * 1000
         logger.warning(
             "wait_for_started(%s) timed out after %.1fs",
-            agent, timeout_s,
+            agent,
+            timeout_s,
         )
         return AwaitResult(
             ready=False,
@@ -864,7 +935,10 @@ class InteractiveTmuxWorkspace:
         reason = "timeout_unstable" if ever_ready else "timeout_never_ready"
         logger.warning(
             "await_completion(%s) timed out after %.1fs (stable_ready=%d, reason=%s)",
-            agent, timeout, consecutive_stable_ready, reason,
+            agent,
+            timeout,
+            consecutive_stable_ready,
+            reason,
         )
         return AwaitResult(
             ready=False,
@@ -904,15 +978,66 @@ class InteractiveTmuxWorkspace:
 # CLI (for shell-script consumers — e.g., scripts/smoke.sh)
 
 
+# Per-agent env var names for explicit host-credential paths. These take
+# precedence over `$HOME/.{agent}` discovery and let callers run the driver
+# from inside another container (docker-out-of-docker), where `$HOME` does
+# not point at the operator's real credentials. Reported by Syntropic137
+# integration e2e: with no $HOME match, every agent slot became None and
+# `start_workspace` failed with `no enabled agents (host_auth empty)`.
+_HOST_HOME_ENV = {
+    "claude": "ITMUX_CLAUDE_HOME",
+    "codex": "ITMUX_CODEX_HOME",
+    "gemini": "ITMUX_GEMINI_HOME",
+}
+
+# Claude is special: the auth surface is BOTH `~/.claude/` AND `~/.claude.json`
+# (EXP-05a). The directory is selected by ITMUX_CLAUDE_HOME above; this env var
+# overrides the sibling-of-CLAUDE_HOME default for the dotjson file, in case
+# the caller has them in non-default locations (e.g. mounted into a container
+# at unrelated paths).
+_HOST_CLAUDE_JSON_ENV = "ITMUX_CLAUDE_JSON"
+
+
 def _default_host_auth_from_env() -> dict[str, Path | None]:
-    """Build a host_auth dict from $HOME defaults; missing dirs are dropped."""
+    """Build a host_auth dict honoring `ITMUX_{AGENT}_HOME` env vars first.
+
+    Resolution per agent:
+      1. `ITMUX_{AGENT}_HOME` if set (caller takes responsibility for the path
+         existing; if set but missing, we still propagate `None` so the caller
+         gets the same "agent disabled" outcome as without the env var).
+      2. `$HOME/.{agent}` if the directory exists on disk.
+      3. None — agent disabled.
+
+    Missing dirs are dropped so callers can `if host_auth["codex"]:` without
+    a stat — same shape as before this env-var support was added.
+    """
     home = Path(os.path.expanduser("~"))
-    candidates = {
-        "claude": home / ".claude",
-        "codex": home / ".codex",
-        "gemini": home / ".gemini",
-    }
-    return {a: p if p.is_dir() else None for a, p in candidates.items()}
+    out: dict[str, Path | None] = {}
+    for agent in AGENTS:
+        override = os.environ.get(_HOST_HOME_ENV[agent])
+        if override:
+            path = Path(override).expanduser()
+            out[agent] = path if path.is_dir() else None
+            continue
+        fallback = home / f".{agent}"
+        out[agent] = fallback if fallback.is_dir() else None
+    return out
+
+
+def _default_claude_dotjson_from_env() -> Path | None:
+    """Resolve `~/.claude.json` honoring `ITMUX_CLAUDE_JSON` first, then $HOME.
+
+    Returning `None` when neither path resolves is fine — `_ClaudeAdapter`
+    treats absent dotjson as "synthesize from scratch", which is the same
+    behavior as a host that has `~/.claude/` but no sibling `~/.claude.json`
+    (one of the EXP-05a matrix cells the adapter explicitly supports).
+    """
+    override = os.environ.get(_HOST_CLAUDE_JSON_ENV)
+    if override:
+        path = Path(override).expanduser()
+        return path if path.is_file() else None
+    fallback = Path(os.path.expanduser("~")) / ".claude.json"
+    return fallback if fallback.is_file() else None
 
 
 _WORKSPACE_REGISTRY_DIR = Path(tempfile.gettempdir()) / "interactive-tmux-workspaces"
@@ -929,7 +1054,9 @@ def _save_workspace(ws: InteractiveTmuxWorkspace) -> None:
         "host_throwaway_dir": str(ws.host_throwaway_dir),
         "enabled_agents": list(ws.enabled_agents),
     }
-    (_WORKSPACE_REGISTRY_DIR / f"{ws.name}.json").write_text(json.dumps(payload, indent=2))
+    (_WORKSPACE_REGISTRY_DIR / f"{ws.name}.json").write_text(
+        json.dumps(payload, indent=2)
+    )
 
 
 def _load_workspace(name: str) -> InteractiveTmuxWorkspace:
@@ -971,8 +1098,8 @@ def _cli() -> int:
         "--strict-startup",
         action="store_true",
         help="raise on any agent's startup readiness miss (default: lax — print "
-             "structured per-agent status in the JSON output and exit non-zero "
-             "only if no agent is ready)",
+        "structured per-agent status in the JSON output and exit non-zero "
+        "only if no agent is ready)",
     )
 
     s_send = sub.add_parser("send", help="send a message to an agent")
@@ -993,7 +1120,9 @@ def _cli() -> int:
     s_stop.add_argument("--name", required=True)
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
 
     if args.cmd == "start":
         host_auth_all = _default_host_auth_from_env()
@@ -1006,28 +1135,46 @@ def _cli() -> int:
                 image=args.image,
                 workdir=args.workdir,
                 strict_startup=args.strict_startup,
+                # DooD fix: honor ITMUX_CLAUDE_JSON when the CLI is invoked
+                # from inside another container where `$HOME/.claude.json`
+                # is not the operator's actual file.
+                host_claude_dotjson=_default_claude_dotjson_from_env(),
             )
         except StartupReadinessError as exc:
             # M1: surface per-agent failure structurally instead of an
             # opaque non-zero exit. The CLI exit code is 3 (distinct from
             # 2 = await timeout) so smoke harnesses can tell them apart.
-            print(json.dumps({
-                "error": "startup_readiness",
-                "startup_status": {a: r.to_dict() for a, r in exc.startup_status.items()},
-            }))
+            print(
+                json.dumps(
+                    {
+                        "error": "startup_readiness",
+                        "startup_status": {
+                            a: r.to_dict() for a, r in exc.startup_status.items()
+                        },
+                    }
+                )
+            )
             return 3
         _save_workspace(ws)
-        print(json.dumps({
-            "name": ws.name,
-            "container": ws.container,
-            "agents": list(ws.enabled_agents),
-            "startup_status": {a: r.to_dict() for a, r in ws.startup_status.items()},
-        }))
+        print(
+            json.dumps(
+                {
+                    "name": ws.name,
+                    "container": ws.container,
+                    "agents": list(ws.enabled_agents),
+                    "startup_status": {
+                        a: r.to_dict() for a, r in ws.startup_status.items()
+                    },
+                }
+            )
+        )
         # Exit non-zero only if NO agent reached ready — preserves the
         # historical "smoke continues to pass on benign per-agent misses"
         # behavior while exposing the structured status that the codex
         # cross-review (M1) called out as missing.
-        all_failed = ws.startup_status and not any(r.ready for r in ws.startup_status.values())
+        all_failed = ws.startup_status and not any(
+            r.ready for r in ws.startup_status.values()
+        )
         return 0 if not all_failed else 3
 
     if args.cmd == "send":

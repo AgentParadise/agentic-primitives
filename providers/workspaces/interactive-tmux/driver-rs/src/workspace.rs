@@ -31,6 +31,13 @@ pub struct StartOptions {
     pub strict_startup: bool,
     /// Per-agent host source paths. `None` skips the agent.
     pub host_auth: HashMap<Agent, Option<PathBuf>>,
+    /// Explicit path to the operator's `~/.claude.json`. When `None`, the
+    /// claude adapter falls back to `host_auth[Claude].parent()/.claude.json`,
+    /// which is correct outside a container. Inside a container (DooD), the
+    /// dotjson may be mounted at an unrelated path; set this so the synthesised
+    /// container-side dotjson can carry the host's `oauthAccount` through.
+    /// Surfaced as a bug fix for the Syntropic137 integration e2e (PR #202).
+    pub host_claude_dotjson: Option<PathBuf>,
 }
 
 impl StartOptions {
@@ -43,6 +50,7 @@ impl StartOptions {
             startup_timeout_s: DEFAULT_STARTUP_TIMEOUT_S,
             strict_startup: true,
             host_auth: HashMap::new(),
+            host_claude_dotjson: None,
         }
     }
 }
@@ -119,6 +127,7 @@ impl Workspace {
         let auth_ctx = AuthContext {
             workdir: opts.workdir.clone(),
             throwaway_dir: throwaway.clone(),
+            host_claude_dotjson: opts.host_claude_dotjson.clone(),
         };
 
         let mut enabled: Vec<Agent> = Vec::new();

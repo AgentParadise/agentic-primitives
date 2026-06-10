@@ -105,21 +105,57 @@ fn parse_agent(s: &str) -> Result<Agent, String> {
     Agent::parse(s).ok_or_else(|| format!("unknown agent: {s} (one of claude/codex/gemini)"))
 }
 
+/// Resolve per-agent host credential directories, honoring `ITMUX_{AGENT}_HOME`
+/// env vars first and `$HOME/.{agent}` second.
+///
+/// This is the fix for the docker-out-of-docker (DooD) bug Syntropic137's
+/// integration e2e surfaced on PR #202: when this driver runs inside another
+/// container, `$HOME` is the container's home (e.g. `/root`), not the
+/// operator's, so every agent slot defaults to `None` and `start_workspace`
+/// fails with `no enabled agents (host_auth empty)`. The env-var overrides
+/// let the calling environment point at the real mounted credentials.
 fn default_host_auth(wanted: &[Agent]) -> HashMap<Agent, Option<PathBuf>> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/root"));
     let mut out = HashMap::new();
     for agent in AGENTS {
-        let path = match agent {
-            Agent::Claude => home.join(".claude"),
-            Agent::Codex => home.join(".codex"),
-            Agent::Gemini => home.join(".gemini"),
+        let override_env = match agent {
+            Agent::Claude => "ITMUX_CLAUDE_HOME",
+            Agent::Codex => "ITMUX_CODEX_HOME",
+            Agent::Gemini => "ITMUX_GEMINI_HOME",
         };
+        let path = std::env::var_os(override_env)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                home.join(match agent {
+                    Agent::Claude => ".claude",
+                    Agent::Codex => ".codex",
+                    Agent::Gemini => ".gemini",
+                })
+            });
         let enabled = wanted.contains(&agent) && path.is_dir();
         out.insert(agent, if enabled { Some(path) } else { None });
     }
     out
+}
+
+/// Resolve `~/.claude.json`, honoring `ITMUX_CLAUDE_JSON` first, then
+/// `$HOME/.claude.json`. Returns `None` if neither resolves to an existing
+/// file — `prepare_claude` synthesises a fresh dotjson in that case
+/// (acceptable per EXP-05a; just no `oauthAccount` passthrough).
+fn default_host_claude_dotjson() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("ITMUX_CLAUDE_JSON") {
+        let path = PathBuf::from(p);
+        return if path.is_file() { Some(path) } else { None };
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    let path = home.join(".claude.json");
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
 }
 
 #[derive(Serialize)]
@@ -162,6 +198,7 @@ fn handle_start(
     opts.startup_timeout_s = startup_timeout;
     opts.strict_startup = strict_startup;
     opts.host_auth = default_host_auth(&wanted);
+    opts.host_claude_dotjson = default_host_claude_dotjson();
 
     match Workspace::start(opts) {
         Ok(ws) => {

@@ -142,15 +142,20 @@ class InteractiveTmuxProvider(BaseProvider):
         default_enabled_agents: tuple[str, ...] = ("claude", "codex", "gemini"),
         startup_timeout_s: float = 45.0,
         strict_startup: bool = True,
+        default_host_claude_dotjson: Path | None = None,
     ) -> None:
+        # `default_host_auth` resolution mirrors the driver CLI:
+        # `ITMUX_{AGENT}_HOME` env vars > `$HOME/.{agent}` > None.
+        # `default_host_claude_dotjson` mirrors `ITMUX_CLAUDE_JSON`. Both
+        # exist so the adapter works inside another container (DooD), where
+        # `$HOME` does not point at the operator's real credentials —
+        # surfaced by the Syntropic137 integration e2e on PR #202.
         if default_host_auth is None:
-            home = Path(os.path.expanduser("~"))
-            default_host_auth = {
-                "claude": (home / ".claude") if (home / ".claude").is_dir() else None,
-                "codex": (home / ".codex") if (home / ".codex").is_dir() else None,
-                "gemini": (home / ".gemini") if (home / ".gemini").is_dir() else None,
-            }
+            default_host_auth = _driver._default_host_auth_from_env()
+        if default_host_claude_dotjson is None:
+            default_host_claude_dotjson = _driver._default_claude_dotjson_from_env()
         self._default_host_auth = default_host_auth
+        self._default_host_claude_dotjson = default_host_claude_dotjson
         self._default_image = default_image
         self._default_enabled_agents = tuple(default_enabled_agents)
         self._startup_timeout_s = startup_timeout_s
@@ -212,6 +217,7 @@ class InteractiveTmuxProvider(BaseProvider):
             workdir=workdir,
             startup_timeout_s=self._startup_timeout_s,
             strict_startup=self._strict_startup,
+            host_claude_dotjson=self._default_host_claude_dotjson,
         )
 
         # Ensure the container workdir exists so write_file/read_file have a

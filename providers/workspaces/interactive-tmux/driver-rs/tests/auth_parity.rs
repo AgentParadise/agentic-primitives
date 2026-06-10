@@ -33,6 +33,7 @@ fn claude_seeds_synthetic_dotjson_when_host_missing() {
     let ctx = AuthContext {
         workdir: "/workspace".to_string(),
         throwaway_dir: throwaway.clone(),
+        host_claude_dotjson: None,
     };
 
     let mounts = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
@@ -74,6 +75,7 @@ fn claude_seeds_carry_oauth_account_through_when_host_present() {
     let ctx = AuthContext {
         workdir: "/workspace".to_string(),
         throwaway_dir: throwaway.clone(),
+        host_claude_dotjson: None,
     };
     let mounts = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
     let dotjson_mount = mounts
@@ -88,6 +90,44 @@ fn claude_seeds_carry_oauth_account_through_when_host_present() {
 }
 
 #[test]
+fn claude_honors_explicit_dotjson_override_dood_case() {
+    // DooD case (PR #202 follow-up): the operator's `.claude/` is mounted
+    // into the calling container at one path, and the operator's
+    // `.claude.json` is mounted at a DIFFERENT path (not the parent of
+    // `.claude/`). The sibling-fallback would look in the wrong place and
+    // synthesise a fresh dotjson without `oauthAccount` passthrough.
+    // With `host_claude_dotjson` set, the override path is used directly.
+    let claude_dir = tmp("claude-dir-dood");
+    fs::write(claude_dir.join(".credentials.json"), b"{}").unwrap();
+
+    let dotjson_path = tmp("claude-json-dood").join("mounted-claude.json");
+    fs::write(
+        &dotjson_path,
+        r#"{"oauthAccount":{"email":"dood@example.com","uuid":"d00d"},"theme":"dark"}"#,
+    )
+    .unwrap();
+
+    let throwaway = tmp("claude-throwaway-dood");
+    let ctx = AuthContext {
+        workdir: "/workspace".to_string(),
+        throwaway_dir: throwaway.clone(),
+        host_claude_dotjson: Some(dotjson_path.clone()),
+    };
+
+    let mounts = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
+    let dotjson_mount = mounts
+        .iter()
+        .find(|m| m.container == "/home/agent/.claude.json")
+        .unwrap();
+    let body: serde_json::Value =
+        serde_json::from_slice(&fs::read(&dotjson_mount.host).unwrap()).unwrap();
+    // Came from the explicit override, not from a sibling-of-claude-dir
+    // lookup (the sibling does NOT exist in this layout).
+    assert_eq!(body["oauthAccount"]["email"], "dood@example.com");
+    assert_eq!(body["oauthAccount"]["uuid"], "d00d");
+}
+
+#[test]
 fn claude_rejects_missing_credentials_file() {
     let host_root = tmp("claude-host-bad");
     let claude_dir = host_root.join(".claude");
@@ -95,6 +135,7 @@ fn claude_rejects_missing_credentials_file() {
     let ctx = AuthContext {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("claude-throwaway-bad"),
+        host_claude_dotjson: None,
     };
     let err = prepare(Agent::Claude, &claude_dir, &ctx).unwrap_err();
     assert!(err.to_string().contains(".credentials.json"));
@@ -108,6 +149,7 @@ fn gemini_patches_folder_trust_in_settings() {
     let ctx = AuthContext {
         workdir: "/workspace".to_string(),
         throwaway_dir: throwaway.clone(),
+        host_claude_dotjson: None,
     };
     let mounts = prepare(Agent::Gemini, &host, &ctx).unwrap();
     assert_eq!(mounts.len(), 1);
@@ -132,6 +174,7 @@ fn codex_skips_tmp_and_log_subdirs() {
     let ctx = AuthContext {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("codex-throwaway"),
+        host_claude_dotjson: None,
     };
     let mounts = prepare(Agent::Codex, &host, &ctx).unwrap();
     assert_eq!(mounts.len(), 1);

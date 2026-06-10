@@ -207,6 +207,53 @@ byte-for-byte parity with the host's `~/.claude.json` should ensure both
 files exist on the host before calling — the driver still mounts the
 host file when it's present (it never overrides it).
 
+## Running from inside another container (docker-out-of-docker)
+
+When the driver itself runs inside a container (e.g. an integrator like
+Syntropic137 spawning a workspace from their own container), `$HOME`
+does NOT point at the operator's credentials — it's the calling
+container's home (`/root` or `/home/<container-user>`). Without the env
+vars below, every agent slot defaults to `None` and `start_workspace`
+fails with `no enabled agents (host_auth empty)`.
+
+Mount the operator's credentials into the calling container at any
+path, then point the driver at them via env vars:
+
+| Env var              | Purpose                                                          |
+|----------------------|------------------------------------------------------------------|
+| `ITMUX_CLAUDE_HOME`  | Path to the host `~/.claude/` directory (overrides `$HOME/.claude`) |
+| `ITMUX_CLAUDE_JSON`  | Path to the host `~/.claude.json` file (overrides `$HOME/.claude.json`) |
+| `ITMUX_CODEX_HOME`   | Path to the host `~/.codex/` directory (overrides `$HOME/.codex`)   |
+| `ITMUX_GEMINI_HOME`  | Path to the host `~/.gemini/` directory (overrides `$HOME/.gemini`) |
+
+`ITMUX_CLAUDE_JSON` is separate from `ITMUX_CLAUDE_HOME` because the
+two paths may not be siblings inside the calling container — the host's
+`~/.claude/` and `~/.claude.json` are usually mounted independently.
+
+`$HOME` discovery is still the default when an env var is not set, so
+existing host callers are unaffected. Setting an env var to a missing
+path yields the same "agent disabled" outcome as not setting it (the
+override is opt-in; the driver does not silently fall back to `$HOME`
+when an explicit override is supplied).
+
+Python API equivalents (for callers wiring `host_auth` themselves):
+
+```python
+ws = InteractiveTmuxWorkspace.start_workspace(
+    name="my-ws",
+    host_auth={
+        "claude": Path("/mnt/host-claude"),
+        "codex":  Path("/mnt/host-codex"),
+        "gemini": Path("/mnt/host-gemini"),
+    },
+    host_claude_dotjson=Path("/mnt/host-claude.json"),  # explicit dotjson
+)
+```
+
+The same `host_claude_dotjson` kwarg exists on
+`InteractiveTmuxProvider(default_host_claude_dotjson=)` and on the
+provider's `__init__` defaults (which read the env vars automatically).
+
 ## Credentials are NEVER baked or committed
 
 `docker run` mounts throwaway host-side copies. The image contains zero

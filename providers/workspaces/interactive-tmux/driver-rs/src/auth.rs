@@ -35,6 +35,12 @@ impl Mount {
 pub struct AuthContext {
     pub workdir: String,
     pub throwaway_dir: PathBuf,
+    /// Explicit override for the operator's `~/.claude.json` source. `None`
+    /// falls back to `host_src.parent() / .claude.json`. Set by callers that
+    /// run from inside another container where the host's dotjson is mounted
+    /// at an unrelated path — see `StartOptions::host_claude_dotjson` and
+    /// the DooD discussion in `_default_claude_dotjson_from_env` (Python).
+    pub host_claude_dotjson: Option<PathBuf>,
 }
 
 /// Best-effort chmod (non-fatal — docker will run as the requested uid
@@ -151,9 +157,17 @@ pub fn prepare_claude(host_src: &Path, ctx: &AuthContext) -> Result<Vec<Mount>> 
     chmod_file(&dst_creds, 0o600);
 
     // Throwaway ~/.claude.json — synthesised regardless of host presence.
-    let dotjson_src = host_src
-        .parent()
-        .map_or_else(|| PathBuf::from(".claude.json"), |p| p.join(".claude.json"));
+    // Resolution order (caller > sibling > nothing): if the caller passed
+    // `host_claude_dotjson` (via `StartOptions` or the `ITMUX_CLAUDE_JSON`
+    // env var), use it directly. Otherwise fall back to the sibling-of-
+    // CLAUDE_HOME path, which is correct outside a container. If neither
+    // resolves, `build_seeded_claude_dotjson` synthesises a fresh dotjson
+    // with onboarding/trust markers only (no `oauthAccount` passthrough).
+    let dotjson_src = ctx.host_claude_dotjson.clone().unwrap_or_else(|| {
+        host_src
+            .parent()
+            .map_or_else(|| PathBuf::from(".claude.json"), |p| p.join(".claude.json"))
+    });
     let dotjson_dst = ctx.throwaway_dir.join("claude.json");
     let seeded = build_seeded_claude_dotjson(&dotjson_src, &ctx.workdir);
     fs::write(&dotjson_dst, serde_json::to_vec_pretty(&seeded)?)?;

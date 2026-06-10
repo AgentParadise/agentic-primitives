@@ -6,7 +6,7 @@
 │ permissions: YOLO mode                  │
 ╰─────────────────────────────────────────╯
 
-  Tip: Use /feedback to send logs to the maintainers when something looks off.
+  Tip: Use /status to see the current model, approvals, and token usage.
 
 ⚠ MCP client for `mcp_agent_mail` failed to start: MCP startup failed: handshaking with MCP server failed: Send message error Transport
   [rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<codex_rmcp_client::http_client_adapter::StreamableHttpClientAdapter>>] error: Client
@@ -15,10 +15,10 @@
 ⚠ MCP startup incomplete (failed: mcp_agent_mail)
 
 
-› Reply only with: SMOKE-CODEX-3488343
+› Reply only with: SMOKE-CODEX-2560902
 
 
-• SMOKE-CODEX-3488343
+• SMOKE-CODEX-2560902
 
 
 › Explain this codebase
