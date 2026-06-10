@@ -6,6 +6,7 @@ managing isolated execution environments.
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +35,17 @@ _PROVIDERS: dict[str, type[WorkspaceProvider]] = {
     "docker": WorkspaceDockerProvider,
 }
 
+# Providers with optional external dependencies are registered lazily:
+# eager imports here would break `import agentic_isolation` for installed
+# wheels (the interactive-tmux driver is not packaged in the wheel).
+# Maps provider name to (module, attribute) resolved on first use.
+_LAZY_PROVIDERS: dict[str, tuple[str, str]] = {
+    "interactive-tmux": (
+        "agentic_isolation.providers.interactive_tmux",
+        "InteractiveTmuxProvider",
+    ),
+}
+
 
 def register_provider(name: str, provider_class: type[WorkspaceProvider]) -> None:
     """Register a custom workspace provider.
@@ -43,6 +55,25 @@ def register_provider(name: str, provider_class: type[WorkspaceProvider]) -> Non
         provider_class: Provider class implementing WorkspaceProvider
     """
     _PROVIDERS[name] = provider_class
+
+
+def _resolve_provider_class(name: str) -> type[WorkspaceProvider]:
+    """Resolve a provider class by name, materializing lazy entries.
+
+    Raises:
+        ValueError: if the name is unknown.
+    """
+    provider_class = _PROVIDERS.get(name)
+    if provider_class is not None:
+        return provider_class
+    lazy = _LAZY_PROVIDERS.get(name)
+    if lazy is None:
+        raise ValueError(f"Unknown provider: {name}")
+    module_name, attr = lazy
+    module = importlib.import_module(module_name)
+    provider_class = getattr(module, attr)
+    _PROVIDERS[name] = provider_class
+    return provider_class
 
 
 class AgenticWorkspace:
@@ -110,7 +141,7 @@ class AgenticWorkspace:
         """Create an AgenticWorkspace with common options.
 
         Args:
-            provider: Provider name ("local", "docker", "e2b")
+            provider: Provider name ("local", "docker", "interactive-tmux")
             image: Docker image (for docker provider)
             working_dir: Working directory inside workspace
             secrets: Secrets to inject as environment variables
@@ -154,10 +185,7 @@ class AgenticWorkspace:
         """Enter the async context and create the workspace."""
         # Get or create provider
         if self._provider is None:
-            provider_name = self._config.provider
-            if provider_name not in _PROVIDERS:
-                raise ValueError(f"Unknown provider: {provider_name}")
-            self._provider = _PROVIDERS[provider_name]()
+            self._provider = _resolve_provider_class(self._config.provider)()
 
         # Create workspace
         self._workspace = await self._provider.create(self._config)

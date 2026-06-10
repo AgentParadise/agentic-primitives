@@ -36,7 +36,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agentic_isolation.config import WorkspaceConfig
 from agentic_isolation.providers.base import (
@@ -65,6 +65,11 @@ def _load_driver_module() -> Any:
     override = os.environ.get("AGENTIC_INTERACTIVE_TMUX_DRIVER")
     if override:
         path = Path(override)
+        if not path.is_file():
+            raise ImportError(
+                f"$AGENTIC_INTERACTIVE_TMUX_DRIVER points at {path}, "
+                "which is not a file."
+            )
     else:
         # this file: …/agentic_isolation/providers/interactive_tmux/__init__.py
         # driver:    …/providers/workspaces/interactive-tmux/driver/interactive_tmux.py
@@ -98,15 +103,65 @@ def _load_driver_module() -> Any:
     return module
 
 
-_driver = _load_driver_module()
-InteractiveTmuxWorkspace = _driver.InteractiveTmuxWorkspace
-AwaitResult = _driver.AwaitResult
-StartupReadinessError = _driver.StartupReadinessError
+_driver: Any = None
+
+
+def _get_driver() -> Any:
+    """Load the driver on first use (NOT at import time).
+
+    The driver is not packaged inside the agentic-isolation wheel, so this
+    module must import cleanly without it; only constructing/using the
+    provider requires the driver to be reachable.
+    """
+    global _driver
+    if _driver is None:
+        _driver = _load_driver_module()
+    return _driver
+
+
+# Names re-exported from the driver, resolved lazily so that importing
+# this module never fails when the driver is absent.
+_DRIVER_EXPORTS = ("InteractiveTmuxWorkspace", "AwaitResult", "StartupReadinessError")
+
+if TYPE_CHECKING:
+    InteractiveTmuxWorkspace = Any
+    AwaitResult = Any
+    StartupReadinessError = Any
+
+
+def __getattr__(name: str) -> Any:
+    if name in _DRIVER_EXPORTS:
+        return getattr(_get_driver(), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # Container path under which write_file/read_file are rooted. Mirrors the
 # provider's default tmux workdir (set in InteractiveTmuxWorkspace).
 DEFAULT_CONTAINER_WORKDIR = "/workspace"
+
+
+def _unsupported_config_fields(config: WorkspaceConfig) -> list[str]:
+    """Return WorkspaceConfig fields set to non-default values that this
+    provider cannot honor (it would otherwise silently ignore them)."""
+    defaults = WorkspaceConfig()
+    unsupported: list[str] = []
+    if config.image != defaults.image:
+        unsupported.append("image")
+    if config.dockerfile is not None:
+        unsupported.append("dockerfile")
+    if config.mounts:
+        unsupported.append("mounts")
+    if config.secrets:
+        unsupported.append("secrets")
+    if config.environment:
+        unsupported.append("environment")
+    if config.security != defaults.security:
+        unsupported.append("security")
+    if config.limits != defaults.limits:
+        unsupported.append("limits")
+    if config.plugins:
+        unsupported.append("plugins")
+    return unsupported
 
 
 class InteractiveTmuxProvider(BaseProvider):
@@ -156,12 +211,13 @@ class InteractiveTmuxProvider(BaseProvider):
         # plugins into the tmux-driven `claude` TUI (settings.json
         # injection is silently ignored — Syntropic137 workflow-skills
         # bridge).
+        driver = _get_driver()
         if default_host_auth is None:
-            default_host_auth = _driver._default_host_auth_from_env()
+            default_host_auth = driver._default_host_auth_from_env()
         if default_host_claude_dotjson is None:
-            default_host_claude_dotjson = _driver._default_claude_dotjson_from_env()
+            default_host_claude_dotjson = driver._default_claude_dotjson_from_env()
         if default_claude_plugin_dirs is None:
-            default_claude_plugin_dirs = _driver._default_claude_plugin_dirs_from_env()
+            default_claude_plugin_dirs = driver._default_claude_plugin_dirs_from_env()
         self._default_host_auth = default_host_auth
         self._default_host_claude_dotjson = default_host_claude_dotjson
         self._default_claude_plugin_dirs = default_claude_plugin_dirs
@@ -183,19 +239,39 @@ class InteractiveTmuxProvider(BaseProvider):
     async def create(self, config: WorkspaceConfig) -> Workspace:
         """Create an interactive-tmux workspace honoring `config`.
 
-        `config.working_dir` sets the container workdir;
-        `config.labels["agents"]` (comma-sep) limits which agent panes get
-        launched.
+        Honored `WorkspaceConfig` fields:
+          * `config.working_dir`: sets the container workdir.
+          * `config.labels["agents"]` (comma-sep): limits which agent panes
+            get launched. Other labels are accepted (informational).
+          * `config.auto_cleanup` / `config.keep_on_error`: handled by
+            `AgenticWorkspace`, not this provider.
 
-        `config.image` is **ignored** — this provider only works with images
-        bundling tmux + the three agent CLIs. Override via the
-        `default_image=` constructor kwarg if you need a non-default tag.
-        Everything else on `WorkspaceConfig` (mounts, secrets, env, security,
-        limits) is currently NOT plumbed through — the interactive-tmux
-        driver does its own bind-mount layout for credentials and runs a
-        fixed `sleep infinity` entrypoint. Plumbing the rest is future work
-        tracked alongside the streaming roadmap.
+        Unsupported fields (`image`, `mounts`, `secrets`, `environment`,
+        `security`, `limits`, `plugins`, `dockerfile`) are rejected loudly
+        when set to non-default values: the interactive-tmux driver does
+        its own bind-mount layout for credentials and runs a fixed
+        `sleep infinity` entrypoint, so silently dropping them would break
+        expectations set by the other WorkspaceProvider implementations.
+        Override the image via the `default_image=` constructor kwarg
+        (it must bundle tmux + the agent CLIs); pass plugin dirs via
+        `default_claude_plugin_dirs=`. Plumbing the rest through is future
+        work tracked alongside the streaming roadmap.
+
+        Raises:
+            ValueError: if `config` sets unsupported fields to non-default
+                values (see `_unsupported_config_fields`).
         """
+        unsupported = _unsupported_config_fields(config)
+        if unsupported:
+            raise ValueError(
+                "InteractiveTmuxProvider does not support these WorkspaceConfig "
+                f"fields (set to non-default values): {', '.join(unsupported)}. "
+                "Honored fields: working_dir, labels['agents'], auto_cleanup, "
+                "keep_on_error. Use the provider constructor kwargs "
+                "(default_image=, default_claude_plugin_dirs=, ...) for "
+                "image/plugin customization."
+            )
+
         agents_label = config.labels.get("agents") if config.labels else None
         if agents_label:
             wanted = {a.strip() for a in agents_label.split(",")}
@@ -206,7 +282,8 @@ class InteractiveTmuxProvider(BaseProvider):
         else:
             host_auth = {a: self._default_host_auth.get(a) for a in self._default_enabled_agents}
 
-        image = self._default_image or _driver.DEFAULT_IMAGE
+        driver = _get_driver()
+        image = self._default_image or driver.DEFAULT_IMAGE
         workdir = config.working_dir or DEFAULT_CONTAINER_WORKDIR
         name = f"itws-{uuid.uuid4().hex[:8]}"
 
@@ -219,7 +296,7 @@ class InteractiveTmuxProvider(BaseProvider):
         # ~5s container-start window is acceptable; if a future caller
         # needs concurrency, they can wrap `await provider.create(...)`
         # in their own thread.
-        ws_handle: InteractiveTmuxWorkspace = InteractiveTmuxWorkspace.start_workspace(
+        ws_handle: InteractiveTmuxWorkspace = driver.InteractiveTmuxWorkspace.start_workspace(
             name=name,
             host_auth=host_auth,
             image=image,
