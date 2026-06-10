@@ -1,0 +1,8 @@
+FROM node:22
+
+RUN apt-get update && apt-get install -y curl tmux git
+RUN npm install -g @google/gemini-cli
+
+ENV TERM=xterm-256color
+WORKDIR /workspace
+CMD ["sleep", "infinity"]
