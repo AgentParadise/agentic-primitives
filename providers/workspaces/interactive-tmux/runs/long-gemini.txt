@@ -1,0 +1,72 @@
+
+ ▝▜▄     Gemini CLI v0.46.0
+   ▝▜▄
+  ▗▟▀    Signed in with Google /auth
+ ▝▀      Plan: Gemini Code Assist in Google One AI Pro /upgrade
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Gemini CLI will stop serving requests to Google One and unpaid tiers on June 18. Please migrate to Antigravity CLI before then at https://antigravity.google/product/antigravity-cli                 │
+│ Learn more: https://goo.gle/gemini-cli-migration                                                                                                                                                     │
+│                                                                                                                                                                                                      │
+│ To install run "curl -fsSL https://antigravity.google/cli/install.sh | bash"                                                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ℹ MCP issues detected. Run /mcp list for status.
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+ > Reply with the sentinel 'LONG-GEMINI-3205517' on its own line first, then write seven short paragraphs (5-7 sentences each). Vary the topics: 1) clean architecture, 2) the unreasonable
+   effectiveness of small functions, 3) why structured logging beats ad-hoc print debugging, 4) the cost of premature optimization, 5) writing tests that survive refactors, 6) feedback loops in
+   interactive systems, 7) when to choose a monolith over microservices. Use plain prose with no bullets or numbering inside paragraphs. Make the whole reply long enough to fill the terminal.
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+✦ LONG-GEMINI-3205517
+
+  Clean architecture focuses on the separation of concerns by organizing code into concentric layers that isolate the core business logic from external dependencies. The inner layers contain the most
+  stable and high-level policies while the outer layers manage details like databases, web frameworks, and user interfaces. This structure ensures that changes to the infrastructure do not ripple
+  through the domain logic and force expensive rewrites. By adhering to the dependency rule where dependencies only point inward, developers can maintain a system that is easy to test and independent
+  of specific tools. A well-designed clean architecture provides long-term maintainability even as the underlying technologies evolve over time. It transforms a complex codebase into a manageable set
+  of components that are easy to reason about and extend.
+
+  Small functions are often surprisingly effective at reducing cognitive load and making a codebase significantly more readable. When a function performs only one clear task, it becomes easier to
+  name, test, and reuse across different parts of an application. Developers can understand the intent of a routine without having to parse through hundreds of lines of complex implementation details.
+  This approach encourages a declarative style of programming where the code describes what it is doing rather than just how it is doing it. Short functions also make it easier for compilers to
+  optimize code and for debuggers to isolate the exact source of a failure. Ultimately, keeping functions concise leads to fewer bugs and a much more enjoyable development experience for the entire
+  team.
+
+  Structured logging offers a significant advantage over traditional ad-hoc print debugging by providing machine-readable data that can be easily queried and analyzed. Instead of hunting through messy
+  text logs for specific patterns, developers can filter events by fields like request IDs, timestamps, or severity levels. This approach allows teams to identify trends and anomalies in production
+  environments that would be impossible to spot manually. Print statements often clutter the output and are frequently forgotten in the codebase, leading to noise and potential security risks.
+  Structured logs provide a consistent format that integrates seamlessly with modern observability tools and monitoring systems. Investing in a robust logging strategy early in a project pays
+  dividends when complex issues arise in high-traffic scenarios.
+
+  The cost of premature optimization is often measured in wasted developer time and increased system complexity for marginal performance gains. Focusing on micro-optimizations before a system is even
+  functional can lead to rigid designs that are difficult to change later. Developers might implement complex algorithms or data structures that solve problems that do not actually exist in the final
+  product. It is much more effective to write clear and maintainable code first and then use profiling tools to identify actual bottlenecks. Optimization should be a targeted response to empirical
+  data rather than a speculative exercise driven by assumptions. By delaying optimization, engineers ensure that they are solving the right problems with the most appropriate tools for the task.
+
+  Writing tests that survive refactors requires a shift in focus from testing implementation details to testing observable behavior and requirements. When a test is tightly coupled to the internal
+  structure of a class, even minor changes to the code can cause a cascade of failures. Robust tests focus on the outputs produced for a given set of inputs without caring how the result was
+  calculated. This decoupling allows developers to aggressively refactor the internals of a system with total confidence that they are not breaking existing functionality. Mocking should be used
+  sparingly to avoid creating tests that only verify that specific methods were called in a specific order. High-quality tests act as a safety net that enables continuous improvement and architectural
+  evolution over the life of a project.
+
+  Feedback loops are the lifeblood of interactive systems because they provide the necessary information for users and developers to make informed decisions. In a user interface, immediate visual or
+  haptic responses ensure that the person interacting with the software feels in control of the experience. Short feedback loops in the development process, such as fast unit tests and hot-reloading,
+  dramatically increase productivity and reduce the time to market. When a system provides clear and timely feedback, it minimizes the frustration caused by latency or ambiguous state changes. Systems
+  that fail to provide adequate feedback often lead to user error and a general lack of trust in the software's reliability. Continuous monitoring and alerting serve as the final feedback loop that
+  keeps a production system healthy and responsive.
+
+  Choosing a monolith over microservices is often the right decision for early-stage projects or small teams where speed of delivery is the primary concern. A monolithic architecture simplifies
+  deployment, testing, and debugging because the entire system lives within a single codebase and process. Microservices introduce significant overhead in terms of network latency, distributed
+  consistency, and infrastructure management that can overwhelm a small organization. Starting with a well-structured monolith allows the team to discover the natural boundaries of the domain before
+  committing to a complex distributed system. If the application grows and the team expands, the monolith can be incrementally decomposed into services based on actual needs. Avoiding unnecessary
+  architectural complexity early on preserves the team's ability to pivot and adapt to changing market requirements.
+
+
+                                                                                                                                                                                        ? for shortcuts
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Shift+Tab to accept edits                                                                                                                                                                 1 MCP server
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+ >   Type your message or @path/to/file
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ workspace (/directory)                                                   sandbox                                                     /model                                                      quota
+ /workspace                                                               no sandbox                                                  Auto                                                     53% used
+

@@ -228,7 +228,12 @@ impl Workspace {
         while Instant::now() < deadline {
             match tmux::capture_pane(&self.container, agent.window()) {
                 Ok(p) => {
-                    if adapter::is_started(agent, &p) {
+                    // D-block-2 fix (Syntropic137 stress): predicate runs
+                    // against the bottom-of-pane tail so historical text
+                    // in the now-included scrollback can't fool absence
+                    // checks like `"esc to interrupt" not in pane`.
+                    let tail = tmux::pane_tail(&p, self.tmux_size.1 as usize);
+                    if adapter::is_started(agent, &tail) {
                         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
                         return AwaitResult::ready(elapsed, 1, p);
                     }
@@ -283,15 +288,23 @@ impl Workspace {
         let start = Instant::now();
         let deadline = start + Duration::from_secs_f64(timeout);
         thread::sleep(Duration::from_secs_f64(warmup));
-        let mut last_pane: Option<String> = None;
+        // D-block-2 + D-block-3 fix (Syntropic137 stress): the readiness
+        // predicate AND the stability comparison both operate on the
+        // bottom-of-pane tail. Stability on the full scrollback buffer
+        // would fail forever — any new response token appended changes
+        // the buffer, even when the live TUI window has settled.
+        // Comparing tails matches the pre-fix "visible window" semantics
+        // on the full-history capture introduced by `-S - -E -`.
+        let mut last_tail: Option<String> = None;
         let mut consecutive_stable_ready: u32 = 0;
         let mut ever_ready = false;
         let mut pane = String::new();
         while Instant::now() < deadline {
             pane = tmux::capture_pane(&self.container, agent.window())?;
-            if adapter::is_ready(agent, &pane) {
+            let tail = tmux::pane_tail(&pane, self.tmux_size.1 as usize);
+            if adapter::is_ready(agent, &tail) {
                 ever_ready = true;
-                if last_pane.as_deref() == Some(&pane) {
+                if last_tail.as_deref() == Some(&tail) {
                     consecutive_stable_ready += 1;
                     if consecutive_stable_ready >= stable_polls {
                         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
@@ -303,7 +316,7 @@ impl Workspace {
             } else {
                 consecutive_stable_ready = 0;
             }
-            last_pane = Some(pane.clone());
+            last_tail = Some(tail);
             thread::sleep(Duration::from_secs_f64(poll_interval));
         }
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;

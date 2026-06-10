@@ -173,8 +173,52 @@ def _tmux_send_literal(container: str, window: str, text: str) -> None:
 
 
 def _tmux_capture(container: str, window: str) -> str:
+    """Capture the full pane buffer including scrollback.
+
+    `-S -` = start at the top of the history; `-E -` = end at the bottom
+    of the visible pane. Together they return EVERYTHING the TUI has
+    written, not just the rows the terminal happens to render right now.
+
+    Without this, the visible window is `DEFAULT_TMUX_SIZE` (200x50) — a
+    multi-paragraph model reply that overflows the visible pane is
+    silently truncated. EXP-03 documented `-S - -E -` from the start;
+    the Python driver shipped without it (D-block-3 from the
+    Syntropic137 stress run, experiments/stress/STRESS-REPORT.md).
+    """
     target = f"{TMUX_SESSION}:{window}"
-    return _docker_exec(container, "tmux", "capture-pane", "-p", "-t", target).stdout
+    return _docker_exec(
+        container, "tmux", "capture-pane", "-p", "-t", target, "-S", "-", "-E", "-"
+    ).stdout
+
+
+def _pane_tail(pane_text: str, n_lines: int = DEFAULT_TMUX_SIZE[1]) -> str:
+    """Return the bottom `n_lines` lines of a captured pane.
+
+    Used by `is_started` / `is_ready` predicates so they evaluate against
+    the CURRENT visible region rather than the entire scrollback. With
+    the full-scrollback capture (above), the buffer now contains every
+    prompt the user has typed and every prior generation — the absence
+    checks (`"esc to interrupt" not in pane`) would otherwise be fooled
+    by old generations that have long finished, and the empty-chevron
+    regex would match against ancient prompts. Defaults to one tmux
+    pane height (50 rows) — same window as before the scrollback flip,
+    so the readiness predicates retain their original semantics.
+
+    Surfaced by Syntropic137 stress D-block-2: per-agent readiness took
+    the full 240s timeout (16x waste) when a multi-paragraph reply
+    pushed the idle markers out of the visible region the predicates
+    were checking against. With the tail, idle markers anchored at the
+    bottom of the live TUI window are evaluated correctly.
+    """
+    if not pane_text:
+        return ""
+    lines = pane_text.splitlines()
+    if len(lines) <= n_lines:
+        return pane_text
+    tail = "\n".join(lines[-n_lines:])
+    if pane_text.endswith("\n"):
+        tail += "\n"
+    return tail
 
 
 # ---------------------------------------------------------------------------
@@ -824,7 +868,11 @@ class InteractiveTmuxWorkspace:
         pane = ""
         while time.monotonic() < deadline:
             pane = _tmux_capture(self.container, adapter.window)
-            if adapter.is_started(pane):
+            # D-block-2 fix: predicate evaluated on the bottom-of-pane
+            # tail so historical text in scrollback (now captured by
+            # default) can't fool absence checks like
+            # `"esc to interrupt" not in pane`.
+            if adapter.is_started(_pane_tail(pane)):
                 duration_ms = (time.monotonic() - start) * 1000
                 return AwaitResult(
                     ready=True,
@@ -905,15 +953,24 @@ class InteractiveTmuxWorkspace:
         start = time.monotonic()
         deadline = start + timeout
         time.sleep(warmup)
-        last_pane: str | None = None
+        # D-block-2 + D-block-3 fix: capture now returns the full scrollback,
+        # so the readiness predicate AND stability comparison both operate
+        # on the bottom-of-pane tail (last DEFAULT_TMUX_SIZE[1] lines).
+        # Stability check on the full buffer would fail forever — any new
+        # response token appended changes the buffer, even if the live TUI
+        # at the bottom of the window has settled. Comparing tails matches
+        # the pre-stress-fix semantics (the visible region is stable).
+        last_tail: str | None = None
         consecutive_stable_ready = 0
         ever_ready = False
         pane = ""
+        tail = ""
         while time.monotonic() < deadline:
             pane = _tmux_capture(self.container, adapter.window)
-            if adapter.is_ready(pane):
+            tail = _pane_tail(pane)
+            if adapter.is_ready(tail):
                 ever_ready = True
-                if pane == last_pane:
+                if tail == last_tail:
                     consecutive_stable_ready += 1
                     if consecutive_stable_ready >= stable_polls:
                         duration_ms = (time.monotonic() - start) * 1000
@@ -929,7 +986,7 @@ class InteractiveTmuxWorkspace:
                     consecutive_stable_ready = 0
             else:
                 consecutive_stable_ready = 0
-            last_pane = pane
+            last_tail = tail
             time.sleep(poll_interval)
         duration_ms = (time.monotonic() - start) * 1000
         reason = "timeout_unstable" if ever_ready else "timeout_never_ready"

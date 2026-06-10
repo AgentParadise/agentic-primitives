@@ -52,11 +52,45 @@ pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// `docker exec <container> tmux capture-pane -p -t <session>:<window>`.
+/// Capture the full pane buffer including scrollback.
+///
+/// `-S -` = start at the top of the history; `-E -` = end at the bottom
+/// of the visible pane. Together they return EVERYTHING the TUI has
+/// written, not just the rows the terminal happens to render right now.
+/// Without these flags, a multi-paragraph model reply that overflows
+/// the visible window (default 200x50) is silently truncated. EXP-03
+/// documented this from the start; the driver shipped without it
+/// (D-block-3 from the Syntropic137 stress run,
+/// experiments/stress/STRESS-REPORT.md).
 pub fn capture_pane(container: &str, window: &str) -> Result<String> {
     let target = format!("{TMUX_SESSION}:{window}");
-    let out = docker_exec(container, &["tmux", "capture-pane", "-p", "-t", &target])?;
+    let out = docker_exec(
+        container,
+        &["tmux", "capture-pane", "-p", "-t", &target, "-S", "-", "-E", "-"],
+    )?;
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Return the bottom `n_lines` lines of a captured pane.
+///
+/// Mirrors the Python driver's `_pane_tail`: with the full-scrollback
+/// capture above, the buffer contains every prompt and every prior
+/// generation. The per-agent `is_started` / `is_ready` predicates would
+/// be fooled by old text — `"esc to interrupt" not in pane` flips false
+/// after the first generation, and Claude's empty-chevron regex matches
+/// against ancient prompts. Evaluating against the tail preserves the
+/// pre-fix "check the visible window" semantics on a full-history capture.
+/// Surfaced by Syntropic137 stress D-block-2.
+pub fn pane_tail(pane_text: &str, n_lines: usize) -> String {
+    if pane_text.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<&str> = pane_text.split('\n').collect();
+    if lines.len() <= n_lines {
+        return pane_text.to_string();
+    }
+    let start = lines.len() - n_lines;
+    lines[start..].join("\n")
 }
 
 /// Bootstrap a new tmux session inside `container` whose first window is

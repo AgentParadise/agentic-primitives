@@ -1,0 +1,100 @@
+agent@88a19123c54c:/workspace$ codex --no-alt-screen
+
+  Hooks need review
+  3 hooks are new or changed.
+  Hooks can run outside the sandbox after you trust them.
+
+› 1. Review hooks
+  2. Trust all and continue
+  3. Continue without trusting (hooks won't run)
+
+  Press enter to confirm or esc to go back
+
+╭─────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.139.0)              │
+│                                         │
+│ model:       loading   /model to change │
+│ directory:   /workspace                 │
+│ permissions: YOLO mode                  │
+╰─────────────────────────────────────────╯
+
+
+  Hooks
+  Lifecycle hooks from config and enabled plugins.
+
+  ⚠ 3 hooks need review before they can run.
+
+  Event                 Installed   Active      Review      Description
+  PreToolUse            2           0           2           Before a tool executes
+  PermissionRequest     0           0           0           When permission is requested
+  PostToolUse           1           0           1           After a tool executes
+  PreCompact            0           0           0           Before context compaction
+  PostCompact           0           0           0           After context compaction
+  SessionStart          0           0           0           When a new session starts
+  UserPromptSubmit      0           0           0           When the user submits a prompt
+  SubagentStart         0           0           0           When a subagent is created
+  SubagentStop          0           0           0           Right before a subagent ends its turn
+  Stop                  0           0           0           Right before Codex ends its turn
+
+  Press t to trust all; enter to review hooks; esc to close
+
+╭─────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.139.0)              │
+│                                         │
+│ model:       gpt-5.5   /model to change │
+│ directory:   /workspace                 │
+│ permissions: YOLO mode                  │
+╰─────────────────────────────────────────╯
+
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+
+⚠ MCP client for `mcp_agent_mail` failed to start: MCP startup failed: handshaking with MCP server failed: Send message error Transport
+  [rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<codex_rmcp_client::http_client_adapter::StreamableHttpClientAdapter>>] error: Client
+  error: HTTP request failed: http/request failed: error sending request for url (http://127.0.0.1:8765/mcp/), when send initialize request
+
+⚠ MCP startup incomplete (failed: mcp_agent_mail)
+
+
+› Reply with the sentinel 'LONG-CODEX-3205517' on its own line first, then write seven short paragraphs (5-7 sentences each). Vary the topics: 1) clean architecture, 2) the unreasonable effectiveness
+  of small functions, 3) why structured logging beats ad-hoc print debugging, 4) the cost of premature optimization, 5) writing tests that survive refactors, 6) feedback loops in interactive systems,
+  7) when to choose a monolith over microservices. Use plain prose with no bullets or numbering inside paragraphs. Make the whole reply long enough to fill the terminal.
+
+
+• LONG-CODEX-3205517
+
+  Clean architecture is less about folders and more about direction of dependency. The inner parts of a system should express business rules without knowing which database, web framework, queue, or
+  vendor happens to sit outside them. That separation gives teams room to change details without rewriting the policy of the application. It also makes code easier to read because the important
+  decisions are not buried under adapters and glue. The discipline is useful only when it reduces coupling in real places, not when it becomes ceremony. A clean boundary should make the next change
+  feel more obvious.
+
+  Small functions are effective because they lower the amount of state a reader has to keep in mind. A function that does one concrete thing can often be named precisely, tested directly, and reused
+  without dragging a whole workflow along with it. They also create natural checkpoints for error handling and invariants. The benefit is not that every function must be tiny, but that confusing work
+  should be split until each part has a clear reason to exist. Small functions make reviews faster because reviewers can ask whether each step is correct in isolation. Over time, that adds up to a
+  codebase that is easier to move through.
+
+  Structured logging beats ad-hoc print debugging because production problems rarely arrive in a clean, single-threaded story. A printed string may help once, but a structured event with fields can be
+  searched, grouped, filtered, sampled, and correlated across services. Good logs answer who, what, where, and why without forcing someone to parse prose at three in the morning. They also make
+  dashboards and alerts possible without scraping arbitrary text. The key is to log meaningful events at boundaries and state transitions, not every line of execution. When logs are treated as part of
+  the interface, they become a tool instead of clutter.
+
+  Premature optimization has a cost because it trades simple code for guesses about future bottlenecks. The optimized version often carries extra branching, caching, batching, indexing, or concurrency
+  that must be understood forever. Sometimes that complexity is justified, but it should be paid for with evidence. A measurement, a profile, or a clear scale requirement is usually a better guide
+  than anxiety. Simple code gives you a baseline that is easier to test and easier to improve when the real limit appears. The fastest wrong abstraction still leaves you with the wrong abstraction.
+
+  Tests survive refactors when they verify behavior instead of implementation trivia. A useful test should describe what the system promises, not the exact private method calls it uses to get there.
+  That often means testing through stable interfaces, using realistic inputs, and asserting outcomes that matter to users or callers. Too much mocking can freeze the current design and punish any
+  internal cleanup. The best tests create confidence while still allowing the code to change shape. They should fail when behavior breaks, not when a function gets renamed.
+
+  Interactive systems live or die by feedback loops. A button press, drag, save, or failed request should produce a response quickly enough that the user can keep a mental model of what is happening.
+  Latency, animation, focus management, loading states, and error recovery all shape that loop. When feedback is missing, people repeat actions, mistrust the system, or build their own workarounds.
+  Good interactive design makes state visible without making the interface noisy. The system should feel accountable for every action the user takes.
+
+  A monolith is often the right choice when the team is small, the domain is still changing, and the deployment needs to stay simple. One codebase with clear internal boundaries can move faster than a
+  fleet of services with network calls, versioning, distributed tracing, and operational overhead. Microservices solve real problems, but they introduce coordination costs that show up in testing,
+  debugging, data consistency, and incident response. If modules can be separated logically inside one deployable unit, that is often enough for a long time. Splitting services is easier when the
+  boundaries are already proven by usage. Start with the simplest operational model that still lets the architecture stay honest.
+
+
+› Write tests for @filename
+
+  gpt-5.5 default · /workspace
