@@ -54,3 +54,18 @@ The experiment ran successfully (observed in 1 run).
 3. Handle agent-specific initialization flows programmatically (e.g. `Enter` for Claude trust, `Escape` for Codex hooks, configure Gemini trust to `false`).
 4. Handle agent-specific prompt submission keys (`Enter` for Claude/Gemini, `C-j C-m` for Codex's first message).
 5. Responses can be confidently parsed per pane using `tmux capture-pane -p -t <session>:<window>`.
+
+## EXP-04b: Hardening and Run Count
+
+### Hypothesis
+1. A total of N=3 runs of the swarm container setup will consistently succeed, proving the previous result was not a fluke.
+2. We can drive all three agents (Claude, Codex, Gemini) concurrently with simultaneous background `tmux send-keys` commands and verify no cross-talk.
+3. The swarm container will survive a `docker stop` and `docker start`. All three agents will re-authenticate from the mounted credentials and accept a new prompt after being restarted.
+4. We can measure and report the Docker image size and the idle RSS memory usage per agent CLI inside the container.
+
+### Method
+1. Run the swarm setup 2 more times (Runs 2 and 3) from scratch (start container, start tmux, bypass gates, send prompts).
+2. During the runs, execute a concurrent prompt to all three agents at exactly the same time. Wait and verify context.
+3. Stop the container `docker stop exp04-swarm` and start it `docker start exp04-swarm`. Restart the tmux panes for each agent. Prove they authenticate and accept a prompt.
+4. Run `docker image inspect` or `docker images` to get image size. Use `docker exec` with `ps` or `top` to get idle RSS for the node processes running `claude`, `codex`, and `gemini`.
+5. Append findings to this document with updated run counts.
