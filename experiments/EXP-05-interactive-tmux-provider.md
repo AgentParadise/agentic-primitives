@@ -436,3 +436,104 @@ These do not block this experiment but should land in subsequent commits
 - Skill spec: `plugins/experiments/skills/running-experiments/SKILL.md`
 - Existing convention reference: `providers/workspaces/claude-cli/`,
   `scripts/build-provider.py`, `providers/workspaces/README.md`
+
+## EXP-05 cross-review fixes (codex lead, applied on `agentprims-exp05`)
+
+Date: 2026-06-10
+Cross-review report: `experiments/EXP-05-review-codex.md` on
+`agentprims-exp02`. The cross-review found 0 blockers, 4 majors, and 2
+minors gating Syntropic137 integration; all six were applied in this
+commit. The provider was independently approved by EXP-06 fresh-agent
+validation (6/6 round-trips PASS); these fixes harden the integration
+contract on top.
+
+### Major fixes
+
+**M1 — `start_workspace` now propagates startup readiness failure.**
+The prior implementation called `_wait_for_text(welcome_marker)` per
+agent and discarded the bool result as a warning, so callers got bare
+`success` even when a pane never reached its idle state.
+
+- `start_workspace(..., strict_startup: bool = True)`: in strict mode
+  (the new default) raises `StartupReadinessError(startup_status=...)`
+  when any agent pane fails to reach `is_started()`; in lax mode (opt-in)
+  populates `ws.startup_status: dict[str, AwaitResult]` and returns.
+- Each adapter now exposes a startup-phase predicate `is_started(pane)`
+  in addition to the turn-level `is_ready(pane)`. For codex and gemini
+  these are identical to `is_ready`; for claude `is_started` accepts the
+  welcome screen's chevron-with-placeholder line (`❯ Try "..."`) which
+  `is_ready` strictly rejects (post-turn idle needs an empty chevron
+  line). This eliminates the codex `gpt-` substring flake EXP-06
+  documented as a benign warning — that wait now uses the same per-agent
+  idle markers that already worked during turns.
+- CLI shim (`python3 driver/interactive_tmux.py start`): defaults to
+  lax + echoes the structured per-agent status in the JSON output,
+  preserving smoke-script compatibility. The `--strict-startup` flag
+  switches to the Python API's strict default.
+
+**M2 — `agentic_isolation.WorkspaceProvider` adapter added.**
+New module `lib/python/agentic_isolation/agentic_isolation/providers/
+interactive_tmux/__init__.py` implementing the protocol's six methods
+(`create / destroy / execute / write_file / read_file / file_exists`)
+on top of `start_workspace / stop` and direct `docker exec` calls into
+the running container. The agent-level API stays reachable via
+`workspace._handle: InteractiveTmuxWorkspace`. Syntropic137 can now drop
+this provider into the existing isolation layer with no translation
+layer. The constructor takes `default_host_auth` and `default_image`;
+`config.image` is intentionally ignored because this provider only
+works with images bundling tmux + the three CLIs.
+
+**M3 — `await_completion` returns a structured `AwaitResult`.**
+The prior bare `bool` could not distinguish "never reached idle" from
+"reached idle but unstable" from "errored out". `AwaitResult` mirrors
+`agentic_isolation.ExecuteResult` (`ready / timed_out / reason /
+duration_ms / stable_polls_observed / pane / error`) so callers can
+make routing decisions on the reason field. Existing call sites that
+only need a bool can read `result.ready` (`AwaitResult.success` is also
+provided for ExecuteResult-shape parity).
+
+**M4 — Claude readiness now uses all 3 signals from EXP-01 F-5.**
+The class docstring already claimed three signals; the code checked
+two. Added the third (empty `❯\s*$` prompt line via a precompiled
+regex). The strict 3-signal predicate is `is_ready` (post-turn idle);
+startup tolerates the chevron placeholder via `is_started`.
+
+### Minor fixes
+
+**m1 — Synthetic `~/.claude.json` fallback stance documented.**
+Both in code (`_ClaudeAdapter` docstring) and in the README. EXP-05a's
+2×2 mount matrix measured host-level outcomes; this driver always
+synthesizes `~/.claude.json` inside the container even when the host
+lacks one. The synthesized file carries onboarding-skip + workspace
+trust + (when available) host `oauthAccount` metadata; it never
+synthesizes tokens (tokens come only from `~/.claude/.credentials.json`,
+which MUST exist on the host). Net effect: the driver's "host has
+`.claude/` only" cell is functionally equivalent to EXP-05a's "both"
+cell, by design.
+
+**m2 — Streaming/partial-output noted as future work in the README.**
+Replaced the prior "Does NOT do" bullet with explicit phrasing that
+poll-then-capture is the v1 and a structured event stream is the next
+API surface for the Syntropic137 integration milestone. No
+implementation here.
+
+### Re-run evidence (N=2 each)
+
+| Smoke                      | Run 1 | Run 2 | Transcript                                          |
+|----------------------------|-------|-------|-----------------------------------------------------|
+| `scripts/smoke.sh` (3 agents) | 3/3 PASS | 3/3 PASS | `runs/smoke-{claude,codex,gemini}.txt`                                       |
+| `scripts/smoke_provider_adapter.py` (claude E2E) | PASS | PASS  | `runs/smoke-provider-adapter.txt`                  |
+
+The adapter smoke exercises **all six WorkspaceProvider methods**:
+`create / execute("echo hello-adapter") / write_file / file_exists
+(positive + negative) / read_file (roundtrip + FileNotFoundError) /
+destroy`, plus one **`claude` prompt round-trip** through
+`ws._handle.send_message` + `await_completion` (`AwaitResult.ready=True,
+reason="ready", stable_polls_observed=4`) capturing the response marker
+`● ADAPTER-CLAUDE-…` in the pane.
+
+Both runs confirm the cross-review's "no blockers" verdict on transport
+holds after the M1..M4 hardening; the prior 5/5 verdict on this
+provider's transport (EXP-05) and the 6/6 verdict on its docs (EXP-06)
+remain in force. The provider is now ready for Syntropic137 protocol
+integration.

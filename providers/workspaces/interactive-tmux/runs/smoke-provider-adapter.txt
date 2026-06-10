@@ -1,0 +1,22 @@
+[adapter-smoke] constructing provider
+  ✓ provider satisfies WorkspaceProvider protocol
+[adapter-smoke] create(config)
+  ✓ workspace id=itws-bb1cb417, container=interactive-tmux-itws-bb1cb417-4b4acf11
+  ✓ container is running after create()
+[adapter-smoke] execute('echo hello-adapter')
+  ✓ execute returned stdout='hello-adapter\n' duration_ms=387.1
+[adapter-smoke] write_file('adapter_note.txt', 'from-adapter')
+  ✓ write_file did not raise
+[adapter-smoke] file_exists('adapter_note.txt')
+  ✓ file_exists confirmed the write
+  ✓ file_exists correctly returned False for a missing path
+[adapter-smoke] read_file('adapter_note.txt')
+  ✓ read_file roundtrip is byte-equal (31 bytes)
+  ✓ read_file raised FileNotFoundError for missing path
+[adapter-smoke] claude round-trip via _handle.send_message / await_completion
+  ✓ await_completion ready: reason=ready duration_ms=6029.3 stable_polls_observed=4
+  ✓ claude pane contains `● ADAPTER-CLAUDE-3480808-1781062917`
+[adapter-smoke] destroy(workspace)
+  ✓ container removed after destroy()
+
+[adapter-smoke] PASS — all 6 WorkspaceProvider methods + claude round-trip

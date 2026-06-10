@@ -47,13 +47,14 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -68,6 +69,72 @@ AGENTS: tuple[AgentName, ...] = ("claude", "codex", "gemini")
 DEFAULT_IMAGE = "agentic-workspace-interactive-tmux:latest"
 DEFAULT_TMUX_SIZE = (200, 50)
 TMUX_SESSION = "agents"
+
+# Claude readiness — empty `❯ ` prompt line (whitespace tolerated). Pre-
+# compiled because await_completion polls this 2x/sec per agent.
+_CLAUDE_EMPTY_PROMPT_RE = re.compile(r"^❯\s*$", re.MULTILINE)
+
+
+# ---------------------------------------------------------------------------
+# Structured results (M3 from EXP-05 codex cross-review)
+#
+# Before the review, `await_completion` returned a bare bool and the startup
+# phase swallowed readiness failures as `logger.warning`. Syntropic137 needs
+# to distinguish "timed out" / "never ready yet" / "agent errored" + reason.
+# The `AwaitResult` shape mirrors `agentic_isolation.ExecuteResult` so an
+# adapter (see `lib/python/agentic_isolation/.../interactive_tmux/`) can map
+# 1-to-1 without a translation step.
+
+
+@dataclass
+class AwaitResult:
+    """Result of waiting for an agent pane to reach a ready/idle state.
+
+    The `ready` boolean is what existing call sites care about; the other
+    fields exist so Syntropic137 (or any orchestrator) can distinguish
+    failure modes that used to be invisible:
+
+      - timed_out=True, ready=False         → deadline hit before idle
+      - ready=False, reason="never_ready"   → never reached even one ready frame
+      - ready=False, reason="unstable"      → ready frames seen but pane kept changing
+      - ready=True                          → adapter is_ready() held stable
+
+    `pane` carries the last captured pane text so callers don't have to
+    re-capture to inspect post-mortem.
+    """
+
+    ready: bool
+    timed_out: bool
+    reason: str  # "ready" | "timeout_never_ready" | "timeout_unstable" | "error"
+    duration_ms: float
+    stable_polls_observed: int
+    pane: str = ""
+    error: str | None = None
+
+    @property
+    def success(self) -> bool:
+        return self.ready
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+class StartupReadinessError(RuntimeError):
+    """Raised by `start_workspace(..., strict_startup=True)` (default) when
+    one or more agent panes did not reach their per-adapter `is_ready()`
+    state within `startup_timeout_s`.
+
+    The attached `startup_status` is a {agent: AwaitResult} dict so callers
+    can inspect which panes failed and why without re-running the workspace.
+    """
+
+    def __init__(self, startup_status: dict[str, AwaitResult]):
+        failed = [a for a, r in startup_status.items() if not r.ready]
+        super().__init__(
+            f"start_workspace: per-agent readiness failed for {failed} "
+            f"(see .startup_status for details)"
+        )
+        self.startup_status = startup_status
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +203,40 @@ class _ClaudeAdapter:
     Auth surface: ~/.claude/ (directory, for .credentials.json) AND
     ~/.claude.json (file, for oauthAccount metadata + onboarding markers).
     See EXP-05's "Open contradiction" section for the empirical resolution
-    of where the OAuth token lives.
+    of where the OAuth token lives, and EXP-05a for the full 2×2 mount
+    matrix proving BOTH files are required.
+
+    Synthetic ~/.claude.json policy (EXP-05 codex cross-review m1):
+    -------------------------------------------------------------
+    EXP-05a tested four mount combinations on the host (`none`, `.claude`
+    only, `.claude.json` only, both). Only "both" yielded an authenticated
+    start. This adapter, however, ALWAYS synthesizes ~/.claude.json in
+    the container even when the host's ~/.claude.json is absent. The
+    synthesized file carries onboarding-skip markers, the workspace's
+    project-trust map, and (when available) the host's `oauthAccount`
+    metadata copied through. Token material is never synthesized — only
+    `~/.claude/.credentials.json` carries tokens, and it MUST exist on
+    the host. Concretely:
+
+      - host has `.claude/` + `.claude.json` → both copied; behaves
+        identically to EXP-05a's "both" cell (authenticated start, no
+        wizards).
+      - host has `.claude/` only             → `.claude/.credentials.json`
+        copied; `.claude.json` is SYNTHESIZED. This case is OUTSIDE
+        EXP-05a's matrix; it works because the synthesized file supplies
+        the onboarding/trust markers Claude expects, while the tokens
+        come from `.credentials.json`. Functionally equivalent to "both"
+        for this provider.
+      - host has neither                     → `prepare_host_auth`
+        raises (we never start a container that can't authenticate).
+
+    Net: callers do not need to manage `.claude.json` themselves; this
+    adapter's fallback is the recommended path. If a consumer wants to
+    suppress synthesis and mount their own `.claude.json` byte-for-byte,
+    they should call `host_auth["claude"] = …` with a directory that
+    contains both `.credentials.json` AND a sibling `.claude.json` — but
+    the synthesized file is the path EXP-05a's "both" outcome generalizes
+    to inside this container image.
     """
 
     window = "claude"
@@ -202,20 +302,38 @@ class _ClaudeAdapter:
 
     @staticmethod
     def is_ready(pane_text: str) -> bool:
-        # EXP-01 FRICTION F-5 three-signal heuristic.
+        # EXP-01 FRICTION F-5 three-signal heuristic for *post-turn* idle.
+        # The codex cross-review flagged that the old code only checked 2
+        # of the 3 codified signals despite the class docstring claiming
+        # three; fixed here:
+        #   1. `esc to interrupt` absent (no generation in progress)
+        #   2. `? for shortcuts` present (steady-state TUI footer, not a modal)
+        #   3. `^❯\s*$` matches somewhere in the capture (input box prompt
+        #      line is empty — only the chevron, optional whitespace)
+        # NOTE: this predicate is intentionally strict on the empty-prompt
+        # signal so it can distinguish "just finished a turn" from "model
+        # still rendering". The startup welcome screen shows the chevron
+        # with a placeholder hint (e.g., `❯ Try "..."`), which fails this
+        # check — that is why `is_started()` below has its own (looser)
+        # predicate for the startup phase.
         return (
             "esc to interrupt" not in pane_text
             and "? for shortcuts" in pane_text
+            and _CLAUDE_EMPTY_PROMPT_RE.search(pane_text) is not None
         )
 
     @staticmethod
-    def expects_welcome_marker() -> str:
-        # `Claude Max` (or `API Usage Billing`) is the plan line; both are
-        # universal across accounts. `Welcome back <Name>` is account-specific
-        # and may not always render (e.g., a brand new claude.json triggers
-        # a one-time welcome variant). The plan line is the steady-state
-        # signal that auth has resolved.
-        return "Claude Max"
+    def is_started(pane_text: str) -> bool:
+        # Startup-phase readiness: the TUI is past the splash/trust/login
+        # gates and is willing to accept input, regardless of whether the
+        # chevron line is empty or showing the placeholder hint. Used by
+        # `_wait_for_started` during `start_workspace`; once the workspace
+        # is running, `is_ready` is the predicate that matters per turn.
+        return (
+            "esc to interrupt" not in pane_text
+            and "? for shortcuts" in pane_text
+            and "❯" in pane_text
+        )
 
     @staticmethod
     def response_marker() -> str:
@@ -298,10 +416,10 @@ class _CodexAdapter:
         return ("› " in pane_text) or ("Write tests for" in pane_text) or ("Tip:" in pane_text)
 
     @staticmethod
-    def expects_welcome_marker() -> str:
-        # `gpt-` matches the model line that codex prints after the startup
-        # banner clears (e.g., `gpt-5.5 default · /workspace`).
-        return "gpt-"
+    def is_started(pane_text: str) -> bool:
+        # Codex's idle markers already cover the startup case (post-trust,
+        # post-hooks-review the TUI shows the input box + tip line).
+        return _CodexAdapter.is_ready(pane_text)
 
     @staticmethod
     def response_marker() -> str:
@@ -379,8 +497,10 @@ class _GeminiAdapter:
         return "Type your message" in pane_text
 
     @staticmethod
-    def expects_welcome_marker() -> str:
-        return "Type your message"
+    def is_started(pane_text: str) -> bool:
+        # Gemini's idle marker `Type your message` is the same signal we
+        # want at startup (no separate splash/auth gate that hides it).
+        return _GeminiAdapter.is_ready(pane_text)
 
     @staticmethod
     def response_marker() -> str:
@@ -469,6 +589,14 @@ class InteractiveTmuxWorkspace:
     host_throwaway_dir: Path
     enabled_agents: tuple[str, ...]
 
+    # M1 (codex cross-review): per-agent startup readiness status. Populated
+    # by `_bootstrap_tmux_and_launch`; surfaced through the public attribute
+    # `startup_status` for non-strict callers. With `strict_startup=True`
+    # (the default), any per-agent failure raises `StartupReadinessError`
+    # before this dict is observable, so the dict is always populated only
+    # with successful AwaitResults in the strict path.
+    startup_status: dict[str, AwaitResult] = field(default_factory=dict)
+
     # Internal: track per-agent first-send state for adapters that care
     # (e.g., Codex's first-send-needs-C-j-C-m can be relaxed after turn 1
     # in a future iteration; we keep C-j C-m always-on for now since it
@@ -487,6 +615,7 @@ class InteractiveTmuxWorkspace:
         workdir: str = "/workspace",
         tmux_size: tuple[int, int] = DEFAULT_TMUX_SIZE,
         startup_timeout_s: float = 45.0,
+        strict_startup: bool = True,
     ) -> InteractiveTmuxWorkspace:
         """Start a new interactive-tmux workspace.
 
@@ -501,8 +630,25 @@ class InteractiveTmuxWorkspace:
                 project-trust map).
             tmux_size: (cols, rows) for the tmux session. The default 200x50
                 fixes EXP-01 FRICTION F-3 (default 80x24 truncates the TUI).
-            startup_timeout_s: how long to wait per agent for its welcome
-                marker before giving up.
+            startup_timeout_s: how long to wait per agent for its idle/ready
+                state before giving up.
+            strict_startup: if True (default), raise `StartupReadinessError`
+                when any enabled agent fails to reach `is_ready()` within
+                `startup_timeout_s`. If False, log a warning and return the
+                workspace with per-agent results on `ws.startup_status` —
+                callers can inspect status before `send_message`. EXP-05
+                cross-review M1: bare success on a missed readiness gate is
+                a footgun for orchestrators like Syntropic137. Strict is the
+                safer default; lax is opt-in for callers who already check
+                `ws.startup_status` themselves.
+
+        Returns:
+            InteractiveTmuxWorkspace. In both strict and lax modes,
+            `ws.startup_status` is populated with per-agent `AwaitResult`s.
+
+        Raises:
+            StartupReadinessError: in strict mode, when any agent pane fails
+                to reach its is_ready() state within `startup_timeout_s`.
         """
         host_auth = host_auth or {}
         container = f"interactive-tmux-{name}-{uuid.uuid4().hex[:8]}"
@@ -551,13 +697,17 @@ class InteractiveTmuxWorkspace:
             enabled_agents=tuple(enabled),
         )
         try:
-            ws._bootstrap_tmux_and_launch(startup_timeout_s)
+            ws._bootstrap_tmux_and_launch(startup_timeout_s, strict_startup)
         except Exception:
             ws.stop()
             raise
         return ws
 
-    def _bootstrap_tmux_and_launch(self, startup_timeout_s: float) -> None:
+    def _bootstrap_tmux_and_launch(
+        self,
+        startup_timeout_s: float,
+        strict_startup: bool,
+    ) -> None:
         cols, rows = self.tmux_size
         first = self.enabled_agents[0]
         # Create the session with the first agent's window name.
@@ -572,22 +722,62 @@ class InteractiveTmuxWorkspace:
                 "-n", agent,
             )
 
-        # Launch each agent's CLI in its window and wait for the welcome marker.
+        # Launch each agent's CLI in its window, then wait until each pane
+        # reports `is_started()` (M1 cross-review fix). Each adapter
+        # exposes a startup-phase predicate that recognizes its welcome
+        # screen — for claude this differs from the strict post-turn
+        # `is_ready` because the welcome pane shows a placeholder `Try …`
+        # in the input box; for codex/gemini, is_started == is_ready. This
+        # replaces the prior `_wait_for_text(expects_welcome_marker)` and
+        # removes the codex `gpt-` substring flake EXP-06 documented as a
+        # benign warning.
         for agent in self.enabled_agents:
             adapter = _ADAPTERS[agent]
             adapter.launch_in_window(self.container, self.workdir)
             self._started[agent] = True
-            self._wait_for_text(agent, adapter.expects_welcome_marker(), startup_timeout_s)
+            self.startup_status[agent] = self._wait_for_started(agent, startup_timeout_s)
 
-    def _wait_for_text(self, agent: str, needle: str, timeout_s: float) -> bool:
-        deadline = time.monotonic() + timeout_s
+        failed = {a: r for a, r in self.startup_status.items() if not r.ready}
+        if failed:
+            if strict_startup:
+                raise StartupReadinessError(self.startup_status)
+            logger.warning(
+                "start_workspace: %d agent(s) not ready within %.1fs (strict_startup=False): %s",
+                len(failed), startup_timeout_s, sorted(failed),
+            )
+
+    def _wait_for_started(self, agent: str, timeout_s: float) -> AwaitResult:
+        """Block until `agent`'s pane reports `is_started()`, or timeout."""
+        adapter = _ADAPTERS[agent]
+        start = time.monotonic()
+        deadline = start + timeout_s
+        pane = ""
         while time.monotonic() < deadline:
-            pane = _tmux_capture(self.container, _ADAPTERS[agent].window)
-            if needle in pane:
-                return True
+            pane = _tmux_capture(self.container, adapter.window)
+            if adapter.is_started(pane):
+                duration_ms = (time.monotonic() - start) * 1000
+                return AwaitResult(
+                    ready=True,
+                    timed_out=False,
+                    reason="ready",
+                    duration_ms=duration_ms,
+                    stable_polls_observed=1,
+                    pane=pane,
+                )
             time.sleep(0.5)
-        logger.warning("wait_for_text(%s, %r) timed out after %.1fs", agent, needle, timeout_s)
-        return False
+        duration_ms = (time.monotonic() - start) * 1000
+        logger.warning(
+            "wait_for_started(%s) timed out after %.1fs",
+            agent, timeout_s,
+        )
+        return AwaitResult(
+            ready=False,
+            timed_out=True,
+            reason="timeout_never_ready",
+            duration_ms=duration_ms,
+            stable_polls_observed=0,
+            pane=pane,
+        )
 
     # -----------------------------------------------------------------------
     # The five public primitives
@@ -604,8 +794,13 @@ class InteractiveTmuxWorkspace:
         stable_polls: int = 4,
         poll_interval: float = 0.5,
         warmup: float = 2.0,
-    ) -> bool:
+    ) -> AwaitResult:
         """Block until `agent` returns to a stable ready state, or `timeout` passes.
+
+        EXP-05 codex cross-review M3: returns an `AwaitResult` mirroring
+        `agentic_isolation.ExecuteResult` (`timed_out`/`reason`/`duration_ms`)
+        so orchestrators can distinguish failure modes. Existing call sites
+        that only need a boolean should use `result.ready`.
 
         Two layered checks make this robust against transient redraw
         frames that single-poll heuristics get fooled by:
@@ -626,29 +821,59 @@ class InteractiveTmuxWorkspace:
         `send_message` and the agent rendering its generation marker)
         so the first ready observation isn't a stale idle frame.
 
-        Returns True if a stable ready state was reached, False on timeout.
+        Returns an `AwaitResult`:
+            - `.ready=True, .reason="ready"` when a stable ready state was
+               reached;
+            - `.ready=False, .timed_out=True, .reason="timeout_unstable"`
+               when readiness was observed but never held stable;
+            - `.ready=False, .timed_out=True, .reason="timeout_never_ready"`
+               when readiness was never observed before deadline.
         """
         self._check_agent(agent)
         adapter = _ADAPTERS[agent]
-        deadline = time.monotonic() + timeout
+        start = time.monotonic()
+        deadline = start + timeout
         time.sleep(warmup)
         last_pane: str | None = None
         consecutive_stable_ready = 0
+        ever_ready = False
+        pane = ""
         while time.monotonic() < deadline:
             pane = _tmux_capture(self.container, adapter.window)
-            if adapter.is_ready(pane) and pane == last_pane:
-                consecutive_stable_ready += 1
-                if consecutive_stable_ready >= stable_polls:
-                    return True
+            if adapter.is_ready(pane):
+                ever_ready = True
+                if pane == last_pane:
+                    consecutive_stable_ready += 1
+                    if consecutive_stable_ready >= stable_polls:
+                        duration_ms = (time.monotonic() - start) * 1000
+                        return AwaitResult(
+                            ready=True,
+                            timed_out=False,
+                            reason="ready",
+                            duration_ms=duration_ms,
+                            stable_polls_observed=consecutive_stable_ready,
+                            pane=pane,
+                        )
+                else:
+                    consecutive_stable_ready = 0
             else:
                 consecutive_stable_ready = 0
             last_pane = pane
             time.sleep(poll_interval)
+        duration_ms = (time.monotonic() - start) * 1000
+        reason = "timeout_unstable" if ever_ready else "timeout_never_ready"
         logger.warning(
-            "await_completion(%s) timed out after %.1fs (stable_ready=%d)",
-            agent, timeout, consecutive_stable_ready,
+            "await_completion(%s) timed out after %.1fs (stable_ready=%d, reason=%s)",
+            agent, timeout, consecutive_stable_ready, reason,
         )
-        return False
+        return AwaitResult(
+            ready=False,
+            timed_out=True,
+            reason=reason,
+            duration_ms=duration_ms,
+            stable_polls_observed=consecutive_stable_ready,
+            pane=pane,
+        )
 
     def capture_response(self, agent: AgentName) -> str:
         """Return the current contents of `agent`'s tmux pane."""
@@ -742,6 +967,13 @@ def _cli() -> int:
         default="claude,codex,gemini",
         help="comma-separated list of agents to enable (default: all three)",
     )
+    s_start.add_argument(
+        "--strict-startup",
+        action="store_true",
+        help="raise on any agent's startup readiness miss (default: lax — print "
+             "structured per-agent status in the JSON output and exit non-zero "
+             "only if no agent is ready)",
+    )
 
     s_send = sub.add_parser("send", help="send a message to an agent")
     s_send.add_argument("--name", required=True)
@@ -767,15 +999,36 @@ def _cli() -> int:
         host_auth_all = _default_host_auth_from_env()
         wanted = set(args.agents.split(","))
         host_auth = {a: (host_auth_all[a] if a in wanted else None) for a in AGENTS}
-        ws = InteractiveTmuxWorkspace.start_workspace(
-            name=args.name,
-            host_auth=host_auth,
-            image=args.image,
-            workdir=args.workdir,
-        )
+        try:
+            ws = InteractiveTmuxWorkspace.start_workspace(
+                name=args.name,
+                host_auth=host_auth,
+                image=args.image,
+                workdir=args.workdir,
+                strict_startup=args.strict_startup,
+            )
+        except StartupReadinessError as exc:
+            # M1: surface per-agent failure structurally instead of an
+            # opaque non-zero exit. The CLI exit code is 3 (distinct from
+            # 2 = await timeout) so smoke harnesses can tell them apart.
+            print(json.dumps({
+                "error": "startup_readiness",
+                "startup_status": {a: r.to_dict() for a, r in exc.startup_status.items()},
+            }))
+            return 3
         _save_workspace(ws)
-        print(json.dumps({"name": ws.name, "container": ws.container, "agents": list(ws.enabled_agents)}))
-        return 0
+        print(json.dumps({
+            "name": ws.name,
+            "container": ws.container,
+            "agents": list(ws.enabled_agents),
+            "startup_status": {a: r.to_dict() for a, r in ws.startup_status.items()},
+        }))
+        # Exit non-zero only if NO agent reached ready — preserves the
+        # historical "smoke continues to pass on benign per-agent misses"
+        # behavior while exposing the structured status that the codex
+        # cross-review (M1) called out as missing.
+        all_failed = ws.startup_status and not any(r.ready for r in ws.startup_status.values())
+        return 0 if not all_failed else 3
 
     if args.cmd == "send":
         ws = _load_workspace(args.name)
@@ -784,9 +1037,11 @@ def _cli() -> int:
 
     if args.cmd == "await":
         ws = _load_workspace(args.name)
-        ok = ws.await_completion(args.agent, timeout=args.timeout)
-        print(json.dumps({"ready": ok}))
-        return 0 if ok else 2
+        result = ws.await_completion(args.agent, timeout=args.timeout)
+        # M3: emit the full structured result, not just `{"ready": bool}`.
+        # Exit code stays bool-compatible so existing shells don't break.
+        print(json.dumps({k: v for k, v in result.to_dict().items() if k != "pane"}))
+        return 0 if result.ready else 2
 
     if args.cmd == "capture":
         ws = _load_workspace(args.name)
