@@ -73,3 +73,14 @@ Observed output: 3/3 pass (`claude`, `codex`, `gemini`).
   2. `send + await + capture` -> structured `execute`-style result objects (`exit_code`/`stdout`/`stderr`/`timed_out`) per `agentic_isolation`.
 - Add explicit startup failure propagation in `start_workspace` (raise on any per-agent `_wait_for_text` miss unless caller opts out).
 - Optionally add optional `await_ready(agent, timeout)` with machine-readable status enum so callers can distinguish startup gate timeouts from generation timeout.
+
+## Final verification (independent, on commit 8e4d621)
+
+Verdict: **APPROVED**.
+
+1. Provider smoke (empirical) in `/tmp/verify-exp05`: command `bash providers/workspaces/interactive-tmux/scripts/smoke.sh`; result `ALL PASS (3/3 agents)` with claude/codex/gemini replies captured.
+2. Adapter contract test (empirical): command `python3 providers/workspaces/interactive-tmux/scripts/smoke_provider_adapter.py`; result PASS for `WorkspaceProvider` methods `create`, `execute`, `write_file`, `file_exists`, `read_file`, `destroy`, plus claude `_handle.send_message`/`await_completion`.
+3. M1 strict startup propagation spot-check: command `python3 - <<'PY' ...` using `InteractiveTmuxWorkspace.start_workspace(..., startup_timeout_s=0.01, strict_startup=True)`; result `StartupReadinessError` (includes timeout entries such as `timeout_never_ready`) instead of success.
+4. M3 `await_completion` structured result spot-check: command `python3 - <<'PY' ... ws.await_completion('claude', timeout=0.2)`; result `AwaitResult(ready=False, timed_out=True, reason='timeout_never_ready')`; invalid agent name still raises `ValueError`.
+5. M4 Claude three-signal readiness: method-level check confirmed `_ClaudeAdapter.is_ready('...\u27e9 Try...')` is false while `_ClaudeAdapter.is_started('...\u27e9 Try...')` is true, and `_ClaudeAdapter.is_ready('...\u27e9  ...')` is true (empty prompt marker now explicitly checked).
+6. Credential-leak scan for commit diff: command `git log -p --no-color 8e4d621~1..8e4d621 | rg -ni "(ghp_|sk_live_|sk-ant-|xox[bap]|AKIA|eyJ[a-zA-Z0-9_-]{20,}|Bearer\\s+[A-Za-z0-9_\\-\\.=]{20,}|api[_-]?key|secret|token[:=])"` returned no credential-like tokens (only prose `token` in test/assertion text).
