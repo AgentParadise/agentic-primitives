@@ -185,11 +185,12 @@ class InteractiveTmuxProvider(BaseProvider):
         agents_label = config.labels.get("agents") if config.labels else None
         if agents_label:
             wanted = {a.strip() for a in agents_label.split(",")}
-            host_auth = {a: self._default_host_auth.get(a) if a in wanted else None
-                         for a in self._default_enabled_agents}
+            host_auth = {
+                a: self._default_host_auth.get(a) if a in wanted else None
+                for a in self._default_enabled_agents
+            }
         else:
-            host_auth = {a: self._default_host_auth.get(a)
-                         for a in self._default_enabled_agents}
+            host_auth = {a: self._default_host_auth.get(a) for a in self._default_enabled_agents}
 
         image = self._default_image or _driver.DEFAULT_IMAGE
         workdir = config.working_dir or DEFAULT_CONTAINER_WORKDIR
@@ -216,9 +217,7 @@ class InteractiveTmuxProvider(BaseProvider):
         # Ensure the container workdir exists so write_file/read_file have a
         # rooted directory. The Dockerfile already creates /workspace, but a
         # custom config.working_dir might not exist yet.
-        await self._docker_exec(
-            ws_handle.container, "mkdir", "-p", workdir, timeout=10
-        )
+        await self._docker_exec(ws_handle.container, "mkdir", "-p", workdir, timeout=10)
 
         workspace = Workspace(
             id=name,
@@ -230,9 +229,7 @@ class InteractiveTmuxProvider(BaseProvider):
                 "container": ws_handle.container,
                 "workdir": workdir,
                 "enabled_agents": list(ws_handle.enabled_agents),
-                "startup_status": {
-                    a: r.to_dict() for a, r in ws_handle.startup_status.items()
-                },
+                "startup_status": {a: r.to_dict() for a, r in ws_handle.startup_status.items()},
             },
             _handle=ws_handle,
         )
@@ -264,7 +261,9 @@ class InteractiveTmuxProvider(BaseProvider):
         ws_handle: InteractiveTmuxWorkspace | None = workspace._handle
         if ws_handle is None:
             return ExecuteResult(
-                exit_code=-1, stdout="", stderr="container not available",
+                exit_code=-1,
+                stdout="",
+                stderr="container not available",
                 duration_ms=0.0,
             )
         workdir = cwd or workspace.metadata.get("workdir") or DEFAULT_CONTAINER_WORKDIR
@@ -295,19 +294,26 @@ class InteractiveTmuxProvider(BaseProvider):
         # have to escape arbitrary content for `sh -c`.
         parent = target.rsplit("/", 1)[0] or "/"
         await self._docker_exec(
-            ws_handle.container, "mkdir", "-p", parent, timeout=10,
+            ws_handle.container,
+            "mkdir",
+            "-p",
+            parent,
+            timeout=10,
         )
         proc = await asyncio.create_subprocess_exec(
-            "docker", "exec", "-i", ws_handle.container, "tee", target,
+            "docker",
+            "exec",
+            "-i",
+            ws_handle.container,
+            "tee",
+            target,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await proc.communicate(content_bytes)
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"write_file({path!r}) failed: {stderr.decode('utf-8', 'replace')}"
-            )
+            raise RuntimeError(f"write_file({path!r}) failed: {stderr.decode('utf-8', 'replace')}")
 
     async def read_file(self, workspace: Workspace, path: str) -> str:
         ws_handle: InteractiveTmuxWorkspace | None = workspace._handle
@@ -316,7 +322,11 @@ class InteractiveTmuxProvider(BaseProvider):
         workdir = workspace.metadata.get("workdir") or DEFAULT_CONTAINER_WORKDIR
         target = path if path.startswith("/") else f"{workdir.rstrip('/')}/{path}"
         proc = await asyncio.create_subprocess_exec(
-            "docker", "exec", ws_handle.container, "cat", target,
+            "docker",
+            "exec",
+            ws_handle.container,
+            "cat",
+            target,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -335,7 +345,12 @@ class InteractiveTmuxProvider(BaseProvider):
         workdir = workspace.metadata.get("workdir") or DEFAULT_CONTAINER_WORKDIR
         target = path if path.startswith("/") else f"{workdir.rstrip('/')}/{path}"
         proc = await asyncio.create_subprocess_exec(
-            "docker", "exec", ws_handle.container, "test", "-e", target,
+            "docker",
+            "exec",
+            ws_handle.container,
+            "test",
+            "-e",
+            target,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -352,7 +367,8 @@ class InteractiveTmuxProvider(BaseProvider):
         timeout: float = 30.0,
     ) -> ExecuteResult:
         return await self._run_exec(
-            ["docker", "exec", container, *args], timeout=timeout,
+            ["docker", "exec", container, *args],
+            timeout=timeout,
         )
 
     @staticmethod
@@ -366,15 +382,19 @@ class InteractiveTmuxProvider(BaseProvider):
             )
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(), timeout=timeout,
+                    proc.communicate(),
+                    timeout=timeout,
                 )
             except TimeoutError:
                 proc.kill()
                 await proc.wait()
                 duration_ms = (time.perf_counter() - start) * 1000
                 return ExecuteResult(
-                    exit_code=-1, stdout="", stderr="command timed out",
-                    duration_ms=duration_ms, timed_out=True,
+                    exit_code=-1,
+                    stdout="",
+                    stderr="command timed out",
+                    duration_ms=duration_ms,
+                    timed_out=True,
                 )
             duration_ms = (time.perf_counter() - start) * 1000
             return ExecuteResult(
@@ -386,7 +406,9 @@ class InteractiveTmuxProvider(BaseProvider):
         except Exception as exc:
             duration_ms = (time.perf_counter() - start) * 1000
             return ExecuteResult(
-                exit_code=-1, stdout="", stderr=str(exc),
+                exit_code=-1,
+                stdout="",
+                stderr=str(exc),
                 duration_ms=duration_ms,
             )
 
