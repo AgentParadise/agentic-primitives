@@ -306,28 +306,46 @@ class InteractiveTmuxProvider(BaseProvider):
             claude_plugin_dirs=self._default_claude_plugin_dirs,
         )
 
-        # Ensure the container workdir exists so write_file/read_file have a
-        # rooted directory. The Dockerfile already creates /workspace, but a
-        # custom config.working_dir might not exist yet.
-        await self._docker_exec(ws_handle.container, "mkdir", "-p", workdir, timeout=10)
+        # The container is now running with throwaway claude/codex/gemini
+        # credentials mounted. Any failure between here and a successful
+        # return must stop it, or we leak a running container with staged
+        # auth material until manual cleanup. Wrap all post-start setup.
+        try:
+            # Ensure the container workdir exists so write_file/read_file have
+            # a rooted directory. The Dockerfile already creates /workspace,
+            # but a custom config.working_dir might not exist yet.
+            await self._docker_exec(ws_handle.container, "mkdir", "-p", workdir, timeout=10)
 
-        workspace = Workspace(
-            id=name,
-            provider=self.name,
-            path=Path(workdir),  # container-side path
-            config=config,
-            created_at=datetime.now(UTC),
-            metadata={
-                "container": ws_handle.container,
-                "workdir": workdir,
-                "enabled_agents": list(ws_handle.enabled_agents),
-                "startup_status": {a: r.to_dict() for a, r in ws_handle.startup_status.items()},
-            },
-            _handle=ws_handle,
-        )
-        async with self._lock:
-            self._workspaces[name] = workspace
-        return workspace
+            workspace = Workspace(
+                id=name,
+                provider=self.name,
+                path=Path(workdir),  # container-side path
+                config=config,
+                created_at=datetime.now(UTC),
+                metadata={
+                    "container": ws_handle.container,
+                    "workdir": workdir,
+                    "enabled_agents": list(ws_handle.enabled_agents),
+                    "startup_status": {a: r.to_dict() for a, r in ws_handle.startup_status.items()},
+                },
+                _handle=ws_handle,
+            )
+            async with self._lock:
+                self._workspaces[name] = workspace
+            return workspace
+        except BaseException:
+            # Best-effort teardown, then re-raise. BaseException so a
+            # cancellation mid-setup also cleans up the credential-mounted
+            # container. stop() is synchronous and fast (<2s).
+            try:
+                ws_handle.stop()
+            except Exception:
+                logger.warning(
+                    "failed to stop workspace %s during create() cleanup",
+                    name,
+                    exc_info=True,
+                )
+            raise
 
     async def destroy(self, workspace: Workspace) -> None:
         ws_handle: InteractiveTmuxWorkspace | None = workspace._handle
