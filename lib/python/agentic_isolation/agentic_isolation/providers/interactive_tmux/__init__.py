@@ -67,8 +67,7 @@ def _load_driver_module() -> Any:
         path = Path(override)
         if not path.is_file():
             raise ImportError(
-                f"$AGENTIC_INTERACTIVE_TMUX_DRIVER points at {path}, "
-                "which is not a file."
+                f"$AGENTIC_INTERACTIVE_TMUX_DRIVER points at {path}, which is not a file."
             )
     else:
         # this file: …/agentic_isolation/providers/interactive_tmux/__init__.py

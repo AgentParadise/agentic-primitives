@@ -63,9 +63,7 @@ class TestLazyDriverImport:
         self, fresh_modules: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """With the driver unreachable, import works; first use raises ImportError."""
-        monkeypatch.setenv(
-            "AGENTIC_INTERACTIVE_TMUX_DRIVER", "/nonexistent/interactive_tmux.py"
-        )
+        monkeypatch.setenv("AGENTIC_INTERACTIVE_TMUX_DRIVER", "/nonexistent/interactive_tmux.py")
 
         import agentic_isolation  # noqa: F401
         from agentic_isolation.providers import interactive_tmux as adapter

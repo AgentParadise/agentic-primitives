@@ -59,9 +59,7 @@ class TestUnsupportedConfigFields:
             ({"plugins": ["/opt/plugin"]}, ["plugins"]),
         ],
     )
-    def test_each_unsupported_field_detected(
-        self, kwargs: dict, expected: list[str]
-    ) -> None:
+    def test_each_unsupported_field_detected(self, kwargs: dict, expected: list[str]) -> None:
         config = WorkspaceConfig(**kwargs)
         assert _unsupported_config_fields(config) == expected
 
