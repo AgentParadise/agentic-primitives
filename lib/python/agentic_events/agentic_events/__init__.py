@@ -34,6 +34,16 @@ from agentic_events.fixtures import (
     load_recording_by_name,
     load_recording_by_path,
 )
+from agentic_events.payloads import (
+    GitBranchChangedPayload,
+    GitCheckoutPayload,
+    GitCommitPayload,
+    GitMergePayload,
+    GitOperationPayload,
+    GitPayload,
+    GitPushPayload,
+    GitRewritePayload,
+)
 from agentic_events.player import RecordingMetadata, SessionPlayer
 from agentic_events.recorder import SessionRecorder
 from agentic_events.types import EventType, SecurityDecision, SessionSource
@@ -45,6 +55,15 @@ __all__ = [
     # Types
     "SecurityDecision",
     "SessionSource",
+    # Git event payloads (typed dataclasses)
+    "GitBranchChangedPayload",
+    "GitCheckoutPayload",
+    "GitCommitPayload",
+    "GitMergePayload",
+    "GitOperationPayload",
+    "GitPayload",
+    "GitPushPayload",
+    "GitRewritePayload",
     # Buffer utilities (for AEF)
     "BatchBuffer",
     "parse_jsonl_line",

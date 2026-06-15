@@ -27,6 +27,10 @@ def main():
         branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
         merge_sha = run(["git", "rev-parse", "HEAD"])
 
+        # Get repo name from remote
+        remote = run(["git", "remote", "get-url", "origin"])
+        repo = remote.rstrip("/").rsplit("/", 1)[-1].replace(".git", "") if remote else ""
+
         # Count merged commits
         commits_merged = 0
         check = run(["git", "rev-parse", "HEAD^2"])
@@ -41,6 +45,7 @@ def main():
         emitter.git_merge(
             branch=branch,
             merge_sha=merge_sha,
+            repo=repo,
             commits_merged=commits_merged,
             is_squash=is_squash,
         )
