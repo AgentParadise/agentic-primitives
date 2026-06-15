@@ -184,10 +184,26 @@ COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 # and hooks/hooks.json using ${CLAUDE_PLUGIN_ROOT} for path resolution.
 COPY plugins/ /opt/agentic/plugins/
 
-# Set permissions on plugins, entrypoint, and workspace-shipped hooks
+# Copy memory primitive adapters (ADR-036)
+# The /opt/agentic/memory/ tree holds:
+#   - doctor       — bash entry that exec's `python -m agentic_memory.doctor`
+#   - <provider>/init.sh   — env-var translation for each supported provider
+#   - <provider>/doctor.sh — provider-specific health checks (optional)
+# The Python agentic_memory package itself is installed into /opt/venv via
+# the wheel staging in stage 3. The audit directory /var/agentic/memory-doctor/
+# is created by the entrypoint at first use; orchestrators bind-mount it for
+# durable audit logs.
+COPY memory/ /opt/agentic/memory/
+RUN mkdir -p /var/agentic/memory-doctor \
+    && chown -R agent:agent /var/agentic
+
+# Set permissions on plugins, entrypoint, memory adapters, and workspace-shipped hooks
 RUN chmod -R 755 /opt/agentic/plugins /opt/agentic/git-hooks \
     && find /opt/agentic/plugins -name "*.py" -exec chmod 755 {} \; \
     && chmod 755 /opt/agentic/entrypoint.sh \
+    && chmod 755 /opt/agentic/memory/doctor \
+    && find /opt/agentic/memory -name "init.sh" -exec chmod 755 {} \; \
+    && find /opt/agentic/memory -name "doctor.sh" -exec chmod 755 {} \; \
     && chown -R agent:agent /opt/agentic
 
 # Verify core installations (before security hardening)

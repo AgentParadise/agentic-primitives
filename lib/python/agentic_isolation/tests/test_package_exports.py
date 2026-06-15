@@ -112,3 +112,9 @@ class TestPackageExports:
         d = event.to_dict()
         assert d["agent_name"] == "My Subagent"
         assert d["parent_tool_use_id"] == "toolu_parent"
+
+
+def test_workspace_files_exported():
+    import agentic_isolation
+
+    assert hasattr(agentic_isolation, "WorkspaceFiles")

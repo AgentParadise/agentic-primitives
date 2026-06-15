@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# /opt/agentic/memory/doctor — workspace-image entry for the memory doctor.
+#
+# Thin wrapper that exec's the Python module. Pass any flags through.
+# See lib/python/agentic_memory/ for the implementation and
+# docs/superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md
+# for the contract.
+#
+# Exit codes:
+#   0  all checks pass
+#   1  one or more checks failed
+
+set -euo pipefail
+
+# The Python package is pip-installed into the image's venv at build time
+# (see Dockerfile). Use the venv's python if present, else system python.
+if [ -x "/opt/venv/bin/python" ]; then
+  exec /opt/venv/bin/python -m agentic_memory.doctor "$@"
+fi
+
+exec python3 -m agentic_memory.doctor "$@"

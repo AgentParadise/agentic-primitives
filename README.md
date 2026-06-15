@@ -254,6 +254,18 @@ just list-providers
 
 ---
 
+## Workspace
+
+`agentic-primitives` ships the workspace image — the controlled boundary every AI agent runs inside. The workspace has three responsibilities:
+
+1. **Inject** orchestrator-supplied context (`CLAUDE.md`, plugins, subagents) via a bind-mount at `/etc/agentic/workspace/` + three optional env vars (`AGENTIC_WORKSPACE_CONTEXT`, `AGENTIC_WORKSPACE_PLUGINS`, `AGENTIC_WORKSPACE_AGENTS`).
+2. **Isolate** the agent's effects (tmpfs home, read-only context mount, network whitelisting, per-task volumes).
+3. **Observe** what the agent did (git hooks → JSONL on stderr, `--output-format stream-json` on stdout, output artifacts in `/workspace/artifacts/output/`).
+
+See [`docs/workspace.md`](docs/workspace.md) for the canonical reference, [`docs/adrs/035-workspace-injection-contract.md`](docs/adrs/035-workspace-injection-contract.md) for the design decisions, and [`providers/workspaces/claude-cli/scripts/entrypoint.sh`](providers/workspaces/claude-cli/scripts/entrypoint.sh) for the source of truth.
+
+---
+
 ## Architecture Decision Records
 
 This project's design decisions are documented in [13 ADRs](docs/adrs/), including:
@@ -263,6 +275,7 @@ This project's design decisions are documented in [13 ADRs](docs/adrs/), includi
 - [ADR-027: Provider Workspace Images](docs/adrs/027-provider-workspace-images.md)
 - [ADR-029: Simplified Event System](docs/adrs/029-simplified-event-system.md)
 - [ADR-033: Plugin-Native Workspace Images](docs/adrs/033-plugin-native-workspace-images.md)
+- [ADR-035: Workspace Injection Contract](docs/adrs/035-workspace-injection-contract.md)
 
 ---
 

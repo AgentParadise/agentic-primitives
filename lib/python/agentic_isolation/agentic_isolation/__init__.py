@@ -78,6 +78,7 @@ from agentic_isolation.retry import (
     retry_with_circuit_breaker,
 )
 from agentic_isolation.workspace import AgenticWorkspace, register_provider
+from agentic_isolation.workspace_files import WorkspaceFiles
 
 __all__ = [
     # Main API
@@ -94,6 +95,8 @@ __all__ = [
     "ExecuteResult",
     "WorkspaceLocalProvider",
     "WorkspaceDockerProvider",
+    # Workspace file staging primitives
+    "WorkspaceFiles",
     # Claude CLI (session output)
     "SessionOutputStream",
     "EventParser",
