@@ -69,9 +69,12 @@ A broken container never gets pushed or signed. The merge is already on `main`
 
 ### Scope
 
-- **Provider:** `claude-cli` only — the provider with the entrypoint / memory
-  surface the integration tests exercise. `interactive-tmux` has no integration
-  suite and its publish is not gated.
+- **Provider:** the integration suite targets `claude-cli`'s entrypoint /
+  memory surface. The gate runs that suite once and, as a job dependency
+  (`needs:`), blocks the entire publish stage — both `claude-cli` and
+  `interactive-tmux`. Per-provider gating (matrix-conditional `needs`) was
+  rejected as fragile; holding the `interactive-tmux` publish when the shared
+  build tree is in a failing state is the conservative, safe choice.
 - **Triggers:** runs on push to `main` (blocks publish) and on PRs matching the
   workflow's existing path filter (`providers/workspaces/**`, `plugins/**`,
   `lib/python/**`, `scripts/build-provider.py`), where it is informational —
@@ -106,8 +109,16 @@ A broken container never gets pushed or signed. The merge is already on `main`
 
 - Fix-forward only: a regression still lands on `main` (the merge is done); the
   gate prevents *publishing* it, not *merging* it.
-- Adds bounded wall-clock to the `main` pipeline (one cache-warmed amd64 build +
-  the suite).
+- Adds bounded wall-clock to the `main` pipeline (one amd64 build + the suite).
+
+### Future enhancements
+
+- **Pre-merge prevention.** Because the gate is post-merge, a regression still
+  lands on `main` before publish is blocked. A path-filtered *pre-merge* required
+  check on the relevant PRs (`providers/workspaces/**`, `lib/python/**`,
+  `scripts/build-provider.py`) would prevent the merge itself, closing the
+  fix-forward window. Deferred to keep the PR loop fast for unrelated changes;
+  revisit if regressions actually reach `main`.
 
 ### Out of scope (YAGNI)
 

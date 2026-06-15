@@ -51,9 +51,56 @@ env:
   IMAGE_OWNER: agentparadise
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Integration gate (claude-cli): build the image single-arch, run the
+  # entrypoint integration suite against it. build-push depends on this, so a
+  # broken entrypoint/memory surface never gets published or signed.
+  # See ADR-037.
+  # ---------------------------------------------------------------------------
+  integration-gate:
+    name: "Integration Gate: claude-cli"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      # build-provider.py default = single-arch `docker build` for the runner
+      # arch, loaded into the local daemon and tagged
+      # agentic-workspace-claude-cli:latest (the image the tests resolve by
+      # default). No push.
+      - name: Build claude-cli image (loaded into daemon)
+        run: uv run scripts/build-provider.py claude-cli
+
+      # Deps from the agentic_isolation env (docker + dev extras: pytest,
+      # pytest-asyncio, docker SDK). Tests live at repo root tests/integration.
+      # Hindsight-dependent cases skip when no backend is reachable (lean gate).
+      - name: Run entrypoint integration tests
+        working-directory: lib/python/agentic_isolation
+        run: |
+          uv sync --all-extras
+          uv run python -m pytest ../../../tests/integration -q
+
   build-push:
     name: "Build: ${{ matrix.provider }}"
     runs-on: ubuntu-latest
+    needs: [integration-gate]
     timeout-minutes: 30
 
     permissions:
