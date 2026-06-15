@@ -143,12 +143,28 @@ class StartupReadinessError(RuntimeError):
 # tmux send-keys helpers (the only place that talks to docker exec tmux)
 
 
-def _run(
-    cmd: list[str], check: bool = True, capture: bool = True
-) -> subprocess.CompletedProcess:
+def _redact_cmd(cmd: list[str]) -> str:
+    """Render a command for logging with literal `send-keys` payloads
+    redacted. Prompt bodies often carry secrets, tokens, or user data; the
+    arg following `-l` (skipping a `--` terminator) is replaced with its
+    length so debug logs stay useful without leaking content."""
+    parts: list[str] = []
+    redact_next = False
+    for tok in cmd:
+        if redact_next and tok != "--":
+            parts.append(f"<redacted {len(tok)} chars>")
+            redact_next = False
+        else:
+            parts.append(tok)
+            if tok == "-l":
+                redact_next = True
+    return " ".join(parts)
+
+
+def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
     """Run a subprocess; return CompletedProcess. Raises on non-zero unless
     `check=False`."""
-    logger.debug("exec: %s", " ".join(cmd))
+    logger.debug("exec: %s", _redact_cmd(cmd))
     return subprocess.run(
         cmd,
         check=check,
@@ -157,9 +173,7 @@ def _run(
     )
 
 
-def _docker_exec(
-    container: str, *args: str, check: bool = True
-) -> subprocess.CompletedProcess:
+def _docker_exec(container: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
     return _run(["docker", "exec", container, *args], check=check)
 
 
@@ -171,7 +185,9 @@ def _tmux_send_keys(container: str, window: str, *keys: str) -> None:
 def _tmux_send_literal(container: str, window: str, text: str) -> None:
     """Send `text` byte-for-byte (no special-key interpretation)."""
     target = f"{TMUX_SESSION}:{window}"
-    _docker_exec(container, "tmux", "send-keys", "-t", target, "-l", text)
+    # `--` ends option parsing so a prompt beginning with `-` (e.g. "-R",
+    # "--help") is treated as literal text, not a tmux send-keys flag.
+    _docker_exec(container, "tmux", "send-keys", "-t", target, "-l", "--", text)
 
 
 def _tmux_capture(container: str, window: str) -> str:
@@ -318,8 +334,7 @@ class _ClaudeAdapter:
         creds = host_src / ".credentials.json"
         if not creds.is_file():
             raise FileNotFoundError(
-                f"claude .credentials.json missing under {host_src}; "
-                "cannot mount Max-plan auth"
+                f"claude .credentials.json missing under {host_src}; cannot mount Max-plan auth"
             )
 
         # Throwaway ~/.claude/ — copy .credentials.json only to avoid leaking
@@ -479,9 +494,7 @@ class _CodexAdapter:
                 continue
             target = dst_dir / item.name
             if item.is_dir():
-                shutil.copytree(
-                    item, target, dirs_exist_ok=True, ignore_dangling_symlinks=True
-                )
+                shutil.copytree(item, target, dirs_exist_ok=True, ignore_dangling_symlinks=True)
             else:
                 shutil.copy2(item, target)
         _chown_recursive(dst_dir, 1000, 1000)
@@ -498,9 +511,7 @@ class _CodexAdapter:
         # value is silently ignored.
         del plugin_dirs
         # --no-alt-screen so capture-pane sees the same buffer the TUI uses.
-        _tmux_send_keys(
-            container, _CodexAdapter.window, "codex --no-alt-screen", "Enter"
-        )
+        _tmux_send_keys(container, _CodexAdapter.window, "codex --no-alt-screen", "Enter")
         # Trust banner: select option 1 ("Yes, trust"), confirm with Enter.
         time.sleep(2)
         _tmux_send_keys(container, _CodexAdapter.window, "1", "Enter")
@@ -527,11 +538,7 @@ class _CodexAdapter:
         # together so a transient hint loss doesn't false-fail.
         if "• Working" in pane_text:
             return False
-        return (
-            ("› " in pane_text)
-            or ("Write tests for" in pane_text)
-            or ("Tip:" in pane_text)
-        )
+        return ("› " in pane_text) or ("Write tests for" in pane_text) or ("Tip:" in pane_text)
 
     @staticmethod
     def is_started(pane_text: str) -> bool:
@@ -834,9 +841,7 @@ class InteractiveTmuxWorkspace:
                     all_mounts.append(pair)
 
             if not enabled:
-                raise ValueError(
-                    "start_workspace called with no enabled agents (host_auth empty)"
-                )
+                raise ValueError("start_workspace called with no enabled agents (host_auth empty)")
 
             # Run the container with bind mounts (each mount is a -v arg).
             run_cmd = [
@@ -933,9 +938,7 @@ class InteractiveTmuxWorkspace:
             extras = self._launch_extras.get(agent) or None
             adapter.launch_in_window(self.container, self.workdir, plugin_dirs=extras)
             self._started[agent] = True
-            self.startup_status[agent] = self._wait_for_started(
-                agent, startup_timeout_s
-            )
+            self.startup_status[agent] = self._wait_for_started(agent, startup_timeout_s)
 
         failed = {a: r for a, r in self.startup_status.items() if not r.ready}
         if failed:
@@ -1216,8 +1219,24 @@ def _default_claude_dotjson_from_env() -> Path | None:
 
 _WORKSPACE_REGISTRY_DIR = Path(tempfile.gettempdir()) / "interactive-tmux-workspaces"
 
+# Workspace names become registry filenames and reach `docker rm -f` /
+# rmtree via the stored record. Constrain them to a strict allowlist so a
+# crafted `--name` (absolute path, `..`, separators) cannot escape the
+# registry dir and act on attacker-controlled records. Kept byte-identical
+# to the Rust driver's `registry::validate_name`.
+_WORKSPACE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _registry_path(name: str) -> Path:
+    if name in (".", "..") or not _WORKSPACE_NAME_RE.fullmatch(name):
+        raise ValueError(
+            f"invalid workspace name {name!r}: must match [A-Za-z0-9_.-]+ and not be '.' or '..'"
+        )
+    return _WORKSPACE_REGISTRY_DIR / f"{name}.json"
+
 
 def _save_workspace(ws: InteractiveTmuxWorkspace) -> None:
+    path = _registry_path(ws.name)
     _WORKSPACE_REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "name": ws.name,
@@ -1228,16 +1247,20 @@ def _save_workspace(ws: InteractiveTmuxWorkspace) -> None:
         "host_throwaway_dir": str(ws.host_throwaway_dir),
         "enabled_agents": list(ws.enabled_agents),
     }
-    (_WORKSPACE_REGISTRY_DIR / f"{ws.name}.json").write_text(
-        json.dumps(payload, indent=2)
-    )
+    path.write_text(json.dumps(payload, indent=2))
 
 
 def _load_workspace(name: str) -> InteractiveTmuxWorkspace:
-    path = _WORKSPACE_REGISTRY_DIR / f"{name}.json"
+    path = _registry_path(name)
     if not path.is_file():
         raise FileNotFoundError(f"no registered workspace {name!r} at {path}")
     p = json.loads(path.read_text())
+    # Defense in depth: a record's own name must match the one requested,
+    # so a swapped or planted file can't redirect the caller's intent.
+    if p.get("name") != name:
+        raise ValueError(
+            f"workspace record at {path} has name {p.get('name')!r}, expected {name!r}"
+        )
     return InteractiveTmuxWorkspace(
         name=p["name"],
         container=p["container"],
@@ -1250,7 +1273,7 @@ def _load_workspace(name: str) -> InteractiveTmuxWorkspace:
 
 
 def _forget_workspace(name: str) -> None:
-    path = _WORKSPACE_REGISTRY_DIR / f"{name}.json"
+    path = _registry_path(name)
     if path.exists():
         path.unlink()
 
@@ -1294,9 +1317,7 @@ def _cli() -> int:
     s_stop.add_argument("--name", required=True)
 
     args = parser.parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     if args.cmd == "start":
         host_auth_all = _default_host_auth_from_env()
@@ -1327,9 +1348,7 @@ def _cli() -> int:
                 json.dumps(
                     {
                         "error": "startup_readiness",
-                        "startup_status": {
-                            a: r.to_dict() for a, r in exc.startup_status.items()
-                        },
+                        "startup_status": {a: r.to_dict() for a, r in exc.startup_status.items()},
                     }
                 )
             )
@@ -1341,9 +1360,7 @@ def _cli() -> int:
                     "name": ws.name,
                     "container": ws.container,
                     "agents": list(ws.enabled_agents),
-                    "startup_status": {
-                        a: r.to_dict() for a, r in ws.startup_status.items()
-                    },
+                    "startup_status": {a: r.to_dict() for a, r in ws.startup_status.items()},
                 }
             )
         )
@@ -1351,9 +1368,7 @@ def _cli() -> int:
         # historical "smoke continues to pass on benign per-agent misses"
         # behavior while exposing the structured status that the codex
         # cross-review (M1) called out as missing.
-        all_failed = ws.startup_status and not any(
-            r.ready for r in ws.startup_status.values()
-        )
+        all_failed = ws.startup_status and not any(r.ready for r in ws.startup_status.values())
         return 0 if not all_failed else 3
 
     if args.cmd == "send":

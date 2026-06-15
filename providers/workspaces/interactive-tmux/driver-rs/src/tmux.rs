@@ -22,13 +22,37 @@ fn check_output(out: Output, what: &str) -> Result<Output> {
     }
 }
 
+/// Render args for an error label with literal `send-keys` payloads
+/// redacted. Prompt bodies often carry secrets, tokens, or user data; the
+/// arg following `-l` (skipping a `--` terminator) is replaced with its
+/// length so a failed send doesn't leak content into error messages.
+fn redact_args(args: &[&str]) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+    for &tok in args {
+        if redact_next && tok != "--" {
+            parts.push(format!("<redacted {} chars>", tok.len()));
+            redact_next = false;
+        } else {
+            parts.push(tok.to_string());
+            if tok == "-l" {
+                redact_next = true;
+            }
+        }
+    }
+    parts.join(" ")
+}
+
 /// Run `docker exec <container> <args...>` and return its `Output`.
 pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
     let mut cmd = Command::new("docker");
     cmd.arg("exec").arg(container);
     cmd.args(args);
     let out = cmd.output()?;
-    check_output(out, &format!("docker exec {container} {}", args.join(" ")))
+    check_output(
+        out,
+        &format!("docker exec {container} {}", redact_args(args)),
+    )
 }
 
 /// `docker exec <container> tmux send-keys -t <session>:<window> <keys...>`.
@@ -48,7 +72,12 @@ pub fn send_keys(container: &str, window: &str, keys: &[&str]) -> Result<()> {
 /// interpretation) — the canonical pattern for the body of a user message.
 pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
     let target = format!("{TMUX_SESSION}:{window}");
-    docker_exec(container, &["tmux", "send-keys", "-t", &target, "-l", text])?;
+    // `--` ends option parsing so a prompt beginning with `-` (e.g. "-R",
+    // "--help") is treated as literal text, not a tmux send-keys flag.
+    docker_exec(
+        container,
+        &["tmux", "send-keys", "-t", &target, "-l", "--", text],
+    )?;
     Ok(())
 }
 
@@ -66,7 +95,17 @@ pub fn capture_pane(container: &str, window: &str) -> Result<String> {
     let target = format!("{TMUX_SESSION}:{window}");
     let out = docker_exec(
         container,
-        &["tmux", "capture-pane", "-p", "-t", &target, "-S", "-", "-E", "-"],
+        &[
+            "tmux",
+            "capture-pane",
+            "-p",
+            "-t",
+            &target,
+            "-S",
+            "-",
+            "-E",
+            "-",
+        ],
     )?;
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -122,4 +161,32 @@ pub fn new_window(container: &str, name: &str) -> Result<()> {
         &["tmux", "new-window", "-t", TMUX_SESSION, "-n", name],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_args_hides_literal_payload_after_dash_l() {
+        let args = [
+            "tmux",
+            "send-keys",
+            "-t",
+            "agents:claude",
+            "-l",
+            "--",
+            "secret-token",
+        ];
+        let s = redact_args(&args);
+        assert!(!s.contains("secret-token"), "payload leaked: {s}");
+        assert!(s.contains("<redacted 12 chars>"), "got: {s}");
+        assert!(s.contains("send-keys"));
+    }
+
+    #[test]
+    fn redact_args_leaves_non_literal_commands_intact() {
+        let args = ["tmux", "capture-pane", "-p", "-t", "agents:claude"];
+        assert_eq!(redact_args(&args), "tmux capture-pane -p -t agents:claude");
+    }
 }
