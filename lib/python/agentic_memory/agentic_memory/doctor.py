@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 from agentic_memory.contract import (
     MemoryContract,
     is_namespace_well_formed,
+    is_provider_well_formed,
     sanitize_namespace,
 )
 
@@ -155,6 +156,14 @@ class ProviderKnownCheck(Check):
                 message="AGENTIC_MEMORY_PROVIDER unset.",
             )
 
+        if not is_provider_well_formed(contract.provider):
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                details={"provider": contract.provider},
+            )
+
         provider_dir = os.path.join(self.registry_root, contract.provider)
         if not os.path.isdir(provider_dir):
             try:
@@ -190,6 +199,14 @@ class AdapterExistsCheck(Check):
                 name=self.name,
                 status=CheckStatus.SKIPPED,
                 message="AGENTIC_MEMORY_PROVIDER unset.",
+            )
+
+        if not is_provider_well_formed(contract.provider):
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                details={"provider": contract.provider},
             )
 
         adapter = os.path.join(self.registry_root, contract.provider, "init.sh")
@@ -301,6 +318,21 @@ class BackendHealthCheck(Check):
                 status=CheckStatus.SKIPPED,
                 message="AGENTIC_MEMORY_URL unset (covered by env_contract).",
             )
+        parsed = urlparse(contract.url)
+        if parsed.scheme not in {"http", "https"}:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message="AGENTIC_MEMORY_URL must use http or https.",
+                details={"url": contract.url, "scheme": parsed.scheme},
+            )
+        if not parsed.hostname:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message=f"Could not parse hostname from URL: {contract.url}",
+                details={"url": contract.url},
+            )
         health_url = contract.url.rstrip("/") + "/health"
         # Use stdlib only — urllib avoids adding a requests dependency.
         import urllib.error  # noqa: PLC0415
@@ -367,6 +399,13 @@ class ProviderSpecificCheck(Check):
                 name=self.name,
                 status=CheckStatus.SKIPPED,
                 message="AGENTIC_MEMORY_PROVIDER unset.",
+            )
+        if not is_provider_well_formed(contract.provider):
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                details={"provider": contract.provider},
             )
         script = os.path.join(self.registry_root, contract.provider, "doctor.sh")
         if not os.path.isfile(script):

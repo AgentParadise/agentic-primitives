@@ -8,6 +8,7 @@ from agentic_memory.contract import (
     MemoryContract,
     NamespaceKind,
     is_namespace_well_formed,
+    is_provider_well_formed,
     sanitize_namespace,
 )
 
@@ -64,6 +65,27 @@ class TestNamespaceValidation:
         assert sanitize_namespace("---task---") == "task"
         assert sanitize_namespace("") == "unnamed"
         assert sanitize_namespace("$$$") == "unnamed"
+
+
+class TestProviderValidation:
+    @pytest.mark.parametrize("provider", ["hindsight", "lossless-claw", "provider_1", "v1.2"])
+    def test_well_formed_providers(self, provider):
+        assert is_provider_well_formed(provider) is True
+
+    @pytest.mark.parametrize(
+        "provider",
+        [
+            "",
+            "../evil",
+            "evil/provider",
+            "evil provider",
+            "evil;provider",
+            ".hidden",
+            "evil..provider",
+        ],
+    )
+    def test_ill_formed_providers(self, provider):
+        assert is_provider_well_formed(provider) is False
 
 
 class TestMemoryContractFromEnv:

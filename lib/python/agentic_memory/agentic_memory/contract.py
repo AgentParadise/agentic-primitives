@@ -20,6 +20,11 @@ NAMESPACE_PATTERN = re.compile(r"^[a-zA-Z0-9._:-]+$")
 """Allowed characters in AGENTIC_MEMORY_NAMESPACE — letters, digits, dot,
 underscore, colon, hyphen. No spaces, no slashes, no shell metacharacters."""
 
+PROVIDER_PATTERN = re.compile(r"^[a-zA-Z0-9._-]+$")
+"""Allowed characters in AGENTIC_MEMORY_PROVIDER — provider names map to
+directories under /opt/agentic/memory, so slashes and shell metacharacters are
+not allowed."""
+
 
 class NamespaceKind(str, Enum):
     """Semantic hint about what an AGENTIC_MEMORY_NAMESPACE represents.
@@ -106,6 +111,16 @@ def is_namespace_well_formed(namespace: str) -> bool:
     """True if the namespace string contains only allowed characters and is
     non-empty. See NAMESPACE_PATTERN."""
     return bool(namespace) and bool(NAMESPACE_PATTERN.match(namespace))
+
+
+def is_provider_well_formed(provider: str) -> bool:
+    """True if the provider string is a plain provider name, not a path."""
+    return (
+        bool(provider)
+        and bool(PROVIDER_PATTERN.match(provider))
+        and not provider.startswith(".")
+        and ".." not in provider
+    )
 
 
 def sanitize_namespace(namespace: str) -> str:

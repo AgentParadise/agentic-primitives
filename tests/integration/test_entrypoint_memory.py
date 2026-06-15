@@ -173,6 +173,30 @@ def test_unknown_provider_hard_fails():
 
 
 @pytest.mark.integration
+def test_provider_path_traversal_does_not_source_adapter(tmp_path: Path):
+    """AGENTIC_MEMORY_PROVIDER must not escape /opt/agentic/memory."""
+    escaped = tmp_path / "evil"
+    escaped.mkdir()
+    (escaped / "init.sh").write_text("#!/usr/bin/env bash\necho PWNED\n")
+    (escaped / "init.sh").chmod(0o755)
+
+    result = _run(
+        ["echo", "should not reach here"],
+        env={
+            "AGENTIC_MEMORY_PROVIDER": "../../../workspace/evil",
+            "AGENTIC_MEMORY_NAMESPACE": "x",
+            "AGENTIC_MEMORY_URL": "http://host.docker.internal:9077",
+        },
+        extra_mounts=[f"{escaped}:/workspace/evil:ro"],
+        add_host_gateway=True,
+    )
+
+    assert result.returncode != 0
+    assert "PWNED" not in result.stdout + result.stderr
+    assert "should not reach here" not in result.stdout
+
+
+@pytest.mark.integration
 @pytest.mark.skipif(not _hindsight_reachable(), reason="hindsight backend unreachable")
 def test_auto_fix_stale_dynamic_bank_id(tmp_path: Path):
     """Stale ~/.hindsight/claude-code.json with dynamicBankId:true is

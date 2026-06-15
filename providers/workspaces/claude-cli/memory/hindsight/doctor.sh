@@ -30,10 +30,18 @@ emit_json() {
 # Use the list endpoint and filter — "not in list" is fine because hindsight
 # lazy-creates banks on first retain.
 LIST_URL="${HINDSIGHT_API_URL}/v1/default/banks"
-HTTP_STATUS=$(curl -sS -o /tmp/hindsight-doctor-body -w "%{http_code}" \
-    --max-time 5 \
-    ${HINDSIGHT_API_TOKEN:+-H "Authorization: Bearer ${HINDSIGHT_API_TOKEN}"} \
-    "${LIST_URL}" || echo "000")
+curl_args=(
+    -sS
+    -o /tmp/hindsight-doctor-body
+    -w "%{http_code}"
+    --max-time 5
+)
+if [ -n "${HINDSIGHT_API_TOKEN:-}" ]; then
+    curl_args+=(-H "Authorization: Bearer ${HINDSIGHT_API_TOKEN}")
+fi
+if ! HTTP_STATUS=$(curl "${curl_args[@]}" "${LIST_URL}"); then
+    HTTP_STATUS="000"
+fi
 
 if [ "${HTTP_STATUS}" != "200" ]; then
     emit_json "fail" "$(printf '{"check":"bank_reachable","url":"%s","http_status":"%s","body_preview":"%s"}' \

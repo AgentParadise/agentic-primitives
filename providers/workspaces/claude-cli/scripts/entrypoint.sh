@@ -221,7 +221,7 @@ __inject_safe_filter() {
     while IFS= read -r name; do
         [ -n "${name}" ] || continue
         case "${name}" in
-            */*|*..*|"") continue ;;
+            *[!a-zA-Z0-9._-]*|*..*|.*|"") continue ;;
         esac
         printf '%s\n' "${name}"
     done
@@ -238,14 +238,31 @@ __inject_names() {
         [ -e "${f}" ] || continue
         local base; base="$(basename "${f}")"
         [ -n "${strip_ext}" ] && base="${base%${strip_ext}}"
-        printf '%s\n' "${base}"
+        printf '%s\n' "${base}" | __inject_safe_filter
     done
+}
+
+__inject_safe_context() {
+    local context="$1"
+    case "${context}" in
+        *[!a-zA-Z0-9._-]*|*..*|.*|"") return 1 ;;
+    esac
+    return 0
+}
+
+__memory_provider_safe() {
+    local provider="$1"
+    case "${provider}" in
+        *[!a-zA-Z0-9._-]*|*..*|.*|"") return 1 ;;
+    esac
+    return 0
 }
 
 # --- Actions --------------------------------------------------------------
 if [ -d "${INJECT_MOUNT}" ]; then
-    ctx_src="${INJECT_MOUNT}/${AGENTIC_WORKSPACE_CONTEXT:-${INJECT_DEFAULT_CONTEXT}}"
-    if [ -f "${ctx_src}" ]; then
+    ctx_name="${AGENTIC_WORKSPACE_CONTEXT:-${INJECT_DEFAULT_CONTEXT}}"
+    if __inject_safe_context "${ctx_name}" && [ -f "${INJECT_MOUNT}/${ctx_name}" ]; then
+        ctx_src="${INJECT_MOUNT}/${ctx_name}"
         cp "${ctx_src}" "${INJECT_TARGET_CONTEXT}"
         # 600 because orchestrators may embed credentials or
         # private guidance in the workspace context. Matches the mode
@@ -289,17 +306,21 @@ fi
 # unset; the doctor in section 5.7 hard-fails if it's set but misconfigured.
 
 if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
-    AGENTIC_MEMORY_ADAPTER="/opt/agentic/memory/${AGENTIC_MEMORY_PROVIDER}/init.sh"
-    if [ -f "${AGENTIC_MEMORY_ADAPTER}" ]; then
-        echo "[entrypoint] memory adapter: ${AGENTIC_MEMORY_PROVIDER}"
-        # shellcheck disable=SC1090
-        if . "${AGENTIC_MEMORY_ADAPTER}"; then
-            export AGENTIC_MEMORY_READY=1
-        else
-            echo "[entrypoint] memory adapter init failed (exit $?); doctor in 5.7 will surface the cause." >&2
-        fi
+    if ! __memory_provider_safe "${AGENTIC_MEMORY_PROVIDER}"; then
+        echo "[entrypoint] invalid memory provider name: ${AGENTIC_MEMORY_PROVIDER}" >&2
     else
-        echo "[entrypoint] no adapter at ${AGENTIC_MEMORY_ADAPTER}" >&2
+        AGENTIC_MEMORY_ADAPTER="/opt/agentic/memory/${AGENTIC_MEMORY_PROVIDER}/init.sh"
+        if [ -f "${AGENTIC_MEMORY_ADAPTER}" ]; then
+            echo "[entrypoint] memory adapter: ${AGENTIC_MEMORY_PROVIDER}"
+            # shellcheck disable=SC1090
+            if . "${AGENTIC_MEMORY_ADAPTER}"; then
+                export AGENTIC_MEMORY_READY=1
+            else
+                echo "[entrypoint] memory adapter init failed (exit $?); doctor in 5.7 will surface the cause." >&2
+            fi
+        else
+            echo "[entrypoint] no adapter at ${AGENTIC_MEMORY_ADAPTER}" >&2
+        fi
     fi
 fi
 
@@ -318,7 +339,7 @@ if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "n
 
     # Run the doctor. Pretty output → stderr (always shown). JSON → audit log
     # (appended). Exit non-zero = workspace stops.
-    if /opt/agentic/memory/doctor --json >> "${AGENTIC_MEMORY_AUDIT_FILE}" 2>&1; then
+    if /opt/agentic/memory/doctor --json >> "${AGENTIC_MEMORY_AUDIT_FILE}"; then
         echo "[entrypoint] memory doctor: pass (audit: ${AGENTIC_MEMORY_AUDIT_FILE})"
     else
         echo "[entrypoint] memory doctor: FAIL (audit: ${AGENTIC_MEMORY_AUDIT_FILE})" >&2

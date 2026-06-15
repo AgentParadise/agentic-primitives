@@ -93,6 +93,13 @@ class TestProviderKnownCheck:
         assert r.status == CheckStatus.FAIL
         assert "lossless-claw" in r.details["known_providers"]
 
+    def test_rejects_provider_path_traversal(self, tmp_path):
+        r = ProviderKnownCheck(registry_root=str(tmp_path)).run(
+            _contract(AGENTIC_MEMORY_PROVIDER="../evil")
+        )
+        assert r.status == CheckStatus.FAIL
+        assert "provider name" in r.message
+
 
 class TestAdapterExistsCheck:
     def test_passes_when_init_sh_is_executable(self, tmp_path):
@@ -120,6 +127,23 @@ class TestAdapterExistsCheck:
         r = AdapterExistsCheck(registry_root=str(tmp_path)).run(_contract())
         assert r.status == CheckStatus.FAIL
         assert "not executable" in r.message.lower()
+
+    def test_rejects_provider_path_traversal(self, tmp_path):
+        escaped = tmp_path.parent / f"evil-{tmp_path.name}"
+        escaped.mkdir()
+        try:
+            adapter = escaped / "init.sh"
+            adapter.write_text("#!/bin/sh\nexit 0\n")
+            adapter.chmod(0o755)
+
+            r = AdapterExistsCheck(registry_root=str(tmp_path)).run(
+                _contract(AGENTIC_MEMORY_PROVIDER="../evil")
+            )
+            assert r.status == CheckStatus.FAIL
+            assert "provider name" in r.message
+        finally:
+            adapter.unlink(missing_ok=True)
+            escaped.rmdir()
 
 
 class TestConfigJsonValidCheck:
@@ -163,6 +187,11 @@ class TestBackendHealthCheck:
         r = BackendHealthCheck().run(_contract(AGENTIC_MEMORY_URL=""))
         assert r.status == CheckStatus.SKIPPED
 
+    def test_rejects_non_http_url_before_opening(self):
+        r = BackendHealthCheck().run(_contract(AGENTIC_MEMORY_URL="file:///etc/passwd"))
+        assert r.status == CheckStatus.FAIL
+        assert "http or https" in r.message
+
 
 class TestProviderSpecificCheck:
     def test_skips_when_no_doctor_sh(self, tmp_path):
@@ -190,6 +219,25 @@ class TestProviderSpecificCheck:
 
         r = ProviderSpecificCheck(registry_root=str(tmp_path)).run(_contract())
         assert r.status == CheckStatus.FAIL
+
+    def test_rejects_provider_path_traversal_without_executing(self, tmp_path):
+        escaped = tmp_path.parent / f"evil-{tmp_path.name}"
+        marker = tmp_path / "executed"
+        escaped.mkdir()
+        try:
+            script = escaped / "doctor.sh"
+            script.write_text(f"#!/bin/sh\ntouch {marker}\nexit 0\n")
+            script.chmod(0o755)
+
+            r = ProviderSpecificCheck(registry_root=str(tmp_path)).run(
+                _contract(AGENTIC_MEMORY_PROVIDER="../evil")
+            )
+            assert r.status == CheckStatus.FAIL
+            assert "provider name" in r.message
+            assert not marker.exists()
+        finally:
+            script.unlink(missing_ok=True)
+            escaped.rmdir()
 
 
 # --- runner tests -------------------------------------------------------------

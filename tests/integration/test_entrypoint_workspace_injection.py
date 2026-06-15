@@ -52,6 +52,23 @@ def test_entrypoint_copies_workspace_context_md(tmp_path: Path):
 
 
 @pytest.mark.integration
+def test_entrypoint_rejects_context_path_traversal(tmp_path: Path):
+    """AGENTIC_WORKSPACE_CONTEXT must select a file by safe name only."""
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+
+    result = _run(
+        ["sh", "-c", "test -f /workspace/CLAUDE.md && cat /workspace/CLAUDE.md || echo NO_CTX"],
+        extra_mounts=[f"{workspace_dir}:/etc/agentic/workspace:ro"],
+        env={"AGENTIC_WORKSPACE_CONTEXT": "../../etc/passwd"},
+    )
+
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "NO_CTX" in result.stdout
+    assert "root:" not in result.stdout
+
+
+@pytest.mark.integration
 def test_entrypoint_copies_workspace_plugins(tmp_path: Path):
     """A plugin under /etc/agentic/workspace/plugins/<name>/ with a valid
     manifest should be copied to /workspace/.agentic-plugins/<name>/ and
