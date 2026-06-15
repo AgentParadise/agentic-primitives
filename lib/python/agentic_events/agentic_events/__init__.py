@@ -26,6 +26,14 @@ Recording and playback for testing (ADR-030):
 
 from agentic_events.buffer import BatchBuffer, enrich_event, parse_jsonl_line
 from agentic_events.emitter import EventEmitter
+from agentic_events.fixtures import (
+    Recording,
+    get_recordings_dir,
+    list_recordings,
+    load_recording,
+    load_recording_by_name,
+    load_recording_by_path,
+)
 from agentic_events.payloads import (
     GitBranchChangedPayload,
     GitCheckoutPayload,
@@ -35,14 +43,6 @@ from agentic_events.payloads import (
     GitPayload,
     GitPushPayload,
     GitRewritePayload,
-)
-from agentic_events.fixtures import (
-    Recording,
-    get_recordings_dir,
-    list_recordings,
-    load_recording,
-    load_recording_by_name,
-    load_recording_by_path,
 )
 from agentic_events.player import RecordingMetadata, SessionPlayer
 from agentic_events.recorder import SessionRecorder
