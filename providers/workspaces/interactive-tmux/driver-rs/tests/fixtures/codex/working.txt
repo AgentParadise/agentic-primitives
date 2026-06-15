@@ -1,0 +1,11 @@
+╭─────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.139.0)              │
+╰─────────────────────────────────────────╯
+
+  Tip: Use /feedback to send logs to the maintainers when something looks off.
+
+› Refactor lib/foo.py to use dataclasses.
+
+• Working (3s · ↑ ⠼)
+
+  gpt-5.5 default · /workspace

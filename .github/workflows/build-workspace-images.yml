@@ -68,6 +68,9 @@ jobs:
           - provider: claude-cli
             image: agentic-workspace-claude-cli
             platforms: linux/amd64,linux/arm64
+          - provider: interactive-tmux
+            image: agentic-workspace-interactive-tmux
+            platforms: linux/amd64,linux/arm64
 
     steps:
       # -------------------------------------------------------------------

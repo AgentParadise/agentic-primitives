@@ -1,0 +1,445 @@
+{
+  "meta": {
+    "session_id": "agentprimsdeck",
+    "generated_by": "ANALYTICS R1",
+    "branch": "agentprims-lab",
+    "base_commit": "d807ab0",
+    "lab_wall_clock_utc": {
+      "start": "2026-06-10T00:54:00Z",
+      "end": "2026-06-10T05:50:00Z",
+      "duration_min": 296
+    },
+    "worker_sessions": [
+      "agentprims (3-lane)",
+      "agentprims6 (fresh-agent)"
+    ],
+    "branches_pushed": 6,
+    "source_branches": [
+      "agentprims-exp02",
+      "agentprims-exp03",
+      "agentprims-exp05",
+      "agentprims-exp06",
+      "agentprims-lab"
+    ],
+    "provider_verdict_chain": [
+      "implemented",
+      "fresh-agent doc validation PASS 6/6",
+      "codex review approved-with-conditions (0 blockers, 4 majors)",
+      "fixes applied",
+      "independent verification APPROVED"
+    ],
+    "incidents": [
+      {
+        "description": "ntm first-send sat unsubmitted 3x",
+        "severity": "low",
+        "resolved": true,
+        "work_lost": false
+      },
+      {
+        "description": "unrelated fork-bomb loaded VPS to 28,683 processes and blocked ssh briefly",
+        "severity": "high",
+        "resolved": true,
+        "work_lost": false
+      },
+      {
+        "description": "mid-lab full tmux wipe during run",
+        "severity": "medium",
+        "resolved": true,
+        "work_lost": false,
+        "note": "one in-flight review context lost"
+      },
+      {
+        "description": "Gemini initially committed to local main then reset",
+        "severity": "medium",
+        "resolved": true,
+        "work_lost": false
+      }
+    ]
+  },
+  "lab_summary": {
+    "named_experiments": 6,
+    "sub_experiments": 2,
+    "cross_review_experiments": 1,
+    "total_experiments": 9,
+    "all_verdicts_go": true,
+    "total_report_bytes": 83018,
+    "total_report_lines": 1408
+  },
+  "experiments": [
+    {
+      "id": "EXP-01",
+      "title": "claude interactive in tmux",
+      "verdict": "go",
+      "branch_of_record": "ntm/agentprims/cc_1",
+      "owner": "cc_1 (Claude)",
+      "hypothesis_commit": "d62ff55",
+      "results_commit": "22ddf30",
+      "duration_min": 21.183,
+      "duration_sec": 1271,
+      "report_bytes": 15234,
+      "report_lines": 254,
+      "run_count": 3,
+      "legs_per_run": 5,
+      "total_legs": 15,
+      "run_count_note": "3 runs × 5 legs"
+    },
+    {
+      "id": "EXP-02",
+      "title": "codex interactive in tmux",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp02",
+      "owner": "cod_1 (Codex)",
+      "hypothesis_commit": null,
+      "results_commit": "4fa03c8",
+      "duration_min": 15,
+      "duration_note": "hypothesis commit not isolated in log",
+      "report_bytes": 4836,
+      "report_lines": 121,
+      "run_count": 1
+    },
+    {
+      "id": "EXP-03",
+      "title": "gemini interactive in tmux",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp03",
+      "owner": "gmi_1 (Gemini)",
+      "hypothesis_commit": "c007975",
+      "results_commit": "11a5cc3",
+      "duration_min": 14.483,
+      "duration_sec": 869,
+      "report_bytes": 3994,
+      "report_lines": 49,
+      "run_count": 1
+    },
+    {
+      "id": "EXP-04",
+      "title": "combined swarm-in-a-container",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp03",
+      "owner": "gmi_1 (Gemini)",
+      "hypothesis_commit": "6a978b4",
+      "results_commit": "9fdc74e",
+      "duration_min": 10.633,
+      "duration_sec": 638,
+      "report_bytes": 7675,
+      "report_lines": 86,
+      "run_count": 1,
+      "image_size_mb": 3030,
+      "idle_rss_mb": {
+        "claude": 300,
+        "codex": 173,
+        "gemini": 433,
+        "total": 906
+      }
+    },
+    {
+      "id": "EXP-04b",
+      "title": "swarm hardening / EXP-04 run count probe",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp03",
+      "owner": "gmi_1 (Gemini)",
+      "hypothesis_commit": "73bb808",
+      "results_commit": "45bf05e",
+      "duration_min": 5.35,
+      "duration_sec": 321,
+      "report_bytes": 0,
+      "report_lines": 0,
+      "run_count": 3,
+      "report_scope_note": "embedded in EXP-04 report"
+    },
+    {
+      "id": "EXP-05a",
+      "title": "claude auth mount matrix (2×2)",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp02",
+      "owner": "cod_1 (Codex)",
+      "hypothesis_commit": "100a3b0",
+      "results_commit": "44ca031",
+      "duration_min": 48.05,
+      "duration_sec": 2883,
+      "report_bytes": 3910,
+      "report_lines": 62,
+      "run_count": 8,
+      "matrix_cells": 4,
+      "matrix": {
+        "none": "needs login",
+        "claude_dir_only": "auth starts, not Max plan",
+        "claude_json_only": "auth starts, no Max plan",
+        "both": "authenticated Max plan, no wizard"
+      }
+    },
+    {
+      "id": "EXP-05",
+      "title": "interactive-tmux provider productionization",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp05",
+      "owner": "cc_1 (Claude)",
+      "hypothesis_commit": "cb9540f",
+      "results_commit": "b534ec2",
+      "duration_min": 33.383,
+      "duration_sec": 2003,
+      "report_bytes": 29082,
+      "report_lines": 539,
+      "smoke_run_count": 2,
+      "smoke_agents": 3,
+      "smoke_runs_post_review": 2,
+      "total_smoke_paths": 6,
+      "build_image_mb": 544,
+      "build_minutes": 5,
+      "cli_versions": {
+        "claude": "2.1.126",
+        "codex": "0.139.0",
+        "gemini": "0.46.0"
+      },
+      "findings": {
+        "blockers": 0,
+        "majors": 4,
+        "minors": 2
+      }
+    },
+    {
+      "id": "EXP-05-review",
+      "title": "cross-review of EXP-05",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp02",
+      "owner": "cod_1 (Codex)",
+      "review_commit": "513d7fa",
+      "results_commit": "edd5a8f",
+      "duration_min": 50,
+      "duration_sec": 3000,
+      "report_bytes": 6929,
+      "report_lines": 75,
+      "findings": {
+        "blockers": 0,
+        "majors": 4,
+        "minors": 2,
+        "majors_applied": true,
+        "minors_applied": true
+      },
+      "major_findings": [
+        "M1: start_workspace start gate silently returns success",
+        "M2: WorkspaceProvider protocol mismatch",
+        "M3: await_completion returns bare bool",
+        "M4: 2/3 readiness checks used for Claude"
+      ],
+      "minor_findings": [
+        "m1: synthetic ~/.claude.json fallback mismatch",
+        "m2: no streaming/output abstraction"
+      ],
+      "all_findings_applied": true,
+      "applied_commit": "8e4d621"
+    },
+    {
+      "id": "EXP-06",
+      "title": "fresh-agent validation of interactive-tmux provider",
+      "verdict": "go",
+      "branch_of_record": "agentprims-exp06",
+      "owner": "fresh-agent (agentprims6)",
+      "hypothesis_commit": "3df25a7",
+      "results_commit": "05d926b",
+      "duration_min": 15.25,
+      "duration_sec": 915,
+      "report_bytes": 11358,
+      "report_lines": 222,
+      "run_count": 1,
+      "paths_tested": 3,
+      "path_labels": [
+        "build",
+        "smoke test (3 agents)",
+        "python driver round-trip (3 agents)"
+      ],
+      "agent_round_trips": 6,
+      "doc_gaps_found": 4,
+      "doc_gaps_patched": 4
+    }
+  ],
+  "per_cli_driving_recipe": {
+    "claude": {
+      "submit_keys": "send-keys -l TEXT then send-keys Enter",
+      "readiness_signals": [
+        "no 'esc to interrupt' marker",
+        "prompt-empty line /^❯\\s*$/",
+        "'? for shortcuts' footer present"
+      ],
+      "init_gates": [
+        "seed ~/.claude.json with onboarding/trust/installMethod:npm-global",
+        "tmux new-session -d -x 200 -y 50"
+      ],
+      "auth_mount": [
+        "~/.claude/",
+        "~/.claude.json"
+      ],
+      "first_prompt_quirk": "none after init"
+    },
+    "codex": {
+      "submit_keys": "TEXT then C-j then C-m on first prompt",
+      "readiness_signals": [
+        "'• Working' marker absent",
+        "pane content byte-stable across N polls"
+      ],
+      "init_gates": [
+        "launch with --no-alt-screen",
+        "send '1' then Enter",
+        "send Escape once"
+      ],
+      "auth_mount": [
+        "~/.claude/"
+      ]
+    },
+    "gemini": {
+      "submit_keys": "TEXT then Enter",
+      "readiness_signals": [
+        "prompt 'Type your message or @path/to/file'"
+      ],
+      "init_gates": [
+        "security.folderTrust.enabled: false",
+        "node >= 22 base image"
+      ],
+      "auth_mount": [
+        "~/.gemini/"
+      ]
+    }
+  },
+  "friction_items": {
+    "by_agent": {
+      "claude": {
+        "config": 3,
+        "workaround_found": 4,
+        "tooling_bug": 1,
+        "docs_gap": 1,
+        "total": 9
+      },
+      "codex": {
+        "config": 1,
+        "workaround_found": 1,
+        "tooling_bug": 2,
+        "docs_gap": 1,
+        "total": 5
+      },
+      "gemini": {
+        "config": 3,
+        "workaround_found": 0,
+        "tooling_bug": 1,
+        "docs_gap": 2,
+        "total": 6
+      }
+    },
+    "totals": {
+      "config": 7,
+      "workaround_found": 5,
+      "tooling_bug": 4,
+      "docs_gap": 4,
+      "total": 20
+    }
+  },
+  "review_findings": {
+    "major": {
+      "count": 4,
+      "applied": true
+    },
+    "minor": {
+      "count": 2,
+      "applied": true
+    },
+    "blockers": 0,
+    "applied_commit": "8e4d621"
+  },
+  "fresh_agent_validation": {
+    "status": "pass",
+    "smoke": {
+      "passed": 3,
+      "total": 3
+    },
+    "python_driver": {
+      "passed": 3,
+      "total": 3
+    },
+    "total_round_trips": 6,
+    "doc_gaps_found": 4,
+    "doc_gaps_patched": 4,
+    "markers": [
+      "● SMOKE-CLAUDE-2705074",
+      "• SMOKE-CODEX-2705074",
+      "✦ SMOKE-GEMINI-2705074",
+      "● EXP06-PY-CLAUDE",
+      "• EXP06-PY-CODEX",
+      "✦ EXP06-PY-GEMINI"
+    ]
+  },
+  "budget": {
+    "claude_weekly": {
+      "start": 93,
+      "end": 78,
+      "burn": 15
+    },
+    "codex_weekly": {
+      "start": 63,
+      "end": 57,
+      "burn": 6
+    },
+    "codex_spark_weekly": {
+      "start": 61,
+      "end": 36,
+      "burn": 25
+    },
+    "gemini_pro": {
+      "start": 100,
+      "end": 7,
+      "burn": 93
+    },
+    "gemini_flash": {
+      "start": 100,
+      "end": 96,
+      "burn": 4
+    }
+  },
+  "provider_inventory": {
+    "path": "providers/workspaces/interactive-tmux",
+    "file_count": 16,
+    "runs_file_count": 10,
+    "files": {
+      "Dockerfile": 114,
+      "manifest.yaml": 130,
+      "README.md": 274,
+      "driver/__init__.py": 9,
+      "driver/interactive_tmux.py": 1064,
+      "scripts/entrypoint.sh": 41,
+      "scripts/smoke.sh": 82,
+      "scripts/smoke_provider_adapter.py": 201
+    },
+    "total_loc": 1915,
+    "runtime_artifacts": [
+      "smoke output logs",
+      "post-review smoke logs",
+      "adapter smoke log"
+    ]
+  },
+  "branch_commit_counts_since_base": {
+    "agentprims-exp02": 8,
+    "agentprims-exp03": 7,
+    "agentprims-exp05": 4,
+    "agentprims-exp06": 4,
+    "agentprims-lab": 9,
+    "ntm/agentprims/cc_1": 2
+  },
+  "author_commit_counts_since_base": {
+    "agentprims-exp02": {
+      "NeuralEmpowerment": 8
+    },
+    "agentprims-exp03": {
+      "NeuralEmpowerment": 7
+    },
+    "agentprims-exp05": {
+      "NeuralEmpowerment": 4
+    },
+    "agentprims-exp06": {
+      "NeuralEmpowerment": 4
+    },
+    "agentprims-lab": {
+      "NeuralEmpowerment": 9
+    },
+    "ntm/agentprims/cc_1": {
+      "NeuralEmpowerment": 2
+    }
+  }
+}

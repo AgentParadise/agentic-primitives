@@ -1,0 +1,15 @@
+ ▝▜▄     Gemini CLI v0.46.0
+   ▝▜▄
+  ▗▟▀    Signed in with Google /auth
+ ▝▀      Plan: Gemini Code Assist in Google One AI Pro /upgrade
+
+ > Reply only with: SMOKE-GEMINI-EXAMPLE
+
+✦ SMOKE-GEMINI-EXAMPLE
+
+                                                                                                                                                                                        ? for shortcuts
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Shift+Tab to accept edits                                                                                                                                                                 1 MCP server
+ >   Type your message or @path/to/file
+ workspace (/directory)                                                   sandbox                                                     /model                                                      quota
+ /workspace                                                               no sandbox                                                  Auto                                                     38% used

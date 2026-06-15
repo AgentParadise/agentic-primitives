@@ -1,0 +1,20 @@
+╭─────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.139.0)              │
+│                                         │
+│ model:       gpt-5.5   /model to change │
+│ directory:   /workspace                 │
+│ permissions: YOLO mode                  │
+╰─────────────────────────────────────────╯
+
+  Tip: Use /feedback to send logs to the maintainers when something looks off.
+
+
+› Reply only with: SMOKE-CODEX-EXAMPLE
+
+
+• SMOKE-CODEX-EXAMPLE
+
+
+› Explain this codebase
+
+  gpt-5.5 default · /workspace
