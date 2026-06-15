@@ -78,7 +78,8 @@ so an `@AGENTS.md` import loads the full AGENTS.md every session.
 The four-hop budget counts depth from the file Claude opens, and this is the
 decisive difference between the two bridges:
 
-- **Symlink:** `CLAUDE.md` *is* AGENTS.md at the filesystem level (same inode).
+- **Symlink:** `CLAUDE.md` is resolved by the filesystem to AGENTS.md (one
+  target file, reached by either name).
   Claude opens AGENTS.md as the root file (hop 0), so AGENTS.md's own `@imports`
   get the full four hops beneath it.
 - **`@AGENTS.md` import:** CLAUDE.md is the root (hop 0) and AGENTS.md is hop 1.
