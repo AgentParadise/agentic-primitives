@@ -8,10 +8,13 @@ from appearing in git commits and PR descriptions.
 See: https://github.com/AgentParadise/sandbox_aef-engineer-beta/pull/49/commits/7bdf58c38451542ef528f0cacf6a7021fa2833f1
 """
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
+
+IMAGE = os.getenv("AGENTIC_WORKSPACE_IMAGE", "agentic-workspace-claude-cli:latest")
 
 
 @pytest.mark.integration
@@ -79,7 +82,7 @@ git log -1 --pretty=format:"%B"
                 "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
                 "-v",
                 f"{test_script_path}:/tmp/setup.sh:ro",
-                "agentic-workspace-claude-cli:latest",
+                IMAGE,
                 "bash",
                 "/tmp/setup.sh",
             ],
@@ -135,7 +138,7 @@ def test_settings_json_format_current():
             "run",
             "--rm",
             "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
-            "agentic-workspace-claude-cli:latest",
+            IMAGE,
             "sh",
             "-c",
             """

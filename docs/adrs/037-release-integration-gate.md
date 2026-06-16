@@ -89,10 +89,13 @@ A broken container never gets pushed or signed. The merge is already on `main`
   available to the local Docker daemon for `docker run`; multi-arch buildx output
   is not loadable into the daemon.
 - The integration tests resolve the image via `AGENTIC_WORKSPACE_IMAGE` (default
-  `agentic-workspace-claude-cli:latest`); the gate tags its loaded build to match.
-- The gate's amd64 build and the publish job's multi-arch build share the
-  existing `type=gha` BuildKit cache, so the gate warms the publish build rather
-  than doubling cost.
+  `agentic-workspace-claude-cli:latest`); the gate builds and loads that default
+  tag.
+- The gate's build is a **separate** amd64 `docker build` (via
+  `build-provider.py`) and does **not** share the publish job's `type=gha`
+  BuildKit cache — it is an additional build, not a cache-warm of the publish
+  step. Acceptable for the safety it buys; if the extra build time matters,
+  switch `build-provider.py` to buildx with a shared `type=gha` cache.
 - Test deps come from `uv sync --all-extras` in `lib/python/agentic_isolation`
   (installs the `docker` + `dev` extras: pytest, pytest-asyncio, docker SDK).
 

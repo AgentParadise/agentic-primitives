@@ -9,9 +9,12 @@ The entrypoint is the source of truth for runtime settings because
 """
 
 import json
+import os
 import subprocess
 
 import pytest
+
+IMAGE = os.getenv("AGENTIC_WORKSPACE_IMAGE", "agentic-workspace-claude-cli:latest")
 
 
 @pytest.mark.integration
@@ -29,7 +32,7 @@ def test_entrypoint_enables_lsp_plugins():
             "run",
             "--rm",
             "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
-            "agentic-workspace-claude-cli:latest",
+            IMAGE,
             "cat",
             "/home/agent/.claude/settings.json",
         ],
@@ -78,7 +81,7 @@ def test_lifecycle_hooks_declared_by_plugins():
             "docker",
             "run",
             "--rm",
-            "agentic-workspace-claude-cli:latest",
+            IMAGE,
             "cat",
             "/opt/agentic/plugins/observability/hooks/hooks.json",
         ],
@@ -122,7 +125,7 @@ def test_entrypoint_creates_cargo_home():
             "run",
             "--rm",
             "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
-            "agentic-workspace-claude-cli:latest",
+            IMAGE,
             "sh",
             "-c",
             "test -d ~/.cargo && test -w ~/.cargo && echo 'writable'",
