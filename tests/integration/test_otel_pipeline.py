@@ -107,9 +107,12 @@ class TestWorkspaceImage:
         assert "ok" in result.stdout
 
     def test_hooks_installed(self, workspace_image: str):
-        """Verify hooks are installed at /opt/agentic/hooks."""
+        """Verify hooks ship plugin-natively (ADR-033/034): since the v3
+        plugin-native image, handlers live inside their plugin rather than a
+        top-level /opt/agentic/hooks; the sdlc plugin carries pre-tool-use.py."""
+        handlers_dir = "/opt/agentic/plugins/sdlc/hooks/handlers/"
         result = subprocess.run(
-            ["docker", "run", "--rm", workspace_image, "ls", "-la", "/opt/agentic/hooks/handlers/"],
+            ["docker", "run", "--rm", workspace_image, "ls", "-la", handlers_dir],
             capture_output=True,
             text=True,
         )

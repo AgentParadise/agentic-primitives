@@ -63,22 +63,24 @@ def test_entrypoint_enables_lsp_plugins():
 
 
 @pytest.mark.integration
-def test_entrypoint_settings_has_hooks():
+def test_lifecycle_hooks_declared_by_plugins():
     """
-    Test that the entrypoint creates settings.json with hooks configured.
+    Test that the workspace's lifecycle hooks are declared plugin-natively.
 
-    This ensures the hooks section is present and contains the expected
-    lifecycle hooks (PreToolUse, PostToolUse, etc.).
+    Since the v3 plugin-native image (ADR-033/034), hooks are no longer
+    injected into ~/.claude/settings.json by the entrypoint; each plugin
+    ships its own hooks/hooks.json. The observability plugin declares the
+    full lifecycle set, so this verifies the hooks the workspace relies on
+    are wired into the image.
     """
     result = subprocess.run(
         [
             "docker",
             "run",
             "--rm",
-            "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
             "agentic-workspace-claude-cli:latest",
             "cat",
-            "/home/agent/.claude/settings.json",
+            "/opt/agentic/plugins/observability/hooks/hooks.json",
         ],
         capture_output=True,
         text=True,
@@ -87,9 +89,8 @@ def test_entrypoint_settings_has_hooks():
 
     assert result.returncode == 0, f"Container failed: {result.stderr}"
 
-    settings = json.loads(result.stdout.strip())
-
-    assert "hooks" in settings, "Missing 'hooks' in settings.json"
+    config = json.loads(result.stdout.strip())
+    hooks = config.get("hooks", {})
 
     expected_hooks = [
         "PreToolUse",
@@ -101,9 +102,9 @@ def test_entrypoint_settings_has_hooks():
     ]
 
     for hook in expected_hooks:
-        assert hook in settings["hooks"], (
-            f"Missing '{hook}' in settings.json hooks. "
-            f"Found: {list(settings['hooks'].keys())}"
+        assert hook in hooks, (
+            f"Missing '{hook}' in observability plugin hooks.json. "
+            f"Found: {list(hooks.keys())}"
         )
 
 
@@ -141,6 +142,6 @@ def test_entrypoint_creates_cargo_home():
 if __name__ == "__main__":
     print("Running entrypoint LSP settings tests...")
     test_entrypoint_enables_lsp_plugins()
-    test_entrypoint_settings_has_hooks()
+    test_lifecycle_hooks_declared_by_plugins()
     test_entrypoint_creates_cargo_home()
     print("\nAll entrypoint settings tests passed!")
