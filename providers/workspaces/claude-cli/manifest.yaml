@@ -4,7 +4,7 @@
 # See ADR-027: Provider-Based Workspace Images
 
 name: claude-cli
-version: "1.1.0"
+version: "1.1.1"
 description: Claude CLI workspace with native OpenTelemetry support
 
 # Image build configuration

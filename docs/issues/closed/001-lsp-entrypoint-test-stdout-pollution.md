@@ -38,3 +38,21 @@ Option 1 is the right fix; would also help any orchestrator that parses CMD stdo
 
 - Entrypoint script: `providers/workspaces/claude-cli/scripts/entrypoint.sh`
 - Pre-existing failing tests: `tests/integration/test_entrypoint_lsp_settings.py`
+
+## Resolution
+
+Fixed via Option 1 (the recommended fix) on branch `feat/release-integration-gate` (PR #208):
+
+- `providers/workspaces/claude-cli/scripts/entrypoint.sh`: routed the four
+  informational `[entrypoint] …` log lines (plugin discovery, git-hooks
+  composed, memory adapter, memory doctor pass) to stderr, so a `docker run …
+  cat <file>` invocation returns clean CMD stdout.
+- `tests/integration/test_entrypoint_lsp_settings.py`: `test_entrypoint_enables_lsp_plugins`
+  now parses cleanly; `test_entrypoint_settings_has_hooks` was rewritten as
+  `test_lifecycle_hooks_declared_by_plugins` (hooks moved from settings.json to
+  plugin-native `hooks.json` under ADR-033/034).
+- `tests/integration/test_otel_pipeline.py::test_hooks_installed`: updated to the
+  plugin-native handler path `/opt/agentic/plugins/sdlc/hooks/handlers/`.
+
+The full `tests/integration/` suite passes (28 passed, 6 skipped) and now runs
+in CI via the publish-blocking integration gate (ADR-037).

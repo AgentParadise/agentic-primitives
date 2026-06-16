@@ -79,7 +79,7 @@ if [ -d "$PLUGINS_DIR" ]; then
         if [ -f "${plugin_dir}.claude-plugin/plugin.json" ]; then
             plugin_name=$(basename "$plugin_dir")
             PLUGIN_FLAGS="${PLUGIN_FLAGS} --plugin-dir ${plugin_dir%/}"
-            echo "[entrypoint] Discovered plugin: ${plugin_name}"
+            echo "[entrypoint] Discovered plugin: ${plugin_name}" >&2
         fi
     done
 fi
@@ -141,7 +141,7 @@ done
 
 if [ -n "$(ls -A "${GIT_HOOKS_DIR}" 2>/dev/null)" ]; then
     git config --global core.hooksPath "${GIT_HOOKS_DIR}"
-    echo "[entrypoint] Workspace git hooks composed at ${GIT_HOOKS_DIR}"
+    echo "[entrypoint] Workspace git hooks composed at ${GIT_HOOKS_DIR}" >&2
 fi
 
 # Also set committer identity (git uses both for commits)
@@ -311,7 +311,7 @@ if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "n
     else
         AGENTIC_MEMORY_ADAPTER="/opt/agentic/memory/${AGENTIC_MEMORY_PROVIDER}/init.sh"
         if [ -f "${AGENTIC_MEMORY_ADAPTER}" ]; then
-            echo "[entrypoint] memory adapter: ${AGENTIC_MEMORY_PROVIDER}"
+            echo "[entrypoint] memory adapter: ${AGENTIC_MEMORY_PROVIDER}" >&2
             # shellcheck disable=SC1090
             if . "${AGENTIC_MEMORY_ADAPTER}"; then
                 export AGENTIC_MEMORY_READY=1
@@ -340,7 +340,7 @@ if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "n
     # Run the doctor. Pretty output → stderr (always shown). JSON → audit log
     # (appended). Exit non-zero = workspace stops.
     if /opt/agentic/memory/doctor --json >> "${AGENTIC_MEMORY_AUDIT_FILE}"; then
-        echo "[entrypoint] memory doctor: pass (audit: ${AGENTIC_MEMORY_AUDIT_FILE})"
+        echo "[entrypoint] memory doctor: pass (audit: ${AGENTIC_MEMORY_AUDIT_FILE})" >&2
     else
         echo "[entrypoint] memory doctor: FAIL (audit: ${AGENTIC_MEMORY_AUDIT_FILE})" >&2
         echo "[entrypoint] Unset AGENTIC_MEMORY_PROVIDER to bypass the memory contract entirely." >&2
