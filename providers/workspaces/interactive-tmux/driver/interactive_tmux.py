@@ -44,9 +44,11 @@ as a CLI (`python -m interactive_tmux`).
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import os
+import posixpath
 import re
 import shlex
 import shutil
@@ -58,7 +60,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +142,61 @@ class StartupReadinessError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
+# Executor seam (Phase 2, ADR-driven docker-out-of-docker fix)
+#
+# Every tmux operation (send-keys, capture-pane) and every credential-seeding
+# file write ultimately needs to run a command *inside* the workspace
+# container. Historically that meant `subprocess.run(["docker", "exec", ...])`
+# sprinkled through this module. `CommandExecutor` pulls that behind a small
+# Protocol so:
+#   1. tests can inject a fake executor instead of monkeypatching subprocess
+#      at the module level;
+#   2. a future transport (E2B, a remote agent, ...) can implement the same
+#      three-method surface without touching the tmux/adapter logic above.
+# `DockerExecExecutor` is the only implementation today and preserves the
+# exact `docker exec <container> <command...>` behavior this module always
+# had.
+
+
+@dataclass
+class ExecResult:
+    """Result of running one command inside a workspace container."""
+
+    exit_code: int
+    stdout: str
+    stderr: str
+
+
+@runtime_checkable
+class CommandExecutor(Protocol):
+    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult: ...
+
+
+@dataclass
+class DockerExecExecutor:
+    """Default `CommandExecutor`: shells out to `docker exec <container> ...`.
+
+    Behavior-preserving extraction of what `_docker_exec` always did; the
+    only new capability is `timeout_s`, forwarded to `subprocess.run(...,
+    timeout=...)` so a hung `docker exec` can't block forever (a bare
+    `subprocess.run` with no timeout blocks indefinitely on a wedged
+    container).
+    """
+
+    container: str
+
+    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
+        cmd = ["docker", "exec", self.container, *command]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+        return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+
+
+# ---------------------------------------------------------------------------
 # tmux send-keys helpers (the only place that talks to docker exec tmux)
 
 
@@ -173,8 +230,29 @@ def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess
     )
 
 
-def _docker_exec(container: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return _run(["docker", "exec", container, *args], check=check)
+def _docker_exec(
+    container: str,
+    *args: str,
+    check: bool = True,
+    executor: CommandExecutor | None = None,
+) -> subprocess.CompletedProcess:
+    """Run `docker exec <container> <args...>`, via `executor` if given.
+
+    Defaults to constructing a fresh `DockerExecExecutor(container)` so
+    every existing call site (which doesn't know about the executor seam)
+    behaves exactly as before. Returns a `subprocess.CompletedProcess` for
+    backward compatibility with callers that inspect `.stdout` /
+    `.returncode`.
+    """
+    cmd = ["docker", "exec", container, *args]
+    logger.debug("exec: %s", _redact_cmd(cmd))
+    exec_ = executor or DockerExecExecutor(container)
+    result = exec_.exec(list(args))
+    if check and result.exit_code != 0:
+        raise subprocess.CalledProcessError(
+            result.exit_code, cmd, result.stdout, result.stderr
+        )
+    return subprocess.CompletedProcess(cmd, result.exit_code, result.stdout, result.stderr)
 
 
 def _tmux_send_keys(container: str, window: str, *keys: str) -> None:
@@ -670,6 +748,103 @@ def _chown_recursive(path: Path, uid: int, gid: int) -> None:
         _chown_path(sub, uid, gid)
 
 
+def _run_exec_checked(
+    executor: CommandExecutor,
+    command: list[str],
+    *,
+    timeout_s: float | None = None,
+) -> ExecResult:
+    """`executor.exec(command)`, raising `RuntimeError` on non-zero exit.
+
+    Credential transfer is not optional best-effort work — a silently
+    failed `mkdir -p` or base64 write leaves the container half-seeded
+    with auth material, which is worse than failing loudly at
+    `start_workspace` time.
+    """
+    result = executor.exec(command, timeout_s=timeout_s)
+    if result.exit_code != 0:
+        raise RuntimeError(
+            f"container command failed (exit {result.exit_code}): {command!r}\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+    return result
+
+
+def _write_bytes_to_container(
+    executor: CommandExecutor,
+    container_path: str,
+    data: bytes,
+    *,
+    chunk_size: int = 6000,
+) -> None:
+    """Write `data` into `container_path` inside the container over `executor`.
+
+    Replaces host bind-mounting of credential material (the docker-out-of-
+    docker fix): instead of `-v host:container` at `docker run` time, the
+    file's bytes are base64-encoded and pushed in over `docker exec` in
+    `chunk_size`-sized pieces (tmux's ~16KB send-keys ceiling doesn't apply
+    here, but keeping writes chunked avoids hitting exec/argv length limits
+    on very large credential files). Each chunk is base64 so arbitrary
+    bytes (including newlines/binary) survive the `sh -c` round-trip.
+    """
+    parent = posixpath.dirname(container_path)
+    if parent:
+        _run_exec_checked(executor, ["mkdir", "-p", parent])
+    quoted_path = shlex.quote(container_path)
+    # Truncate/create the destination before appending chunks so a re-run
+    # (or a shorter payload than a stale prior write) doesn't leave trailing
+    # garbage from an earlier attempt.
+    _run_exec_checked(executor, ["sh", "-c", f"> {quoted_path}"])
+    encoded = base64.b64encode(data).decode("ascii")
+    for start in range(0, len(encoded), chunk_size):
+        chunk = encoded[start : start + chunk_size]
+        cmd = f"printf '%s' {shlex.quote(chunk)} | base64 -d >> {quoted_path}"
+        _run_exec_checked(executor, ["sh", "-c", cmd])
+
+
+def _transfer_path_to_container(
+    executor: CommandExecutor,
+    host_path: Path,
+    container_path: str,
+) -> None:
+    """Copy a host file or directory tree into the container over `executor`.
+
+    Mirrors what a `-v host_path:container_path` bind mount used to provide,
+    but works when the driver itself runs inside a container (the host
+    path the caller staged files into is invisible to a sibling `docker
+    run -v`, but `docker exec` into the *target* container always works).
+    """
+    if host_path.is_dir():
+        for root, _dirs, files in os.walk(host_path):
+            rel_root = Path(root).relative_to(host_path)
+            for fname in files:
+                src = Path(root) / fname
+                rel = fname if rel_root == Path(".") else f"{rel_root.as_posix()}/{fname}"
+                dst = f"{container_path.rstrip('/')}/{rel}"
+                _write_bytes_to_container(executor, dst, src.read_bytes())
+    else:
+        _write_bytes_to_container(executor, container_path, host_path.read_bytes())
+
+
+def _secure_container_path(
+    executor: CommandExecutor,
+    container_path: str,
+    *,
+    is_dir: bool,
+) -> None:
+    """chown the transferred path to the in-container agent user (uid/gid
+    1000) and lock file permissions to 0600 — mirrors what the host-side
+    `_chown_recursive` / `os.chmod(..., 0o600)` calls used to guarantee
+    before the bind-mount path was removed.
+    """
+    quoted = shlex.quote(container_path)
+    if is_dir:
+        cmd = f"chown -R 1000:1000 {quoted} && find {quoted} -type f -exec chmod 600 {{}} +"
+    else:
+        cmd = f"chown 1000:1000 {quoted} && chmod 600 {quoted}"
+    _run_exec_checked(executor, ["sh", "-c", cmd])
+
+
 def _build_seeded_claude_dotjson(host_dotjson: Path, workspace_path: str) -> dict:
     """Build the synthetic ~/.claude.json the container should see.
 
@@ -742,6 +917,18 @@ class InteractiveTmuxWorkspace:
     # by `_bootstrap_tmux_and_launch` when it calls each adapter's
     # `launch_in_window`. Lists of pathlib.Path values.
     _launch_extras: dict[str, list[Path]] = field(default_factory=dict)
+
+    # Phase 2 executor seam: the `CommandExecutor` used for this workspace's
+    # container. Defaults to a `DockerExecExecutor(self.container)` in
+    # `__post_init__` when not supplied — every existing caller (including
+    # `_load_workspace`, which never knew about executors) gets identical
+    # behavior. Injectable so tests (and future non-docker transports) don't
+    # need to monkeypatch subprocess/docker.
+    executor: CommandExecutor | None = None
+
+    def __post_init__(self) -> None:
+        if self.executor is None:
+            self.executor = DockerExecExecutor(self.container)
 
     # -----------------------------------------------------------------------
     # Lifecycle
@@ -843,7 +1030,16 @@ class InteractiveTmuxWorkspace:
             if not enabled:
                 raise ValueError("start_workspace called with no enabled agents (host_auth empty)")
 
-            # Run the container with bind mounts (each mount is a -v arg).
+            # Run the container WITHOUT credential bind mounts (Phase 2:
+            # docker-out-of-docker fix). Bind-mounting `-v host:container`
+            # requires the *outer* docker daemon to resolve `host` on its
+            # own filesystem — that breaks when this driver itself runs
+            # inside a container, where the throwaway staging dir is only
+            # visible to the driver's own mount namespace, not the sibling
+            # daemon's. Instead, credentials are pushed into the running
+            # container below via `docker exec` (see `_transfer_path_to_
+            # container`), which always targets the right container
+            # regardless of where the driver process lives.
             run_cmd = [
                 "docker",
                 "run",
@@ -852,11 +1048,18 @@ class InteractiveTmuxWorkspace:
                 container,
                 "--workdir",
                 workdir,
+                image,
+                "sleep",
+                "infinity",
             ]
-            for host_path, container_path in all_mounts:
-                run_cmd.extend(["-v", f"{host_path}:{container_path}"])
-            run_cmd.extend([image, "sleep", "infinity"])
             _run(run_cmd)
+
+            # Container is up; transfer each prepared credential file/dir
+            # into it over the executor seam instead of bind-mounting.
+            executor: CommandExecutor = DockerExecExecutor(container)
+            for host_path, container_path in all_mounts:
+                _transfer_path_to_container(executor, host_path, container_path)
+                _secure_container_path(executor, container_path, is_dir=host_path.is_dir())
         except Exception:
             # Best-effort: `docker run -d` can fail after the container is
             # created (e.g. start failure), so remove it too.
@@ -877,6 +1080,7 @@ class InteractiveTmuxWorkspace:
             tmux_size=tmux_size,
             host_throwaway_dir=host_throwaway_dir,
             enabled_agents=tuple(enabled),
+            executor=executor,
         )
         # Per-agent launch options. Today only claude has plugin-dir
         # support; codex/gemini ignore the kwarg with `del plugin_dirs`.
