@@ -10,7 +10,7 @@ This adapter bridges them:
 
   * `create()`  → `InteractiveTmuxWorkspace.start_workspace(...)`
                   (the running container exposes claude/codex/gemini panes
-                  via the underlying `_handle` for orchestration code that
+                  via `interactive_session()` for orchestration code that
                   wants direct access).
   * `destroy()` → `InteractiveTmuxWorkspace.stop()`
   * `execute()`, `read_file()`, `write_file()`, `file_exists()`
@@ -20,8 +20,10 @@ This adapter bridges them:
                   uses, returning a proper `ExecuteResult` so call sites
                   that already speak the protocol need no translation.
 
-The richer prompt round-trip API (send/await/capture) stays available on
-the underlying workspace via `workspace._handle: InteractiveTmuxWorkspace`.
+The richer prompt round-trip API (send/await/capture) is exposed as a
+typed `agentic_isolation.providers.base.InteractiveSession` port via
+`provider.interactive_session(workspace)` (structurally satisfied by the
+underlying `InteractiveTmuxWorkspace` handle -- no wrapper class needed).
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ from agentic_isolation.config import WorkspaceConfig
 from agentic_isolation.providers.base import (
     BaseProvider,
     ExecuteResult,
+    InteractiveSession,
     Workspace,
 )
 
@@ -181,11 +184,11 @@ class InteractiveTmuxProvider(BaseProvider):
         await provider.destroy(workspace)
 
     To reach the underlying claude/codex/gemini panes for prompt
-    round-trips, pull the driver workspace off the handle:
-        ws: InteractiveTmuxWorkspace = workspace._handle
-        ws.send_message("claude", "hello")
-        result: AwaitResult = ws.await_completion("claude")
-        print(ws.capture_response("claude"))
+    round-trips, get the typed `InteractiveSession` port:
+        session = provider.interactive_session(workspace)
+        session.send_message("claude", "hello")
+        result = session.await_completion("claude")
+        print(session.capture_response("claude"))
     """
 
     def __init__(
@@ -358,6 +361,18 @@ class InteractiveTmuxProvider(BaseProvider):
         # `docker rm -f` to return spurious non-zero exit codes from
         # an executor thread. Stop is fast (<2s).
         ws_handle.stop()
+
+    def interactive_session(self, workspace: Workspace) -> InteractiveSession | None:
+        """Return the `InteractiveSession` port for `workspace`.
+
+        The underlying driver's `InteractiveTmuxWorkspace` handle already
+        exposes `send_message`/`await_completion`/`capture_response` with
+        signatures compatible with `InteractiveSession`; structural typing
+        means it satisfies the protocol as-is, so no wrapper is needed.
+        Returns `None` if the workspace has no live handle (e.g. already
+        destroyed).
+        """
+        return workspace._handle
 
     async def execute(
         self,

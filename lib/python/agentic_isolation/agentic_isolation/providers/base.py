@@ -45,6 +45,53 @@ class ExecuteResult:
 
 
 @dataclass
+class AwaitResult:
+    """Result of waiting for an interactive agent pane to reach a
+    ready/idle state.
+
+    This mirrors (field-for-field) the `AwaitResult` dataclass defined in
+    the standalone interactive-tmux driver
+    (`providers/workspaces/interactive-tmux/driver/interactive_tmux.py`).
+    It is defined fresh here rather than imported so that
+    `agentic_isolation` never needs the driver to be importable (the
+    driver is stdlib-only and lives outside this package).
+
+      - timed_out=True, ready=False         -> deadline hit before idle
+      - ready=False, reason="never_ready"   -> never reached even one ready frame
+      - ready=False, reason="unstable"      -> ready frames seen but pane kept changing
+      - ready=True                          -> adapter is_ready() held stable
+
+    `pane` carries the last captured pane text so callers don't have to
+    re-capture to inspect post-mortem.
+    """
+
+    ready: bool
+    timed_out: bool
+    reason: str
+    duration_ms: float
+    stable_polls_observed: int
+    pane: str = ""
+    error: str | None = None
+
+    @property
+    def success(self) -> bool:
+        """Whether the agent reached a stable ready state."""
+        return self.ready
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "ready": self.ready,
+            "timed_out": self.timed_out,
+            "reason": self.reason,
+            "duration_ms": self.duration_ms,
+            "stable_polls_observed": self.stable_polls_observed,
+            "pane": self.pane,
+            "error": self.error,
+        }
+
+
+@dataclass
 class Workspace:
     """Represents an active isolated workspace."""
 
@@ -178,6 +225,48 @@ class WorkspaceProvider(Protocol):
         ...
 
 
+@runtime_checkable
+class InteractiveSession(Protocol):
+    """Typed port for driving an interactive, prompt-based agent session
+    (e.g. a tmux-driven claude/codex/gemini TUI running in a container).
+
+    This is a structural protocol: any object exposing these three
+    methods with compatible signatures satisfies it, including the
+    driver's `InteractiveTmuxWorkspace` instance today (no wrapper class
+    needed). It exists so consumers can type against a stable port
+    instead of reaching into a provider-specific `Workspace._handle: Any`.
+    """
+
+    def send_message(self, agent: str, text: str) -> None:
+        """Send a message/prompt to the named agent's pane."""
+        ...
+
+    def await_completion(
+        self,
+        agent: str,
+        *,
+        timeout: float = 60.0,
+        stable_polls: int = 4,
+        poll_interval: float = 0.5,
+    ) -> AwaitResult:
+        """Block until the named agent's pane reaches a stable ready state.
+
+        Args:
+            agent: Agent name (e.g. "claude", "codex", "gemini").
+            timeout: Overall deadline in seconds.
+            stable_polls: Number of consecutive "ready" polls required.
+            poll_interval: Seconds between polls.
+
+        Returns:
+            AwaitResult describing whether/how readiness was reached.
+        """
+        ...
+
+    def capture_response(self, agent: str) -> str:
+        """Capture the current response text from the named agent's pane."""
+        ...
+
+
 class BaseProvider(ABC):
     """Abstract base class for workspace providers.
 
@@ -240,6 +329,16 @@ class BaseProvider(ABC):
     ) -> bool:
         """Check if file exists."""
         ...
+
+    def interactive_session(self, workspace: Workspace) -> InteractiveSession | None:
+        """Return an `InteractiveSession` port for `workspace`, if supported.
+
+        Default implementation returns `None`: most providers (docker,
+        local) don't support interactive prompt round-trips. Providers
+        that do (e.g. `InteractiveTmuxProvider`) should override this to
+        return an object satisfying the `InteractiveSession` protocol.
+        """
+        return None
 
     @staticmethod
     async def _terminate_process(proc: asyncio.subprocess.Process) -> None:

@@ -12,7 +12,9 @@ Available providers:
 from typing import TYPE_CHECKING, Any
 
 from agentic_isolation.providers.base import (
+    AwaitResult,
     ExecuteResult,
+    InteractiveSession,
     Workspace,
     WorkspaceProvider,
 )
@@ -46,6 +48,8 @@ __all__ = [
     "WorkspaceProvider",
     "Workspace",
     "ExecuteResult",
+    "InteractiveSession",
+    "AwaitResult",
     # Providers
     "WorkspaceLocalProvider",
     "WorkspaceDockerProvider",
