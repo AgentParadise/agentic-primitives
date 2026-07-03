@@ -425,6 +425,133 @@ def _pane_tail(pane_text: str, n_lines: int = DEFAULT_TMUX_SIZE[1]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# TmuxSession (Phase 4: agent-agnostic session/window handle)
+#
+# Everything above this point (`_tmux_send_keys`, `_tmux_send_literal`,
+# `_tmux_capture`) is already agent-agnostic — it operates on a
+# `(container, window)` pair with no claude/codex/gemini knowledge. Before
+# Phase 4, that genericity was implicit: callers reached for the bare
+# functions directly. `TmuxSession` makes it an explicit, reusable handle so
+# a 4th agent adapter can be built on top of it without touching this class,
+# and so `InteractiveTmuxWorkspace` has one object per enabled agent to hold
+# session state (rather than re-threading `container`/`window`/`executor`
+# through every call). Must not reference any agent name — only generic
+# pane/window operations, all routed through the injected `CommandExecutor`.
+
+
+@dataclass
+class TmuxSession:
+    """One tmux window inside the shared `TMUX_SESSION`, agent-agnostic.
+
+    Thin, stateless-except-for-identity wrapper around the module-level
+    `_tmux_send_keys` / `_tmux_send_literal` / `_tmux_capture` / `_docker_exec`
+    helpers. Deliberately delegates to those free functions (rather than
+    reimplementing their logic) so:
+      1. existing tests that monkeypatch the module-level functions keep
+         working unchanged whether a caller goes through `TmuxSession` or
+         calls the free functions directly;
+      2. Phase 2/3 behavior (executor injection, timeouts, payload batching)
+         is inherited for free instead of duplicated.
+    """
+
+    container: str
+    window: str
+    executor: CommandExecutor
+
+    def start(
+        self,
+        cols: int,
+        rows: int,
+        *,
+        as_new_window: bool = False,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
+        """Create this window: a new tmux session (first agent) or a new
+        window in the existing session (subsequent agents)."""
+        if as_new_window:
+            _docker_exec(
+                self.container,
+                "tmux",
+                "new-window",
+                "-t",
+                TMUX_SESSION,
+                "-n",
+                self.window,
+                executor=self.executor,
+                timeout_s=timeout_s,
+            )
+        else:
+            _docker_exec(
+                self.container,
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                TMUX_SESSION,
+                "-n",
+                self.window,
+                "-x",
+                str(cols),
+                "-y",
+                str(rows),
+                executor=self.executor,
+                timeout_s=timeout_s,
+            )
+
+    def stop(self, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
+        """Best-effort kill of this window. Non-fatal: tearing down the
+        container (the workspace-level `stop()`) removes the window anyway;
+        this exists for callers that want to retire one agent's pane
+        without stopping the whole workspace."""
+        target = f"{TMUX_SESSION}:{self.window}"
+        _docker_exec(
+            self.container,
+            "tmux",
+            "kill-window",
+            "-t",
+            target,
+            executor=self.executor,
+            check=False,
+            timeout_s=timeout_s,
+        )
+
+    def send_keys(self, *keys: str, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
+        _tmux_send_keys(self.container, self.window, *keys, executor=self.executor, timeout_s=timeout_s)
+
+    def send_literal(self, text: str, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
+        _tmux_send_literal(self.container, self.window, text, executor=self.executor, timeout_s=timeout_s)
+
+    def capture_pane(self, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> str:
+        return _tmux_capture(self.container, self.window, executor=self.executor, timeout_s=timeout_s)
+
+    def get_incremental_output(
+        self,
+        previous: str | None,
+        *,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> tuple[str, str]:
+        """Return `(new_text, full_pane)` for this window.
+
+        `new_text` is the substring diff against `previous` (an earlier
+        `capture_pane()`/`get_incremental_output()` result) when the current
+        capture starts with it — the common case, since tmux scrollback only
+        grows. When it doesn't (pane was cleared, history rolled off the
+        scrollback limit, or `previous` is falsy), `new_text` falls back to
+        the full current capture rather than guessing at a diff.
+        """
+        current = self.capture_pane(timeout_s=timeout_s)
+        if previous and current.startswith(previous):
+            return current[len(previous) :], current
+        return current, current
+
+    def is_alive(self, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> bool:
+        """Whether the shared tmux session (not just this window) is still
+        reachable inside the container."""
+        result = self.executor.exec(["tmux", "has-session", "-t", TMUX_SESSION], timeout_s=timeout_s)
+        return result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
 # Per-agent adapters
 #
 # Each adapter is responsible for:
@@ -850,6 +977,14 @@ _ADAPTERS = {
     "codex": _CodexAdapter,
     "gemini": _GeminiAdapter,
 }
+# Phase 4: `_ADAPTERS` is the registry a 4th agent joins by registering an
+# adapter object here — no edits to `TmuxSession` (which knows nothing about
+# any agent name) or to the workspace's dispatch logic are needed. Adapters
+# sit ON TOP of `TmuxSession`: they encode submit/readiness heuristics and
+# receive a plain `container` + `executor` (matching their existing static
+# method signatures, preserved for backward compatibility with callers/tests
+# that invoke them directly), while `InteractiveTmuxWorkspace` holds one
+# `TmuxSession` per enabled agent for generic pane operations.
 
 
 # ---------------------------------------------------------------------------
@@ -1058,9 +1193,23 @@ class InteractiveTmuxWorkspace:
     # need to monkeypatch subprocess/docker.
     executor: CommandExecutor | None = None
 
+    # Phase 4: one agent-agnostic `TmuxSession` per enabled agent, built in
+    # `__post_init__`. `send_message`/`await_completion`/`capture_response`
+    # and the startup-wait loop delegate their pane operations here instead
+    # of re-deriving `(container, window, executor)` inline; adapter submit
+    # patterns (still keyed by agent) stay separate since they're agent-
+    # specific, not generic tmux operations. Excluded from `repr`/equality —
+    # it's a derived cache, not part of the workspace's identity.
+    _sessions: dict[str, TmuxSession] = field(default_factory=dict, repr=False, compare=False)
+
     def __post_init__(self) -> None:
         if self.executor is None:
             self.executor = DockerExecExecutor(self.container)
+        self._sessions = {
+            agent: TmuxSession(container=self.container, window=_ADAPTERS[agent].window, executor=self.executor)
+            for agent in self.enabled_agents
+            if agent in _ADAPTERS
+        }
 
     # -----------------------------------------------------------------------
     # Lifecycle
@@ -1147,7 +1296,10 @@ class InteractiveTmuxWorkspace:
         # `docker run` (or a bad host auth dir) leaks staged auth material
         # under /tmp.
         try:
-            for agent in AGENTS:
+            # Phase 4: iterate the adapter registry (not the closed `AGENTS`
+            # tuple) so a 4th agent becomes enable-able purely by registering
+            # its adapter in `_ADAPTERS`, without editing this loop.
+            for agent in _ADAPTERS:
                 adapter = _ADAPTERS[agent]
                 src = host_auth.get(agent)
                 if src is None:
@@ -1240,31 +1392,10 @@ class InteractiveTmuxWorkspace:
         cols, rows = self.tmux_size
         first = self.enabled_agents[0]
         # Create the session with the first agent's window name.
-        _docker_exec(
-            self.container,
-            "tmux",
-            "new-session",
-            "-d",
-            "-s",
-            TMUX_SESSION,
-            "-n",
-            first,
-            "-x",
-            str(cols),
-            "-y",
-            str(rows),
-        )
+        self._sessions[first].start(cols, rows)
         # Create additional windows for the rest.
         for agent in self.enabled_agents[1:]:
-            _docker_exec(
-                self.container,
-                "tmux",
-                "new-window",
-                "-t",
-                TMUX_SESSION,
-                "-n",
-                agent,
-            )
+            self._sessions[agent].start(cols, rows, as_new_window=True)
 
         # Launch each agent's CLI in its window, then wait until each pane
         # reports `is_started()` (M1 cross-review fix). Each adapter
@@ -1296,12 +1427,13 @@ class InteractiveTmuxWorkspace:
     def _wait_for_started(self, agent: str, timeout_s: float) -> AwaitResult:
         """Block until `agent`'s pane reports `is_started()`, or timeout."""
         adapter = _ADAPTERS[agent]
+        session = self._sessions[agent]
         start = time.monotonic()
         deadline = start + timeout_s
         pane = ""
         while time.monotonic() < deadline:
             try:
-                pane = _tmux_capture(self.container, adapter.window, executor=self.executor)
+                pane = session.capture_pane()
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 # Phase 3: a single wedged/failed capture during startup
                 # polling must not abort the whole wait — keep polling
@@ -1412,6 +1544,7 @@ class InteractiveTmuxWorkspace:
         """
         self._check_agent(agent)
         adapter = _ADAPTERS[agent]
+        session = self._sessions[agent]
         start = time.monotonic()
         deadline = start + timeout
         time.sleep(warmup)
@@ -1429,9 +1562,7 @@ class InteractiveTmuxWorkspace:
         tail = ""
         while time.monotonic() < deadline:
             try:
-                pane = _tmux_capture(
-                    self.container, adapter.window, executor=self.executor, timeout_s=poll_timeout_s
-                )
+                pane = session.capture_pane(timeout_s=poll_timeout_s)
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 # Phase 3: a single failed/wedged poll must not abort the
                 # whole await — treat it as "not ready this round" and keep
@@ -1492,7 +1623,7 @@ class InteractiveTmuxWorkspace:
         so a wedged container can't hang this call forever.
         """
         self._check_agent(agent)
-        return _tmux_capture(self.container, _ADAPTERS[agent].window, executor=self.executor, timeout_s=timeout_s)
+        return self._sessions[agent].capture_pane(timeout_s=timeout_s)
 
     def stop(self) -> None:
         """Tear down the container and remove throwaway credential copies."""
