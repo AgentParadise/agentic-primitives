@@ -74,6 +74,21 @@ DEFAULT_IMAGE = "agentic-workspace-interactive-tmux:latest"
 DEFAULT_TMUX_SIZE = (200, 50)
 TMUX_SESSION = "agents"
 
+# ---------------------------------------------------------------------------
+# Phase 3 (reliability) constants
+#
+# Every subprocess.run/docker-exec call used to be unbounded — a wedged
+# container (or a docker daemon that stops responding) could hang the
+# calling process forever. These bound every such call; `await_completion`'s
+# own overall deadline stays separate (see `poll_timeout_s` below) so a
+# single stuck poll can't eat the whole budget silently.
+DEFAULT_EXEC_TIMEOUT_S = 15.0  # bound for one docker-exec/tmux operation
+DEFAULT_RUN_TIMEOUT_S = 30.0  # bound for `docker run` / `docker rm -f`
+
+# tmux `send-keys -l` caps payloads around 16KB; above this we stage the
+# text via `load-buffer` + `paste-buffer` instead (see `_tmux_send_literal`).
+TMUX_SEND_KEYS_MAX_BYTES = 12_000
+
 # Claude readiness — empty `❯ ` prompt line (whitespace tolerated). Pre-
 # compiled because await_completion polls this 2x/sec per agent.
 _CLAUDE_EMPTY_PROMPT_RE = re.compile(r"^❯\s*$", re.MULTILINE)
@@ -160,11 +175,19 @@ class StartupReadinessError(RuntimeError):
 
 @dataclass
 class ExecResult:
-    """Result of running one command inside a workspace container."""
+    """Result of running one command inside a workspace container.
+
+    `timed_out` (Phase 3) is set by `DockerExecExecutor.exec()` when the
+    underlying `subprocess.run(..., timeout=...)` call itself expired,
+    instead of letting `subprocess.TimeoutExpired` propagate and hang the
+    caller's stack. Defaults to `False` so existing call sites that only
+    ever cared about `exit_code`/`stdout`/`stderr` are unaffected.
+    """
 
     exit_code: int
     stdout: str
     stderr: str
+    timed_out: bool = False
 
 
 @runtime_checkable
@@ -187,12 +210,27 @@ class DockerExecExecutor:
 
     def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
         cmd = ["docker", "exec", self.container, *command]
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Phase 3: a wedged `docker exec` used to hang the calling
+            # thread forever. Return a `timed_out` ExecResult instead of
+            # letting the exception propagate, so pollers (await_completion)
+            # can treat it as "not ready yet" and keep going within their
+            # own overall deadline.
+            partial_out = exc.stdout if isinstance(exc.stdout, str) else ""
+            partial_err = exc.stderr if isinstance(exc.stderr, str) else ""
+            return ExecResult(
+                exit_code=-1,
+                stdout=partial_out,
+                stderr=(f"docker exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
+                timed_out=True,
+            )
         return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
 
 
@@ -218,15 +256,27 @@ def _redact_cmd(cmd: list[str]) -> str:
     return " ".join(parts)
 
 
-def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+def _run(
+    cmd: list[str],
+    check: bool = True,
+    capture: bool = True,
+    timeout_s: float | None = DEFAULT_RUN_TIMEOUT_S,
+) -> subprocess.CompletedProcess:
     """Run a subprocess; return CompletedProcess. Raises on non-zero unless
-    `check=False`."""
+    `check=False`.
+
+    Phase 3: bounded by `timeout_s` (default `DEFAULT_RUN_TIMEOUT_S`) so a
+    wedged `docker run`/`docker rm` can't block the caller forever;
+    `subprocess.TimeoutExpired` propagates (bounded, not silent) same as
+    any other subprocess failure.
+    """
     logger.debug("exec: %s", _redact_cmd(cmd))
     return subprocess.run(
         cmd,
         check=check,
         capture_output=capture,
         text=True,
+        timeout=timeout_s,
     )
 
 
@@ -235,6 +285,7 @@ def _docker_exec(
     *args: str,
     check: bool = True,
     executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
 ) -> subprocess.CompletedProcess:
     """Run `docker exec <container> <args...>`, via `executor` if given.
 
@@ -243,11 +294,14 @@ def _docker_exec(
     behaves exactly as before. Returns a `subprocess.CompletedProcess` for
     backward compatibility with callers that inspect `.stdout` /
     `.returncode`.
+
+    Phase 3: `timeout_s` (default `DEFAULT_EXEC_TIMEOUT_S`) is forwarded to
+    the executor so no `docker exec` call in this module can block forever.
     """
     cmd = ["docker", "exec", container, *args]
     logger.debug("exec: %s", _redact_cmd(cmd))
     exec_ = executor or DockerExecExecutor(container)
-    result = exec_.exec(list(args))
+    result = exec_.exec(list(args), timeout_s=timeout_s)
     if check and result.exit_code != 0:
         raise subprocess.CalledProcessError(
             result.exit_code, cmd, result.stdout, result.stderr
@@ -255,20 +309,72 @@ def _docker_exec(
     return subprocess.CompletedProcess(cmd, result.exit_code, result.stdout, result.stderr)
 
 
-def _tmux_send_keys(container: str, window: str, *keys: str) -> None:
+def _tmux_send_keys(
+    container: str,
+    window: str,
+    *keys: str,
+    executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> None:
     target = f"{TMUX_SESSION}:{window}"
-    _docker_exec(container, "tmux", "send-keys", "-t", target, *keys)
+    _docker_exec(container, "tmux", "send-keys", "-t", target, *keys, executor=executor, timeout_s=timeout_s)
 
 
-def _tmux_send_literal(container: str, window: str, text: str) -> None:
-    """Send `text` byte-for-byte (no special-key interpretation)."""
+def _tmux_send_literal(
+    container: str,
+    window: str,
+    text: str,
+    *,
+    executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> None:
+    """Send `text` byte-for-byte (no special-key interpretation).
+
+    Phase 3: tmux's `send-keys -l` caps payloads around 16KB — a long
+    model prompt (or a pasted file) silently truncates past that ceiling.
+    Payloads at or under `TMUX_SEND_KEYS_MAX_BYTES` keep using the small,
+    fast `send-keys -l` path unchanged; larger payloads are staged into a
+    tmux paste buffer instead: the bytes are written into a container-side
+    temp file (base64-chunked over the executor, same mechanism the
+    credential transfer uses), loaded into a named tmux buffer with
+    `load-buffer`, and dispatched into the target pane with `paste-buffer`.
+    """
     target = f"{TMUX_SESSION}:{window}"
-    # `--` ends option parsing so a prompt beginning with `-` (e.g. "-R",
-    # "--help") is treated as literal text, not a tmux send-keys flag.
-    _docker_exec(container, "tmux", "send-keys", "-t", target, "-l", "--", text)
+    payload = text.encode("utf-8")
+    if len(payload) <= TMUX_SEND_KEYS_MAX_BYTES:
+        # `--` ends option parsing so a prompt beginning with `-` (e.g.
+        # "-R", "--help") is treated as literal text, not a send-keys flag.
+        _docker_exec(
+            container, "tmux", "send-keys", "-t", target, "-l", "--", text,
+            executor=executor, timeout_s=timeout_s,
+        )
+        return
+
+    exec_ = executor or DockerExecExecutor(container)
+    token = uuid.uuid4().hex
+    buf_path = f"/tmp/.itmux-sendkeys-{token}.buf"
+    buf_name = f"itmux-{token[:12]}"
+    try:
+        _write_bytes_to_container(exec_, buf_path, payload, timeout_s=timeout_s)
+        _run_exec_checked(
+            exec_, ["tmux", "load-buffer", "-b", buf_name, buf_path], timeout_s=timeout_s
+        )
+        _run_exec_checked(
+            exec_, ["tmux", "paste-buffer", "-b", buf_name, "-d", "-t", target], timeout_s=timeout_s
+        )
+    finally:
+        # Best-effort cleanup of the staged temp file; a failure here must
+        # not mask the paste having already succeeded (or failed) above.
+        exec_.exec(["rm", "-f", buf_path], timeout_s=timeout_s)
 
 
-def _tmux_capture(container: str, window: str) -> str:
+def _tmux_capture(
+    container: str,
+    window: str,
+    *,
+    executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> str:
     """Capture the full pane buffer including scrollback.
 
     `-S -` = start at the top of the history; `-E -` = end at the bottom
@@ -283,7 +389,8 @@ def _tmux_capture(container: str, window: str) -> str:
     """
     target = f"{TMUX_SESSION}:{window}"
     return _docker_exec(
-        container, "tmux", "capture-pane", "-p", "-t", target, "-S", "-", "-E", "-"
+        container, "tmux", "capture-pane", "-p", "-t", target, "-S", "-", "-E", "-",
+        executor=executor, timeout_s=timeout_s,
     ).stdout
 
 
@@ -488,12 +595,18 @@ class _ClaudeAdapter:
         return f"claude {flags}"
 
     @staticmethod
-    def submit(container: str, text: str) -> None:
+    def submit(
+        container: str,
+        text: str,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
         # EXP-01: two-step is the documented default. -l makes the bytes
         # land literally (no special-key interpretation in the text body),
         # then a separate Enter dispatches.
-        _tmux_send_literal(container, _ClaudeAdapter.window, text)
-        _tmux_send_keys(container, _ClaudeAdapter.window, "Enter")
+        _tmux_send_literal(container, _ClaudeAdapter.window, text, executor=executor, timeout_s=timeout_s)
+        _tmux_send_keys(container, _ClaudeAdapter.window, "Enter", executor=executor, timeout_s=timeout_s)
 
     @staticmethod
     def is_ready(pane_text: str) -> bool:
@@ -599,13 +712,19 @@ class _CodexAdapter:
         time.sleep(1)
 
     @staticmethod
-    def submit(container: str, text: str) -> None:
+    def submit(
+        container: str,
+        text: str,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
         # EXP-02: literal text first (so the body's bytes don't get
         # tmux-special-key-interpreted), then C-j C-m to dispatch.
         # C-j C-m is the gotcha — bare C-m alone often does not submit
         # the first message.
-        _tmux_send_literal(container, _CodexAdapter.window, text)
-        _tmux_send_keys(container, _CodexAdapter.window, "C-j", "C-m")
+        _tmux_send_literal(container, _CodexAdapter.window, text, executor=executor, timeout_s=timeout_s)
+        _tmux_send_keys(container, _CodexAdapter.window, "C-j", "C-m", executor=executor, timeout_s=timeout_s)
 
     @staticmethod
     def is_ready(pane_text: str) -> bool:
@@ -689,10 +808,16 @@ class _GeminiAdapter:
         time.sleep(1)
 
     @staticmethod
-    def submit(container: str, text: str) -> None:
+    def submit(
+        container: str,
+        text: str,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
         # EXP-03: text first, then Enter — never C-m.
-        _tmux_send_literal(container, _GeminiAdapter.window, text)
-        _tmux_send_keys(container, _GeminiAdapter.window, "Enter")
+        _tmux_send_literal(container, _GeminiAdapter.window, text, executor=executor, timeout_s=timeout_s)
+        _tmux_send_keys(container, _GeminiAdapter.window, "Enter", executor=executor, timeout_s=timeout_s)
 
     @staticmethod
     def is_ready(pane_text: str) -> bool:
@@ -776,6 +901,7 @@ def _write_bytes_to_container(
     data: bytes,
     *,
     chunk_size: int = 6000,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
 ) -> None:
     """Write `data` into `container_path` inside the container over `executor`.
 
@@ -786,26 +912,31 @@ def _write_bytes_to_container(
     here, but keeping writes chunked avoids hitting exec/argv length limits
     on very large credential files). Each chunk is base64 so arbitrary
     bytes (including newlines/binary) survive the `sh -c` round-trip.
+
+    `timeout_s` (Phase 3) bounds each individual exec call so a wedged
+    container can't hang the transfer forever.
     """
     parent = posixpath.dirname(container_path)
     if parent:
-        _run_exec_checked(executor, ["mkdir", "-p", parent])
+        _run_exec_checked(executor, ["mkdir", "-p", parent], timeout_s=timeout_s)
     quoted_path = shlex.quote(container_path)
     # Truncate/create the destination before appending chunks so a re-run
     # (or a shorter payload than a stale prior write) doesn't leave trailing
     # garbage from an earlier attempt.
-    _run_exec_checked(executor, ["sh", "-c", f"> {quoted_path}"])
+    _run_exec_checked(executor, ["sh", "-c", f"> {quoted_path}"], timeout_s=timeout_s)
     encoded = base64.b64encode(data).decode("ascii")
     for start in range(0, len(encoded), chunk_size):
         chunk = encoded[start : start + chunk_size]
         cmd = f"printf '%s' {shlex.quote(chunk)} | base64 -d >> {quoted_path}"
-        _run_exec_checked(executor, ["sh", "-c", cmd])
+        _run_exec_checked(executor, ["sh", "-c", cmd], timeout_s=timeout_s)
 
 
 def _transfer_path_to_container(
     executor: CommandExecutor,
     host_path: Path,
     container_path: str,
+    *,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
 ) -> None:
     """Copy a host file or directory tree into the container over `executor`.
 
@@ -821,9 +952,9 @@ def _transfer_path_to_container(
                 src = Path(root) / fname
                 rel = fname if rel_root == Path(".") else f"{rel_root.as_posix()}/{fname}"
                 dst = f"{container_path.rstrip('/')}/{rel}"
-                _write_bytes_to_container(executor, dst, src.read_bytes())
+                _write_bytes_to_container(executor, dst, src.read_bytes(), timeout_s=timeout_s)
     else:
-        _write_bytes_to_container(executor, container_path, host_path.read_bytes())
+        _write_bytes_to_container(executor, container_path, host_path.read_bytes(), timeout_s=timeout_s)
 
 
 def _secure_container_path(
@@ -831,6 +962,7 @@ def _secure_container_path(
     container_path: str,
     *,
     is_dir: bool,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
 ) -> None:
     """chown the transferred path to the in-container agent user (uid/gid
     1000) and lock file permissions to 0600 — mirrors what the host-side
@@ -842,7 +974,7 @@ def _secure_container_path(
         cmd = f"chown -R 1000:1000 {quoted} && find {quoted} -type f -exec chmod 600 {{}} +"
     else:
         cmd = f"chown 1000:1000 {quoted} && chmod 600 {quoted}"
-    _run_exec_checked(executor, ["sh", "-c", cmd])
+    _run_exec_checked(executor, ["sh", "-c", cmd], timeout_s=timeout_s)
 
 
 def _build_seeded_claude_dotjson(host_dotjson: Path, workspace_path: str) -> dict:
@@ -1063,11 +1195,17 @@ class InteractiveTmuxWorkspace:
         except Exception:
             # Best-effort: `docker run -d` can fail after the container is
             # created (e.g. start failure), so remove it too.
-            subprocess.run(
-                ["docker", "rm", "-f", container],
-                check=False,
-                capture_output=True,
-            )
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", container],
+                    check=False,
+                    capture_output=True,
+                    timeout=DEFAULT_RUN_TIMEOUT_S,
+                )
+            except subprocess.TimeoutExpired:
+                # Best-effort cleanup only; don't let a wedged `docker rm`
+                # mask the original failure being re-raised below.
+                logger.warning("docker rm -f %s timed out during cleanup", container)
             shutil.rmtree(host_throwaway_dir, ignore_errors=True)
             raise
 
@@ -1162,7 +1300,15 @@ class InteractiveTmuxWorkspace:
         deadline = start + timeout_s
         pane = ""
         while time.monotonic() < deadline:
-            pane = _tmux_capture(self.container, adapter.window)
+            try:
+                pane = _tmux_capture(self.container, adapter.window, executor=self.executor)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                # Phase 3: a single wedged/failed capture during startup
+                # polling must not abort the whole wait — keep polling
+                # until the overall `timeout_s` deadline.
+                logger.warning("wait_for_started(%s): capture failed mid-poll: %s", agent, exc)
+                time.sleep(0.5)
+                continue
             # D-block-2 fix: predicate evaluated on the bottom-of-pane
             # tail so historical text in scrollback (now captured by
             # default) can't fool absence checks like
@@ -1196,10 +1342,23 @@ class InteractiveTmuxWorkspace:
     # -----------------------------------------------------------------------
     # The five public primitives
 
-    def send_message(self, agent: AgentName, text: str) -> None:
-        """Submit `text` to `agent`'s tmux pane using the per-agent submit pattern."""
+    def send_message(
+        self,
+        agent: AgentName,
+        text: str,
+        *,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
+        """Submit `text` to `agent`'s tmux pane using the per-agent submit pattern.
+
+        Phase 3: `timeout_s` bounds each underlying tmux/docker-exec call
+        (default `DEFAULT_EXEC_TIMEOUT_S`) so a wedged container can't hang
+        this call forever. Payloads over `TMUX_SEND_KEYS_MAX_BYTES` are
+        automatically staged via tmux's paste-buffer instead of raw
+        `send-keys` (see `_tmux_send_literal`).
+        """
         self._check_agent(agent)
-        _ADAPTERS[agent].submit(self.container, text)
+        _ADAPTERS[agent].submit(self.container, text, executor=self.executor, timeout_s=timeout_s)
 
     def await_completion(
         self,
@@ -1208,6 +1367,7 @@ class InteractiveTmuxWorkspace:
         stable_polls: int = 4,
         poll_interval: float = 0.5,
         warmup: float = 2.0,
+        poll_timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> AwaitResult:
         """Block until `agent` returns to a stable ready state, or `timeout` passes.
 
@@ -1235,6 +1395,13 @@ class InteractiveTmuxWorkspace:
         `send_message` and the agent rendering its generation marker)
         so the first ready observation isn't a stale idle frame.
 
+        `poll_timeout_s` (Phase 3) bounds each *individual* pane-capture
+        call, distinct from the overall `timeout` deadline above: a single
+        wedged `docker exec` no longer blocks past `poll_timeout_s` (default
+        `DEFAULT_EXEC_TIMEOUT_S`), and a poll that fails/times out is
+        treated as "not ready this round" rather than raising — the loop
+        keeps polling until the overall `timeout` is reached.
+
         Returns an `AwaitResult`:
             - `.ready=True, .reason="ready"` when a stable ready state was
                reached;
@@ -1261,7 +1428,19 @@ class InteractiveTmuxWorkspace:
         pane = ""
         tail = ""
         while time.monotonic() < deadline:
-            pane = _tmux_capture(self.container, adapter.window)
+            try:
+                pane = _tmux_capture(
+                    self.container, adapter.window, executor=self.executor, timeout_s=poll_timeout_s
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                # Phase 3: a single failed/wedged poll must not abort the
+                # whole await — treat it as "not ready this round" and keep
+                # polling until the overall deadline above.
+                logger.warning("await_completion(%s): capture failed/timed out mid-poll: %s", agent, exc)
+                consecutive_stable_ready = 0
+                last_tail = None
+                time.sleep(poll_interval)
+                continue
             tail = _pane_tail(pane)
             if adapter.is_ready(tail):
                 ever_ready = True
@@ -1301,18 +1480,33 @@ class InteractiveTmuxWorkspace:
             pane=pane,
         )
 
-    def capture_response(self, agent: AgentName) -> str:
-        """Return the current contents of `agent`'s tmux pane."""
+    def capture_response(
+        self,
+        agent: AgentName,
+        *,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> str:
+        """Return the current contents of `agent`'s tmux pane.
+
+        Phase 3: bounded by `timeout_s` (default `DEFAULT_EXEC_TIMEOUT_S`)
+        so a wedged container can't hang this call forever.
+        """
         self._check_agent(agent)
-        return _tmux_capture(self.container, _ADAPTERS[agent].window)
+        return _tmux_capture(self.container, _ADAPTERS[agent].window, executor=self.executor, timeout_s=timeout_s)
 
     def stop(self) -> None:
         """Tear down the container and remove throwaway credential copies."""
-        subprocess.run(
-            ["docker", "rm", "-f", self.container],
-            check=False,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                ["docker", "rm", "-f", self.container],
+                check=False,
+                capture_output=True,
+                timeout=DEFAULT_RUN_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            # Phase 3: bounded — a wedged `docker rm -f` must not hang
+            # `stop()` forever. Still clean up the host-side throwaway dir.
+            logger.warning("docker rm -f %s timed out during stop()", self.container)
         shutil.rmtree(self.host_throwaway_dir, ignore_errors=True)
 
     # -----------------------------------------------------------------------

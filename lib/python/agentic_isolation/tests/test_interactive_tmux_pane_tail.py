@@ -238,7 +238,7 @@ class TestCaptureResponseReturnsFullBuffer:
         monkeypatch.setattr(
             driver,
             "_tmux_capture",
-            lambda container, window: long_buffer,  # type: ignore[arg-type]
+            lambda container, window, **kwargs: long_buffer,  # type: ignore[arg-type]
         )
 
         ws = driver.InteractiveTmuxWorkspace(
