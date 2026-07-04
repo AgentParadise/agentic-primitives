@@ -335,3 +335,180 @@ class TestLocalEnvironment:
         env.start()
         # Must not raise, must not touch subprocess at all.
         env.stop()
+
+
+class TestSSHExecutor:
+    def test_exec_happy_path_builds_expected_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            return subprocess.CompletedProcess(cmd, 0, "out", "err")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        base_argv = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            "/home/me/.ssh/id_ed25519",
+            "-p",
+            "22",
+            "me@example.com",
+        ]
+        executor = driver.SSHExecutor(base_argv)
+        result = executor.exec(["echo", "hi there"], timeout_s=5)
+
+        assert captured["cmd"] == [*base_argv, "echo 'hi there'"]
+        assert captured["kwargs"]["timeout"] == 5
+        assert captured["kwargs"]["capture_output"] is True
+        assert captured["kwargs"]["text"] is True
+        assert result == driver.ExecResult(exit_code=0, stdout="out", stderr="err")
+
+    def test_exec_timeout_returns_timed_out_exec_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def timing_out_run(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+        monkeypatch.setattr(driver.subprocess, "run", timing_out_run)
+
+        executor = driver.SSHExecutor(["ssh", "me@example.com"])
+        result = executor.exec(["sleep", "99"], timeout_s=1)
+
+        assert result.timed_out is True
+        assert result.exit_code == -1
+        assert "timed out after 1s" in result.stderr
+
+    def test_exec_prefixes_cd_when_workdir_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        base_argv = ["ssh", "me@example.com"]
+        executor = driver.SSHExecutor(base_argv, workdir="/remote/work")
+        executor.exec(["pwd"])
+
+        assert captured["cmd"] == [*base_argv, "cd /remote/work && pwd"]
+
+    def test_exec_omits_cd_when_no_workdir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        base_argv = ["ssh", "me@example.com"]
+        executor = driver.SSHExecutor(base_argv)
+        executor.exec(["pwd"])
+
+        assert captured["cmd"] == [*base_argv, "pwd"]
+
+
+class TestSSHEnvironment:
+    def test_satisfies_environment_protocol(self) -> None:
+        env = driver.SSHEnvironment(host="example.com", user="me")
+        assert isinstance(env, driver.Environment)
+
+    def test_start_runs_reachability_check_with_expected_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        env = driver.SSHEnvironment(
+            host="example.com",
+            user="me",
+            key_path="/home/me/.ssh/id_ed25519",
+            port=2222,
+            workdir="/remote/work",
+            connect_timeout_s=7.0,
+        )
+        executor = env.start()
+
+        assert captured["cmd"] == [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=7",
+            "-i",
+            "/home/me/.ssh/id_ed25519",
+            "-p",
+            "2222",
+            "me@example.com",
+            "true",
+        ]
+        assert captured["kwargs"]["timeout"] == 7.0
+        assert isinstance(executor, driver.SSHExecutor)
+        assert executor.workdir == "/remote/work"
+        assert executor.base_argv == [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=7",
+            "-i",
+            "/home/me/.ssh/id_ed25519",
+            "-p",
+            "2222",
+            "me@example.com",
+        ]
+
+    def test_start_without_key_path_omits_dash_i(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        env = driver.SSHEnvironment(host="example.com", user="me")
+        env.start()
+
+        assert "-i" not in captured["cmd"]
+
+    def test_start_raises_runtime_error_with_stderr_on_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def fake_run(cmd, **kwargs):
+            return subprocess.CompletedProcess(cmd, 255, "", "ssh: connect to host example.com port 22: Connection refused")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        env = driver.SSHEnvironment(host="example.com", user="me")
+
+        with pytest.raises(RuntimeError, match="Connection refused"):
+            env.start()
+
+    def test_start_raises_runtime_error_on_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def timing_out_run(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+        monkeypatch.setattr(driver.subprocess, "run", timing_out_run)
+
+        env = driver.SSHEnvironment(host="example.com", user="me", connect_timeout_s=3.0)
+
+        with pytest.raises(RuntimeError, match="timed out"):
+            env.start()
+
+    def test_stop_is_a_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def fake_run(cmd, **kwargs):
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        env = driver.SSHEnvironment(host="example.com", user="me")
+        env.start()
+        env.stop()  # must not raise

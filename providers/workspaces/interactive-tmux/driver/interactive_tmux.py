@@ -370,6 +370,120 @@ class LocalEnvironment:
         return None
 
 
+@dataclass
+class SSHExecutor:
+    """`CommandExecutor` that runs argv on a remote host over `ssh`.
+
+    `base_argv` is the full `ssh` invocation up to (but not including) the
+    remote command itself — e.g. `["ssh", "-o", "BatchMode=yes", "-o",
+    "ConnectTimeout=10", "-i", "/key", "-p", "22", "user@host"]`. `exec()`
+    joins `command` into a single shell string (via `shlex.join`, optionally
+    prefixed with `cd <workdir> &&`) and appends it as the final argv
+    element, mirroring `DockerExecExecutor`/`LocalExecutor`'s timeout and
+    `ExecResult` handling exactly so callers see identical result shapes
+    regardless of backend.
+
+    Exit-code semantics are intentionally *not* special-cased beyond what
+    the other two executors do: `ssh` returns 255 for a connection-level
+    failure (vs. the remote command's own exit code otherwise), but that
+    raw exit code is simply surfaced via `ExecResult.exit_code` like any
+    other — callers that care about the distinction can inspect `stderr`.
+    """
+
+    base_argv: list[str]
+    workdir: str | None = None
+
+    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
+        remote_cmd = shlex.join(command)
+        if self.workdir:
+            remote_cmd = f"cd {shlex.quote(self.workdir)} && {remote_cmd}"
+        cmd = [*self.base_argv, remote_cmd]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Same rationale as DockerExecExecutor/LocalExecutor: a wedged
+            # remote command must not hang the caller forever.
+            partial_out = exc.stdout if isinstance(exc.stdout, str) else ""
+            partial_err = exc.stderr if isinstance(exc.stderr, str) else ""
+            return ExecResult(
+                exit_code=-1,
+                stdout=partial_out,
+                stderr=(f"ssh exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
+                timed_out=True,
+            )
+        return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+
+
+@dataclass
+class SSHEnvironment:
+    """`Environment` that provisions a workspace target on a remote host
+    reachable over `ssh`.
+
+    Unlike `DockerEnvironment` there is no `docker run` step: the "target"
+    is simply the remote host itself, assumed already up. `start()`
+    fails fast with a reachability check (`ssh ... true`) rather than
+    letting the first tmux command discover a dead host mid-session, then
+    returns an `SSHExecutor` bound to the `ssh` argv it just proved works.
+
+    Known limitation / follow-up: this simple version opens a fresh `ssh`
+    process per `exec()` call (no persistent connection is held open
+    between execs). A future version could hold one persistent `ssh
+    ControlMaster` connection for lower per-call latency.
+    """
+
+    host: str
+    user: str
+    key_path: str | Path | None = None
+    port: int = 22
+    workdir: str | None = None
+    connect_timeout_s: float = 10.0
+
+    def _base_argv(self) -> list[str]:
+        return [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            f"ConnectTimeout={int(self.connect_timeout_s)}",
+            *(["-i", str(self.key_path)] if self.key_path else []),
+            "-p",
+            str(self.port),
+            f"{self.user}@{self.host}",
+        ]
+
+    def start(self) -> CommandExecutor:
+        base_argv = self._base_argv()
+        try:
+            proc = subprocess.run(
+                [*base_argv, "true"],
+                capture_output=True,
+                text=True,
+                timeout=self.connect_timeout_s,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"SSHEnvironment.start(): reachability check to {self.user}@{self.host}:{self.port} "
+                f"timed out after {self.connect_timeout_s}s"
+            ) from exc
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"SSHEnvironment.start(): reachability check to {self.user}@{self.host}:{self.port} "
+                f"failed (exit {proc.returncode}): {proc.stderr.strip()}"
+            )
+        return SSHExecutor(base_argv, workdir=self.workdir)
+
+    def stop(self) -> None:
+        # No-op in this simple version: no persistent connection is held
+        # open between execs, so there is nothing to tear down. See class
+        # docstring for the ControlMaster follow-up.
+        return None
+
+
 # ---------------------------------------------------------------------------
 # tmux send-keys helpers (the only place that talks to docker exec tmux)
 
