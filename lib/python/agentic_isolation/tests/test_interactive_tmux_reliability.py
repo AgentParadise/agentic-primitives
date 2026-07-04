@@ -435,3 +435,35 @@ class TestReadinessBreaksFastOnDeadContainer:
 
         assert result.ready is True
         assert calls["n"] >= 2
+
+    def test_docker_daemon_outage_is_transient_not_container_dead(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A daemon/socket connectivity error must NOT be read as container death.
+
+        "Cannot connect to the Docker daemon" means the daemon blipped, not
+        that the container is gone; classifying it as container_dead would
+        abort a still-alive workspace. It must stay on the retry path and
+        recover once the daemon responds again.
+        """
+        calls = {"n": 0}
+
+        def daemon_blip(container, window, **kwargs):  # noqa: ARG001
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise subprocess.CalledProcessError(
+                    1,
+                    ["docker", "exec"],
+                    "",
+                    "Cannot connect to the Docker daemon at unix:///var/run/docker.sock.",
+                )
+            return "❯ \n? for shortcuts"
+
+        monkeypatch.setattr(driver, "_tmux_capture", daemon_blip)
+        monkeypatch.setattr(driver.time, "sleep", lambda *_a, **_k: None)
+
+        result = self._ws().await_completion("claude", timeout=100.0, stable_polls=1, warmup=0.0)
+
+        assert result.ready is True
+        assert result.reason != "container_dead"
+        assert calls["n"] >= 2

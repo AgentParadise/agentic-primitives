@@ -1569,20 +1569,24 @@ def _build_seeded_claude_dotjson(host_dotjson: Path, workspace_path: str) -> dic
 
 
 # Substrings docker/tmux emit when the workspace target itself is GONE
-# (OOM-killed, `docker rm`'d, daemon crash, tmux session vanished) rather
-# than a transient capture hiccup while the container is still alive. Matched
+# (OOM-killed, `docker rm`'d, stopped, tmux session vanished) rather than a
+# transient capture hiccup while the container is still alive. Matched
 # case-insensitively against a failed exec's stderr so the readiness pollers
 # can break out immediately instead of spinning the full startup/await
 # deadline and then reporting a misleading generic timeout (a "degraded"
 # workspace that actually masks a hard container death).
+#
+# Deliberately EXCLUDED: "cannot connect to the Docker daemon" / generic
+# "error connecting to" - those signal a transient daemon or socket outage,
+# NOT a dead container (the container is very likely still running once the
+# daemon recovers). Treating them as death would abort a live workspace on a
+# blip; they stay on the retry path and are bounded by the overall deadline.
 _CONTAINER_DEAD_STDERR_MARKERS = (
     "no such container",
     "is not running",
-    "cannot connect to the docker daemon",
     "no server running",  # tmux daemon gone
     "no such session",  # tmux session vanished
     "can't find session",
-    "error connecting to",
 )
 
 
