@@ -1165,11 +1165,15 @@ class _CodexAdapter:
             raise FileNotFoundError(f"codex auth dir not found: {host_src}")
         dst_dir = ctx.host_throwaway_dir / "codex.dir"
         dst_dir.mkdir(parents=True, exist_ok=True)
-        # Copy the .codex/ tree but skip the live tmp/ subdir — codex races
+        # Copy the .codex/ tree but skip the live tmp/ subdir - codex races
         # there (creates and deletes argv files during normal operation), so
         # copytree against it sees vanished files. The auth lives in
-        # auth.json / config.toml / sessions/ at the top level.
-        skip = {"tmp", "log", "logs"}
+        # auth.json / config.toml / sessions/ at the top level. `plugins/` is
+        # a large plugin/dependency cache (node_modules), never auth, and
+        # staging it turns start_workspace into a multi-minute, thousands-of-
+        # exec crawl - skip it (node_modules/.git anywhere are skipped by the
+        # copytree ignore filter as defense in depth).
+        skip = {"tmp", "log", "logs", "plugins"}
         for item in host_src.iterdir():
             if item.name in skip:
                 continue
@@ -1416,18 +1420,32 @@ def _chown_recursive(path: Path, uid: int, gid: int) -> None:
         _chown_path(sub, uid, gid)
 
 
-def _ignore_uncopyable(src: str, names: list[str]) -> set[str]:
-    """`shutil.copytree` ignore filter that skips non-copyable special files.
+# Directory names that are never credential material but are large and slow
+# to stage (thousands of files) and can contain uncopyable special files.
+# `.git` is where a live `fsmonitor--daemon.ipc` socket lives; `node_modules`
+# and plugin caches balloon a stage into thousands of per-file `docker exec`
+# calls (observed: a 4-minute codex stage that overloaded the docker daemon).
+_NON_AUTH_DIR_NAMES = frozenset({".git", "node_modules"})
 
-    Auth dirs can contain sockets/FIFOs/devices - most commonly a git
-    `fsmonitor--daemon.ipc` Unix socket left by a running fsmonitor daemon in
-    a `.git/` under the tree (e.g. ~/.codex/vendor_imports/.../.git). `copy2`
-    raises "Operation not supported on socket" on those and aborts the whole
-    stage. Only regular files, directories, and symlinks are copyable here;
-    skip everything else so credential staging is robust to them.
+
+def _ignore_uncopyable(src: str, names: list[str]) -> set[str]:
+    """`shutil.copytree` ignore filter for credential staging.
+
+    Skips two classes of entry that must never be copied into an auth stage:
+
+    * Non-copyable special files (sockets/FIFOs/devices) - most commonly a git
+      `fsmonitor--daemon.ipc` Unix socket left by a running fsmonitor daemon in
+      a `.git/` under the tree. `copy2` raises "Operation not supported on
+      socket" on those and aborts the whole stage.
+    * Heavy, never-auth directories (`.git`, `node_modules`) at any depth.
+      These are pure bloat for credential staging and turn it into thousands
+      of per-file `docker exec` calls that can overload the docker daemon.
     """
     skip: set[str] = set()
     for name in names:
+        if name in _NON_AUTH_DIR_NAMES:
+            skip.add(name)
+            continue
         try:
             mode = os.lstat(os.path.join(src, name)).st_mode
         except OSError:

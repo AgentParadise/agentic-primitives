@@ -128,8 +128,21 @@ def test_ignore_uncopyable_skips_special_files(tmp_path: Path) -> None:
 
 
 def test_ignore_uncopyable_allows_regular_tree(tmp_path: Path) -> None:
-    """With no special files, nothing is skipped (copytree behaves normally)."""
+    """With no special/heavy entries, nothing is skipped (copytree normal)."""
     (tmp_path / "auth.json").write_text("{}")
     (tmp_path / "sessions").mkdir()
     names = [p.name for p in tmp_path.iterdir()]
     assert driver._ignore_uncopyable(str(tmp_path), names) == set()
+
+
+def test_ignore_uncopyable_skips_heavy_non_auth_dirs(tmp_path: Path) -> None:
+    """node_modules/.git are never auth material and balloon the stage; skip
+    them at any depth so credential staging stays fast and socket-free."""
+    (tmp_path / "auth.json").write_text("{}")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / ".git").mkdir()
+    names = [p.name for p in tmp_path.iterdir()]
+    skipped = driver._ignore_uncopyable(str(tmp_path), names)
+    assert "node_modules" in skipped
+    assert ".git" in skipped
+    assert "auth.json" not in skipped
