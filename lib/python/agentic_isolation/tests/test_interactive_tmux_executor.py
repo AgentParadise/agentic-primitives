@@ -70,12 +70,17 @@ class _FakeExecutor:
         self.calls: list[list[str]] = []
         self.fs: dict[str, bytes] = {}
         self.chowned: list[str] = []
+        self.stdins: list[bytes | None] = []
+        self.last_stdin: bytes | None = None
 
-    def exec(self, command, *, timeout_s=None):  # noqa: ARG002
+    def exec(self, command, *, timeout_s=None, stdin=None):  # noqa: ARG002
         self.calls.append(list(command))
+        self.stdins.append(stdin)
+        self.last_stdin = stdin
         # Emulate the subset of shell behavior the driver's helpers rely on:
-        # `mkdir -p`, `> path` (truncate/create), `printf '%s' B64 | base64
-        # -d >> path`, `chown ...`, `find ... chmod ...`.
+        # `mkdir -p`, `> path` (truncate/create), `base64 -d >> path` fed the
+        # payload over STDIN (credential-leak fix), `chown ...`,
+        # `find ... chmod ...`.
         if command[:1] == ["mkdir"]:
             return driver.ExecResult(exit_code=0, stdout="", stderr="")
         if command[:1] == ["sh"] and len(command) >= 3 and command[1] == "-c":
@@ -87,12 +92,10 @@ class _FakeExecutor:
                 self.fs[path] = b""
                 return driver.ExecResult(exit_code=0, stdout="", stderr="")
             if "base64 -d >>" in script:
-                # `printf '%s' 'B64CHUNK' | base64 -d >> 'path'`
-                head, path_part = script.split("base64 -d >>")
-                path = path_part.strip().strip("'\"")
-                b64_literal = head.split("printf '%s' ", 1)[1].strip()
-                b64_chunk = b64_literal.strip("'\"")
-                self.fs[path] = self.fs.get(path, b"") + base64.b64decode(b64_chunk)
+                # `base64 -d >> 'path'` with the base64 payload on STDIN.
+                path = script.split("base64 -d >>")[1].strip().strip("'\"")
+                assert stdin is not None, "credential payload must arrive via stdin, not argv"
+                self.fs[path] = self.fs.get(path, b"") + base64.b64decode(stdin)
                 return driver.ExecResult(exit_code=0, stdout="", stderr="")
             if "chown" in script:
                 self.chowned.append(script)
@@ -206,16 +209,31 @@ class TestWriteBytesToContainer:
         driver._write_bytes_to_container(fake, "/home/agent/.claude/deep/file.json", b"{}")
         assert ["mkdir", "-p", "/home/agent/.claude/deep"] in fake.calls
 
-    def test_large_payload_is_chunked_and_reconstructed(self) -> None:
+    def test_large_payload_round_trips_in_a_single_stdin_write(self) -> None:
         fake = _FakeExecutor()
-        payload = bytes(range(256)) * 200  # 51200 bytes, forces multiple chunks
-        driver._write_bytes_to_container(
-            fake, "/home/agent/.codex/auth.json", payload, chunk_size=64
-        )
+        payload = bytes(range(256)) * 200  # 51200 bytes of arbitrary/binary data
+        driver._write_bytes_to_container(fake, "/home/agent/.codex/auth.json", payload)
         assert fake.fs["/home/agent/.codex/auth.json"] == payload
-        # More than one base64-chunk write call happened.
+        # stdin has no argv length limit, so the whole file is one exec (no
+        # chunking loop): exactly one `base64 -d >>` write call.
         b64_calls = [c for c in fake.calls if c[:1] == ["sh"] and "base64 -d >>" in c[2]]
-        assert len(b64_calls) > 1
+        assert len(b64_calls) == 1
+
+    def test_payload_never_appears_in_argv(self) -> None:
+        """Credential-leak fix: the base64 payload must travel over stdin, so
+        it must NOT appear in any command's argv (world-readable via `ps` /
+        `/proc/<pid>/cmdline`)."""
+        fake = _FakeExecutor()
+        secret = b"super-secret-oauth-token-value-1234567890"
+        driver._write_bytes_to_container(fake, "/home/agent/.codex/auth.json", secret)
+
+        b64_secret = base64.b64encode(secret).decode("ascii")
+        for call in fake.calls:
+            for arg in call:
+                assert secret.decode() not in arg
+                assert b64_secret not in arg
+        # It DID arrive over stdin instead.
+        assert any(s is not None and base64.b64decode(s) == secret for s in fake.stdins)
 
 
 class TestTransferPathToContainer:

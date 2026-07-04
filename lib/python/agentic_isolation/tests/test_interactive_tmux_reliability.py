@@ -67,7 +67,7 @@ class _FakeExecutor:
         self.calls: list[tuple[list[str], float | None]] = []
         self.fs: dict[str, bytes] = {}
 
-    def exec(self, command, *, timeout_s=None):
+    def exec(self, command, *, timeout_s=None, stdin=None):
         self.calls.append((list(command), timeout_s))
         if command[:1] == ["mkdir"]:
             return driver.ExecResult(exit_code=0, stdout="", stderr="")
@@ -80,11 +80,10 @@ class _FakeExecutor:
             if "base64 -d >>" in script:
                 import base64
 
-                head, path_part = script.split("base64 -d >>")
-                path = path_part.strip().strip("'\"")
-                b64_literal = head.split("printf '%s' ", 1)[1].strip()
-                b64_chunk = b64_literal.strip("'\"")
-                self.fs[path] = self.fs.get(path, b"") + base64.b64decode(b64_chunk)
+                # Payload now arrives over STDIN, not in argv (leak fix).
+                path = script.split("base64 -d >>")[1].strip().strip("'\"")
+                assert stdin is not None
+                self.fs[path] = self.fs.get(path, b"") + base64.b64decode(stdin)
                 return driver.ExecResult(exit_code=0, stdout="", stderr="")
         return driver.ExecResult(exit_code=0, stdout="", stderr="")
 
@@ -179,7 +178,12 @@ class TestSendKeysPayloadBatching:
         # No raw send-keys -l for the oversized payload.
         assert not any(c[:2] == ["tmux", "send-keys"] and "-l" in c for c in commands)
         assert any(c[:2] == ["tmux", "load-buffer"] for c in commands)
-        assert any(c[:2] == ["tmux", "paste-buffer"] for c in commands)
+        paste_calls = [c for c in commands if c[:2] == ["tmux", "paste-buffer"]]
+        assert paste_calls
+        # Finding 3: paste-buffer MUST use `-p` (bracketed paste) so a
+        # multiline payload's embedded newlines don't dispatch as individual
+        # Enter presses and submit the prompt early.
+        assert all("-p" in c for c in paste_calls)
 
     def test_large_payload_bytes_round_trip_through_write_bytes_to_container(self) -> None:
         fake = _FakeExecutor()
@@ -259,3 +263,175 @@ class TestAwaitCompletionResilientToTransientPollFailure:
         # await deadline it was called with, so a wedged poll can't eat
         # the whole budget silently.
         assert 3.0 < 5.0
+
+
+class TestDockerExecStdin:
+    """Finding 1: credential payloads travel over STDIN, not argv. The
+    executor must add `-i` (keep stdin open) and forward the bytes as
+    `subprocess.run(input=...)`.
+    """
+
+    def test_stdin_adds_dash_i_and_forwards_input(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["input"] = kwargs.get("input")
+            captured["text"] = kwargs.get("text")
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        driver.DockerExecExecutor("c").exec(["sh", "-c", "base64 -d >> /x"], stdin=b"payload")
+
+        assert captured["cmd"] == ["docker", "exec", "-i", "c", "sh", "-c", "base64 -d >> /x"]
+        assert captured["input"] == b"payload"
+        # bytes input requires text=False; outputs are decoded via `_decode`.
+        assert captured["text"] is False
+
+    def test_no_stdin_omits_dash_i_and_keeps_text_mode(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["text"] = kwargs.get("text")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        driver.DockerExecExecutor("c").exec(["true"])
+
+        assert "-i" not in captured["cmd"]
+        assert captured["text"] is True
+
+
+class TestRunExecCheckedRedactsCredentials:
+    """Finding 2: a failing credential-seeding exec must not leak the payload
+    OR the raw command into the raised error — only the redacted `label`.
+    """
+
+    def test_label_used_instead_of_raw_command_on_failure(self) -> None:
+        class FailingExecutor:
+            def exec(self, command, *, timeout_s=None, stdin=None):  # noqa: ARG002
+                return driver.ExecResult(exit_code=1, stdout="", stderr="boom")
+
+        with pytest.raises(RuntimeError) as excinfo:
+            driver._run_exec_checked(
+                FailingExecutor(),
+                ["sh", "-c", "base64 -d >> /home/agent/.claude/.credentials.json"],
+                stdin=b"c2VjcmV0",
+                label="write bytes to /home/agent/.claude/.credentials.json",
+            )
+
+        msg = str(excinfo.value)
+        assert "write bytes to /home/agent/.claude/.credentials.json" in msg
+        # Neither the raw command list nor the base64 payload appears.
+        assert "base64 -d" not in msg
+        assert "c2VjcmV0" not in msg
+
+    def test_write_bytes_failure_message_carries_no_payload(self) -> None:
+        secret = b"top-secret-token"
+
+        class FailingExecutor:
+            def exec(self, command, *, timeout_s=None, stdin=None):  # noqa: ARG002
+                # Fail only on the actual base64 write (not mkdir / truncate).
+                if command[:1] == ["sh"] and "base64 -d >>" in command[2]:
+                    return driver.ExecResult(exit_code=1, stdout="", stderr="disk full")
+                return driver.ExecResult(exit_code=0, stdout="", stderr="")
+
+        import base64 as _b64
+
+        with pytest.raises(RuntimeError) as excinfo:
+            driver._write_bytes_to_container(FailingExecutor(), "/home/agent/.claude.json", secret)
+
+        msg = str(excinfo.value)
+        assert secret.decode() not in msg
+        assert _b64.b64encode(secret).decode() not in msg
+
+
+class TestReadinessBreaksFastOnDeadContainer:
+    """Finding 4: a container that is GONE must break the readiness poll
+    immediately (naming the death) instead of spinning the full deadline and
+    then reporting a misleading generic timeout.
+    """
+
+    @staticmethod
+    def _ws():
+        return driver.InteractiveTmuxWorkspace(
+            name="test",
+            container="test-container",
+            image="test-image",
+            workdir="/workspace",
+            tmux_size=(200, 50),
+            host_throwaway_dir=Path("/tmp/test-throwaway"),
+            enabled_agents=("claude",),
+        )
+
+    def test_await_completion_breaks_immediately_on_dead_container(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = {"n": 0}
+
+        def dead_capture(container, window, **kwargs):  # noqa: ARG001
+            calls["n"] += 1
+            raise subprocess.CalledProcessError(
+                1, ["docker", "exec"], "", "Error: No such container: test-container"
+            )
+
+        monkeypatch.setattr(driver, "_tmux_capture", dead_capture)
+        monkeypatch.setattr(driver.time, "sleep", lambda *_a, **_k: None)
+
+        # Generous overall timeout: if the fix regressed, this would spin
+        # (many capture calls) instead of breaking after the first.
+        result = self._ws().await_completion("claude", timeout=100.0, stable_polls=1, warmup=0.0)
+
+        assert result.ready is False
+        assert result.timed_out is False
+        assert result.reason == "container_dead"
+        assert "No such container" in (result.error or "")
+        assert calls["n"] == 1
+
+    def test_wait_for_started_breaks_immediately_on_dead_container(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = {"n": 0}
+
+        def dead_capture(container, window, **kwargs):  # noqa: ARG001
+            calls["n"] += 1
+            raise subprocess.CalledProcessError(
+                1, ["docker", "exec"], "", "Error response from daemon: Container is not running"
+            )
+
+        monkeypatch.setattr(driver, "_tmux_capture", dead_capture)
+        monkeypatch.setattr(driver.time, "sleep", lambda *_a, **_k: None)
+
+        result = self._ws()._wait_for_started("claude", 100.0)
+
+        assert result.ready is False
+        assert result.timed_out is False
+        assert result.reason == "container_dead"
+        assert "is not running" in (result.error or "")
+        assert calls["n"] == 1
+
+    def test_transient_capture_failure_still_retries_while_alive(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A CalledProcessError whose stderr does NOT name a dead container is
+        a genuine transient hiccup and must stay on the retry path."""
+        calls = {"n": 0}
+
+        def flaky(container, window, **kwargs):  # noqa: ARG001
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise subprocess.CalledProcessError(1, ["docker", "exec"], "", "temporary glitch")
+            return "❯ \n? for shortcuts"
+
+        monkeypatch.setattr(driver, "_tmux_capture", flaky)
+        monkeypatch.setattr(driver.time, "sleep", lambda *_a, **_k: None)
+
+        result = self._ws().await_completion("claude", timeout=100.0, stable_polls=1, warmup=0.0)
+
+        assert result.ready is True
+        assert calls["n"] >= 2

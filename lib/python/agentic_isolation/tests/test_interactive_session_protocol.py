@@ -1,8 +1,9 @@
 """Tests for the typed InteractiveSession port (Phase 1 of ADR/issue #225).
 
 Covers:
-  * AwaitResult dataclass (fields mirror the driver's dataclass, success
-    property, to_dict()).
+  * AwaitResult is now a structural Protocol (not a duplicate dataclass);
+    a driver-shaped dataclass satisfies isinstance() against it, so the
+    two definitions can never drift.
   * InteractiveSession protocol -- structural isinstance() checks against
     a stub object, without needing the interactive-tmux driver.
   * BaseProvider.interactive_session() default returns None.
@@ -11,6 +12,7 @@ Covers:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -25,58 +27,73 @@ from agentic_isolation.providers.base import (
 )
 
 
-class TestAwaitResult:
-    def test_success_true_when_ready(self) -> None:
-        result = AwaitResult(
+@dataclass
+class _DriverShapedAwaitResult:
+    """Field-for-field copy of the interactive-tmux driver's own
+    `AwaitResult` dataclass -- used to prove the real driver result
+    satisfies the base `AwaitResult` Protocol structurally, without
+    importing the driver."""
+
+    ready: bool
+    timed_out: bool
+    reason: str
+    duration_ms: float
+    stable_polls_observed: int
+    pane: str = ""
+    error: str | None = None
+
+    @property
+    def success(self) -> bool:
+        return self.ready
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "ready": self.ready,
+            "timed_out": self.timed_out,
+            "reason": self.reason,
+            "duration_ms": self.duration_ms,
+            "stable_polls_observed": self.stable_polls_observed,
+            "pane": self.pane,
+            "error": self.error,
+        }
+
+
+class TestAwaitResultProtocol:
+    def test_driver_shaped_result_satisfies_protocol(self) -> None:
+        """A driver-shaped dataclass satisfies the base `AwaitResult`
+        Protocol structurally -- so the isinstance() check that used to
+        always be False (two drifting dataclasses) now holds."""
+        result = _DriverShapedAwaitResult(
             ready=True,
             timed_out=False,
             reason="ready",
             duration_ms=123.4,
             stable_polls_observed=4,
         )
-        assert result.success is True
+        assert isinstance(result, AwaitResult)
 
-    def test_success_false_when_not_ready(self) -> None:
-        result = AwaitResult(
+    def test_read_surface_is_accessible(self) -> None:
+        result = _DriverShapedAwaitResult(
             ready=False,
             timed_out=True,
             reason="timeout_never_ready",
             duration_ms=60000.0,
             stable_polls_observed=0,
-        )
-        assert result.success is False
-
-    def test_defaults(self) -> None:
-        result = AwaitResult(
-            ready=True,
-            timed_out=False,
-            reason="ready",
-            duration_ms=1.0,
-            stable_polls_observed=4,
-        )
-        assert result.pane == ""
-        assert result.error is None
-
-    def test_to_dict(self) -> None:
-        result = AwaitResult(
-            ready=False,
-            timed_out=False,
-            reason="error",
-            duration_ms=5.0,
-            stable_polls_observed=1,
-            pane="some pane text",
+            pane="last frame",
             error="boom",
         )
-        data = result.to_dict()
-        assert data == {
-            "ready": False,
-            "timed_out": False,
-            "reason": "error",
-            "duration_ms": 5.0,
-            "stable_polls_observed": 1,
-            "pane": "some pane text",
-            "error": "boom",
-        }
+        # Every member the port promises is readable off the concrete result.
+        assert result.ready is False
+        assert result.timed_out is True
+        assert result.reason == "timeout_never_ready"
+        assert result.duration_ms == 60000.0
+        assert result.stable_polls_observed == 0
+        assert result.pane == "last frame"
+        assert result.error == "boom"
+        assert result.success is False
+
+    def test_plain_object_does_not_satisfy_protocol(self) -> None:
+        assert not isinstance(object(), AwaitResult)
 
 
 class _StubInteractiveSession:
@@ -94,7 +111,7 @@ class _StubInteractiveSession:
         stable_polls: int = 4,
         poll_interval: float = 0.5,
     ) -> AwaitResult:
-        return AwaitResult(
+        return _DriverShapedAwaitResult(
             ready=True,
             timed_out=False,
             reason="ready",

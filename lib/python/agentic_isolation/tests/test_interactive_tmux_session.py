@@ -64,8 +64,8 @@ class _FakeExecutor:
     def __post_init__(self) -> None:
         self.calls: list[tuple[tuple, dict]] = []
 
-    def exec(self, command, *, timeout_s=None):
-        self.calls.append((tuple(command), {"timeout_s": timeout_s}))
+    def exec(self, command, *, timeout_s=None, stdin=None):
+        self.calls.append((tuple(command), {"timeout_s": timeout_s, "stdin": stdin}))
         return driver.ExecResult(exit_code=self.exit_code, stdout=self.stdout, stderr=self.stderr)
 
 

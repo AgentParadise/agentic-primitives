@@ -85,7 +85,7 @@ class _FakeExecutor:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
 
-    def exec(self, command, *, timeout_s=None):  # noqa: ARG002
+    def exec(self, command, *, timeout_s=None, stdin=None):  # noqa: ARG002
         self.calls.append(list(command))
         return driver.ExecResult(exit_code=0, stdout="", stderr="")
 

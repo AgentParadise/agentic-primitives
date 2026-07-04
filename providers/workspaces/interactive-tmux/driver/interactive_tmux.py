@@ -116,6 +116,7 @@ class AwaitResult:
       - timed_out=True, ready=False         → deadline hit before idle
       - ready=False, reason="never_ready"   → never reached even one ready frame
       - ready=False, reason="unstable"      → ready frames seen but pane kept changing
+      - ready=False, reason="container_dead"→ target died mid-poll (not a timeout)
       - ready=True                          → adapter is_ready() held stable
 
     `pane` carries the last captured pane text so callers don't have to
@@ -124,7 +125,7 @@ class AwaitResult:
 
     ready: bool
     timed_out: bool
-    reason: str  # "ready" | "timeout_never_ready" | "timeout_unstable" | "error"
+    reason: str  # "ready" | "timeout_never_ready" | "timeout_unstable" | "container_dead" | "error"
     duration_ms: float
     stable_polls_observed: int
     pane: str = ""
@@ -195,9 +196,39 @@ class ExecResult:
     timed_out: bool = False
 
 
+def _decode(stream: str | bytes | None) -> str:
+    """Normalize a subprocess stdout/stderr stream to `str`.
+
+    When an executor pipes bytes over `stdin` it must run `subprocess.run`
+    with `text=False` (you cannot pass `bytes` as `input` while `text=True`),
+    so `stdout`/`stderr` come back as `bytes`. This decodes them (and the
+    `str` case is a passthrough) so every `ExecResult` carries text
+    regardless of whether the call used stdin.
+    """
+    if stream is None:
+        return ""
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", errors="replace")
+    return stream
+
+
 @runtime_checkable
 class CommandExecutor(Protocol):
-    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult: ...
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
+        """Run `command` inside the workspace target.
+
+        `stdin`, when given, is fed to the process as its standard input.
+        This is the credential-safe transfer path: bytes passed here never
+        appear in the process argv (which is world-readable via `ps` /
+        `/proc/<pid>/cmdline`), unlike embedding them in a shell command.
+        """
+        ...
 
 
 @dataclass
@@ -213,14 +244,27 @@ class DockerExecExecutor:
 
     target: str
 
-    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
-        cmd = ["docker", "exec", self.target, *command]
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
+        # `-i` (keep STDIN open) is required for `docker exec` to forward the
+        # piped `stdin` bytes to the in-container process; without it the
+        # payload is dropped. Only added when stdin is supplied so the
+        # non-stdin argv shape (and its tests) stay byte-for-byte identical.
+        interactive = ["-i"] if stdin is not None else []
+        cmd = ["docker", "exec", *interactive, self.target, *command]
         try:
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
-                text=True,
+                # bytes `input` requires text=False; decode outputs via `_decode`.
+                text=stdin is None,
                 timeout=timeout_s,
+                input=stdin,
             )
         except subprocess.TimeoutExpired as exc:
             # Phase 3: a wedged `docker exec` used to hang the calling
@@ -228,15 +272,16 @@ class DockerExecExecutor:
             # letting the exception propagate, so pollers (await_completion)
             # can treat it as "not ready yet" and keep going within their
             # own overall deadline.
-            partial_out = exc.stdout if isinstance(exc.stdout, str) else ""
-            partial_err = exc.stderr if isinstance(exc.stderr, str) else ""
+            partial_err = _decode(exc.stderr)
             return ExecResult(
                 exit_code=-1,
-                stdout=partial_out,
+                stdout=_decode(exc.stdout),
                 stderr=(f"docker exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
                 timed_out=True,
             )
-        return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+        return ExecResult(
+            exit_code=proc.returncode, stdout=_decode(proc.stdout), stderr=_decode(proc.stderr)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -312,28 +357,37 @@ class LocalExecutor:
 
     workdir: str | Path
 
-    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
         try:
             proc = subprocess.run(
                 command,
                 capture_output=True,
-                text=True,
+                # bytes `input` requires text=False; decode outputs via `_decode`.
+                text=stdin is None,
                 timeout=timeout_s,
                 cwd=self.workdir,
+                input=stdin,
             )
         except subprocess.TimeoutExpired as exc:
             # Same rationale as DockerExecExecutor: a wedged local command
             # must not hang the caller forever; return a `timed_out`
             # ExecResult so pollers can treat it as "not ready yet".
-            partial_out = exc.stdout if isinstance(exc.stdout, str) else ""
-            partial_err = exc.stderr if isinstance(exc.stderr, str) else ""
+            partial_err = _decode(exc.stderr)
             return ExecResult(
                 exit_code=-1,
-                stdout=partial_out,
+                stdout=_decode(exc.stdout),
                 stderr=(f"local exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
                 timed_out=True,
             )
-        return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+        return ExecResult(
+            exit_code=proc.returncode, stdout=_decode(proc.stdout), stderr=_decode(proc.stderr)
+        )
 
 
 @dataclass
@@ -393,30 +447,41 @@ class SSHExecutor:
     base_argv: list[str]
     workdir: str | None = None
 
-    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
         remote_cmd = shlex.join(command)
         if self.workdir:
             remote_cmd = f"cd {shlex.quote(self.workdir)} && {remote_cmd}"
         cmd = [*self.base_argv, remote_cmd]
+        # `ssh` forwards our local stdin to the remote command with no extra
+        # flag needed, so `input=stdin` reaches the remote process directly.
         try:
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
-                text=True,
+                # bytes `input` requires text=False; decode outputs via `_decode`.
+                text=stdin is None,
                 timeout=timeout_s,
+                input=stdin,
             )
         except subprocess.TimeoutExpired as exc:
             # Same rationale as DockerExecExecutor/LocalExecutor: a wedged
             # remote command must not hang the caller forever.
-            partial_out = exc.stdout if isinstance(exc.stdout, str) else ""
-            partial_err = exc.stderr if isinstance(exc.stderr, str) else ""
+            partial_err = _decode(exc.stderr)
             return ExecResult(
                 exit_code=-1,
-                stdout=partial_out,
+                stdout=_decode(exc.stdout),
                 stderr=(f"ssh exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
                 timed_out=True,
             )
-        return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+        return ExecResult(
+            exit_code=proc.returncode, stdout=_decode(proc.stdout), stderr=_decode(proc.stderr)
+        )
 
 
 @dataclass
@@ -600,6 +665,14 @@ def _tmux_send_literal(
     if len(payload) <= TMUX_SEND_KEYS_MAX_BYTES:
         # `--` ends option parsing so a prompt beginning with `-` (e.g.
         # "-R", "--help") is treated as literal text, not a send-keys flag.
+        #
+        # NOTE on multiline payloads: `send-keys -l` emits the literal bytes,
+        # so an embedded newline is delivered as a bare Enter. The per-agent
+        # adapters (`_ClaudeAdapter.submit` et al.) deliberately send the body
+        # here and the terminating Enter as a SEPARATE key, so a multiline
+        # prompt whose newlines act as line breaks (not submits) is the
+        # agent TUI's own paste/soft-wrap behavior - consistent with the
+        # bracketed-paste path below for oversized payloads.
         _docker_exec(
             target, "tmux", "send-keys", "-t", pane, "-l", "--", text,
             executor=executor, timeout_s=timeout_s,
@@ -615,8 +688,16 @@ def _tmux_send_literal(
         _run_exec_checked(
             exec_, ["tmux", "load-buffer", "-b", buf_name, buf_path], timeout_s=timeout_s
         )
+        # `-p` sends the buffer as a BRACKETED paste: tmux wraps it in the
+        # terminal's paste markers (ESC[200~ ... ESC[201~) so the agent TUI
+        # (claude/codex/gemini all enable bracketed-paste mode) treats the
+        # whole payload as one atomic paste. Without it, a multiline prompt's
+        # embedded newlines dispatch as individual Enter presses and submit
+        # the prompt early, fragmenting it across turns.
         _run_exec_checked(
-            exec_, ["tmux", "paste-buffer", "-b", buf_name, "-d", "-t", pane], timeout_s=timeout_s
+            exec_,
+            ["tmux", "paste-buffer", "-p", "-b", buf_name, "-d", "-t", pane],
+            timeout_s=timeout_s,
         )
     finally:
         # Best-effort cleanup of the staged temp file; a failure here must
@@ -1327,6 +1408,8 @@ def _run_exec_checked(
     command: list[str],
     *,
     timeout_s: float | None = None,
+    stdin: bytes | None = None,
+    label: str | None = None,
 ) -> ExecResult:
     """`executor.exec(command)`, raising `RuntimeError` on non-zero exit.
 
@@ -1334,11 +1417,21 @@ def _run_exec_checked(
     failed `mkdir -p` or base64 write leaves the container half-seeded
     with auth material, which is worse than failing loudly at
     `start_workspace` time.
+
+    `stdin`, when given, is piped to the command so a credential payload
+    can be delivered without ever appearing in argv (see
+    `_write_bytes_to_container`).
+
+    `label` is a redacted description used in the raised error message in
+    place of the raw `command`. Credential-seeding callers pass a label
+    (e.g. "write credentials to <path>") so that neither the payload nor
+    even the raw command shape leaks into exceptions or logs.
     """
-    result = executor.exec(command, timeout_s=timeout_s)
+    result = executor.exec(command, timeout_s=timeout_s, stdin=stdin)
     if result.exit_code != 0:
+        described = label if label is not None else repr(command)
         raise RuntimeError(
-            f"container command failed (exit {result.exit_code}): {command!r}\n"
+            f"container command failed (exit {result.exit_code}): {described}\n"
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
     return result
@@ -1349,35 +1442,46 @@ def _write_bytes_to_container(
     container_path: str,
     data: bytes,
     *,
-    chunk_size: int = 6000,
     timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
 ) -> None:
     """Write `data` into `container_path` inside the container over `executor`.
 
     Replaces host bind-mounting of credential material (the docker-out-of-
     docker fix): instead of `-v host:container` at `docker run` time, the
-    file's bytes are base64-encoded and pushed in over `docker exec` in
-    `chunk_size`-sized pieces (tmux's ~16KB send-keys ceiling doesn't apply
-    here, but keeping writes chunked avoids hitting exec/argv length limits
-    on very large credential files). Each chunk is base64 so arbitrary
-    bytes (including newlines/binary) survive the `sh -c` round-trip.
+    file's bytes are pushed in over the executor.
 
-    `timeout_s` (Phase 3) bounds each individual exec call so a wedged
-    container can't hang the transfer forever.
+    SECURITY (credential leak fix): the payload is base64-encoded and fed to
+    an in-container `base64 -d` over the process's STDIN - it is NEVER placed
+    in argv. Anything in argv is world-readable via `ps` / `/proc/<pid>/
+    cmdline`, so the previous `printf '%s' <base64>` shape exposed the
+    credential bytes to any host user for the lifetime of the exec. stdin has
+    no argv length limit either, so the whole file goes in ONE exec (the old
+    chunked loop is gone). base64 keeps arbitrary/binary bytes intact through
+    the `sh -c` round-trip; `base64 -d` reconstructs them container-side.
+
+    `timeout_s` (Phase 3) bounds the exec call so a wedged container can't
+    hang the transfer forever.
     """
     parent = posixpath.dirname(container_path)
     if parent:
         _run_exec_checked(executor, ["mkdir", "-p", parent], timeout_s=timeout_s)
     quoted_path = shlex.quote(container_path)
-    # Truncate/create the destination before appending chunks so a re-run
-    # (or a shorter payload than a stale prior write) doesn't leave trailing
-    # garbage from an earlier attempt.
-    _run_exec_checked(executor, ["sh", "-c", f"> {quoted_path}"], timeout_s=timeout_s)
-    encoded = base64.b64encode(data).decode("ascii")
-    for start in range(0, len(encoded), chunk_size):
-        chunk = encoded[start : start + chunk_size]
-        cmd = f"printf '%s' {shlex.quote(chunk)} | base64 -d >> {quoted_path}"
-        _run_exec_checked(executor, ["sh", "-c", cmd], timeout_s=timeout_s)
+    # Redacted label: credential-seeding must not leak the payload OR the raw
+    # command into the RuntimeError _run_exec_checked raises on failure.
+    label = f"write bytes to {container_path}"
+    # Truncate/create the destination first so a re-run (or a shorter payload
+    # than a stale prior write) doesn't leave trailing garbage.
+    _run_exec_checked(
+        executor, ["sh", "-c", f"> {quoted_path}"], timeout_s=timeout_s, label=label
+    )
+    encoded = base64.b64encode(data)
+    _run_exec_checked(
+        executor,
+        ["sh", "-c", f"base64 -d >> {quoted_path}"],
+        timeout_s=timeout_s,
+        stdin=encoded,
+        label=label,
+    )
 
 
 def _transfer_path_to_container(
@@ -1462,6 +1566,47 @@ def _build_seeded_claude_dotjson(host_dotjson: Path, workspace_path: str) -> dic
         }
     }
     return seeded
+
+
+# Substrings docker/tmux emit when the workspace target itself is GONE
+# (OOM-killed, `docker rm`'d, daemon crash, tmux session vanished) rather
+# than a transient capture hiccup while the container is still alive. Matched
+# case-insensitively against a failed exec's stderr so the readiness pollers
+# can break out immediately instead of spinning the full startup/await
+# deadline and then reporting a misleading generic timeout (a "degraded"
+# workspace that actually masks a hard container death).
+_CONTAINER_DEAD_STDERR_MARKERS = (
+    "no such container",
+    "is not running",
+    "cannot connect to the docker daemon",
+    "no server running",  # tmux daemon gone
+    "no such session",  # tmux session vanished
+    "can't find session",
+    "error connecting to",
+)
+
+
+def _container_death_reason(
+    exc: subprocess.CalledProcessError | subprocess.TimeoutExpired,
+) -> str | None:
+    """Return a human-readable reason if `exc` indicates the workspace target
+    is GONE, else None.
+
+    A `TimeoutExpired` is always treated as transient (the container may just
+    be slow this once); only a `CalledProcessError` whose stderr names a dead
+    container / tmux server / tmux session counts as death. This lets the
+    readiness pollers distinguish "one failed capture while still alive"
+    (keep retrying) from "the container died" (stop now, surface the real
+    error) instead of blindly polling until the deadline.
+    """
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return None
+    stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+    low = stderr.lower()
+    for marker in _CONTAINER_DEAD_STDERR_MARKERS:
+        if marker in low:
+            return stderr.strip() or marker
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1758,8 +1903,27 @@ class InteractiveTmuxWorkspace:
             try:
                 pane = session.capture_pane()
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                # Phase 3: a single wedged/failed capture during startup
-                # polling must not abort the whole wait — keep polling
+                # Finding 4: distinguish a transient capture hiccup from a
+                # container that is GONE. A dead container would otherwise
+                # spin this loop until `timeout_s` and (in lax mode) return a
+                # falsely-"degraded" workspace masking the real docker error.
+                death = _container_death_reason(exc)
+                if death is not None:
+                    duration_ms = (time.monotonic() - start) * 1000
+                    logger.error(
+                        "wait_for_started(%s): container is gone mid-startup: %s", agent, death
+                    )
+                    return AwaitResult(
+                        ready=False,
+                        timed_out=False,
+                        reason="container_dead",
+                        duration_ms=duration_ms,
+                        stable_polls_observed=0,
+                        pane=pane,
+                        error=death,
+                    )
+                # Phase 3: a single wedged/failed capture while the container
+                # is still alive must not abort the whole wait - keep polling
                 # until the overall `timeout_s` deadline.
                 logger.warning("wait_for_started(%s): capture failed mid-poll: %s", agent, exc)
                 time.sleep(0.5)
@@ -1887,9 +2051,29 @@ class InteractiveTmuxWorkspace:
             try:
                 pane = session.capture_pane(timeout_s=poll_timeout_s)
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                # Phase 3: a single failed/wedged poll must not abort the
-                # whole await — treat it as "not ready this round" and keep
-                # polling until the overall deadline above.
+                # Finding 4: a container that is GONE (OOM, tmux session gone,
+                # daemon error) must break the poll immediately rather than
+                # spin until `timeout` and report a misleading generic
+                # timeout. A genuinely transient failure while the container
+                # is still alive stays on the retry path below.
+                death = _container_death_reason(exc)
+                if death is not None:
+                    duration_ms = (time.monotonic() - start) * 1000
+                    logger.error(
+                        "await_completion(%s): container is gone mid-poll: %s", agent, death
+                    )
+                    return AwaitResult(
+                        ready=False,
+                        timed_out=False,
+                        reason="container_dead",
+                        duration_ms=duration_ms,
+                        stable_polls_observed=consecutive_stable_ready,
+                        pane=pane,
+                        error=death,
+                    )
+                # Phase 3: a single failed/wedged poll (container still alive)
+                # must not abort the whole await - treat it as "not ready this
+                # round" and keep polling until the overall deadline above.
                 logger.warning("await_completion(%s): capture failed/timed out mid-poll: %s", agent, exc)
                 consecutive_stable_ready = 0
                 last_tail = None

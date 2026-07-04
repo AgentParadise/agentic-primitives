@@ -44,51 +44,57 @@ class ExecuteResult:
         }
 
 
-@dataclass
-class AwaitResult:
-    """Result of waiting for an interactive agent pane to reach a
-    ready/idle state.
+@runtime_checkable
+class AwaitResult(Protocol):
+    """Structural read port for the result of waiting for an interactive
+    agent pane to reach a ready/idle state.
 
-    This mirrors (field-for-field) the `AwaitResult` dataclass defined in
-    the standalone interactive-tmux driver
-    (`providers/workspaces/interactive-tmux/driver/interactive_tmux.py`).
-    It is defined fresh here rather than imported so that
-    `agentic_isolation` never needs the driver to be importable (the
-    driver is stdlib-only and lives outside this package).
+    This is a *structural* Protocol, not a concrete dataclass. The
+    interactive-tmux driver defines its own `AwaitResult` dataclass
+    (`providers/workspaces/interactive-tmux/driver/interactive_tmux.py`)
+    and that real object is what `interactive_session().await_completion()`
+    actually returns. Declaring this as a Protocol (rather than a duplicate
+    dataclass) means `isinstance(driver_result, AwaitResult)` is True at
+    runtime, the two definitions can never drift, and `agentic_isolation`
+    still never needs to import the driver (which is stdlib-only and lives
+    outside this package).
 
+    Exposes only the read surface consumers need:
+
+      - ready=True                          -> adapter is_ready() held stable
       - timed_out=True, ready=False         -> deadline hit before idle
       - ready=False, reason="never_ready"   -> never reached even one ready frame
       - ready=False, reason="unstable"      -> ready frames seen but pane kept changing
-      - ready=True                          -> adapter is_ready() held stable
 
     `pane` carries the last captured pane text so callers don't have to
-    re-capture to inspect post-mortem.
+    re-capture to inspect post-mortem; `success` mirrors `ready`.
+    Serialization (`to_dict()`) lives on the concrete driver dataclass, not
+    on this read port.
     """
 
-    ready: bool
-    timed_out: bool
-    reason: str
-    duration_ms: float
-    stable_polls_observed: int
-    pane: str = ""
-    error: str | None = None
+    @property
+    def ready(self) -> bool: ...
 
     @property
-    def success(self) -> bool:
-        """Whether the agent reached a stable ready state."""
-        return self.ready
+    def timed_out(self) -> bool: ...
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "ready": self.ready,
-            "timed_out": self.timed_out,
-            "reason": self.reason,
-            "duration_ms": self.duration_ms,
-            "stable_polls_observed": self.stable_polls_observed,
-            "pane": self.pane,
-            "error": self.error,
-        }
+    @property
+    def reason(self) -> str: ...
+
+    @property
+    def duration_ms(self) -> float: ...
+
+    @property
+    def stable_polls_observed(self) -> int: ...
+
+    @property
+    def pane(self) -> str: ...
+
+    @property
+    def error(self) -> str | None: ...
+
+    @property
+    def success(self) -> bool: ...
 
 
 @dataclass
