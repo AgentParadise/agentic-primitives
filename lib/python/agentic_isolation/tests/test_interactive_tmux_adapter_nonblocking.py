@@ -179,9 +179,7 @@ class _ReentrancyDriver:
             cls.overlap_detected = True
         cls.busy = True
         cls.current_concurrency += 1
-        cls.max_observed_concurrency = max(
-            cls.max_observed_concurrency, cls.current_concurrency
-        )
+        cls.max_observed_concurrency = max(cls.max_observed_concurrency, cls.current_concurrency)
         try:
             # Long enough that a second concurrent call, if the lock were
             # missing/broken, would reliably overlap with this one.

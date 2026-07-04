@@ -109,7 +109,9 @@ class TestDockerEnvironmentStart:
 
         monkeypatch.setattr(driver, "_run", fake_run)
 
-        env = driver.DockerEnvironment(name="my-container", image="my-image:latest", workdir="/workspace")
+        env = driver.DockerEnvironment(
+            name="my-container", image="my-image:latest", workdir="/workspace"
+        )
         executor = env.start()
 
         assert captured["cmd"] == [
@@ -177,7 +179,11 @@ class TestStartWorkspaceEnvironmentInjection:
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
         monkeypatch.setattr(driver, "_run", fake_run)
-        monkeypatch.setattr(driver.InteractiveTmuxWorkspace, "_bootstrap_tmux_and_launch", lambda self, *a, **k: None)
+        monkeypatch.setattr(
+            driver.InteractiveTmuxWorkspace,
+            "_bootstrap_tmux_and_launch",
+            lambda self, *a, **k: None,
+        )
         monkeypatch.setattr(
             driver.subprocess,
             "run",
@@ -208,10 +214,16 @@ class TestStartWorkspaceEnvironmentInjection:
         fake_env = _FakeEnvironment(executor=fake_executor)
 
         def unexpected_run(cmd, **kwargs):
-            raise AssertionError(f"start_workspace should not call _run() when environment= is injected: {cmd}")
+            raise AssertionError(
+                f"start_workspace should not call _run() when environment= is injected: {cmd}"
+            )
 
         monkeypatch.setattr(driver, "_run", unexpected_run)
-        monkeypatch.setattr(driver.InteractiveTmuxWorkspace, "_bootstrap_tmux_and_launch", lambda self, *a, **k: None)
+        monkeypatch.setattr(
+            driver.InteractiveTmuxWorkspace,
+            "_bootstrap_tmux_and_launch",
+            lambda self, *a, **k: None,
+        )
 
         ws = driver.InteractiveTmuxWorkspace.start_workspace(
             name="envinjected",
@@ -239,7 +251,9 @@ class TestStartWorkspaceEnvironmentInjection:
         def failing_bootstrap(self, *a, **k):
             raise RuntimeError("boom")
 
-        monkeypatch.setattr(driver.InteractiveTmuxWorkspace, "_bootstrap_tmux_and_launch", failing_bootstrap)
+        monkeypatch.setattr(
+            driver.InteractiveTmuxWorkspace, "_bootstrap_tmux_and_launch", failing_bootstrap
+        )
 
         with pytest.raises(RuntimeError, match="boom"):
             driver.InteractiveTmuxWorkspace.start_workspace(
@@ -369,7 +383,9 @@ class TestSSHExecutor:
         assert captured["kwargs"]["text"] is True
         assert result == driver.ExecResult(exit_code=0, stdout="out", stderr="err")
 
-    def test_exec_timeout_returns_timed_out_exec_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_exec_timeout_returns_timed_out_exec_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         def timing_out_run(cmd, **kwargs):
             raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
 
@@ -418,7 +434,9 @@ class TestSSHEnvironment:
         env = driver.SSHEnvironment(host="example.com", user="me")
         assert isinstance(env, driver.Environment)
 
-    def test_start_runs_reachability_check_with_expected_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_start_runs_reachability_check_with_expected_argv(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         captured: dict = {}
 
         def fake_run(cmd, **kwargs):
@@ -481,9 +499,13 @@ class TestSSHEnvironment:
 
         assert "-i" not in captured["cmd"]
 
-    def test_start_raises_runtime_error_with_stderr_on_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_start_raises_runtime_error_with_stderr_on_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         def fake_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 255, "", "ssh: connect to host example.com port 22: Connection refused")
+            return subprocess.CompletedProcess(
+                cmd, 255, "", "ssh: connect to host example.com port 22: Connection refused"
+            )
 
         monkeypatch.setattr(driver.subprocess, "run", fake_run)
 

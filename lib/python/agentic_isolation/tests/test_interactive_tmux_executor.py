@@ -209,7 +209,9 @@ class TestWriteBytesToContainer:
     def test_large_payload_is_chunked_and_reconstructed(self) -> None:
         fake = _FakeExecutor()
         payload = bytes(range(256)) * 200  # 51200 bytes, forces multiple chunks
-        driver._write_bytes_to_container(fake, "/home/agent/.codex/auth.json", payload, chunk_size=64)
+        driver._write_bytes_to_container(
+            fake, "/home/agent/.codex/auth.json", payload, chunk_size=64
+        )
         assert fake.fs["/home/agent/.codex/auth.json"] == payload
         # More than one base64-chunk write call happened.
         b64_calls = [c for c in fake.calls if c[:1] == ["sh"] and "base64 -d >>" in c[2]]
@@ -283,7 +285,11 @@ class TestStartWorkspaceNoLongerBindMounts:
             lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, "", ""),
         )
         # Avoid launching real tmux/agents during bootstrap.
-        monkeypatch.setattr(driver.InteractiveTmuxWorkspace, "_bootstrap_tmux_and_launch", lambda self, *a, **k: None)
+        monkeypatch.setattr(
+            driver.InteractiveTmuxWorkspace,
+            "_bootstrap_tmux_and_launch",
+            lambda self, *a, **k: None,
+        )
 
         ws = driver.InteractiveTmuxWorkspace.start_workspace(
             name="noboundtest",
@@ -305,7 +311,11 @@ class TestStartWorkspaceNoLongerBindMounts:
             "_run",
             lambda cmd, check=True, capture=True: subprocess.CompletedProcess(cmd, 0, "", ""),
         )
-        monkeypatch.setattr(driver.InteractiveTmuxWorkspace, "_bootstrap_tmux_and_launch", lambda self, *a, **k: None)
+        monkeypatch.setattr(
+            driver.InteractiveTmuxWorkspace,
+            "_bootstrap_tmux_and_launch",
+            lambda self, *a, **k: None,
+        )
 
         fake = _FakeExecutor()
         monkeypatch.setattr(driver, "DockerExecExecutor", lambda container: fake)  # noqa: ARG005
