@@ -338,7 +338,7 @@ class TestWorkspaceExecutorField:
             enabled_agents=("claude",),
         )
         assert isinstance(ws.executor, driver.DockerExecExecutor)
-        assert ws.executor.container == "test-container"
+        assert ws.executor.target == "test-container"
 
     def test_explicit_executor_is_kept(self) -> None:
         fake = _FakeExecutor()

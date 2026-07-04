@@ -87,7 +87,7 @@ class TestTmuxSessionIsAgentAgnostic:
             lambda container, window, *keys, **kw: calls.append((container, window, keys, kw)),
         )
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         session.send_keys("Enter", timeout_s=9.0)
         assert calls == [("c1", "win1", ("Enter",), {"executor": fake, "timeout_s": 9.0})]
 
@@ -99,7 +99,7 @@ class TestTmuxSessionIsAgentAgnostic:
             lambda container, window, text, **kw: calls.append((container, window, text, kw)),
         )
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         session.send_literal("hello world")
         assert calls == [("c1", "win1", "hello world", {"executor": fake, "timeout_s": driver.DEFAULT_EXEC_TIMEOUT_S})]
 
@@ -110,18 +110,18 @@ class TestTmuxSessionIsAgentAgnostic:
             lambda container, window, **kw: f"{container}:{window}:{kw.get('timeout_s')}",
         )
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         assert session.capture_pane(timeout_s=4.0) == "c1:win1:4.0"
 
     def test_is_alive_true_when_has_session_succeeds(self) -> None:
         fake = _FakeExecutor(exit_code=0)
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         assert session.is_alive() is True
         assert fake.calls[0][0] == ("tmux", "has-session", "-t", driver.TMUX_SESSION)
 
     def test_is_alive_false_when_has_session_fails(self) -> None:
         fake = _FakeExecutor(exit_code=1)
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         assert session.is_alive() is False
 
     def test_start_new_session_for_first_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -132,7 +132,7 @@ class TestTmuxSessionIsAgentAgnostic:
             lambda container, *args, **kw: calls.append((container, args, kw)),
         )
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="claude", executor=fake)
+        session = driver.TmuxSession(target="c1", window="claude", executor=fake)
         session.start(200, 50)
         container, args, kw = calls[0]
         assert container == "c1"
@@ -147,7 +147,7 @@ class TestTmuxSessionIsAgentAgnostic:
             lambda container, *args, **kw: calls.append((container, args, kw)),
         )
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="codex", executor=fake)
+        session = driver.TmuxSession(target="c1", window="codex", executor=fake)
         session.start(200, 50, as_new_window=True)
         container, args, kw = calls[0]
         assert args == ("tmux", "new-window", "-t", driver.TMUX_SESSION, "-n", "codex")
@@ -155,7 +155,7 @@ class TestTmuxSessionIsAgentAgnostic:
     def test_get_incremental_output_diffs_against_previous(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(driver, "_tmux_capture", lambda container, window, **kw: "abcXYZ")
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         new_text, full = session.get_incremental_output("abc")
         assert new_text == "XYZ"
         assert full == "abcXYZ"
@@ -165,7 +165,7 @@ class TestTmuxSessionIsAgentAgnostic:
     ) -> None:
         monkeypatch.setattr(driver, "_tmux_capture", lambda container, window, **kw: "fresh pane contents")
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         new_text, full = session.get_incremental_output("unrelated prior text")
         assert new_text == "fresh pane contents"
         assert full == "fresh pane contents"
@@ -175,7 +175,7 @@ class TestTmuxSessionIsAgentAgnostic:
     ) -> None:
         monkeypatch.setattr(driver, "_tmux_capture", lambda container, window, **kw: "first capture")
         fake = _FakeExecutor()
-        session = driver.TmuxSession(container="c1", window="win1", executor=fake)
+        session = driver.TmuxSession(target="c1", window="win1", executor=fake)
         new_text, full = session.get_incremental_output(None)
         assert new_text == "first capture"
         assert full == "first capture"
@@ -193,7 +193,7 @@ class TestWorkspaceBuildsSessionsPerAgent:
             enabled_agents=("claude", "codex"),
         )
         assert set(ws._sessions) == {"claude", "codex"}
-        assert ws._sessions["claude"].container == "test-container"
+        assert ws._sessions["claude"].target == "test-container"
         assert ws._sessions["claude"].window == "claude"
         assert ws._sessions["claude"].executor is ws.executor
 

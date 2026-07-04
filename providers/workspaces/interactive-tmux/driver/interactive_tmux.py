@@ -161,16 +161,21 @@ class StartupReadinessError(RuntimeError):
 #
 # Every tmux operation (send-keys, capture-pane) and every credential-seeding
 # file write ultimately needs to run a command *inside* the workspace
-# container. Historically that meant `subprocess.run(["docker", "exec", ...])`
-# sprinkled through this module. `CommandExecutor` pulls that behind a small
-# Protocol so:
+# target (container, VM, SSH host, ...). Historically that meant
+# `subprocess.run(["docker", "exec", ...])` sprinkled through this module.
+# `CommandExecutor` pulls that behind a small Protocol so:
 #   1. tests can inject a fake executor instead of monkeypatching subprocess
 #      at the module level;
-#   2. a future transport (E2B, a remote agent, ...) can implement the same
-#      three-method surface without touching the tmux/adapter logic above.
+#   2. a future transport (E2B, a remote agent, SSH/VPS, ...) can implement
+#      the same one-method surface without touching the tmux/adapter logic
+#      above.
 # `DockerExecExecutor` is the only implementation today and preserves the
 # exact `docker exec <container> <command...>` behavior this module always
-# had.
+# had. All identifiers threaded through the tmux/exec helpers below are
+# named `target` (not `container`) so they read as backend-neutral: for
+# Docker it holds the container name; for other backends (see the
+# `Environment` seam further below) it holds whatever opaque label that
+# backend uses for logging.
 
 
 @dataclass
@@ -206,10 +211,10 @@ class DockerExecExecutor:
     container).
     """
 
-    container: str
+    target: str
 
     def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
-        cmd = ["docker", "exec", self.container, *command]
+        cmd = ["docker", "exec", self.target, *command]
         try:
             proc = subprocess.run(
                 cmd,
@@ -232,6 +237,70 @@ class DockerExecExecutor:
                 timed_out=True,
             )
         return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Environment seam (provisioning, one layer above `CommandExecutor`)
+#
+# `CommandExecutor` answers "how do I run one command against an already-
+# running target?". `Environment` answers the layer above that: "how do I
+# bring a target into existence, and get a `CommandExecutor` for it, and
+# tear it down later?". Docker is the only implementation today
+# (`DockerEnvironment`, extracted behavior-preserving from what
+# `start_workspace`/`stop` always did), but the seam exists so Local and
+# SSH/VPS backends can be added as day-one alternatives without touching
+# any tmux/adapter/workspace logic — they only need to provision *something*
+# that a `CommandExecutor` can run commands against.
+
+
+@runtime_checkable
+class Environment(Protocol):
+    def start(self) -> CommandExecutor: ...
+    def stop(self) -> None: ...
+
+
+@dataclass
+class DockerEnvironment:
+    """Default `Environment`: provisions a workspace via `docker run` /
+    `docker rm -f`.
+
+    Behavior-preserving extraction of the `docker run ...` / `docker rm -f
+    ...` logic `start_workspace`/`stop` always ran inline. `start()` returns
+    a `DockerExecExecutor(target=self.name)` bound to the container it just
+    created; `stop()` best-effort removes that same container.
+    """
+
+    name: str
+    image: str
+    workdir: str
+    run_timeout_s: float | None = DEFAULT_RUN_TIMEOUT_S
+
+    def start(self) -> CommandExecutor:
+        run_cmd = [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            self.name,
+            "--workdir",
+            self.workdir,
+            self.image,
+            "sleep",
+            "infinity",
+        ]
+        _run(run_cmd)
+        return DockerExecExecutor(self.name)
+
+    def stop(self) -> None:
+        try:
+            subprocess.run(
+                ["docker", "rm", "-f", self.name],
+                check=False,
+                capture_output=True,
+                timeout=self.run_timeout_s or DEFAULT_RUN_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("docker rm -f %s timed out during DockerEnvironment.stop()", self.name)
 
 
 # ---------------------------------------------------------------------------
@@ -281,15 +350,15 @@ def _run(
 
 
 def _docker_exec(
-    container: str,
+    target: str,
     *args: str,
     check: bool = True,
     executor: CommandExecutor | None = None,
     timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
 ) -> subprocess.CompletedProcess:
-    """Run `docker exec <container> <args...>`, via `executor` if given.
+    """Run `docker exec <target> <args...>`, via `executor` if given.
 
-    Defaults to constructing a fresh `DockerExecExecutor(container)` so
+    Defaults to constructing a fresh `DockerExecExecutor(target)` so
     every existing call site (which doesn't know about the executor seam)
     behaves exactly as before. Returns a `subprocess.CompletedProcess` for
     backward compatibility with callers that inspect `.stdout` /
@@ -297,10 +366,15 @@ def _docker_exec(
 
     Phase 3: `timeout_s` (default `DEFAULT_EXEC_TIMEOUT_S`) is forwarded to
     the executor so no `docker exec` call in this module can block forever.
+
+    `target` is a label only when `executor` is supplied (it feeds the
+    logged/returned `docker exec <target> ...` command shape, but the
+    actual command runs through `executor.exec()`, which may not be
+    Docker-backed at all) — see the `Environment` seam above.
     """
-    cmd = ["docker", "exec", container, *args]
+    cmd = ["docker", "exec", target, *args]
     logger.debug("exec: %s", _redact_cmd(cmd))
-    exec_ = executor or DockerExecExecutor(container)
+    exec_ = executor or DockerExecExecutor(target)
     result = exec_.exec(list(args), timeout_s=timeout_s)
     if check and result.exit_code != 0:
         raise subprocess.CalledProcessError(
@@ -310,18 +384,18 @@ def _docker_exec(
 
 
 def _tmux_send_keys(
-    container: str,
+    target: str,
     window: str,
     *keys: str,
     executor: CommandExecutor | None = None,
     timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
 ) -> None:
-    target = f"{TMUX_SESSION}:{window}"
-    _docker_exec(container, "tmux", "send-keys", "-t", target, *keys, executor=executor, timeout_s=timeout_s)
+    pane = f"{TMUX_SESSION}:{window}"
+    _docker_exec(target, "tmux", "send-keys", "-t", pane, *keys, executor=executor, timeout_s=timeout_s)
 
 
 def _tmux_send_literal(
-    container: str,
+    target: str,
     window: str,
     text: str,
     *,
@@ -339,18 +413,18 @@ def _tmux_send_literal(
     credential transfer uses), loaded into a named tmux buffer with
     `load-buffer`, and dispatched into the target pane with `paste-buffer`.
     """
-    target = f"{TMUX_SESSION}:{window}"
+    pane = f"{TMUX_SESSION}:{window}"
     payload = text.encode("utf-8")
     if len(payload) <= TMUX_SEND_KEYS_MAX_BYTES:
         # `--` ends option parsing so a prompt beginning with `-` (e.g.
         # "-R", "--help") is treated as literal text, not a send-keys flag.
         _docker_exec(
-            container, "tmux", "send-keys", "-t", target, "-l", "--", text,
+            target, "tmux", "send-keys", "-t", pane, "-l", "--", text,
             executor=executor, timeout_s=timeout_s,
         )
         return
 
-    exec_ = executor or DockerExecExecutor(container)
+    exec_ = executor or DockerExecExecutor(target)
     token = uuid.uuid4().hex
     buf_path = f"/tmp/.itmux-sendkeys-{token}.buf"
     buf_name = f"itmux-{token[:12]}"
@@ -360,7 +434,7 @@ def _tmux_send_literal(
             exec_, ["tmux", "load-buffer", "-b", buf_name, buf_path], timeout_s=timeout_s
         )
         _run_exec_checked(
-            exec_, ["tmux", "paste-buffer", "-b", buf_name, "-d", "-t", target], timeout_s=timeout_s
+            exec_, ["tmux", "paste-buffer", "-b", buf_name, "-d", "-t", pane], timeout_s=timeout_s
         )
     finally:
         # Best-effort cleanup of the staged temp file; a failure here must
@@ -369,7 +443,7 @@ def _tmux_send_literal(
 
 
 def _tmux_capture(
-    container: str,
+    target: str,
     window: str,
     *,
     executor: CommandExecutor | None = None,
@@ -387,9 +461,9 @@ def _tmux_capture(
     the Python driver shipped without it (D-block-3 from the
     Syntropic137 stress run, experiments/stress/STRESS-REPORT.md).
     """
-    target = f"{TMUX_SESSION}:{window}"
+    pane = f"{TMUX_SESSION}:{window}"
     return _docker_exec(
-        container, "tmux", "capture-pane", "-p", "-t", target, "-S", "-", "-E", "-",
+        target, "tmux", "capture-pane", "-p", "-t", pane, "-S", "-", "-E", "-",
         executor=executor, timeout_s=timeout_s,
     ).stdout
 
@@ -434,9 +508,12 @@ def _pane_tail(pane_text: str, n_lines: int = DEFAULT_TMUX_SIZE[1]) -> str:
 # functions directly. `TmuxSession` makes it an explicit, reusable handle so
 # a 4th agent adapter can be built on top of it without touching this class,
 # and so `InteractiveTmuxWorkspace` has one object per enabled agent to hold
-# session state (rather than re-threading `container`/`window`/`executor`
+# session state (rather than re-threading `target`/`window`/`executor`
 # through every call). Must not reference any agent name — only generic
 # pane/window operations, all routed through the injected `CommandExecutor`.
+# `target` is backend-neutral: whatever `Environment.start()` produced an
+# executor for (a Docker container name today; an opaque host label for
+# other backends).
 
 
 @dataclass
@@ -454,7 +531,7 @@ class TmuxSession:
          is inherited for free instead of duplicated.
     """
 
-    container: str
+    target: str
     window: str
     executor: CommandExecutor
 
@@ -470,7 +547,7 @@ class TmuxSession:
         window in the existing session (subsequent agents)."""
         if as_new_window:
             _docker_exec(
-                self.container,
+                self.target,
                 "tmux",
                 "new-window",
                 "-t",
@@ -482,7 +559,7 @@ class TmuxSession:
             )
         else:
             _docker_exec(
-                self.container,
+                self.target,
                 "tmux",
                 "new-session",
                 "-d",
@@ -503,26 +580,26 @@ class TmuxSession:
         container (the workspace-level `stop()`) removes the window anyway;
         this exists for callers that want to retire one agent's pane
         without stopping the whole workspace."""
-        target = f"{TMUX_SESSION}:{self.window}"
+        pane = f"{TMUX_SESSION}:{self.window}"
         _docker_exec(
-            self.container,
+            self.target,
             "tmux",
             "kill-window",
             "-t",
-            target,
+            pane,
             executor=self.executor,
             check=False,
             timeout_s=timeout_s,
         )
 
     def send_keys(self, *keys: str, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
-        _tmux_send_keys(self.container, self.window, *keys, executor=self.executor, timeout_s=timeout_s)
+        _tmux_send_keys(self.target, self.window, *keys, executor=self.executor, timeout_s=timeout_s)
 
     def send_literal(self, text: str, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
-        _tmux_send_literal(self.container, self.window, text, executor=self.executor, timeout_s=timeout_s)
+        _tmux_send_literal(self.target, self.window, text, executor=self.executor, timeout_s=timeout_s)
 
     def capture_pane(self, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> str:
-        return _tmux_capture(self.container, self.window, executor=self.executor, timeout_s=timeout_s)
+        return _tmux_capture(self.target, self.window, executor=self.executor, timeout_s=timeout_s)
 
     def get_incremental_output(
         self,
@@ -1193,6 +1270,14 @@ class InteractiveTmuxWorkspace:
     # need to monkeypatch subprocess/docker.
     executor: CommandExecutor | None = None
 
+    # Environment seam: the `Environment` used to provision this workspace's
+    # backing target (Docker today) and, correspondingly, tear it down in
+    # `stop()`. `None` for workspaces reconstructed via `_load_workspace`
+    # (the registry only persists identifiers, not live provisioning
+    # objects) — `stop()` falls back to the historical `docker rm -f` in
+    # that case, preserving CLI behavior.
+    environment: Environment | None = None
+
     # Phase 4: one agent-agnostic `TmuxSession` per enabled agent, built in
     # `__post_init__`. `send_message`/`await_completion`/`capture_response`
     # and the startup-wait loop delegate their pane operations here instead
@@ -1206,7 +1291,7 @@ class InteractiveTmuxWorkspace:
         if self.executor is None:
             self.executor = DockerExecExecutor(self.container)
         self._sessions = {
-            agent: TmuxSession(container=self.container, window=_ADAPTERS[agent].window, executor=self.executor)
+            agent: TmuxSession(target=self.container, window=_ADAPTERS[agent].window, executor=self.executor)
             for agent in self.enabled_agents
             if agent in _ADAPTERS
         }
@@ -1226,6 +1311,7 @@ class InteractiveTmuxWorkspace:
         strict_startup: bool = True,
         host_claude_dotjson: Path | None = None,
         claude_plugin_dirs: Sequence[Path] | None = None,
+        environment: Environment | None = None,
     ) -> InteractiveTmuxWorkspace:
         """Start a new interactive-tmux workspace.
 
@@ -1267,6 +1353,14 @@ class InteractiveTmuxWorkspace:
                 bridge experiment, `docs/plans/workflow-skills.md` §9).
                 Equivalent to setting `ITMUX_CLAUDE_PLUGIN_DIRS` (colon-
                 separated, like `$PATH`).
+            environment: the `Environment` used to provision the workspace's
+                backing target and obtain a `CommandExecutor` for it. When
+                `None` (default), a `DockerEnvironment` is constructed from
+                `image`/`workdir` (and the generated container name) —
+                identical to this method's historical behavior. Pass an
+                explicit `Environment` to provision on a different backend
+                (local process, SSH/VPS, ...) without changing any
+                tmux/adapter logic.
 
         Returns:
             InteractiveTmuxWorkspace. In both strict and lax modes,
@@ -1314,50 +1408,36 @@ class InteractiveTmuxWorkspace:
             if not enabled:
                 raise ValueError("start_workspace called with no enabled agents (host_auth empty)")
 
-            # Run the container WITHOUT credential bind mounts (Phase 2:
-            # docker-out-of-docker fix). Bind-mounting `-v host:container`
-            # requires the *outer* docker daemon to resolve `host` on its
-            # own filesystem — that breaks when this driver itself runs
-            # inside a container, where the throwaway staging dir is only
-            # visible to the driver's own mount namespace, not the sibling
-            # daemon's. Instead, credentials are pushed into the running
-            # container below via `docker exec` (see `_transfer_path_to_
-            # container`), which always targets the right container
+            # Provision the workspace's backing target WITHOUT credential
+            # bind mounts (Phase 2: docker-out-of-docker fix). Bind-mounting
+            # `-v host:container` requires the *outer* docker daemon to
+            # resolve `host` on its own filesystem — that breaks when this
+            # driver itself runs inside a container, where the throwaway
+            # staging dir is only visible to the driver's own mount
+            # namespace, not the sibling daemon's. Instead, credentials are
+            # pushed into the running target below via the executor
+            # `Environment.start()` returns (see `_transfer_path_to_
+            # container`), which always targets the right backend
             # regardless of where the driver process lives.
-            run_cmd = [
-                "docker",
-                "run",
-                "-d",
-                "--name",
-                container,
-                "--workdir",
-                workdir,
-                image,
-                "sleep",
-                "infinity",
-            ]
-            _run(run_cmd)
+            if environment is None:
+                environment = DockerEnvironment(name=container, image=image, workdir=workdir)
+            executor: CommandExecutor = environment.start()
 
-            # Container is up; transfer each prepared credential file/dir
+            # Target is up; transfer each prepared credential file/dir
             # into it over the executor seam instead of bind-mounting.
-            executor: CommandExecutor = DockerExecExecutor(container)
             for host_path, container_path in all_mounts:
                 _transfer_path_to_container(executor, host_path, container_path)
                 _secure_container_path(executor, container_path, is_dir=host_path.is_dir())
         except Exception:
-            # Best-effort: `docker run -d` can fail after the container is
-            # created (e.g. start failure), so remove it too.
+            # Best-effort: provisioning can fail after the target is
+            # created (e.g. start failure), so tear it down too.
             try:
-                subprocess.run(
-                    ["docker", "rm", "-f", container],
-                    check=False,
-                    capture_output=True,
-                    timeout=DEFAULT_RUN_TIMEOUT_S,
-                )
-            except subprocess.TimeoutExpired:
-                # Best-effort cleanup only; don't let a wedged `docker rm`
-                # mask the original failure being re-raised below.
-                logger.warning("docker rm -f %s timed out during cleanup", container)
+                if environment is not None:
+                    environment.stop()
+            except Exception:
+                # Best-effort cleanup only; don't let a failed/wedged
+                # teardown mask the original failure being re-raised below.
+                logger.warning("environment.stop() failed during start_workspace cleanup", exc_info=True)
             shutil.rmtree(host_throwaway_dir, ignore_errors=True)
             raise
 
@@ -1371,6 +1451,7 @@ class InteractiveTmuxWorkspace:
             host_throwaway_dir=host_throwaway_dir,
             enabled_agents=tuple(enabled),
             executor=executor,
+            environment=environment,
         )
         # Per-agent launch options. Today only claude has plugin-dir
         # support; codex/gemini ignore the kwarg with `del plugin_dirs`.
@@ -1626,18 +1707,29 @@ class InteractiveTmuxWorkspace:
         return self._sessions[agent].capture_pane(timeout_s=timeout_s)
 
     def stop(self) -> None:
-        """Tear down the container and remove throwaway credential copies."""
-        try:
-            subprocess.run(
-                ["docker", "rm", "-f", self.container],
-                check=False,
-                capture_output=True,
-                timeout=DEFAULT_RUN_TIMEOUT_S,
-            )
-        except subprocess.TimeoutExpired:
-            # Phase 3: bounded — a wedged `docker rm -f` must not hang
-            # `stop()` forever. Still clean up the host-side throwaway dir.
-            logger.warning("docker rm -f %s timed out during stop()", self.container)
+        """Tear down the backing target and remove throwaway credential
+        copies.
+
+        Delegates to `self.environment.stop()` when set (the normal path
+        for anything returned by `start_workspace`). Falls back to the
+        historical `docker rm -f` when `environment` is `None` — e.g. a
+        workspace reconstructed by `_load_workspace`, which only persists
+        identifiers, not live `Environment` objects.
+        """
+        if self.environment is not None:
+            self.environment.stop()
+        else:
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", self.container],
+                    check=False,
+                    capture_output=True,
+                    timeout=DEFAULT_RUN_TIMEOUT_S,
+                )
+            except subprocess.TimeoutExpired:
+                # Phase 3: bounded — a wedged `docker rm -f` must not hang
+                # `stop()` forever. Still clean up the host-side throwaway dir.
+                logger.warning("docker rm -f %s timed out during stop()", self.container)
         shutil.rmtree(self.host_throwaway_dir, ignore_errors=True)
 
     # -----------------------------------------------------------------------
