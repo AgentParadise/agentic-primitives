@@ -303,6 +303,73 @@ class DockerEnvironment:
             logger.warning("docker rm -f %s timed out during DockerEnvironment.stop()", self.name)
 
 
+@dataclass
+class LocalExecutor:
+    """`CommandExecutor` that runs argv directly on the host — no docker
+    prefix, no target at all. Mirrors `DockerExecExecutor.exec()`'s
+    timeout/error handling exactly so callers see identical `ExecResult`
+    shapes regardless of which `Environment` backs them."""
+
+    workdir: str | Path
+
+    def exec(self, command: Sequence[str], *, timeout_s: float | None = None) -> ExecResult:
+        try:
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                cwd=self.workdir,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Same rationale as DockerExecExecutor: a wedged local command
+            # must not hang the caller forever; return a `timed_out`
+            # ExecResult so pollers can treat it as "not ready yet".
+            partial_out = exc.stdout if isinstance(exc.stdout, str) else ""
+            partial_err = exc.stderr if isinstance(exc.stderr, str) else ""
+            return ExecResult(
+                exit_code=-1,
+                stdout=partial_out,
+                stderr=(f"local exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
+                timed_out=True,
+            )
+        return ExecResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+
+
+@dataclass
+class LocalEnvironment:
+    """`Environment` that runs directly on the host — no container, no SSH
+    hop. The host is already "up" by construction (it's the machine this
+    process is running on), so `start()` has no provisioning step of its
+    own; it only verifies the tools the driver depends on are present and
+    returns a `LocalExecutor` bound to `workdir`.
+
+    `stop()` is a no-op: there is nothing this environment created that it
+    would need to tear down (unlike `DockerEnvironment`, which must `docker
+    rm -f` the container it `docker run`'d). Any tmux session left running
+    on the host outliving the `LocalEnvironment` object is intentional —
+    the host itself is not owned by this class the way a container is.
+    """
+
+    workdir: str | Path
+    require_tools: Sequence[str] = ("tmux",)
+
+    def start(self) -> CommandExecutor:
+        missing = [tool for tool in self.require_tools if shutil.which(tool) is None]
+        if missing:
+            raise RuntimeError(
+                "LocalEnvironment.start(): required tool(s) not found on PATH: "
+                f"{', '.join(missing)}. Install them before starting a local "
+                "interactive-tmux workspace."
+            )
+        return LocalExecutor(self.workdir)
+
+    def stop(self) -> None:
+        # No-op: see class docstring — a local environment doesn't own the
+        # host, so there is nothing to tear down.
+        return None
+
+
 # ---------------------------------------------------------------------------
 # tmux send-keys helpers (the only place that talks to docker exec tmux)
 

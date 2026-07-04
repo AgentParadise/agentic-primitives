@@ -250,3 +250,88 @@ class TestStartWorkspaceEnvironmentInjection:
 
         assert fake_env.started is True
         assert fake_env.stopped is True
+
+
+class TestLocalExecutor:
+    def test_exec_happy_path_runs_argv_directly_no_docker_prefix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            return subprocess.CompletedProcess(cmd, 0, "out", "err")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+
+        executor = driver.LocalExecutor(workdir=tmp_path)
+        result = executor.exec(["echo", "hi"], timeout_s=5)
+
+        assert captured["cmd"] == ["echo", "hi"]
+        assert captured["kwargs"]["cwd"] == tmp_path
+        assert captured["kwargs"]["timeout"] == 5
+        assert captured["kwargs"]["capture_output"] is True
+        assert captured["kwargs"]["text"] is True
+        assert result == driver.ExecResult(exit_code=0, stdout="out", stderr="err")
+
+    def test_exec_timeout_returns_timed_out_exec_result(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def timing_out_run(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+        monkeypatch.setattr(driver.subprocess, "run", timing_out_run)
+
+        executor = driver.LocalExecutor(workdir=tmp_path)
+        result = executor.exec(["sleep", "99"], timeout_s=1)
+
+        assert result.timed_out is True
+        assert result.exit_code == -1
+        assert "timed out after 1s" in result.stderr
+
+    def test_exec_cwd_passed_through(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cwd"] = kwargs.get("cwd")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+        executor = driver.LocalExecutor(workdir=tmp_path)
+        executor.exec(["pwd"])
+
+        assert captured["cwd"] == tmp_path
+
+
+class TestLocalEnvironment:
+    def test_satisfies_environment_protocol(self, tmp_path: Path) -> None:
+        env = driver.LocalEnvironment(workdir=tmp_path)
+        assert isinstance(env, driver.Environment)
+
+    def test_start_raises_runtime_error_when_tmux_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(driver.shutil, "which", lambda tool: None)
+        env = driver.LocalEnvironment(workdir=tmp_path)
+
+        with pytest.raises(RuntimeError, match="tmux"):
+            env.start()
+
+    def test_start_returns_local_executor_when_tmux_present(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(driver.shutil, "which", lambda tool: "/usr/bin/tmux")
+        env = driver.LocalEnvironment(workdir=tmp_path)
+
+        executor = env.start()
+
+        assert isinstance(executor, driver.LocalExecutor)
+        assert executor.workdir == tmp_path
+
+    def test_stop_is_a_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(driver.shutil, "which", lambda tool: "/usr/bin/tmux")
+        env = driver.LocalEnvironment(workdir=tmp_path)
+        env.start()
+        # Must not raise, must not touch subprocess at all.
+        env.stop()
