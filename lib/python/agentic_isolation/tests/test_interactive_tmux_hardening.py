@@ -107,3 +107,29 @@ class TestRedactCmd:
     def test_non_literal_command_unchanged(self) -> None:
         cmd = ["tmux", "capture-pane", "-p", "-t", "agents:claude"]
         assert driver._redact_cmd(cmd) == "tmux capture-pane -p -t agents:claude"
+
+
+def test_ignore_uncopyable_skips_special_files(tmp_path: Path) -> None:
+    """Auth staging must skip non-regular files (sockets/FIFOs) so a special
+    file in a .git tree (e.g. a git fsmonitor .ipc socket) cannot abort the
+    credential copytree. A FIFO exercises the same non-regular-file path as a
+    socket without the macOS AF_UNIX path-length limit."""
+    import os as _os
+
+    (tmp_path / "config.toml").write_text("ok")
+    (tmp_path / "sub").mkdir()
+    _os.mkfifo(tmp_path / "fsmonitor--daemon.ipc")
+
+    names = [p.name for p in tmp_path.iterdir()]
+    skipped = driver._ignore_uncopyable(str(tmp_path), names)
+    assert "fsmonitor--daemon.ipc" in skipped
+    assert "config.toml" not in skipped
+    assert "sub" not in skipped
+
+
+def test_ignore_uncopyable_allows_regular_tree(tmp_path: Path) -> None:
+    """With no special files, nothing is skipped (copytree behaves normally)."""
+    (tmp_path / "auth.json").write_text("{}")
+    (tmp_path / "sessions").mkdir()
+    names = [p.name for p in tmp_path.iterdir()]
+    assert driver._ignore_uncopyable(str(tmp_path), names) == set()

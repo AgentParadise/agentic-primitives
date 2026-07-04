@@ -52,6 +52,7 @@ import posixpath
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1174,7 +1175,13 @@ class _CodexAdapter:
                 continue
             target = dst_dir / item.name
             if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True, ignore_dangling_symlinks=True)
+                shutil.copytree(
+                    item,
+                    target,
+                    dirs_exist_ok=True,
+                    ignore_dangling_symlinks=True,
+                    ignore=_ignore_uncopyable,
+                )
             else:
                 shutil.copy2(item, target)
         _chown_recursive(dst_dir, 1000, 1000)
@@ -1288,7 +1295,13 @@ class _GeminiAdapter:
         for item in host_src.iterdir():
             target = dst_dir / item.name
             if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True)
+                shutil.copytree(
+                    item,
+                    target,
+                    dirs_exist_ok=True,
+                    ignore_dangling_symlinks=True,
+                    ignore=_ignore_uncopyable,
+                )
             else:
                 shutil.copy2(item, target)
         # Patch settings.json with folderTrust.enabled=false (EXP-03 fix).
@@ -1401,6 +1414,28 @@ def _chown_recursive(path: Path, uid: int, gid: int) -> None:
     _chown_path(path, uid, gid)
     for sub in path.rglob("*"):
         _chown_path(sub, uid, gid)
+
+
+def _ignore_uncopyable(src: str, names: list[str]) -> set[str]:
+    """`shutil.copytree` ignore filter that skips non-copyable special files.
+
+    Auth dirs can contain sockets/FIFOs/devices - most commonly a git
+    `fsmonitor--daemon.ipc` Unix socket left by a running fsmonitor daemon in
+    a `.git/` under the tree (e.g. ~/.codex/vendor_imports/.../.git). `copy2`
+    raises "Operation not supported on socket" on those and aborts the whole
+    stage. Only regular files, directories, and symlinks are copyable here;
+    skip everything else so credential staging is robust to them.
+    """
+    skip: set[str] = set()
+    for name in names:
+        try:
+            mode = os.lstat(os.path.join(src, name)).st_mode
+        except OSError:
+            skip.add(name)
+            continue
+        if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode) or stat.S_ISLNK(mode)):
+            skip.add(name)
+    return skip
 
 
 def _run_exec_checked(
