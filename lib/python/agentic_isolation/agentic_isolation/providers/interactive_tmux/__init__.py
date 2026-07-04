@@ -394,7 +394,15 @@ class InteractiveTmuxProvider(BaseProvider):
         Returns `None` if the workspace has no live handle (e.g. already
         destroyed).
         """
-        return workspace._handle
+        handle = workspace._handle
+        if handle is None:
+            return None
+        if not isinstance(handle, InteractiveSession):
+            raise TypeError(
+                f"workspace._handle ({type(handle)!r}) does not satisfy "
+                "InteractiveSession — expected an InteractiveTmuxWorkspace"
+            )
+        return handle
 
     async def execute(
         self,
