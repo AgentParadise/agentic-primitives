@@ -97,6 +97,9 @@ RUN uv python install 3.12.13 \
 ARG CLAUDE_CLI_VERSION
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}
 
+# Install the skills CLI globally via npm. Pin exact version deliberately.
+RUN npm install -g skills@1.5.14
+
 # =============================================================================
 # LSP: Language Servers for code intelligence
 # Plugins: pyright-lsp, typescript-lsp, rust-analyzer-lsp (claude-plugins-official)
