@@ -211,3 +211,29 @@ async def test_concurrent_creates_are_serialized(monkeypatch) -> None:
         "serialization lock failed to serialize them"
     )
     assert _ReentrancyDriver.max_observed_concurrency == 1
+
+
+async def test_cancelled_create_stops_late_started_workspace(monkeypatch) -> None:
+    monkeypatch.setattr(itm, "_get_driver", lambda: _SlowStartDriver)
+    _SlowStartWorkspace.sleep_s = 0.2
+    _SlowStartWorkspace.last_handle = None
+    provider = _provider()
+    await _noop_docker_exec(provider)
+
+    task = asyncio.create_task(provider.create(WorkspaceConfig(provider="interactive-tmux")))
+    await asyncio.sleep(0.05)
+    task.cancel()
+
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    for _ in range(20):
+        handle = _SlowStartWorkspace.last_handle
+        if handle is not None and handle.stopped:
+            break
+        await asyncio.sleep(0.05)
+
+    assert _SlowStartWorkspace.last_handle is not None
+    assert _SlowStartWorkspace.last_handle.stopped is True

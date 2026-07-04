@@ -274,7 +274,7 @@ class TestStartWorkspaceNoLongerBindMounts:
     ) -> None:
         run_calls: list[list[str]] = []
 
-        def fake_run(cmd, check=True, capture=True):  # noqa: ARG001
+        def fake_run(cmd, check=True, capture=True, timeout_s=None):  # noqa: ARG001
             run_calls.append(list(cmd))
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -309,7 +309,9 @@ class TestStartWorkspaceNoLongerBindMounts:
         monkeypatch.setattr(
             driver,
             "_run",
-            lambda cmd, check=True, capture=True: subprocess.CompletedProcess(cmd, 0, "", ""),
+            lambda cmd, check=True, capture=True, timeout_s=None: subprocess.CompletedProcess(
+                cmd, 0, "", ""
+            ),
         )
         monkeypatch.setattr(
             driver.InteractiveTmuxWorkspace,

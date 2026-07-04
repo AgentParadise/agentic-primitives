@@ -312,18 +312,26 @@ class InteractiveTmuxProvider(BaseProvider):
         # `self._blocking_call_lock` for the duration of the call so at
         # most one such thread is ever mid-`docker ...` at a time — see
         # the lock's docstring in `__init__` for the full reasoning.
+        loop = asyncio.get_running_loop()
         async with self._blocking_call_lock:
-            ws_handle: InteractiveTmuxWorkspace = await asyncio.to_thread(
-                driver.InteractiveTmuxWorkspace.start_workspace,
-                name=name,
-                host_auth=host_auth,
-                image=image,
-                workdir=workdir,
-                startup_timeout_s=self._startup_timeout_s,
-                strict_startup=self._strict_startup,
-                host_claude_dotjson=self._default_host_claude_dotjson,
-                claude_plugin_dirs=self._default_claude_plugin_dirs,
+            start_task = asyncio.create_task(
+                asyncio.to_thread(
+                    driver.InteractiveTmuxWorkspace.start_workspace,
+                    name=name,
+                    host_auth=host_auth,
+                    image=image,
+                    workdir=workdir,
+                    startup_timeout_s=self._startup_timeout_s,
+                    strict_startup=self._strict_startup,
+                    host_claude_dotjson=self._default_host_claude_dotjson,
+                    claude_plugin_dirs=self._default_claude_plugin_dirs,
+                )
             )
+            try:
+                ws_handle: InteractiveTmuxWorkspace = await asyncio.shield(start_task)
+            except asyncio.CancelledError:
+                self._schedule_create_cancellation_cleanup(start_task, name, loop)
+                raise
 
         # The container is now running with throwaway claude/codex/gemini
         # credentials mounted. Any failure between here and a successful
@@ -368,6 +376,44 @@ class InteractiveTmuxProvider(BaseProvider):
                     exc_info=True,
                 )
             raise
+
+    def _schedule_create_cancellation_cleanup(
+        self,
+        start_task: asyncio.Task[Any],
+        name: str,
+        loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        """Stop a workspace that finishes starting after create() is cancelled.
+
+        `asyncio.to_thread()` cannot kill the underlying worker thread. If
+        `create()` is cancelled while `start_workspace()` is still running,
+        the thread may still return a live workspace handle later. Attach a
+        done callback so that late handle is stopped and does not leak.
+        """
+
+        def _on_started(task: asyncio.Task[Any]) -> None:
+            try:
+                late_handle = task.result()
+            except BaseException:
+                return
+            loop.create_task(self._stop_late_started_workspace(late_handle, name))
+
+        start_task.add_done_callback(_on_started)
+
+    async def _stop_late_started_workspace(
+        self,
+        ws_handle: InteractiveTmuxWorkspace,
+        name: str,
+    ) -> None:
+        try:
+            async with self._blocking_call_lock:
+                await asyncio.to_thread(ws_handle.stop)
+        except Exception:
+            logger.warning(
+                "failed to stop workspace %s after create() cancellation",
+                name,
+                exc_info=True,
+            )
 
     async def destroy(self, workspace: Workspace) -> None:
         ws_handle: InteractiveTmuxWorkspace | None = workspace._handle

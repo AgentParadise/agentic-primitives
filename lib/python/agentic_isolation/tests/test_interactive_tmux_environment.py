@@ -105,6 +105,7 @@ class TestDockerEnvironmentStart:
 
         def fake_run(cmd, check=True, capture=True, timeout_s=None):
             captured["cmd"] = cmd
+            captured["timeout_s"] = timeout_s
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
         monkeypatch.setattr(driver, "_run", fake_run)
@@ -128,6 +129,26 @@ class TestDockerEnvironmentStart:
         ]
         assert isinstance(executor, driver.DockerExecExecutor)
         assert executor.target == "my-container"
+        assert captured["timeout_s"] == driver.DEFAULT_RUN_TIMEOUT_S
+
+    def test_start_honors_custom_run_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, check=True, capture=True, timeout_s=None):
+            captured["timeout_s"] = timeout_s
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(driver, "_run", fake_run)
+
+        env = driver.DockerEnvironment(
+            name="my-container",
+            image="my-image:latest",
+            workdir="/workspace",
+            run_timeout_s=2.5,
+        )
+        env.start()
+
+        assert captured["timeout_s"] == 2.5
 
     def test_start_propagates_run_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def failing_run(cmd, **kwargs):
@@ -265,6 +286,52 @@ class TestStartWorkspaceEnvironmentInjection:
         assert fake_env.started is True
         assert fake_env.stopped is True
 
+    def test_bootstrap_passes_injected_executor_to_agent_launch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_executor = _FakeExecutor()
+        ws = driver.InteractiveTmuxWorkspace(
+            name="envbootstrap",
+            container="not-a-docker-container",
+            image="img",
+            workdir="/workspace",
+            tmux_size=(200, 50),
+            host_throwaway_dir=Path("/tmp/envbootstrap"),
+            enabled_agents=("claude",),
+            executor=fake_executor,
+        )
+        captured: dict = {}
+
+        def fake_launch(container, workdir, plugin_dirs=None, *, executor=None, timeout_s=None):
+            captured["container"] = container
+            captured["workdir"] = workdir
+            captured["plugin_dirs"] = plugin_dirs
+            captured["executor"] = executor
+            captured["timeout_s"] = timeout_s
+
+        monkeypatch.setattr(
+            driver._ADAPTERS["claude"],
+            "launch_in_window",
+            staticmethod(fake_launch),
+        )
+        monkeypatch.setattr(
+            ws,
+            "_wait_for_started",
+            lambda agent, timeout_s: driver.AwaitResult(
+                ready=True,
+                timed_out=False,
+                reason="ready",
+                duration_ms=0.0,
+                stable_polls_observed=1,
+            ),
+        )
+
+        ws._bootstrap_tmux_and_launch(startup_timeout_s=1.0, strict_startup=True)
+
+        assert captured["container"] == "not-a-docker-container"
+        assert captured["workdir"] == "/workspace"
+        assert captured["executor"] is fake_executor
+
 
 class TestLocalExecutor:
     def test_exec_happy_path_runs_argv_directly_no_docker_prefix(
@@ -372,6 +439,7 @@ class TestSSHExecutor:
             "/home/me/.ssh/id_ed25519",
             "-p",
             "22",
+            "--",
             "me@example.com",
         ]
         executor = driver.SSHExecutor(base_argv)
@@ -466,6 +534,7 @@ class TestSSHEnvironment:
             "/home/me/.ssh/id_ed25519",
             "-p",
             "2222",
+            "--",
             "me@example.com",
             "true",
         ]
@@ -482,8 +551,17 @@ class TestSSHEnvironment:
             "/home/me/.ssh/id_ed25519",
             "-p",
             "2222",
+            "--",
             "me@example.com",
         ]
+
+    def test_base_argv_uses_option_terminator_before_destination(self) -> None:
+        env = driver.SSHEnvironment(host="-oProxyCommand=bad", user="-l bad")
+
+        argv = env._base_argv()
+
+        assert argv[-2] == "--"
+        assert argv[-1] == "-l bad@-oProxyCommand=bad"
 
     def test_start_without_key_path_omits_dash_i(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict = {}

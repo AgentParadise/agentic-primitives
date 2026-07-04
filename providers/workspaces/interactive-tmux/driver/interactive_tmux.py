@@ -288,7 +288,7 @@ class DockerEnvironment:
             "sleep",
             "infinity",
         ]
-        _run(run_cmd)
+        _run(run_cmd, timeout_s=self.run_timeout_s)
         return DockerExecExecutor(self.name)
 
     def stop(self) -> None:
@@ -453,6 +453,7 @@ class SSHEnvironment:
             *(["-i", str(self.key_path)] if self.key_path else []),
             "-p",
             str(self.port),
+            "--",
             f"{self.user}@{self.host}",
         ]
 
@@ -947,6 +948,9 @@ class _ClaudeAdapter:
         container: str,
         _workdir: str,
         plugin_dirs: Sequence[Path] | None = None,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> None:
         """Start `claude` in its tmux window, with optional `--plugin-dir` flags.
 
@@ -961,10 +965,29 @@ class _ClaudeAdapter:
         if plugin_dirs:
             flags = " ".join(f"--plugin-dir {shlex.quote(str(p))}" for p in plugin_dirs)
             cmd = f"claude {flags}"
-            _tmux_send_literal(container, _ClaudeAdapter.window, cmd)
-            _tmux_send_keys(container, _ClaudeAdapter.window, "Enter")
+            _tmux_send_literal(
+                container,
+                _ClaudeAdapter.window,
+                cmd,
+                executor=executor,
+                timeout_s=timeout_s,
+            )
+            _tmux_send_keys(
+                container,
+                _ClaudeAdapter.window,
+                "Enter",
+                executor=executor,
+                timeout_s=timeout_s,
+            )
         else:
-            _tmux_send_keys(container, _ClaudeAdapter.window, "claude", "Enter")
+            _tmux_send_keys(
+                container,
+                _ClaudeAdapter.window,
+                "claude",
+                "Enter",
+                executor=executor,
+                timeout_s=timeout_s,
+            )
 
     @staticmethod
     def build_launch_command(plugin_dirs: Sequence[Path] | None = None) -> str:
@@ -1081,19 +1104,42 @@ class _CodexAdapter:
         container: str,
         _workdir: str,
         plugin_dirs: Sequence[Path] | None = None,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> None:
         # `plugin_dirs` is accepted for signature parity with the claude
         # adapter; codex has no equivalent `--plugin-dir` flag, so any
         # value is silently ignored.
         del plugin_dirs
         # --no-alt-screen so capture-pane sees the same buffer the TUI uses.
-        _tmux_send_keys(container, _CodexAdapter.window, "codex --no-alt-screen", "Enter")
+        _tmux_send_keys(
+            container,
+            _CodexAdapter.window,
+            "codex --no-alt-screen",
+            "Enter",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         # Trust banner: select option 1 ("Yes, trust"), confirm with Enter.
         time.sleep(2)
-        _tmux_send_keys(container, _CodexAdapter.window, "1", "Enter")
+        _tmux_send_keys(
+            container,
+            _CodexAdapter.window,
+            "1",
+            "Enter",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         # Hooks-review modal: close with Escape.
         time.sleep(1)
-        _tmux_send_keys(container, _CodexAdapter.window, "Escape")
+        _tmux_send_keys(
+            container,
+            _CodexAdapter.window,
+            "Escape",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         time.sleep(1)
 
     @staticmethod
@@ -1184,12 +1230,22 @@ class _GeminiAdapter:
         container: str,
         _workdir: str,
         plugin_dirs: Sequence[Path] | None = None,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> None:
         # `plugin_dirs` is accepted for signature parity with the claude
         # adapter; gemini has no equivalent `--plugin-dir` flag, so any
         # value is silently ignored.
         del plugin_dirs
-        _tmux_send_keys(container, _GeminiAdapter.window, "gemini", "Enter")
+        _tmux_send_keys(
+            container,
+            _GeminiAdapter.window,
+            "gemini",
+            "Enter",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         time.sleep(1)
 
     @staticmethod
@@ -1671,7 +1727,12 @@ class InteractiveTmuxWorkspace:
         for agent in self.enabled_agents:
             adapter = _ADAPTERS[agent]
             extras = self._launch_extras.get(agent) or None
-            adapter.launch_in_window(self.container, self.workdir, plugin_dirs=extras)
+            adapter.launch_in_window(
+                self.container,
+                self.workdir,
+                plugin_dirs=extras,
+                executor=self.executor,
+            )
             self._started[agent] = True
             self.startup_status[agent] = self._wait_for_started(agent, startup_timeout_s)
 

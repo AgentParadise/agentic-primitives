@@ -144,10 +144,10 @@ class TestLaunchInWindowSendsFlags:
         # this exact keystroke shape.
         calls: list[tuple[str, str, tuple[str, ...]]] = []
 
-        def fake_send_keys(container: str, window: str, *keys: str) -> None:
+        def fake_send_keys(container: str, window: str, *keys: str, **kwargs) -> None:
             calls.append((container, window, keys))
 
-        def fake_send_literal(container: str, window: str, text: str) -> None:  # noqa: ARG001
+        def fake_send_literal(container: str, window: str, text: str, **kwargs) -> None:  # noqa: ARG001
             pytest.fail("send_literal should not be called without plugin_dirs")
 
         monkeypatch.setattr(driver, "_tmux_send_keys", fake_send_keys)
@@ -164,10 +164,10 @@ class TestLaunchInWindowSendsFlags:
         send_keys_calls: list[tuple[str, str, tuple[str, ...]]] = []
         send_literal_calls: list[tuple[str, str, str]] = []
 
-        def fake_send_keys(container: str, window: str, *keys: str) -> None:
+        def fake_send_keys(container: str, window: str, *keys: str, **kwargs) -> None:
             send_keys_calls.append((container, window, keys))
 
-        def fake_send_literal(container: str, window: str, text: str) -> None:
+        def fake_send_literal(container: str, window: str, text: str, **kwargs) -> None:
             send_literal_calls.append((container, window, text))
 
         monkeypatch.setattr(driver, "_tmux_send_keys", fake_send_keys)
