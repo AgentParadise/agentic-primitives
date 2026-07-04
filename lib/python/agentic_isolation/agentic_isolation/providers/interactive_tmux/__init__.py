@@ -229,6 +229,19 @@ class InteractiveTmuxProvider(BaseProvider):
         self._strict_startup = strict_startup
         self._workspaces: dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
+        # Serializes every blocking driver call (`start_workspace`, `stop`)
+        # that crosses the asyncio/thread boundary via `asyncio.to_thread`.
+        # See the comment in `create()` for why this exists: a documented
+        # concern (not empirically reproduced against this repo's minimum
+        # Python 3.10 default child-watcher policy, but cheap to guard
+        # against regardless) is that two `subprocess.run` calls spawning
+        # `docker` from *different* threads at the same time could race an
+        # asyncio child watcher and yield spurious exit codes. Holding this
+        # lock for the duration of each `to_thread` call guarantees at most
+        # one such thread is ever mid-`docker run`/`docker exec`/`docker rm`
+        # at a time, regardless of how many `create`/`destroy` calls are
+        # in flight concurrently.
+        self._blocking_call_lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -289,25 +302,28 @@ class InteractiveTmuxProvider(BaseProvider):
         workdir = config.working_dir or DEFAULT_CONTAINER_WORKDIR
         name = f"itws-{uuid.uuid4().hex[:8]}"
 
-        # The driver is blocking (subprocess + sleep loops). Calling it
-        # synchronously briefly blocks the event loop, but that's the
-        # right tradeoff: when an executor thread shells out via
-        # `subprocess.run` it races asyncio's child watcher and the docker
-        # run/exec calls become flaky (we saw 127 from docker exec right
-        # after a successful docker run -d). Holding the loop for the
-        # ~5s container-start window is acceptable; if a future caller
-        # needs concurrency, they can wrap `await provider.create(...)`
-        # in their own thread.
-        ws_handle: InteractiveTmuxWorkspace = driver.InteractiveTmuxWorkspace.start_workspace(
-            name=name,
-            host_auth=host_auth,
-            image=image,
-            workdir=workdir,
-            startup_timeout_s=self._startup_timeout_s,
-            strict_startup=self._strict_startup,
-            host_claude_dotjson=self._default_host_claude_dotjson,
-            claude_plugin_dirs=self._default_claude_plugin_dirs,
-        )
+        # The driver is blocking (subprocess + sleep loops). It used to be
+        # called synchronously right here, briefly blocking the event loop
+        # for the full container-start window (several seconds): the
+        # original rationale was that offloading to an executor thread
+        # races asyncio's child watcher, causing `docker exec` to return
+        # spurious non-zero exit codes right after a `docker run -d` (127
+        # was observed). We now offload via `asyncio.to_thread` but hold
+        # `self._blocking_call_lock` for the duration of the call so at
+        # most one such thread is ever mid-`docker ...` at a time — see
+        # the lock's docstring in `__init__` for the full reasoning.
+        async with self._blocking_call_lock:
+            ws_handle: InteractiveTmuxWorkspace = await asyncio.to_thread(
+                driver.InteractiveTmuxWorkspace.start_workspace,
+                name=name,
+                host_auth=host_auth,
+                image=image,
+                workdir=workdir,
+                startup_timeout_s=self._startup_timeout_s,
+                strict_startup=self._strict_startup,
+                host_claude_dotjson=self._default_host_claude_dotjson,
+                claude_plugin_dirs=self._default_claude_plugin_dirs,
+            )
 
         # The container is now running with throwaway claude/codex/gemini
         # credentials mounted. Any failure between here and a successful
@@ -339,9 +355,12 @@ class InteractiveTmuxProvider(BaseProvider):
         except BaseException:
             # Best-effort teardown, then re-raise. BaseException so a
             # cancellation mid-setup also cleans up the credential-mounted
-            # container. stop() is synchronous and fast (<2s).
+            # container. stop() is synchronous and fast (<2s); offload it
+            # the same way as everywhere else so cleanup doesn't block the
+            # loop either, serialized through the same lock.
             try:
-                ws_handle.stop()
+                async with self._blocking_call_lock:
+                    await asyncio.to_thread(ws_handle.stop)
             except Exception:
                 logger.warning(
                     "failed to stop workspace %s during create() cleanup",
@@ -356,11 +375,14 @@ class InteractiveTmuxProvider(BaseProvider):
             self._workspaces.pop(workspace.id, None)
         if ws_handle is None:
             return
-        # Sync for the same reason as create(): the driver shells out
-        # via subprocess.run and the asyncio child-watcher race causes
-        # `docker rm -f` to return spurious non-zero exit codes from
-        # an executor thread. Stop is fast (<2s).
-        ws_handle.stop()
+        # Offloaded via `asyncio.to_thread` for the same reason as
+        # `create()`: `stop()` shells out via `subprocess.run` (blocking).
+        # Serialized through `self._blocking_call_lock` so it can never
+        # run concurrently, in a different thread, with another `docker
+        # run`/`docker exec`/`docker rm` triggered by this provider — see
+        # the lock's docstring in `__init__`.
+        async with self._blocking_call_lock:
+            await asyncio.to_thread(ws_handle.stop)
 
     def interactive_session(self, workspace: Workspace) -> InteractiveSession | None:
         """Return the `InteractiveSession` port for `workspace`.
