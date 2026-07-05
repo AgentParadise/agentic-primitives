@@ -120,6 +120,87 @@ pub fn build_docker_run_argv(container: &str, workdir: &str, image: &str) -> Vec
     ]
 }
 
+/// Substrings docker/tmux emit when the workspace target itself is GONE
+/// (OOM-killed, `docker rm`'d, stopped, tmux session vanished) rather than a
+/// transient capture hiccup while the container is still alive. Matched
+/// case-insensitively against a failed exec's error message so the readiness
+/// pollers can break out immediately instead of spinning the full
+/// startup/await deadline and then reporting a misleading generic timeout (a
+/// "degraded" workspace that actually masks a hard container death).
+///
+/// Deliberately EXCLUDED: "cannot connect to the Docker daemon" / generic
+/// "error connecting to" - those signal a transient daemon or socket outage,
+/// NOT a dead container (the container is very likely still running once the
+/// daemon recovers). Treating them as death would abort a live workspace on
+/// a blip; they stay on the retry path and are bounded by the overall
+/// deadline. Mirrors Python's `_CONTAINER_DEAD_STDERR_MARKERS` (PY:1637-1652).
+const CONTAINER_DEAD_STDERR_MARKERS: &[&str] = &[
+    "no such container",
+    "is not running",
+    "no server running", // tmux daemon gone
+    "no such session",   // tmux session vanished
+    "can't find session",
+];
+
+/// Return a human-readable reason if `err` indicates the workspace target is
+/// GONE, else `None`. Mirrors Python's `_container_death_reason`
+/// (PY:1653-1666).
+///
+/// A timed-out capture (`run_bounded`'s `ErrorKind::TimedOut`, mirroring
+/// Python's `TimeoutExpired`) is always treated as transient - the container
+/// may just be slow this once. Only a failed exec whose error text names a
+/// dead container / tmux server / tmux session counts as death. This lets
+/// the readiness pollers distinguish "one failed capture while still alive"
+/// (keep retrying) from "the container died" (stop now, surface the real
+/// error) instead of blindly polling until the deadline.
+fn container_death_reason(err: &Error) -> Option<String> {
+    if err.kind() == ErrorKind::TimedOut {
+        return None;
+    }
+    let msg = err.to_string();
+    let low = msg.to_lowercase();
+    for marker in CONTAINER_DEAD_STDERR_MARKERS {
+        if low.contains(marker) {
+            let trimmed = msg.trim();
+            return Some(if trimmed.is_empty() {
+                (*marker).to_string()
+            } else {
+                trimmed.to_string()
+            });
+        }
+    }
+    None
+}
+
+/// Outcome of classifying a single poll's pane-capture attempt. Pure (no
+/// I/O, no sleeping) so the await/startup poll loops' resilience logic can
+/// be unit tested without a docker daemon - see `tests/poll_resilience.rs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PollStep {
+    /// Capture succeeded; caller evaluates readiness against this pane text.
+    Captured(String),
+    /// Capture failed but looks transient (container still alive) - keep
+    /// polling within the overall deadline instead of aborting.
+    Retry,
+    /// Capture failed because the workspace target itself is gone.
+    Dead(String),
+}
+
+/// Classify one `tmux::capture_pane` result into a `PollStep`. Mirrors the
+/// try/except branch structure of Python's `_wait_for_started`/
+/// `await_completion` (PY:1962-1987, PY:2110-2138): success -> `Captured`,
+/// a death marker -> `Dead`, anything else (including a timed-out capture)
+/// -> `Retry`.
+pub fn classify_poll(capture: Result<String>) -> PollStep {
+    match capture {
+        Ok(pane) => PollStep::Captured(pane),
+        Err(e) => match container_death_reason(&e) {
+            Some(reason) => PollStep::Dead(reason),
+            None => PollStep::Retry,
+        },
+    }
+}
+
 /// Run `cmd` bounded by `DEFAULT_RUN_TIMEOUT_S` (PY:87) - used for `docker
 /// run` / `docker rm -f`, which get a longer bound than the 15s exec/tmux
 /// default since image pulls and container teardown can legitimately take
@@ -292,8 +373,8 @@ impl Workspace {
         let deadline = start + Duration::from_secs_f64(timeout_s);
         let mut pane = String::new();
         while Instant::now() < deadline {
-            match tmux::capture_pane(&self.container, agent.window()) {
-                Ok(p) => {
+            match classify_poll(tmux::capture_pane(&self.container, agent.window())) {
+                PollStep::Captured(p) => {
                     // D-block-2 fix (Syntropic137 stress): predicate runs
                     // against the bottom-of-pane tail so historical text
                     // in the now-included scrollback can't fool absence
@@ -305,9 +386,14 @@ impl Workspace {
                     }
                     pane = p;
                 }
-                Err(e) => {
+                PollStep::Dead(reason) => {
                     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                    return AwaitResult::error(elapsed, pane, e.to_string());
+                    return AwaitResult::container_dead(elapsed, 0, pane, reason);
+                }
+                PollStep::Retry => {
+                    // Phase 3 (PY:1962-1987): a single wedged/failed capture
+                    // while the container is still alive must not abort the
+                    // whole wait - keep polling until the overall deadline.
                 }
             }
             thread::sleep(Duration::from_millis(500));
@@ -366,23 +452,48 @@ impl Workspace {
         let mut ever_ready = false;
         let mut pane = String::new();
         while Instant::now() < deadline {
-            pane = tmux::capture_pane(&self.container, agent.window())?;
-            let tail = tmux::pane_tail(&pane, self.tmux_size.1 as usize);
-            if adapter::is_ready(agent, &tail) {
-                ever_ready = true;
-                if last_tail.as_deref() == Some(&tail) {
-                    consecutive_stable_ready += 1;
-                    if consecutive_stable_ready >= stable_polls {
-                        let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                        return Ok(AwaitResult::ready(elapsed, consecutive_stable_ready, pane));
+            match classify_poll(tmux::capture_pane(&self.container, agent.window())) {
+                PollStep::Captured(p) => {
+                    pane = p;
+                    let tail = tmux::pane_tail(&pane, self.tmux_size.1 as usize);
+                    if adapter::is_ready(agent, &tail) {
+                        ever_ready = true;
+                        if last_tail.as_deref() == Some(&tail) {
+                            consecutive_stable_ready += 1;
+                            if consecutive_stable_ready >= stable_polls {
+                                let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                                return Ok(AwaitResult::ready(
+                                    elapsed,
+                                    consecutive_stable_ready,
+                                    pane,
+                                ));
+                            }
+                        } else {
+                            consecutive_stable_ready = 0;
+                        }
+                    } else {
+                        consecutive_stable_ready = 0;
                     }
-                } else {
-                    consecutive_stable_ready = 0;
+                    last_tail = Some(tail);
                 }
-            } else {
-                consecutive_stable_ready = 0;
+                PollStep::Dead(reason) => {
+                    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                    return Ok(AwaitResult::container_dead(
+                        elapsed,
+                        consecutive_stable_ready,
+                        pane,
+                        reason,
+                    ));
+                }
+                PollStep::Retry => {
+                    // Phase 3 (PY:2110-2138): a single failed/wedged poll
+                    // (container still alive) must not abort the whole
+                    // await - treat it as "not ready this round" and keep
+                    // polling until the overall deadline above.
+                    consecutive_stable_ready = 0;
+                    last_tail = None;
+                }
             }
-            last_tail = Some(tail);
             thread::sleep(Duration::from_secs_f64(poll_interval));
         }
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
