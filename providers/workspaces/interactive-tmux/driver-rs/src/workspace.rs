@@ -10,7 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::adapter::{self, Agent};
-use crate::auth::{self, AuthContext, Mount};
+use crate::auth::{self, AuthContext, PreparedAuth};
 use crate::registry::{self, WorkspaceRecord};
 use crate::result::AwaitResult;
 use crate::tmux;
@@ -84,7 +84,7 @@ pub struct Workspace {
 
 fn random_suffix() -> String {
     // 8 hex chars from a non-crypto seed mix (no `rand` dep). Mirrors the
-    // Python `uuid.uuid4().hex[:8]` slot — used only for container naming.
+    // Python `uuid.uuid4().hex[:8]` slot - used only for container naming.
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -94,6 +94,30 @@ fn random_suffix() -> String {
     #[allow(clippy::cast_possible_truncation)]
     let low = (mix & 0xFFFF_FFFF) as u64;
     format!("{low:08x}")
+}
+
+/// Build the `docker run` argv for a bare, credential-free container:
+/// `docker run -d --name <c> --workdir <wd> <image> sleep infinity`.
+///
+/// Deliberately carries NO `-v` flags for credentials (docker-out-of-docker
+/// fix): a sibling `-v host:container` bind mount is resolved by the OUTER
+/// daemon against its own filesystem, which cannot see this driver's own
+/// staging dir when the driver itself runs inside a container. Credentials
+/// are pushed in afterwards over `docker exec` - see
+/// `auth::stage_into_container`. Pure (no I/O) so it can be asserted on
+/// without a docker daemon; see `tests/cred_transfer.rs`.
+pub fn build_docker_run_argv(container: &str, workdir: &str, image: &str) -> Vec<String> {
+    vec![
+        "run".to_string(),
+        "-d".to_string(),
+        "--name".to_string(),
+        container.to_string(),
+        "--workdir".to_string(),
+        workdir.to_string(),
+        image.to_string(),
+        "sleep".to_string(),
+        "infinity".to_string(),
+    ]
 }
 
 fn run_capture(cmd: &mut Command, what: &str) -> Result<Output> {
@@ -150,9 +174,9 @@ impl Workspace {
         // must clean up the staged credential copies on failure; otherwise
         // a failed `docker run` (or a bad host auth dir) leaks auth
         // material under the temp dir.
-        let docker_run = (|| -> Result<Vec<Agent>> {
+        let provision = (|| -> Result<Vec<Agent>> {
             let mut enabled: Vec<Agent> = Vec::new();
-            let mut mounts: Vec<Mount> = Vec::new();
+            let mut prepared_by_agent: Vec<PreparedAuth> = Vec::new();
             for agent in adapter::AGENTS {
                 let Some(Some(src)) = opts.host_auth.get(&agent) else {
                     continue;
@@ -162,7 +186,7 @@ impl Workspace {
                     continue;
                 }
                 enabled.push(agent);
-                mounts.extend(prepared);
+                prepared_by_agent.push(prepared);
             }
 
             if enabled.is_empty() {
@@ -172,28 +196,28 @@ impl Workspace {
                 ));
             }
 
-            // docker run -d --name <c> --workdir <wd> [-v host:container ...] <image> sleep infinity
+            // Provision a bare, credential-free container (docker-out-of-
+            // docker fix - see `build_docker_run_argv` and module docs on
+            // `auth::stage_into_container`).
+            let argv = build_docker_run_argv(&container, &opts.workdir, &opts.image);
             let mut run = Command::new("docker");
-            run.args([
-                "run",
-                "-d",
-                "--name",
-                &container,
-                "--workdir",
-                &opts.workdir,
-            ]);
-            for m in &mounts {
-                run.arg("-v").arg(m.as_docker_arg());
-            }
-            run.arg(&opts.image).args(["sleep", "infinity"]);
+            run.args(&argv);
             run_capture(&mut run, "docker run")?;
+
+            // Container is up; push each agent's staged credentials into it
+            // over `docker exec` and lock down ownership/permissions
+            // in-container (PY:1850-1869, PY:1566-1583).
+            for prepared in &prepared_by_agent {
+                auth::stage_into_container(&container, prepared)?;
+            }
             Ok(enabled)
         })();
-        let enabled = match docker_run {
+        let enabled = match provision {
             Ok(enabled) => enabled,
             Err(e) => {
-                // Best-effort: `docker run -d` can fail after the container
-                // is created (e.g. start failure), so remove it too.
+                // Best-effort: `docker run -d` (or the credential transfer
+                // that follows it) can fail after the container is
+                // created, so remove it too.
                 let _ = Command::new("docker")
                     .args(["rm", "-f", &container])
                     .output();
@@ -327,7 +351,7 @@ impl Workspace {
         // D-block-2 + D-block-3 fix (Syntropic137 stress): the readiness
         // predicate AND the stability comparison both operate on the
         // bottom-of-pane tail. Stability on the full scrollback buffer
-        // would fail forever — any new response token appended changes
+        // would fail forever - any new response token appended changes
         // the buffer, even when the live TUI window has settled.
         // Comparing tails matches the pre-fix "visible window" semantics
         // on the full-history capture introduced by `-S - -E -`.

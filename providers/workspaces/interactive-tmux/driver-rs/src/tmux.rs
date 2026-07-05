@@ -5,8 +5,8 @@
 //! without a docker daemon (the per-agent readiness logic lives in
 //! `adapter` and only needs strings).
 
-use std::io::{Error, Result};
-use std::process::{Command, Output};
+use std::io::{Error, Result, Write};
+use std::process::{Command, Output, Stdio};
 
 pub const TMUX_SESSION: &str = "agents";
 
@@ -55,6 +55,41 @@ pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
     )
 }
 
+/// `docker exec -i <container> <args...>`, feeding `stdin_data` to the
+/// process's stdin and returning its `Output`.
+///
+/// Used by credential transfer (`auth::stage_into_container`) to push file
+/// bytes / base64 payloads into the container without ever putting them in
+/// argv (PY:1506-1517) - argv is world-readable via `ps` /
+/// `/proc/<pid>/cmdline` for the lifetime of the exec; stdin is not.
+pub fn docker_exec_with_stdin(container: &str, args: &[&str], stdin_data: &[u8]) -> Result<Output> {
+    let mut cmd = Command::new("docker");
+    cmd.arg("exec").arg("-i").arg(container);
+    cmd.args(args);
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    let mut child = cmd.spawn()?;
+    // Feed stdin from a dedicated thread so a payload larger than the pipe
+    // buffer can't deadlock against `wait_with_output` reading stdout/stderr
+    // (classic "write blocks because the child is blocked writing its own
+    // full stdout pipe, which we haven't started draining yet" deadlock).
+    let mut stdin = child
+        .stdin
+        .take()
+        .expect("stdin piped above via Stdio::piped()");
+    let payload = stdin_data.to_vec();
+    let writer = std::thread::spawn(move || stdin.write_all(&payload));
+    let out = child.wait_with_output()?;
+    writer
+        .join()
+        .map_err(|_| Error::other("stdin-writer thread panicked"))??;
+    check_output(
+        out,
+        &format!("docker exec -i {container} {}", redact_args(args)),
+    )
+}
+
 /// `docker exec <container> tmux send-keys -t <session>:<window> <keys...>`.
 /// Each `key` is one tmux send-keys argument (special-key names like
 /// `Enter`, `C-j`, or `Escape` are honoured by tmux).
@@ -69,7 +104,7 @@ pub fn send_keys(container: &str, window: &str, keys: &[&str]) -> Result<()> {
 /// `docker exec <container> tmux send-keys -l -t <session>:<window> <text>`.
 ///
 /// The `-l` flag tells tmux to deliver the bytes literally (no special-key
-/// interpretation) — the canonical pattern for the body of a user message.
+/// interpretation) - the canonical pattern for the body of a user message.
 pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
     let target = format!("{TMUX_SESSION}:{window}");
     // `--` ends option parsing so a prompt beginning with `-` (e.g. "-R",
@@ -115,7 +150,7 @@ pub fn capture_pane(container: &str, window: &str) -> Result<String> {
 /// Mirrors the Python driver's `_pane_tail`: with the full-scrollback
 /// capture above, the buffer contains every prompt and every prior
 /// generation. The per-agent `is_started` / `is_ready` predicates would
-/// be fooled by old text — `"esc to interrupt" not in pane` flips false
+/// be fooled by old text - `"esc to interrupt" not in pane` flips false
 /// after the first generation, and Claude's empty-chevron regex matches
 /// against ancient prompts. Evaluating against the tail preserves the
 /// pre-fix "check the visible window" semantics on a full-history capture.
