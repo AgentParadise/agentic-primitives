@@ -161,13 +161,15 @@ fn gemini_patches_folder_trust_in_settings() {
 }
 
 #[test]
-fn codex_skips_tmp_and_log_subdirs() {
+fn codex_skips_tmp_log_and_plugins_subdirs() {
     let host = tmp("codex-host");
     fs::create_dir_all(host.join("tmp")).unwrap();
     fs::create_dir_all(host.join("log")).unwrap();
+    fs::create_dir_all(host.join("plugins")).unwrap();
     fs::create_dir_all(host.join("sessions")).unwrap();
     fs::write(host.join("tmp").join("racy-argv.bin"), b"vanish").unwrap();
     fs::write(host.join("log").join("verbose.log"), b"noisy").unwrap();
+    fs::write(host.join("plugins").join("node_modules_stub"), b"heavy").unwrap();
     fs::write(host.join("auth.json"), b"{}").unwrap();
     fs::write(host.join("sessions").join("01.json"), b"{}").unwrap();
 
@@ -183,4 +185,5 @@ fn codex_skips_tmp_and_log_subdirs() {
     assert!(dst.join("sessions").join("01.json").is_file());
     assert!(!dst.join("tmp").exists(), "tmp/ must be skipped");
     assert!(!dst.join("log").exists(), "log/ must be skipped");
+    assert!(!dst.join("plugins").exists(), "plugins/ must be skipped");
 }
