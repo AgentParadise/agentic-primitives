@@ -120,8 +120,12 @@ pub fn build_docker_run_argv(container: &str, workdir: &str, image: &str) -> Vec
     ]
 }
 
-fn run_capture(cmd: &mut Command, what: &str) -> Result<Output> {
-    let out = cmd.output()?;
+/// Run `cmd` bounded by `DEFAULT_RUN_TIMEOUT_S` (PY:87) - used for `docker
+/// run` / `docker rm -f`, which get a longer bound than the 15s exec/tmux
+/// default since image pulls and container teardown can legitimately take
+/// longer than a single `docker exec`.
+fn run_capture(cmd: Command, what: &str) -> Result<Output> {
+    let out = tmux::run_bounded(cmd, Duration::from_secs_f64(tmux::DEFAULT_RUN_TIMEOUT_S))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         return Err(Error::other(format!(
@@ -202,7 +206,7 @@ impl Workspace {
             let argv = build_docker_run_argv(&container, &opts.workdir, &opts.image);
             let mut run = Command::new("docker");
             run.args(&argv);
-            run_capture(&mut run, "docker run")?;
+            run_capture(run, "docker run")?;
 
             // Container is up; push each agent's staged credentials into it
             // over `docker exec` and lock down ownership/permissions
@@ -217,10 +221,12 @@ impl Workspace {
             Err(e) => {
                 // Best-effort: `docker run -d` (or the credential transfer
                 // that follows it) can fail after the container is
-                // created, so remove it too.
-                let _ = Command::new("docker")
-                    .args(["rm", "-f", &container])
-                    .output();
+                // created, so remove it too. Bounded by
+                // `DEFAULT_RUN_TIMEOUT_S` like every other docker/tmux
+                // shell-out - cleanup must not be able to hang forever.
+                let mut rm = Command::new("docker");
+                rm.args(["rm", "-f", &container]);
+                let _ = tmux::run_bounded(rm, Duration::from_secs_f64(tmux::DEFAULT_RUN_TIMEOUT_S));
                 let _ = fs::remove_dir_all(&throwaway);
                 return Err(e);
             }
@@ -407,10 +413,11 @@ impl Workspace {
 
     pub fn stop(&self) -> Result<()> {
         // Best-effort `docker rm -f` + rm of throwaway dir. Matches Python's
-        // `subprocess.run(check=False)` semantics.
-        let _ = Command::new("docker")
-            .args(["rm", "-f", &self.container])
-            .output();
+        // `subprocess.run(check=False)` semantics, bounded by
+        // `DEFAULT_RUN_TIMEOUT_S` like every other docker/tmux shell-out.
+        let mut rm = Command::new("docker");
+        rm.args(["rm", "-f", &self.container]);
+        let _ = tmux::run_bounded(rm, Duration::from_secs_f64(tmux::DEFAULT_RUN_TIMEOUT_S));
         let _ = fs::remove_dir_all(&self.host_throwaway_dir);
         Ok(())
     }

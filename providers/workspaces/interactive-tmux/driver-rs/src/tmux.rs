@@ -5,10 +5,77 @@
 //! without a docker daemon (the per-agent readiness logic lives in
 //! `adapter` and only needs strings).
 
-use std::io::{Error, Result, Write};
-use std::process::{Command, Output, Stdio};
+use std::io::{Error, ErrorKind, Result, Write};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
 
 pub const TMUX_SESSION: &str = "agents";
+
+/// Bound for one `docker exec` / `tmux` operation. Mirrors the Python
+/// driver's `DEFAULT_EXEC_TIMEOUT_S` (PY:86): a single wedged exec must not
+/// be able to hang the workflow forever.
+pub const DEFAULT_EXEC_TIMEOUT_S: f64 = 15.0;
+
+/// Bound for `docker run` / `docker rm -f`. Mirrors the Python driver's
+/// `DEFAULT_RUN_TIMEOUT_S` (PY:87).
+pub const DEFAULT_RUN_TIMEOUT_S: f64 = 30.0;
+
+/// Run `cmd`, bounding its execution to `timeout`.
+///
+/// std-only, no `unsafe`: spawns the child (stdout/stderr always piped, so
+/// the returned `Output` is populated the same way `Command::output()`
+/// would populate it), then waits for it on a dedicated thread and races
+/// that wait against `timeout` via `mpsc::recv_timeout`. On timeout the
+/// child is best-effort killed and an `ErrorKind::TimedOut` error is
+/// returned. Mirrors Python's `subprocess.run(..., timeout=...)` bound
+/// (PY:222-280, PY:576-626) without pulling in an async runtime or a new
+/// dependency.
+pub fn run_bounded(mut cmd: Command, timeout: Duration) -> Result<Output> {
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    let child = cmd.spawn()?;
+    wait_bounded(child, timeout)
+}
+
+/// Wait on an already-spawned `child`, bounded by `timeout`.
+///
+/// Shared by `run_bounded` and the stdin-writer path
+/// (`docker_exec_with_stdin`), which needs to feed the child's stdin from
+/// its own thread before this bound takes over waiting on exit.
+///
+/// On timeout, the child is killed (best-effort - `Child::kill` is a plain
+/// signal send, not a guarantee the process has fully exited by the time
+/// this function returns) and the waiter thread is left to finish and drop
+/// its result on the floor; we do not block joining it; the timeout error
+/// is returned immediately so a wedged process can never make this
+/// function itself hang.
+pub fn wait_bounded(child: Child, timeout: Duration) -> Result<Output> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = child.wait_with_output();
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(_) => {
+            // Best-effort: ask the process (and, since docker/tmux
+            // children are frequently themselves a fork/exec wrapper,
+            // just its own pid - not a process group) to die. We do not
+            // have a `Child` handle here anymore (it was moved into the
+            // waiter thread so that thread can drain stdout/stderr without
+            // deadlocking on a full pipe buffer), so killing by pid via
+            // the `kill` utility is the only std-only, `unsafe`-free way
+            // to reach it from this side.
+            let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            Err(Error::new(
+                ErrorKind::TimedOut,
+                format!("command timed out after {timeout:?}"),
+            ))
+        }
+    }
+}
 
 fn check_output(out: Output, what: &str) -> Result<Output> {
     if out.status.success() {
@@ -43,12 +110,13 @@ fn redact_args(args: &[&str]) -> String {
     parts.join(" ")
 }
 
-/// Run `docker exec <container> <args...>` and return its `Output`.
+/// Run `docker exec <container> <args...>` and return its `Output`, bounded
+/// by `DEFAULT_EXEC_TIMEOUT_S` (PY:86) so a wedged exec can't hang forever.
 pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
     let mut cmd = Command::new("docker");
     cmd.arg("exec").arg(container);
     cmd.args(args);
-    let out = cmd.output()?;
+    let out = run_bounded(cmd, Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S))?;
     check_output(
         out,
         &format!("docker exec {container} {}", redact_args(args)),
@@ -80,7 +148,11 @@ pub fn docker_exec_with_stdin(container: &str, args: &[&str], stdin_data: &[u8])
         .expect("stdin piped above via Stdio::piped()");
     let payload = stdin_data.to_vec();
     let writer = std::thread::spawn(move || stdin.write_all(&payload));
-    let out = child.wait_with_output()?;
+    // Bounded wait (PY:86 `DEFAULT_EXEC_TIMEOUT_S`): if this times out, `?`
+    // returns immediately and the writer thread is left detached - once the
+    // killed child's stdin pipe closes its `write_all` fails fast and the
+    // thread exits on its own; there is nothing useful left to join.
+    let out = wait_bounded(child, Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S))?;
     writer
         .join()
         .map_err(|_| Error::other("stdin-writer thread panicked"))??;
