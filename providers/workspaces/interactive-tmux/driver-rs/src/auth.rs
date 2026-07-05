@@ -513,3 +513,37 @@ pub fn stage_into_container(container: &str, prepared: &PreparedAuth) -> Result<
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod base64_tests {
+    use super::base64_encode;
+
+    // RFC 4648 section 10 test vectors, plus high-bit bytes to guard the
+    // std-only encoder against sign/padding regressions (the whole credential
+    // path depends on this being byte-exact; the container-side `base64 -d`
+    // only runs under real docker).
+    #[test]
+    fn rfc4648_and_high_bit_vectors() {
+        let cases: &[(&[u8], &[u8])] = &[
+            (b"", b""),
+            (b"f", b"Zg=="),
+            (b"fo", b"Zm8="),
+            (b"foo", b"Zm9v"),
+            (b"foob", b"Zm9vYg=="),
+            (b"fooba", b"Zm9vYmE="),
+            (b"foobar", b"Zm9vYmFy"),
+            (b"\x00", b"AA=="),
+            (b"\xff", b"/w=="),
+            (b"\xff\xff", b"//8="),
+            (b"\xff\xff\xff", b"////"),
+            (b"\x00\x10\x83", b"ABCD"),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(
+                base64_encode(input),
+                expected.to_vec(),
+                "base64_encode({input:?}) mismatch"
+            );
+        }
+    }
+}
