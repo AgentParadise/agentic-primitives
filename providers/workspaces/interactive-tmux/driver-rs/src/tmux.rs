@@ -7,6 +7,7 @@
 
 use std::io::{Error, ErrorKind, Result, Write};
 use std::process::{Child, Command, Output, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -173,18 +174,153 @@ pub fn send_keys(container: &str, window: &str, keys: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// `docker exec <container> tmux send-keys -l -t <session>:<window> <text>`.
+/// Bound above which `send-keys -l` is skipped in favour of the
+/// load-buffer/paste-buffer path. Mirrors the Python driver's
+/// `TMUX_SEND_KEYS_MAX_BYTES` (PY:91): tmux's `send-keys -l` has a ~16KB
+/// cap and silently truncates larger payloads, so anything bigger is
+/// staged through a tmux paste buffer instead (PY:645-707).
+pub const TMUX_SEND_KEYS_MAX_BYTES: usize = 12_000;
+
+/// Monotonic per-process counter feeding the unique paste-buffer name.
+/// Combined with the process id it makes each large-payload send use its
+/// own named tmux buffer, so concurrent sends never race on the shared
+/// default buffer (Python uses a `uuid4` token for the same reason,
+/// PY:684-686). `std`-only, no `unsafe`, no new deps.
+static PASTE_BUFFER_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// The command plan `send_literal` will execute for a given payload,
+/// factored out as a pure, assertable value so tests can cover the
+/// threshold logic without a docker daemon.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SendLiteralPlan {
+    /// `tmux send-keys -t <pane> -l -- <text>` - payload at or under
+    /// `TMUX_SEND_KEYS_MAX_BYTES` (PY:666 uses `<=` for this path).
+    SendKeys { pane: String, text: String },
+    /// `tmux load-buffer -b <buffer> -` (fed `payload` via stdin) followed
+    /// by `tmux paste-buffer -p -b <buffer> -d -t <pane>` - payload over
+    /// the threshold (PY:683-702). `-p` sends a bracketed paste so a
+    /// multiline prompt is delivered atomically instead of each newline
+    /// submitting early; `-b <buffer>` uses a unique named buffer to avoid
+    /// racing the shared default buffer; `-d` deletes that buffer after
+    /// pasting, covering Python's `finally` cleanup.
+    PasteBuffer {
+        pane: String,
+        buffer: String,
+        payload: Vec<u8>,
+    },
+}
+
+impl SendLiteralPlan {
+    /// `tmux load-buffer` argv for the large path (stdin carries the
+    /// payload). Empty for the `SendKeys` variant.
+    pub fn load_buffer_args(&self) -> Vec<String> {
+        match self {
+            SendLiteralPlan::SendKeys { .. } => Vec::new(),
+            SendLiteralPlan::PasteBuffer { buffer, .. } => {
+                vec![
+                    "tmux".into(),
+                    "load-buffer".into(),
+                    "-b".into(),
+                    buffer.clone(),
+                    "-".into(),
+                ]
+            }
+        }
+    }
+
+    /// `tmux paste-buffer` argv for the large path. Empty for the
+    /// `SendKeys` variant.
+    pub fn paste_buffer_args(&self) -> Vec<String> {
+        match self {
+            SendLiteralPlan::SendKeys { .. } => Vec::new(),
+            SendLiteralPlan::PasteBuffer { pane, buffer, .. } => {
+                vec![
+                    "tmux".into(),
+                    "paste-buffer".into(),
+                    "-p".into(),
+                    "-b".into(),
+                    buffer.clone(),
+                    "-d".into(),
+                    "-t".into(),
+                    pane.clone(),
+                ]
+            }
+        }
+    }
+}
+
+/// Derive a unique-per-call tmux buffer name. `std`-only: process id plus a
+/// monotonic counter, prefixed to mirror the Python driver's `itmux-<hex>`
+/// naming (PY:686). Two sends from the same process get distinct counter
+/// values; two sends from different processes get distinct pids.
+fn next_paste_buffer_name() -> String {
+    let seq = PASTE_BUFFER_SEQ.fetch_add(1, Ordering::Relaxed);
+    format!("itmux-{}-{seq}", std::process::id())
+}
+
+/// Decide how `text` should be delivered into `pane`, without touching
+/// docker or tmux. Mirrors the Python driver's byte-length branch
+/// (PY:665-666): the threshold is measured against the UTF-8 byte length
+/// of the payload, not its character count. The large path mints a unique
+/// buffer name so concurrent callers never collide.
+pub fn plan_send_literal(pane: &str, text: &str) -> SendLiteralPlan {
+    let payload = text.as_bytes();
+    if payload.len() <= TMUX_SEND_KEYS_MAX_BYTES {
+        SendLiteralPlan::SendKeys {
+            pane: pane.to_string(),
+            text: text.to_string(),
+        }
+    } else {
+        SendLiteralPlan::PasteBuffer {
+            pane: pane.to_string(),
+            buffer: next_paste_buffer_name(),
+            payload: payload.to_vec(),
+        }
+    }
+}
+
+/// `docker exec <container> tmux send-keys -l -t <session>:<window> <text>`,
+/// or - for payloads over `TMUX_SEND_KEYS_MAX_BYTES` - a
+/// `load-buffer`/`paste-buffer` round trip that avoids tmux's ~16KB
+/// `send-keys -l` truncation cap (PY:645-707).
 ///
 /// The `-l` flag tells tmux to deliver the bytes literally (no special-key
 /// interpretation) - the canonical pattern for the body of a user message.
 pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
     let target = format!("{TMUX_SESSION}:{window}");
-    // `--` ends option parsing so a prompt beginning with `-` (e.g. "-R",
-    // "--help") is treated as literal text, not a tmux send-keys flag.
-    docker_exec(
-        container,
-        &["tmux", "send-keys", "-t", &target, "-l", "--", text],
-    )?;
+    let plan = plan_send_literal(&target, text);
+    match &plan {
+        SendLiteralPlan::SendKeys { pane, text } => {
+            // `--` ends option parsing so a prompt beginning with `-` (e.g.
+            // "-R", "--help") is treated as literal text, not a tmux
+            // send-keys flag.
+            docker_exec(
+                container,
+                &["tmux", "send-keys", "-t", pane, "-l", "--", text],
+            )?;
+        }
+        SendLiteralPlan::PasteBuffer {
+            pane,
+            buffer,
+            payload,
+        } => {
+            // `load-buffer -b <name> -` reads the buffer contents from
+            // stdin (which `docker_exec_with_stdin` already pipes in - no
+            // container-side temp file needed) into a unique named buffer.
+            docker_exec_with_stdin(
+                container,
+                &["tmux", "load-buffer", "-b", buffer, "-"],
+                payload,
+            )?;
+            // `-p` = bracketed paste (atomic multiline); `-d` deletes the
+            // named buffer afterwards so large sends don't accumulate stale
+            // buffers and can't leak payload bytes into a later paste.
+            docker_exec(
+                container,
+                &["tmux", "paste-buffer", "-p", "-b", buffer, "-d", "-t", pane],
+            )?;
+        }
+    }
     Ok(())
 }
 
