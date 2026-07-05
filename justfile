@@ -115,20 +115,51 @@ python-test-integration:
     @echo '{{ GREEN }}✓ Python integration tests passed{{ NORMAL }}'
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RUST (itmux driver)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Run itmux Rust tests
+[group('rust')]
+rust-test:
+    @echo '{{ YELLOW }}Running itmux Rust tests...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo test
+    @echo '{{ GREEN }}✓ itmux Rust tests passed{{ NORMAL }}'
+
+# Lint itmux Rust code
+[group('rust')]
+rust-lint:
+    @echo '{{ YELLOW }}Linting itmux Rust code...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo clippy --all-targets -- -D warnings
+    @echo '{{ GREEN }}✓ itmux Rust linting complete{{ NORMAL }}'
+
+# Check itmux Rust formatting
+[group('rust')]
+rust-fmt-check:
+    @echo '{{ YELLOW }}Checking itmux Rust formatting...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo fmt -- --check
+
+# Format itmux Rust code
+[group('rust')]
+rust-fmt:
+    @echo '{{ YELLOW }}Formatting itmux Rust code...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo fmt
+    @echo '{{ GREEN }}✓ itmux Rust formatting complete{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # COMBINED OPERATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Format all code
 [group('all')]
-fmt: python-fmt
+fmt: python-fmt rust-fmt
 
 # Check all formatting
 [group('all')]
-fmt-check: python-fmt-check
+fmt-check: python-fmt-check rust-fmt-check
 
 # Lint all code
 [group('all')]
-lint: python-lint
+lint: python-lint rust-lint
 
 # Auto-fix linting issues
 [group('all')]
@@ -136,7 +167,7 @@ lint-fix: python-lint-fix
 
 # Run all tests
 [group('all')]
-test: python-test
+test: python-test rust-test
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUALITY ASSURANCE
