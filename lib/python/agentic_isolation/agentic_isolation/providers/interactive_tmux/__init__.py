@@ -10,7 +10,7 @@ This adapter bridges them:
 
   * `create()`  → `InteractiveTmuxWorkspace.start_workspace(...)`
                   (the running container exposes claude/codex/gemini panes
-                  via the underlying `_handle` for orchestration code that
+                  via `interactive_session()` for orchestration code that
                   wants direct access).
   * `destroy()` → `InteractiveTmuxWorkspace.stop()`
   * `execute()`, `read_file()`, `write_file()`, `file_exists()`
@@ -20,8 +20,10 @@ This adapter bridges them:
                   uses, returning a proper `ExecuteResult` so call sites
                   that already speak the protocol need no translation.
 
-The richer prompt round-trip API (send/await/capture) stays available on
-the underlying workspace via `workspace._handle: InteractiveTmuxWorkspace`.
+The richer prompt round-trip API (send/await/capture) is exposed as a
+typed `agentic_isolation.providers.base.InteractiveSession` port via
+`provider.interactive_session(workspace)` (structurally satisfied by the
+underlying `InteractiveTmuxWorkspace` handle -- no wrapper class needed).
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ from agentic_isolation.config import WorkspaceConfig
 from agentic_isolation.providers.base import (
     BaseProvider,
     ExecuteResult,
+    InteractiveSession,
     Workspace,
 )
 
@@ -181,11 +184,11 @@ class InteractiveTmuxProvider(BaseProvider):
         await provider.destroy(workspace)
 
     To reach the underlying claude/codex/gemini panes for prompt
-    round-trips, pull the driver workspace off the handle:
-        ws: InteractiveTmuxWorkspace = workspace._handle
-        ws.send_message("claude", "hello")
-        result: AwaitResult = ws.await_completion("claude")
-        print(ws.capture_response("claude"))
+    round-trips, get the typed `InteractiveSession` port:
+        session = provider.interactive_session(workspace)
+        session.send_message("claude", "hello")
+        result = session.await_completion("claude")
+        print(session.capture_response("claude"))
     """
 
     def __init__(
@@ -225,6 +228,18 @@ class InteractiveTmuxProvider(BaseProvider):
         self._startup_timeout_s = startup_timeout_s
         self._strict_startup = strict_startup
         self._workspaces: dict[str, Workspace] = {}
+        # Guards ONLY mutations of the `self._workspaces` registry dict (the
+        # sole shared state that needs it). It is deliberately NOT held
+        # across the blocking `start_workspace`/`stop` driver calls: doing so
+        # serialized every provision/teardown across all workspaces and made
+        # a `destroy()` block behind an in-flight `create()`, defeating the
+        # multi-agent concurrency this provider exists to enable. The
+        # blocking calls run under `asyncio.to_thread` WITHOUT this lock, so
+        # unrelated workspaces provision concurrently. (The previously feared
+        # child-watcher race between two threaded `subprocess.run` calls was
+        # never empirically reproduced, and the driver reaps its own child
+        # via `os.waitpid` in a blocking `subprocess.run`, not through
+        # asyncio's child watcher, so the race cannot occur here.)
         self._lock = asyncio.Lock()
 
     @property
@@ -286,25 +301,32 @@ class InteractiveTmuxProvider(BaseProvider):
         workdir = config.working_dir or DEFAULT_CONTAINER_WORKDIR
         name = f"itws-{uuid.uuid4().hex[:8]}"
 
-        # The driver is blocking (subprocess + sleep loops). Calling it
-        # synchronously briefly blocks the event loop, but that's the
-        # right tradeoff: when an executor thread shells out via
-        # `subprocess.run` it races asyncio's child watcher and the docker
-        # run/exec calls become flaky (we saw 127 from docker exec right
-        # after a successful docker run -d). Holding the loop for the
-        # ~5s container-start window is acceptable; if a future caller
-        # needs concurrency, they can wrap `await provider.create(...)`
-        # in their own thread.
-        ws_handle: InteractiveTmuxWorkspace = driver.InteractiveTmuxWorkspace.start_workspace(
-            name=name,
-            host_auth=host_auth,
-            image=image,
-            workdir=workdir,
-            startup_timeout_s=self._startup_timeout_s,
-            strict_startup=self._strict_startup,
-            host_claude_dotjson=self._default_host_claude_dotjson,
-            claude_plugin_dirs=self._default_claude_plugin_dirs,
+        # The driver is blocking (subprocess + sleep loops), so offload it via
+        # `asyncio.to_thread` to keep the event loop free. It runs WITHOUT any
+        # cross-workspace lock, so N concurrent `create()` calls provision in
+        # parallel and a `destroy()` never waits behind an in-flight create.
+        # `asyncio.shield` keeps the start running if THIS create() is
+        # cancelled; the done callback then stops the late handle so nothing
+        # leaks (see `_schedule_create_cancellation_cleanup`).
+        loop = asyncio.get_running_loop()
+        start_task = asyncio.create_task(
+            asyncio.to_thread(
+                driver.InteractiveTmuxWorkspace.start_workspace,
+                name=name,
+                host_auth=host_auth,
+                image=image,
+                workdir=workdir,
+                startup_timeout_s=self._startup_timeout_s,
+                strict_startup=self._strict_startup,
+                host_claude_dotjson=self._default_host_claude_dotjson,
+                claude_plugin_dirs=self._default_claude_plugin_dirs,
+            )
         )
+        try:
+            ws_handle: InteractiveTmuxWorkspace = await asyncio.shield(start_task)
+        except asyncio.CancelledError:
+            self._schedule_create_cancellation_cleanup(start_task, name, loop)
+            raise
 
         # The container is now running with throwaway claude/codex/gemini
         # credentials mounted. Any failure between here and a successful
@@ -325,6 +347,13 @@ class InteractiveTmuxProvider(BaseProvider):
                 metadata={
                     "container": ws_handle.container,
                     "workdir": workdir,
+                    # `workspace_dir` is what downstream artifact collection
+                    # (#225) reads to know where to copy files out of. This
+                    # provider is exec-based with no host bind-mount, so it is
+                    # the CONTAINER-side workspace path (identical to
+                    # `workdir`) -- consumers resolve container-relative
+                    # copies from it. It is intentionally NOT a host path.
+                    "workspace_dir": workdir,
                     "enabled_agents": list(ws_handle.enabled_agents),
                     "startup_status": {a: r.to_dict() for a, r in ws_handle.startup_status.items()},
                 },
@@ -336,10 +365,13 @@ class InteractiveTmuxProvider(BaseProvider):
         except BaseException:
             # Best-effort teardown, then re-raise. BaseException so a
             # cancellation mid-setup also cleans up the credential-mounted
-            # container. stop() is synchronous and fast (<2s).
+            # container. Shield the stop() so it runs to completion even if
+            # THIS cleanup is itself cancelled (double-cancellation): the
+            # inner `except BaseException` catches that second CancelledError
+            # too, so no credential-seeded container can escape teardown.
             try:
-                ws_handle.stop()
-            except Exception:
+                await asyncio.shield(asyncio.to_thread(ws_handle.stop))
+            except BaseException:
                 logger.warning(
                     "failed to stop workspace %s during create() cleanup",
                     name,
@@ -347,17 +379,74 @@ class InteractiveTmuxProvider(BaseProvider):
                 )
             raise
 
+    def _schedule_create_cancellation_cleanup(
+        self,
+        start_task: asyncio.Task[Any],
+        name: str,
+        loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        """Stop a workspace that finishes starting after create() is cancelled.
+
+        `asyncio.to_thread()` cannot kill the underlying worker thread. If
+        `create()` is cancelled while `start_workspace()` is still running,
+        the thread may still return a live workspace handle later. Attach a
+        done callback so that late handle is stopped and does not leak.
+        """
+
+        def _on_started(task: asyncio.Task[Any]) -> None:
+            try:
+                late_handle = task.result()
+            except BaseException:
+                return
+            loop.create_task(self._stop_late_started_workspace(late_handle, name))
+
+        start_task.add_done_callback(_on_started)
+
+    async def _stop_late_started_workspace(
+        self,
+        ws_handle: InteractiveTmuxWorkspace,
+        name: str,
+    ) -> None:
+        try:
+            await asyncio.shield(asyncio.to_thread(ws_handle.stop))
+        except BaseException:
+            logger.warning(
+                "failed to stop workspace %s after create() cancellation",
+                name,
+                exc_info=True,
+            )
+
     async def destroy(self, workspace: Workspace) -> None:
         ws_handle: InteractiveTmuxWorkspace | None = workspace._handle
         async with self._lock:
             self._workspaces.pop(workspace.id, None)
         if ws_handle is None:
             return
-        # Sync for the same reason as create(): the driver shells out
-        # via subprocess.run and the asyncio child-watcher race causes
-        # `docker rm -f` to return spurious non-zero exit codes from
-        # an executor thread. Stop is fast (<2s).
-        ws_handle.stop()
+        # Offloaded via `asyncio.to_thread` because `stop()` shells out via
+        # blocking `subprocess.run`. No cross-workspace lock is held, so a
+        # destroy() never blocks behind an in-flight create() (or another
+        # destroy) on an unrelated workspace.
+        await asyncio.to_thread(ws_handle.stop)
+
+    def interactive_session(self, workspace: Workspace) -> InteractiveSession | None:
+        """Return the `InteractiveSession` port for `workspace`.
+
+        The underlying driver's `InteractiveTmuxWorkspace` handle already
+        exposes `send_message`/`await_completion`/`capture_response` with
+        signatures compatible with `InteractiveSession`; structural typing
+        means it satisfies the protocol as-is, so no wrapper is needed.
+        Returns `None` if the workspace has no live handle (e.g. already
+        destroyed).
+        """
+        handle = workspace._handle
+        if handle is None:
+            return None
+        if not isinstance(handle, InteractiveSession):
+            raise TypeError(
+                f"workspace._handle ({type(handle)!r}) does not satisfy "
+                "InteractiveSession — expected an InteractiveTmuxWorkspace"
+            )
+        return handle
 
     async def execute(
         self,

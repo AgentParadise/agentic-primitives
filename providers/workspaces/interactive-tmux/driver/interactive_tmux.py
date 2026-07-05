@@ -44,12 +44,15 @@ as a CLI (`python -m interactive_tmux`).
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import os
+import posixpath
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -58,7 +61,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +74,21 @@ AGENTS: tuple[AgentName, ...] = ("claude", "codex", "gemini")
 DEFAULT_IMAGE = "agentic-workspace-interactive-tmux:latest"
 DEFAULT_TMUX_SIZE = (200, 50)
 TMUX_SESSION = "agents"
+
+# ---------------------------------------------------------------------------
+# Phase 3 (reliability) constants
+#
+# Every subprocess.run/docker-exec call used to be unbounded — a wedged
+# container (or a docker daemon that stops responding) could hang the
+# calling process forever. These bound every such call; `await_completion`'s
+# own overall deadline stays separate (see `poll_timeout_s` below) so a
+# single stuck poll can't eat the whole budget silently.
+DEFAULT_EXEC_TIMEOUT_S = 15.0  # bound for one docker-exec/tmux operation
+DEFAULT_RUN_TIMEOUT_S = 30.0  # bound for `docker run` / `docker rm -f`
+
+# tmux `send-keys -l` caps payloads around 16KB; above this we stage the
+# text via `load-buffer` + `paste-buffer` instead (see `_tmux_send_literal`).
+TMUX_SEND_KEYS_MAX_BYTES = 12_000
 
 # Claude readiness — empty `❯ ` prompt line (whitespace tolerated). Pre-
 # compiled because await_completion polls this 2x/sec per agent.
@@ -99,6 +117,7 @@ class AwaitResult:
       - timed_out=True, ready=False         → deadline hit before idle
       - ready=False, reason="never_ready"   → never reached even one ready frame
       - ready=False, reason="unstable"      → ready frames seen but pane kept changing
+      - ready=False, reason="container_dead"→ target died mid-poll (not a timeout)
       - ready=True                          → adapter is_ready() held stable
 
     `pane` carries the last captured pane text so callers don't have to
@@ -107,7 +126,7 @@ class AwaitResult:
 
     ready: bool
     timed_out: bool
-    reason: str  # "ready" | "timeout_never_ready" | "timeout_unstable" | "error"
+    reason: str  # "ready" | "timeout_never_ready" | "timeout_unstable" | "container_dead" | "error"
     duration_ms: float
     stable_polls_observed: int
     pane: str = ""
@@ -140,6 +159,399 @@ class StartupReadinessError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
+# Executor seam (Phase 2, ADR-driven docker-out-of-docker fix)
+#
+# Every tmux operation (send-keys, capture-pane) and every credential-seeding
+# file write ultimately needs to run a command *inside* the workspace
+# target (container, VM, SSH host, ...). Historically that meant
+# `subprocess.run(["docker", "exec", ...])` sprinkled through this module.
+# `CommandExecutor` pulls that behind a small Protocol so:
+#   1. tests can inject a fake executor instead of monkeypatching subprocess
+#      at the module level;
+#   2. a future transport (E2B, a remote agent, SSH/VPS, ...) can implement
+#      the same one-method surface without touching the tmux/adapter logic
+#      above.
+# `DockerExecExecutor` is the only implementation today and preserves the
+# exact `docker exec <container> <command...>` behavior this module always
+# had. All identifiers threaded through the tmux/exec helpers below are
+# named `target` (not `container`) so they read as backend-neutral: for
+# Docker it holds the container name; for other backends (see the
+# `Environment` seam further below) it holds whatever opaque label that
+# backend uses for logging.
+
+
+@dataclass
+class ExecResult:
+    """Result of running one command inside a workspace container.
+
+    `timed_out` (Phase 3) is set by `DockerExecExecutor.exec()` when the
+    underlying `subprocess.run(..., timeout=...)` call itself expired,
+    instead of letting `subprocess.TimeoutExpired` propagate and hang the
+    caller's stack. Defaults to `False` so existing call sites that only
+    ever cared about `exit_code`/`stdout`/`stderr` are unaffected.
+    """
+
+    exit_code: int
+    stdout: str
+    stderr: str
+    timed_out: bool = False
+
+
+def _decode(stream: str | bytes | None) -> str:
+    """Normalize a subprocess stdout/stderr stream to `str`.
+
+    When an executor pipes bytes over `stdin` it must run `subprocess.run`
+    with `text=False` (you cannot pass `bytes` as `input` while `text=True`),
+    so `stdout`/`stderr` come back as `bytes`. This decodes them (and the
+    `str` case is a passthrough) so every `ExecResult` carries text
+    regardless of whether the call used stdin.
+    """
+    if stream is None:
+        return ""
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", errors="replace")
+    return stream
+
+
+@runtime_checkable
+class CommandExecutor(Protocol):
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
+        """Run `command` inside the workspace target.
+
+        `stdin`, when given, is fed to the process as its standard input.
+        This is the credential-safe transfer path: bytes passed here never
+        appear in the process argv (which is world-readable via `ps` /
+        `/proc/<pid>/cmdline`), unlike embedding them in a shell command.
+        """
+        ...
+
+
+@dataclass
+class DockerExecExecutor:
+    """Default `CommandExecutor`: shells out to `docker exec <container> ...`.
+
+    Behavior-preserving extraction of what `_docker_exec` always did; the
+    only new capability is `timeout_s`, forwarded to `subprocess.run(...,
+    timeout=...)` so a hung `docker exec` can't block forever (a bare
+    `subprocess.run` with no timeout blocks indefinitely on a wedged
+    container).
+    """
+
+    target: str
+
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
+        # `-i` (keep STDIN open) is required for `docker exec` to forward the
+        # piped `stdin` bytes to the in-container process; without it the
+        # payload is dropped. Only added when stdin is supplied so the
+        # non-stdin argv shape (and its tests) stay byte-for-byte identical.
+        interactive = ["-i"] if stdin is not None else []
+        cmd = ["docker", "exec", *interactive, self.target, *command]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                # bytes `input` requires text=False; decode outputs via `_decode`.
+                text=stdin is None,
+                timeout=timeout_s,
+                input=stdin,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Phase 3: a wedged `docker exec` used to hang the calling
+            # thread forever. Return a `timed_out` ExecResult instead of
+            # letting the exception propagate, so pollers (await_completion)
+            # can treat it as "not ready yet" and keep going within their
+            # own overall deadline.
+            partial_err = _decode(exc.stderr)
+            return ExecResult(
+                exit_code=-1,
+                stdout=_decode(exc.stdout),
+                stderr=(f"docker exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
+                timed_out=True,
+            )
+        return ExecResult(
+            exit_code=proc.returncode, stdout=_decode(proc.stdout), stderr=_decode(proc.stderr)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Environment seam (provisioning, one layer above `CommandExecutor`)
+#
+# `CommandExecutor` answers "how do I run one command against an already-
+# running target?". `Environment` answers the layer above that: "how do I
+# bring a target into existence, and get a `CommandExecutor` for it, and
+# tear it down later?". Docker is the only implementation today
+# (`DockerEnvironment`, extracted behavior-preserving from what
+# `start_workspace`/`stop` always did), but the seam exists so Local and
+# SSH/VPS backends can be added as day-one alternatives without touching
+# any tmux/adapter/workspace logic — they only need to provision *something*
+# that a `CommandExecutor` can run commands against.
+
+
+@runtime_checkable
+class Environment(Protocol):
+    def start(self) -> CommandExecutor: ...
+    def stop(self) -> None: ...
+
+
+@dataclass
+class DockerEnvironment:
+    """Default `Environment`: provisions a workspace via `docker run` /
+    `docker rm -f`.
+
+    Behavior-preserving extraction of the `docker run ...` / `docker rm -f
+    ...` logic `start_workspace`/`stop` always ran inline. `start()` returns
+    a `DockerExecExecutor(target=self.name)` bound to the container it just
+    created; `stop()` best-effort removes that same container.
+    """
+
+    name: str
+    image: str
+    workdir: str
+    run_timeout_s: float | None = DEFAULT_RUN_TIMEOUT_S
+
+    def start(self) -> CommandExecutor:
+        run_cmd = [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            self.name,
+            "--workdir",
+            self.workdir,
+            self.image,
+            "sleep",
+            "infinity",
+        ]
+        _run(run_cmd, timeout_s=self.run_timeout_s)
+        return DockerExecExecutor(self.name)
+
+    def stop(self) -> None:
+        try:
+            subprocess.run(
+                ["docker", "rm", "-f", self.name],
+                check=False,
+                capture_output=True,
+                timeout=self.run_timeout_s or DEFAULT_RUN_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("docker rm -f %s timed out during DockerEnvironment.stop()", self.name)
+
+
+@dataclass
+class LocalExecutor:
+    """`CommandExecutor` that runs argv directly on the host — no docker
+    prefix, no target at all. Mirrors `DockerExecExecutor.exec()`'s
+    timeout/error handling exactly so callers see identical `ExecResult`
+    shapes regardless of which `Environment` backs them."""
+
+    workdir: str | Path
+
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
+        try:
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                # bytes `input` requires text=False; decode outputs via `_decode`.
+                text=stdin is None,
+                timeout=timeout_s,
+                cwd=self.workdir,
+                input=stdin,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Same rationale as DockerExecExecutor: a wedged local command
+            # must not hang the caller forever; return a `timed_out`
+            # ExecResult so pollers can treat it as "not ready yet".
+            partial_err = _decode(exc.stderr)
+            return ExecResult(
+                exit_code=-1,
+                stdout=_decode(exc.stdout),
+                stderr=(f"local exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
+                timed_out=True,
+            )
+        return ExecResult(
+            exit_code=proc.returncode, stdout=_decode(proc.stdout), stderr=_decode(proc.stderr)
+        )
+
+
+@dataclass
+class LocalEnvironment:
+    """`Environment` that runs directly on the host — no container, no SSH
+    hop. The host is already "up" by construction (it's the machine this
+    process is running on), so `start()` has no provisioning step of its
+    own; it only verifies the tools the driver depends on are present and
+    returns a `LocalExecutor` bound to `workdir`.
+
+    `stop()` is a no-op: there is nothing this environment created that it
+    would need to tear down (unlike `DockerEnvironment`, which must `docker
+    rm -f` the container it `docker run`'d). Any tmux session left running
+    on the host outliving the `LocalEnvironment` object is intentional —
+    the host itself is not owned by this class the way a container is.
+    """
+
+    workdir: str | Path
+    require_tools: Sequence[str] = ("tmux",)
+
+    def start(self) -> CommandExecutor:
+        missing = [tool for tool in self.require_tools if shutil.which(tool) is None]
+        if missing:
+            raise RuntimeError(
+                "LocalEnvironment.start(): required tool(s) not found on PATH: "
+                f"{', '.join(missing)}. Install them before starting a local "
+                "interactive-tmux workspace."
+            )
+        return LocalExecutor(self.workdir)
+
+    def stop(self) -> None:
+        # No-op: see class docstring — a local environment doesn't own the
+        # host, so there is nothing to tear down.
+        return None
+
+
+@dataclass
+class SSHExecutor:
+    """`CommandExecutor` that runs argv on a remote host over `ssh`.
+
+    `base_argv` is the full `ssh` invocation up to (but not including) the
+    remote command itself — e.g. `["ssh", "-o", "BatchMode=yes", "-o",
+    "ConnectTimeout=10", "-i", "/key", "-p", "22", "user@host"]`. `exec()`
+    joins `command` into a single shell string (via `shlex.join`, optionally
+    prefixed with `cd <workdir> &&`) and appends it as the final argv
+    element, mirroring `DockerExecExecutor`/`LocalExecutor`'s timeout and
+    `ExecResult` handling exactly so callers see identical result shapes
+    regardless of backend.
+
+    Exit-code semantics are intentionally *not* special-cased beyond what
+    the other two executors do: `ssh` returns 255 for a connection-level
+    failure (vs. the remote command's own exit code otherwise), but that
+    raw exit code is simply surfaced via `ExecResult.exit_code` like any
+    other — callers that care about the distinction can inspect `stderr`.
+    """
+
+    base_argv: list[str]
+    workdir: str | None = None
+
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        stdin: bytes | None = None,
+    ) -> ExecResult:
+        remote_cmd = shlex.join(command)
+        if self.workdir:
+            remote_cmd = f"cd {shlex.quote(self.workdir)} && {remote_cmd}"
+        cmd = [*self.base_argv, remote_cmd]
+        # `ssh` forwards our local stdin to the remote command with no extra
+        # flag needed, so `input=stdin` reaches the remote process directly.
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                # bytes `input` requires text=False; decode outputs via `_decode`.
+                text=stdin is None,
+                timeout=timeout_s,
+                input=stdin,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Same rationale as DockerExecExecutor/LocalExecutor: a wedged
+            # remote command must not hang the caller forever.
+            partial_err = _decode(exc.stderr)
+            return ExecResult(
+                exit_code=-1,
+                stdout=_decode(exc.stdout),
+                stderr=(f"ssh exec timed out after {timeout_s}s" + (f": {partial_err}" if partial_err else "")),
+                timed_out=True,
+            )
+        return ExecResult(
+            exit_code=proc.returncode, stdout=_decode(proc.stdout), stderr=_decode(proc.stderr)
+        )
+
+
+@dataclass
+class SSHEnvironment:
+    """`Environment` that provisions a workspace target on a remote host
+    reachable over `ssh`.
+
+    Unlike `DockerEnvironment` there is no `docker run` step: the "target"
+    is simply the remote host itself, assumed already up. `start()`
+    fails fast with a reachability check (`ssh ... true`) rather than
+    letting the first tmux command discover a dead host mid-session, then
+    returns an `SSHExecutor` bound to the `ssh` argv it just proved works.
+
+    Known limitation / follow-up: this simple version opens a fresh `ssh`
+    process per `exec()` call (no persistent connection is held open
+    between execs). A future version could hold one persistent `ssh
+    ControlMaster` connection for lower per-call latency.
+    """
+
+    host: str
+    user: str
+    key_path: str | Path | None = None
+    port: int = 22
+    workdir: str | None = None
+    connect_timeout_s: float = 10.0
+
+    def _base_argv(self) -> list[str]:
+        return [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            f"ConnectTimeout={int(self.connect_timeout_s)}",
+            *(["-i", str(self.key_path)] if self.key_path else []),
+            "-p",
+            str(self.port),
+            "--",
+            f"{self.user}@{self.host}",
+        ]
+
+    def start(self) -> CommandExecutor:
+        base_argv = self._base_argv()
+        try:
+            proc = subprocess.run(
+                [*base_argv, "true"],
+                capture_output=True,
+                text=True,
+                timeout=self.connect_timeout_s,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"SSHEnvironment.start(): reachability check to {self.user}@{self.host}:{self.port} "
+                f"timed out after {self.connect_timeout_s}s"
+            ) from exc
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"SSHEnvironment.start(): reachability check to {self.user}@{self.host}:{self.port} "
+                f"failed (exit {proc.returncode}): {proc.stderr.strip()}"
+            )
+        return SSHExecutor(base_argv, workdir=self.workdir)
+
+    def stop(self) -> None:
+        # No-op in this simple version: no persistent connection is held
+        # open between execs, so there is nothing to tear down. See class
+        # docstring for the ControlMaster follow-up.
+        return None
+
+
+# ---------------------------------------------------------------------------
 # tmux send-keys helpers (the only place that talks to docker exec tmux)
 
 
@@ -161,36 +573,146 @@ def _redact_cmd(cmd: list[str]) -> str:
     return " ".join(parts)
 
 
-def _run(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+def _run(
+    cmd: list[str],
+    check: bool = True,
+    capture: bool = True,
+    timeout_s: float | None = DEFAULT_RUN_TIMEOUT_S,
+) -> subprocess.CompletedProcess:
     """Run a subprocess; return CompletedProcess. Raises on non-zero unless
-    `check=False`."""
+    `check=False`.
+
+    Phase 3: bounded by `timeout_s` (default `DEFAULT_RUN_TIMEOUT_S`) so a
+    wedged `docker run`/`docker rm` can't block the caller forever;
+    `subprocess.TimeoutExpired` propagates (bounded, not silent) same as
+    any other subprocess failure.
+    """
     logger.debug("exec: %s", _redact_cmd(cmd))
     return subprocess.run(
         cmd,
         check=check,
         capture_output=capture,
         text=True,
+        timeout=timeout_s,
     )
 
 
-def _docker_exec(container: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return _run(["docker", "exec", container, *args], check=check)
+def _docker_exec(
+    target: str,
+    *args: str,
+    check: bool = True,
+    executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> subprocess.CompletedProcess:
+    """Run `docker exec <target> <args...>`, via `executor` if given.
+
+    Defaults to constructing a fresh `DockerExecExecutor(target)` so
+    every existing call site (which doesn't know about the executor seam)
+    behaves exactly as before. Returns a `subprocess.CompletedProcess` for
+    backward compatibility with callers that inspect `.stdout` /
+    `.returncode`.
+
+    Phase 3: `timeout_s` (default `DEFAULT_EXEC_TIMEOUT_S`) is forwarded to
+    the executor so no `docker exec` call in this module can block forever.
+
+    `target` is a label only when `executor` is supplied (it feeds the
+    logged/returned `docker exec <target> ...` command shape, but the
+    actual command runs through `executor.exec()`, which may not be
+    Docker-backed at all) — see the `Environment` seam above.
+    """
+    cmd = ["docker", "exec", target, *args]
+    logger.debug("exec: %s", _redact_cmd(cmd))
+    exec_ = executor or DockerExecExecutor(target)
+    result = exec_.exec(list(args), timeout_s=timeout_s)
+    if check and result.exit_code != 0:
+        raise subprocess.CalledProcessError(
+            result.exit_code, cmd, result.stdout, result.stderr
+        )
+    return subprocess.CompletedProcess(cmd, result.exit_code, result.stdout, result.stderr)
 
 
-def _tmux_send_keys(container: str, window: str, *keys: str) -> None:
-    target = f"{TMUX_SESSION}:{window}"
-    _docker_exec(container, "tmux", "send-keys", "-t", target, *keys)
+def _tmux_send_keys(
+    target: str,
+    window: str,
+    *keys: str,
+    executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> None:
+    pane = f"{TMUX_SESSION}:{window}"
+    _docker_exec(target, "tmux", "send-keys", "-t", pane, *keys, executor=executor, timeout_s=timeout_s)
 
 
-def _tmux_send_literal(container: str, window: str, text: str) -> None:
-    """Send `text` byte-for-byte (no special-key interpretation)."""
-    target = f"{TMUX_SESSION}:{window}"
-    # `--` ends option parsing so a prompt beginning with `-` (e.g. "-R",
-    # "--help") is treated as literal text, not a tmux send-keys flag.
-    _docker_exec(container, "tmux", "send-keys", "-t", target, "-l", "--", text)
+def _tmux_send_literal(
+    target: str,
+    window: str,
+    text: str,
+    *,
+    executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> None:
+    """Send `text` byte-for-byte (no special-key interpretation).
+
+    Phase 3: tmux's `send-keys -l` caps payloads around 16KB — a long
+    model prompt (or a pasted file) silently truncates past that ceiling.
+    Payloads at or under `TMUX_SEND_KEYS_MAX_BYTES` keep using the small,
+    fast `send-keys -l` path unchanged; larger payloads are staged into a
+    tmux paste buffer instead: the bytes are written into a container-side
+    temp file (base64-chunked over the executor, same mechanism the
+    credential transfer uses), loaded into a named tmux buffer with
+    `load-buffer`, and dispatched into the target pane with `paste-buffer`.
+    """
+    pane = f"{TMUX_SESSION}:{window}"
+    payload = text.encode("utf-8")
+    if len(payload) <= TMUX_SEND_KEYS_MAX_BYTES:
+        # `--` ends option parsing so a prompt beginning with `-` (e.g.
+        # "-R", "--help") is treated as literal text, not a send-keys flag.
+        #
+        # NOTE on multiline payloads: `send-keys -l` emits the literal bytes,
+        # so an embedded newline is delivered as a bare Enter. The per-agent
+        # adapters (`_ClaudeAdapter.submit` et al.) deliberately send the body
+        # here and the terminating Enter as a SEPARATE key, so a multiline
+        # prompt whose newlines act as line breaks (not submits) is the
+        # agent TUI's own paste/soft-wrap behavior - consistent with the
+        # bracketed-paste path below for oversized payloads.
+        _docker_exec(
+            target, "tmux", "send-keys", "-t", pane, "-l", "--", text,
+            executor=executor, timeout_s=timeout_s,
+        )
+        return
+
+    exec_ = executor or DockerExecExecutor(target)
+    token = uuid.uuid4().hex
+    buf_path = f"/tmp/.itmux-sendkeys-{token}.buf"
+    buf_name = f"itmux-{token[:12]}"
+    try:
+        _write_bytes_to_container(exec_, buf_path, payload, timeout_s=timeout_s)
+        _run_exec_checked(
+            exec_, ["tmux", "load-buffer", "-b", buf_name, buf_path], timeout_s=timeout_s
+        )
+        # `-p` sends the buffer as a BRACKETED paste: tmux wraps it in the
+        # terminal's paste markers (ESC[200~ ... ESC[201~) so the agent TUI
+        # (claude/codex/gemini all enable bracketed-paste mode) treats the
+        # whole payload as one atomic paste. Without it, a multiline prompt's
+        # embedded newlines dispatch as individual Enter presses and submit
+        # the prompt early, fragmenting it across turns.
+        _run_exec_checked(
+            exec_,
+            ["tmux", "paste-buffer", "-p", "-b", buf_name, "-d", "-t", pane],
+            timeout_s=timeout_s,
+        )
+    finally:
+        # Best-effort cleanup of the staged temp file; a failure here must
+        # not mask the paste having already succeeded (or failed) above.
+        exec_.exec(["rm", "-f", buf_path], timeout_s=timeout_s)
 
 
-def _tmux_capture(container: str, window: str) -> str:
+def _tmux_capture(
+    target: str,
+    window: str,
+    *,
+    executor: CommandExecutor | None = None,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> str:
     """Capture the full pane buffer including scrollback.
 
     `-S -` = start at the top of the history; `-E -` = end at the bottom
@@ -203,9 +725,10 @@ def _tmux_capture(container: str, window: str) -> str:
     the Python driver shipped without it (D-block-3 from the
     Syntropic137 stress run, experiments/stress/STRESS-REPORT.md).
     """
-    target = f"{TMUX_SESSION}:{window}"
+    pane = f"{TMUX_SESSION}:{window}"
     return _docker_exec(
-        container, "tmux", "capture-pane", "-p", "-t", target, "-S", "-", "-E", "-"
+        target, "tmux", "capture-pane", "-p", "-t", pane, "-S", "-", "-E", "-",
+        executor=executor, timeout_s=timeout_s,
     ).stdout
 
 
@@ -237,6 +760,136 @@ def _pane_tail(pane_text: str, n_lines: int = DEFAULT_TMUX_SIZE[1]) -> str:
     if pane_text.endswith("\n"):
         tail += "\n"
     return tail
+
+
+# ---------------------------------------------------------------------------
+# TmuxSession (Phase 4: agent-agnostic session/window handle)
+#
+# Everything above this point (`_tmux_send_keys`, `_tmux_send_literal`,
+# `_tmux_capture`) is already agent-agnostic — it operates on a
+# `(container, window)` pair with no claude/codex/gemini knowledge. Before
+# Phase 4, that genericity was implicit: callers reached for the bare
+# functions directly. `TmuxSession` makes it an explicit, reusable handle so
+# a 4th agent adapter can be built on top of it without touching this class,
+# and so `InteractiveTmuxWorkspace` has one object per enabled agent to hold
+# session state (rather than re-threading `target`/`window`/`executor`
+# through every call). Must not reference any agent name — only generic
+# pane/window operations, all routed through the injected `CommandExecutor`.
+# `target` is backend-neutral: whatever `Environment.start()` produced an
+# executor for (a Docker container name today; an opaque host label for
+# other backends).
+
+
+@dataclass
+class TmuxSession:
+    """One tmux window inside the shared `TMUX_SESSION`, agent-agnostic.
+
+    Thin, stateless-except-for-identity wrapper around the module-level
+    `_tmux_send_keys` / `_tmux_send_literal` / `_tmux_capture` / `_docker_exec`
+    helpers. Deliberately delegates to those free functions (rather than
+    reimplementing their logic) so:
+      1. existing tests that monkeypatch the module-level functions keep
+         working unchanged whether a caller goes through `TmuxSession` or
+         calls the free functions directly;
+      2. Phase 2/3 behavior (executor injection, timeouts, payload batching)
+         is inherited for free instead of duplicated.
+    """
+
+    target: str
+    window: str
+    executor: CommandExecutor
+
+    def start(
+        self,
+        cols: int,
+        rows: int,
+        *,
+        as_new_window: bool = False,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
+        """Create this window: a new tmux session (first agent) or a new
+        window in the existing session (subsequent agents)."""
+        if as_new_window:
+            _docker_exec(
+                self.target,
+                "tmux",
+                "new-window",
+                "-t",
+                TMUX_SESSION,
+                "-n",
+                self.window,
+                executor=self.executor,
+                timeout_s=timeout_s,
+            )
+        else:
+            _docker_exec(
+                self.target,
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                TMUX_SESSION,
+                "-n",
+                self.window,
+                "-x",
+                str(cols),
+                "-y",
+                str(rows),
+                executor=self.executor,
+                timeout_s=timeout_s,
+            )
+
+    def stop(self, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
+        """Best-effort kill of this window. Non-fatal: tearing down the
+        container (the workspace-level `stop()`) removes the window anyway;
+        this exists for callers that want to retire one agent's pane
+        without stopping the whole workspace."""
+        pane = f"{TMUX_SESSION}:{self.window}"
+        _docker_exec(
+            self.target,
+            "tmux",
+            "kill-window",
+            "-t",
+            pane,
+            executor=self.executor,
+            check=False,
+            timeout_s=timeout_s,
+        )
+
+    def send_keys(self, *keys: str, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
+        _tmux_send_keys(self.target, self.window, *keys, executor=self.executor, timeout_s=timeout_s)
+
+    def send_literal(self, text: str, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> None:
+        _tmux_send_literal(self.target, self.window, text, executor=self.executor, timeout_s=timeout_s)
+
+    def capture_pane(self, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> str:
+        return _tmux_capture(self.target, self.window, executor=self.executor, timeout_s=timeout_s)
+
+    def get_incremental_output(
+        self,
+        previous: str | None,
+        *,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> tuple[str, str]:
+        """Return `(new_text, full_pane)` for this window.
+
+        `new_text` is the substring diff against `previous` (an earlier
+        `capture_pane()`/`get_incremental_output()` result) when the current
+        capture starts with it — the common case, since tmux scrollback only
+        grows. When it doesn't (pane was cleared, history rolled off the
+        scrollback limit, or `previous` is falsy), `new_text` falls back to
+        the full current capture rather than guessing at a diff.
+        """
+        current = self.capture_pane(timeout_s=timeout_s)
+        if previous and current.startswith(previous):
+            return current[len(previous) :], current
+        return current, current
+
+    def is_alive(self, *, timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S) -> bool:
+        """Whether the shared tmux session (not just this window) is still
+        reachable inside the container."""
+        result = self.executor.exec(["tmux", "has-session", "-t", TMUX_SESSION], timeout_s=timeout_s)
+        return result.exit_code == 0
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +1030,9 @@ class _ClaudeAdapter:
         container: str,
         _workdir: str,
         plugin_dirs: Sequence[Path] | None = None,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> None:
         """Start `claude` in its tmux window, with optional `--plugin-dir` flags.
 
@@ -391,10 +1047,29 @@ class _ClaudeAdapter:
         if plugin_dirs:
             flags = " ".join(f"--plugin-dir {shlex.quote(str(p))}" for p in plugin_dirs)
             cmd = f"claude {flags}"
-            _tmux_send_literal(container, _ClaudeAdapter.window, cmd)
-            _tmux_send_keys(container, _ClaudeAdapter.window, "Enter")
+            _tmux_send_literal(
+                container,
+                _ClaudeAdapter.window,
+                cmd,
+                executor=executor,
+                timeout_s=timeout_s,
+            )
+            _tmux_send_keys(
+                container,
+                _ClaudeAdapter.window,
+                "Enter",
+                executor=executor,
+                timeout_s=timeout_s,
+            )
         else:
-            _tmux_send_keys(container, _ClaudeAdapter.window, "claude", "Enter")
+            _tmux_send_keys(
+                container,
+                _ClaudeAdapter.window,
+                "claude",
+                "Enter",
+                executor=executor,
+                timeout_s=timeout_s,
+            )
 
     @staticmethod
     def build_launch_command(plugin_dirs: Sequence[Path] | None = None) -> str:
@@ -410,12 +1085,18 @@ class _ClaudeAdapter:
         return f"claude {flags}"
 
     @staticmethod
-    def submit(container: str, text: str) -> None:
+    def submit(
+        container: str,
+        text: str,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
         # EXP-01: two-step is the documented default. -l makes the bytes
         # land literally (no special-key interpretation in the text body),
         # then a separate Enter dispatches.
-        _tmux_send_literal(container, _ClaudeAdapter.window, text)
-        _tmux_send_keys(container, _ClaudeAdapter.window, "Enter")
+        _tmux_send_literal(container, _ClaudeAdapter.window, text, executor=executor, timeout_s=timeout_s)
+        _tmux_send_keys(container, _ClaudeAdapter.window, "Enter", executor=executor, timeout_s=timeout_s)
 
     @staticmethod
     def is_ready(pane_text: str) -> bool:
@@ -484,17 +1165,27 @@ class _CodexAdapter:
             raise FileNotFoundError(f"codex auth dir not found: {host_src}")
         dst_dir = ctx.host_throwaway_dir / "codex.dir"
         dst_dir.mkdir(parents=True, exist_ok=True)
-        # Copy the .codex/ tree but skip the live tmp/ subdir — codex races
+        # Copy the .codex/ tree but skip the live tmp/ subdir - codex races
         # there (creates and deletes argv files during normal operation), so
         # copytree against it sees vanished files. The auth lives in
-        # auth.json / config.toml / sessions/ at the top level.
-        skip = {"tmp", "log", "logs"}
+        # auth.json / config.toml / sessions/ at the top level. `plugins/` is
+        # a large plugin/dependency cache (node_modules), never auth, and
+        # staging it turns start_workspace into a multi-minute, thousands-of-
+        # exec crawl - skip it (node_modules/.git anywhere are skipped by the
+        # copytree ignore filter as defense in depth).
+        skip = {"tmp", "log", "logs", "plugins"}
         for item in host_src.iterdir():
             if item.name in skip:
                 continue
             target = dst_dir / item.name
             if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True, ignore_dangling_symlinks=True)
+                shutil.copytree(
+                    item,
+                    target,
+                    dirs_exist_ok=True,
+                    ignore_dangling_symlinks=True,
+                    ignore=_ignore_uncopyable,
+                )
             else:
                 shutil.copy2(item, target)
         _chown_recursive(dst_dir, 1000, 1000)
@@ -505,29 +1196,58 @@ class _CodexAdapter:
         container: str,
         _workdir: str,
         plugin_dirs: Sequence[Path] | None = None,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> None:
         # `plugin_dirs` is accepted for signature parity with the claude
         # adapter; codex has no equivalent `--plugin-dir` flag, so any
         # value is silently ignored.
         del plugin_dirs
         # --no-alt-screen so capture-pane sees the same buffer the TUI uses.
-        _tmux_send_keys(container, _CodexAdapter.window, "codex --no-alt-screen", "Enter")
+        _tmux_send_keys(
+            container,
+            _CodexAdapter.window,
+            "codex --no-alt-screen",
+            "Enter",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         # Trust banner: select option 1 ("Yes, trust"), confirm with Enter.
         time.sleep(2)
-        _tmux_send_keys(container, _CodexAdapter.window, "1", "Enter")
+        _tmux_send_keys(
+            container,
+            _CodexAdapter.window,
+            "1",
+            "Enter",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         # Hooks-review modal: close with Escape.
         time.sleep(1)
-        _tmux_send_keys(container, _CodexAdapter.window, "Escape")
+        _tmux_send_keys(
+            container,
+            _CodexAdapter.window,
+            "Escape",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         time.sleep(1)
 
     @staticmethod
-    def submit(container: str, text: str) -> None:
+    def submit(
+        container: str,
+        text: str,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
         # EXP-02: literal text first (so the body's bytes don't get
         # tmux-special-key-interpreted), then C-j C-m to dispatch.
         # C-j C-m is the gotcha — bare C-m alone often does not submit
         # the first message.
-        _tmux_send_literal(container, _CodexAdapter.window, text)
-        _tmux_send_keys(container, _CodexAdapter.window, "C-j", "C-m")
+        _tmux_send_literal(container, _CodexAdapter.window, text, executor=executor, timeout_s=timeout_s)
+        _tmux_send_keys(container, _CodexAdapter.window, "C-j", "C-m", executor=executor, timeout_s=timeout_s)
 
     @staticmethod
     def is_ready(pane_text: str) -> bool:
@@ -579,7 +1299,13 @@ class _GeminiAdapter:
         for item in host_src.iterdir():
             target = dst_dir / item.name
             if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True)
+                shutil.copytree(
+                    item,
+                    target,
+                    dirs_exist_ok=True,
+                    ignore_dangling_symlinks=True,
+                    ignore=_ignore_uncopyable,
+                )
             else:
                 shutil.copy2(item, target)
         # Patch settings.json with folderTrust.enabled=false (EXP-03 fix).
@@ -602,19 +1328,35 @@ class _GeminiAdapter:
         container: str,
         _workdir: str,
         plugin_dirs: Sequence[Path] | None = None,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> None:
         # `plugin_dirs` is accepted for signature parity with the claude
         # adapter; gemini has no equivalent `--plugin-dir` flag, so any
         # value is silently ignored.
         del plugin_dirs
-        _tmux_send_keys(container, _GeminiAdapter.window, "gemini", "Enter")
+        _tmux_send_keys(
+            container,
+            _GeminiAdapter.window,
+            "gemini",
+            "Enter",
+            executor=executor,
+            timeout_s=timeout_s,
+        )
         time.sleep(1)
 
     @staticmethod
-    def submit(container: str, text: str) -> None:
+    def submit(
+        container: str,
+        text: str,
+        *,
+        executor: CommandExecutor | None = None,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
         # EXP-03: text first, then Enter — never C-m.
-        _tmux_send_literal(container, _GeminiAdapter.window, text)
-        _tmux_send_keys(container, _GeminiAdapter.window, "Enter")
+        _tmux_send_literal(container, _GeminiAdapter.window, text, executor=executor, timeout_s=timeout_s)
+        _tmux_send_keys(container, _GeminiAdapter.window, "Enter", executor=executor, timeout_s=timeout_s)
 
     @staticmethod
     def is_ready(pane_text: str) -> bool:
@@ -647,6 +1389,14 @@ _ADAPTERS = {
     "codex": _CodexAdapter,
     "gemini": _GeminiAdapter,
 }
+# Phase 4: `_ADAPTERS` is the registry a 4th agent joins by registering an
+# adapter object here — no edits to `TmuxSession` (which knows nothing about
+# any agent name) or to the workspace's dispatch logic are needed. Adapters
+# sit ON TOP of `TmuxSession`: they encode submit/readiness heuristics and
+# receive a plain `container` + `executor` (matching their existing static
+# method signatures, preserved for backward compatibility with callers/tests
+# that invoke them directly), while `InteractiveTmuxWorkspace` holds one
+# `TmuxSession` per enabled agent for generic pane operations.
 
 
 # ---------------------------------------------------------------------------
@@ -668,6 +1418,169 @@ def _chown_recursive(path: Path, uid: int, gid: int) -> None:
     _chown_path(path, uid, gid)
     for sub in path.rglob("*"):
         _chown_path(sub, uid, gid)
+
+
+# Directory names that are never credential material but are large and slow
+# to stage (thousands of files) and can contain uncopyable special files.
+# `.git` is where a live `fsmonitor--daemon.ipc` socket lives; `node_modules`
+# and plugin caches balloon a stage into thousands of per-file `docker exec`
+# calls (observed: a 4-minute codex stage that overloaded the docker daemon).
+_NON_AUTH_DIR_NAMES = frozenset({".git", "node_modules"})
+
+
+def _ignore_uncopyable(src: str, names: list[str]) -> set[str]:
+    """`shutil.copytree` ignore filter for credential staging.
+
+    Skips two classes of entry that must never be copied into an auth stage:
+
+    * Non-copyable special files (sockets/FIFOs/devices) - most commonly a git
+      `fsmonitor--daemon.ipc` Unix socket left by a running fsmonitor daemon in
+      a `.git/` under the tree. `copy2` raises "Operation not supported on
+      socket" on those and aborts the whole stage.
+    * Heavy, never-auth directories (`.git`, `node_modules`) at any depth.
+      These are pure bloat for credential staging and turn it into thousands
+      of per-file `docker exec` calls that can overload the docker daemon.
+    """
+    skip: set[str] = set()
+    for name in names:
+        if name in _NON_AUTH_DIR_NAMES:
+            skip.add(name)
+            continue
+        try:
+            mode = os.lstat(os.path.join(src, name)).st_mode
+        except OSError:
+            skip.add(name)
+            continue
+        if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode) or stat.S_ISLNK(mode)):
+            skip.add(name)
+    return skip
+
+
+def _run_exec_checked(
+    executor: CommandExecutor,
+    command: list[str],
+    *,
+    timeout_s: float | None = None,
+    stdin: bytes | None = None,
+    label: str | None = None,
+) -> ExecResult:
+    """`executor.exec(command)`, raising `RuntimeError` on non-zero exit.
+
+    Credential transfer is not optional best-effort work — a silently
+    failed `mkdir -p` or base64 write leaves the container half-seeded
+    with auth material, which is worse than failing loudly at
+    `start_workspace` time.
+
+    `stdin`, when given, is piped to the command so a credential payload
+    can be delivered without ever appearing in argv (see
+    `_write_bytes_to_container`).
+
+    `label` is a redacted description used in the raised error message in
+    place of the raw `command`. Credential-seeding callers pass a label
+    (e.g. "write credentials to <path>") so that neither the payload nor
+    even the raw command shape leaks into exceptions or logs.
+    """
+    result = executor.exec(command, timeout_s=timeout_s, stdin=stdin)
+    if result.exit_code != 0:
+        described = label if label is not None else repr(command)
+        raise RuntimeError(
+            f"container command failed (exit {result.exit_code}): {described}\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+    return result
+
+
+def _write_bytes_to_container(
+    executor: CommandExecutor,
+    container_path: str,
+    data: bytes,
+    *,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> None:
+    """Write `data` into `container_path` inside the container over `executor`.
+
+    Replaces host bind-mounting of credential material (the docker-out-of-
+    docker fix): instead of `-v host:container` at `docker run` time, the
+    file's bytes are pushed in over the executor.
+
+    SECURITY (credential leak fix): the payload is base64-encoded and fed to
+    an in-container `base64 -d` over the process's STDIN - it is NEVER placed
+    in argv. Anything in argv is world-readable via `ps` / `/proc/<pid>/
+    cmdline`, so the previous `printf '%s' <base64>` shape exposed the
+    credential bytes to any host user for the lifetime of the exec. stdin has
+    no argv length limit either, so the whole file goes in ONE exec (the old
+    chunked loop is gone). base64 keeps arbitrary/binary bytes intact through
+    the `sh -c` round-trip; `base64 -d` reconstructs them container-side.
+
+    `timeout_s` (Phase 3) bounds the exec call so a wedged container can't
+    hang the transfer forever.
+    """
+    parent = posixpath.dirname(container_path)
+    if parent:
+        _run_exec_checked(executor, ["mkdir", "-p", parent], timeout_s=timeout_s)
+    quoted_path = shlex.quote(container_path)
+    # Redacted label: credential-seeding must not leak the payload OR the raw
+    # command into the RuntimeError _run_exec_checked raises on failure.
+    label = f"write bytes to {container_path}"
+    # Truncate/create the destination first so a re-run (or a shorter payload
+    # than a stale prior write) doesn't leave trailing garbage.
+    _run_exec_checked(
+        executor, ["sh", "-c", f"> {quoted_path}"], timeout_s=timeout_s, label=label
+    )
+    encoded = base64.b64encode(data)
+    _run_exec_checked(
+        executor,
+        ["sh", "-c", f"base64 -d >> {quoted_path}"],
+        timeout_s=timeout_s,
+        stdin=encoded,
+        label=label,
+    )
+
+
+def _transfer_path_to_container(
+    executor: CommandExecutor,
+    host_path: Path,
+    container_path: str,
+    *,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> None:
+    """Copy a host file or directory tree into the container over `executor`.
+
+    Mirrors what a `-v host_path:container_path` bind mount used to provide,
+    but works when the driver itself runs inside a container (the host
+    path the caller staged files into is invisible to a sibling `docker
+    run -v`, but `docker exec` into the *target* container always works).
+    """
+    if host_path.is_dir():
+        for root, _dirs, files in os.walk(host_path):
+            rel_root = Path(root).relative_to(host_path)
+            for fname in files:
+                src = Path(root) / fname
+                rel = fname if rel_root == Path(".") else f"{rel_root.as_posix()}/{fname}"
+                dst = f"{container_path.rstrip('/')}/{rel}"
+                _write_bytes_to_container(executor, dst, src.read_bytes(), timeout_s=timeout_s)
+    else:
+        _write_bytes_to_container(executor, container_path, host_path.read_bytes(), timeout_s=timeout_s)
+
+
+def _secure_container_path(
+    executor: CommandExecutor,
+    container_path: str,
+    *,
+    is_dir: bool,
+    timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+) -> None:
+    """chown the transferred path to the in-container agent user (uid/gid
+    1000) and lock file permissions to 0600 — mirrors what the host-side
+    `_chown_recursive` / `os.chmod(..., 0o600)` calls used to guarantee
+    before the bind-mount path was removed.
+    """
+    quoted = shlex.quote(container_path)
+    if is_dir:
+        cmd = f"chown -R 1000:1000 {quoted} && find {quoted} -type f -exec chmod 600 {{}} +"
+    else:
+        cmd = f"chown 1000:1000 {quoted} && chmod 600 {quoted}"
+    _run_exec_checked(executor, ["sh", "-c", cmd], timeout_s=timeout_s)
 
 
 def _build_seeded_claude_dotjson(host_dotjson: Path, workspace_path: str) -> dict:
@@ -708,6 +1621,51 @@ def _build_seeded_claude_dotjson(host_dotjson: Path, workspace_path: str) -> dic
     return seeded
 
 
+# Substrings docker/tmux emit when the workspace target itself is GONE
+# (OOM-killed, `docker rm`'d, stopped, tmux session vanished) rather than a
+# transient capture hiccup while the container is still alive. Matched
+# case-insensitively against a failed exec's stderr so the readiness pollers
+# can break out immediately instead of spinning the full startup/await
+# deadline and then reporting a misleading generic timeout (a "degraded"
+# workspace that actually masks a hard container death).
+#
+# Deliberately EXCLUDED: "cannot connect to the Docker daemon" / generic
+# "error connecting to" - those signal a transient daemon or socket outage,
+# NOT a dead container (the container is very likely still running once the
+# daemon recovers). Treating them as death would abort a live workspace on a
+# blip; they stay on the retry path and are bounded by the overall deadline.
+_CONTAINER_DEAD_STDERR_MARKERS = (
+    "no such container",
+    "is not running",
+    "no server running",  # tmux daemon gone
+    "no such session",  # tmux session vanished
+    "can't find session",
+)
+
+
+def _container_death_reason(
+    exc: subprocess.CalledProcessError | subprocess.TimeoutExpired,
+) -> str | None:
+    """Return a human-readable reason if `exc` indicates the workspace target
+    is GONE, else None.
+
+    A `TimeoutExpired` is always treated as transient (the container may just
+    be slow this once); only a `CalledProcessError` whose stderr names a dead
+    container / tmux server / tmux session counts as death. This lets the
+    readiness pollers distinguish "one failed capture while still alive"
+    (keep retrying) from "the container died" (stop now, surface the real
+    error) instead of blindly polling until the deadline.
+    """
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return None
+    stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+    low = stderr.lower()
+    for marker in _CONTAINER_DEAD_STDERR_MARKERS:
+        if marker in low:
+            return stderr.strip() or marker
+    return None
+
+
 # ---------------------------------------------------------------------------
 # The workspace
 
@@ -743,6 +1701,40 @@ class InteractiveTmuxWorkspace:
     # `launch_in_window`. Lists of pathlib.Path values.
     _launch_extras: dict[str, list[Path]] = field(default_factory=dict)
 
+    # Phase 2 executor seam: the `CommandExecutor` used for this workspace's
+    # container. Defaults to a `DockerExecExecutor(self.container)` in
+    # `__post_init__` when not supplied — every existing caller (including
+    # `_load_workspace`, which never knew about executors) gets identical
+    # behavior. Injectable so tests (and future non-docker transports) don't
+    # need to monkeypatch subprocess/docker.
+    executor: CommandExecutor | None = None
+
+    # Environment seam: the `Environment` used to provision this workspace's
+    # backing target (Docker today) and, correspondingly, tear it down in
+    # `stop()`. `None` for workspaces reconstructed via `_load_workspace`
+    # (the registry only persists identifiers, not live provisioning
+    # objects) — `stop()` falls back to the historical `docker rm -f` in
+    # that case, preserving CLI behavior.
+    environment: Environment | None = None
+
+    # Phase 4: one agent-agnostic `TmuxSession` per enabled agent, built in
+    # `__post_init__`. `send_message`/`await_completion`/`capture_response`
+    # and the startup-wait loop delegate their pane operations here instead
+    # of re-deriving `(container, window, executor)` inline; adapter submit
+    # patterns (still keyed by agent) stay separate since they're agent-
+    # specific, not generic tmux operations. Excluded from `repr`/equality —
+    # it's a derived cache, not part of the workspace's identity.
+    _sessions: dict[str, TmuxSession] = field(default_factory=dict, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.executor is None:
+            self.executor = DockerExecExecutor(self.container)
+        self._sessions = {
+            agent: TmuxSession(target=self.container, window=_ADAPTERS[agent].window, executor=self.executor)
+            for agent in self.enabled_agents
+            if agent in _ADAPTERS
+        }
+
     # -----------------------------------------------------------------------
     # Lifecycle
 
@@ -758,6 +1750,7 @@ class InteractiveTmuxWorkspace:
         strict_startup: bool = True,
         host_claude_dotjson: Path | None = None,
         claude_plugin_dirs: Sequence[Path] | None = None,
+        environment: Environment | None = None,
     ) -> InteractiveTmuxWorkspace:
         """Start a new interactive-tmux workspace.
 
@@ -799,6 +1792,14 @@ class InteractiveTmuxWorkspace:
                 bridge experiment, `docs/plans/workflow-skills.md` §9).
                 Equivalent to setting `ITMUX_CLAUDE_PLUGIN_DIRS` (colon-
                 separated, like `$PATH`).
+            environment: the `Environment` used to provision the workspace's
+                backing target and obtain a `CommandExecutor` for it. When
+                `None` (default), a `DockerEnvironment` is constructed from
+                `image`/`workdir` (and the generated container name) —
+                identical to this method's historical behavior. Pass an
+                explicit `Environment` to provision on a different backend
+                (local process, SSH/VPS, ...) without changing any
+                tmux/adapter logic.
 
         Returns:
             InteractiveTmuxWorkspace. In both strict and lax modes,
@@ -828,7 +1829,10 @@ class InteractiveTmuxWorkspace:
         # `docker run` (or a bad host auth dir) leaks staged auth material
         # under /tmp.
         try:
-            for agent in AGENTS:
+            # Phase 4: iterate the adapter registry (not the closed `AGENTS`
+            # tuple) so a 4th agent becomes enable-able purely by registering
+            # its adapter in `_ADAPTERS`, without editing this loop.
+            for agent in _ADAPTERS:
                 adapter = _ADAPTERS[agent]
                 src = host_auth.get(agent)
                 if src is None:
@@ -843,28 +1847,36 @@ class InteractiveTmuxWorkspace:
             if not enabled:
                 raise ValueError("start_workspace called with no enabled agents (host_auth empty)")
 
-            # Run the container with bind mounts (each mount is a -v arg).
-            run_cmd = [
-                "docker",
-                "run",
-                "-d",
-                "--name",
-                container,
-                "--workdir",
-                workdir,
-            ]
+            # Provision the workspace's backing target WITHOUT credential
+            # bind mounts (Phase 2: docker-out-of-docker fix). Bind-mounting
+            # `-v host:container` requires the *outer* docker daemon to
+            # resolve `host` on its own filesystem — that breaks when this
+            # driver itself runs inside a container, where the throwaway
+            # staging dir is only visible to the driver's own mount
+            # namespace, not the sibling daemon's. Instead, credentials are
+            # pushed into the running target below via the executor
+            # `Environment.start()` returns (see `_transfer_path_to_
+            # container`), which always targets the right backend
+            # regardless of where the driver process lives.
+            if environment is None:
+                environment = DockerEnvironment(name=container, image=image, workdir=workdir)
+            executor: CommandExecutor = environment.start()
+
+            # Target is up; transfer each prepared credential file/dir
+            # into it over the executor seam instead of bind-mounting.
             for host_path, container_path in all_mounts:
-                run_cmd.extend(["-v", f"{host_path}:{container_path}"])
-            run_cmd.extend([image, "sleep", "infinity"])
-            _run(run_cmd)
+                _transfer_path_to_container(executor, host_path, container_path)
+                _secure_container_path(executor, container_path, is_dir=host_path.is_dir())
         except Exception:
-            # Best-effort: `docker run -d` can fail after the container is
-            # created (e.g. start failure), so remove it too.
-            subprocess.run(
-                ["docker", "rm", "-f", container],
-                check=False,
-                capture_output=True,
-            )
+            # Best-effort: provisioning can fail after the target is
+            # created (e.g. start failure), so tear it down too.
+            try:
+                if environment is not None:
+                    environment.stop()
+            except Exception:
+                # Best-effort cleanup only; don't let a failed/wedged
+                # teardown mask the original failure being re-raised below.
+                logger.warning("environment.stop() failed during start_workspace cleanup", exc_info=True)
             shutil.rmtree(host_throwaway_dir, ignore_errors=True)
             raise
 
@@ -877,6 +1889,8 @@ class InteractiveTmuxWorkspace:
             tmux_size=tmux_size,
             host_throwaway_dir=host_throwaway_dir,
             enabled_agents=tuple(enabled),
+            executor=executor,
+            environment=environment,
         )
         # Per-agent launch options. Today only claude has plugin-dir
         # support; codex/gemini ignore the kwarg with `del plugin_dirs`.
@@ -898,31 +1912,10 @@ class InteractiveTmuxWorkspace:
         cols, rows = self.tmux_size
         first = self.enabled_agents[0]
         # Create the session with the first agent's window name.
-        _docker_exec(
-            self.container,
-            "tmux",
-            "new-session",
-            "-d",
-            "-s",
-            TMUX_SESSION,
-            "-n",
-            first,
-            "-x",
-            str(cols),
-            "-y",
-            str(rows),
-        )
+        self._sessions[first].start(cols, rows)
         # Create additional windows for the rest.
         for agent in self.enabled_agents[1:]:
-            _docker_exec(
-                self.container,
-                "tmux",
-                "new-window",
-                "-t",
-                TMUX_SESSION,
-                "-n",
-                agent,
-            )
+            self._sessions[agent].start(cols, rows, as_new_window=True)
 
         # Launch each agent's CLI in its window, then wait until each pane
         # reports `is_started()` (M1 cross-review fix). Each adapter
@@ -936,7 +1929,12 @@ class InteractiveTmuxWorkspace:
         for agent in self.enabled_agents:
             adapter = _ADAPTERS[agent]
             extras = self._launch_extras.get(agent) or None
-            adapter.launch_in_window(self.container, self.workdir, plugin_dirs=extras)
+            adapter.launch_in_window(
+                self.container,
+                self.workdir,
+                plugin_dirs=extras,
+                executor=self.executor,
+            )
             self._started[agent] = True
             self.startup_status[agent] = self._wait_for_started(agent, startup_timeout_s)
 
@@ -954,11 +1952,39 @@ class InteractiveTmuxWorkspace:
     def _wait_for_started(self, agent: str, timeout_s: float) -> AwaitResult:
         """Block until `agent`'s pane reports `is_started()`, or timeout."""
         adapter = _ADAPTERS[agent]
+        session = self._sessions[agent]
         start = time.monotonic()
         deadline = start + timeout_s
         pane = ""
         while time.monotonic() < deadline:
-            pane = _tmux_capture(self.container, adapter.window)
+            try:
+                pane = session.capture_pane()
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                # Finding 4: distinguish a transient capture hiccup from a
+                # container that is GONE. A dead container would otherwise
+                # spin this loop until `timeout_s` and (in lax mode) return a
+                # falsely-"degraded" workspace masking the real docker error.
+                death = _container_death_reason(exc)
+                if death is not None:
+                    duration_ms = (time.monotonic() - start) * 1000
+                    logger.error(
+                        "wait_for_started(%s): container is gone mid-startup: %s", agent, death
+                    )
+                    return AwaitResult(
+                        ready=False,
+                        timed_out=False,
+                        reason="container_dead",
+                        duration_ms=duration_ms,
+                        stable_polls_observed=0,
+                        pane=pane,
+                        error=death,
+                    )
+                # Phase 3: a single wedged/failed capture while the container
+                # is still alive must not abort the whole wait - keep polling
+                # until the overall `timeout_s` deadline.
+                logger.warning("wait_for_started(%s): capture failed mid-poll: %s", agent, exc)
+                time.sleep(0.5)
+                continue
             # D-block-2 fix: predicate evaluated on the bottom-of-pane
             # tail so historical text in scrollback (now captured by
             # default) can't fool absence checks like
@@ -992,10 +2018,23 @@ class InteractiveTmuxWorkspace:
     # -----------------------------------------------------------------------
     # The five public primitives
 
-    def send_message(self, agent: AgentName, text: str) -> None:
-        """Submit `text` to `agent`'s tmux pane using the per-agent submit pattern."""
+    def send_message(
+        self,
+        agent: AgentName,
+        text: str,
+        *,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> None:
+        """Submit `text` to `agent`'s tmux pane using the per-agent submit pattern.
+
+        Phase 3: `timeout_s` bounds each underlying tmux/docker-exec call
+        (default `DEFAULT_EXEC_TIMEOUT_S`) so a wedged container can't hang
+        this call forever. Payloads over `TMUX_SEND_KEYS_MAX_BYTES` are
+        automatically staged via tmux's paste-buffer instead of raw
+        `send-keys` (see `_tmux_send_literal`).
+        """
         self._check_agent(agent)
-        _ADAPTERS[agent].submit(self.container, text)
+        _ADAPTERS[agent].submit(self.container, text, executor=self.executor, timeout_s=timeout_s)
 
     def await_completion(
         self,
@@ -1004,6 +2043,7 @@ class InteractiveTmuxWorkspace:
         stable_polls: int = 4,
         poll_interval: float = 0.5,
         warmup: float = 2.0,
+        poll_timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
     ) -> AwaitResult:
         """Block until `agent` returns to a stable ready state, or `timeout` passes.
 
@@ -1031,6 +2071,13 @@ class InteractiveTmuxWorkspace:
         `send_message` and the agent rendering its generation marker)
         so the first ready observation isn't a stale idle frame.
 
+        `poll_timeout_s` (Phase 3) bounds each *individual* pane-capture
+        call, distinct from the overall `timeout` deadline above: a single
+        wedged `docker exec` no longer blocks past `poll_timeout_s` (default
+        `DEFAULT_EXEC_TIMEOUT_S`), and a poll that fails/times out is
+        treated as "not ready this round" rather than raising — the loop
+        keeps polling until the overall `timeout` is reached.
+
         Returns an `AwaitResult`:
             - `.ready=True, .reason="ready"` when a stable ready state was
                reached;
@@ -1041,6 +2088,7 @@ class InteractiveTmuxWorkspace:
         """
         self._check_agent(agent)
         adapter = _ADAPTERS[agent]
+        session = self._sessions[agent]
         start = time.monotonic()
         deadline = start + timeout
         time.sleep(warmup)
@@ -1057,7 +2105,37 @@ class InteractiveTmuxWorkspace:
         pane = ""
         tail = ""
         while time.monotonic() < deadline:
-            pane = _tmux_capture(self.container, adapter.window)
+            try:
+                pane = session.capture_pane(timeout_s=poll_timeout_s)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                # Finding 4: a container that is GONE (OOM, tmux session gone,
+                # daemon error) must break the poll immediately rather than
+                # spin until `timeout` and report a misleading generic
+                # timeout. A genuinely transient failure while the container
+                # is still alive stays on the retry path below.
+                death = _container_death_reason(exc)
+                if death is not None:
+                    duration_ms = (time.monotonic() - start) * 1000
+                    logger.error(
+                        "await_completion(%s): container is gone mid-poll: %s", agent, death
+                    )
+                    return AwaitResult(
+                        ready=False,
+                        timed_out=False,
+                        reason="container_dead",
+                        duration_ms=duration_ms,
+                        stable_polls_observed=consecutive_stable_ready,
+                        pane=pane,
+                        error=death,
+                    )
+                # Phase 3: a single failed/wedged poll (container still alive)
+                # must not abort the whole await - treat it as "not ready this
+                # round" and keep polling until the overall deadline above.
+                logger.warning("await_completion(%s): capture failed/timed out mid-poll: %s", agent, exc)
+                consecutive_stable_ready = 0
+                last_tail = None
+                time.sleep(poll_interval)
+                continue
             tail = _pane_tail(pane)
             if adapter.is_ready(tail):
                 ever_ready = True
@@ -1097,18 +2175,44 @@ class InteractiveTmuxWorkspace:
             pane=pane,
         )
 
-    def capture_response(self, agent: AgentName) -> str:
-        """Return the current contents of `agent`'s tmux pane."""
+    def capture_response(
+        self,
+        agent: AgentName,
+        *,
+        timeout_s: float | None = DEFAULT_EXEC_TIMEOUT_S,
+    ) -> str:
+        """Return the current contents of `agent`'s tmux pane.
+
+        Phase 3: bounded by `timeout_s` (default `DEFAULT_EXEC_TIMEOUT_S`)
+        so a wedged container can't hang this call forever.
+        """
         self._check_agent(agent)
-        return _tmux_capture(self.container, _ADAPTERS[agent].window)
+        return self._sessions[agent].capture_pane(timeout_s=timeout_s)
 
     def stop(self) -> None:
-        """Tear down the container and remove throwaway credential copies."""
-        subprocess.run(
-            ["docker", "rm", "-f", self.container],
-            check=False,
-            capture_output=True,
-        )
+        """Tear down the backing target and remove throwaway credential
+        copies.
+
+        Delegates to `self.environment.stop()` when set (the normal path
+        for anything returned by `start_workspace`). Falls back to the
+        historical `docker rm -f` when `environment` is `None` — e.g. a
+        workspace reconstructed by `_load_workspace`, which only persists
+        identifiers, not live `Environment` objects.
+        """
+        if self.environment is not None:
+            self.environment.stop()
+        else:
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", self.container],
+                    check=False,
+                    capture_output=True,
+                    timeout=DEFAULT_RUN_TIMEOUT_S,
+                )
+            except subprocess.TimeoutExpired:
+                # Phase 3: bounded — a wedged `docker rm -f` must not hang
+                # `stop()` forever. Still clean up the host-side throwaway dir.
+                logger.warning("docker rm -f %s timed out during stop()", self.container)
         shutil.rmtree(self.host_throwaway_dir, ignore_errors=True)
 
     # -----------------------------------------------------------------------

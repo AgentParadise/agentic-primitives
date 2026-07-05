@@ -44,6 +44,59 @@ class ExecuteResult:
         }
 
 
+@runtime_checkable
+class AwaitResult(Protocol):
+    """Structural read port for the result of waiting for an interactive
+    agent pane to reach a ready/idle state.
+
+    This is a *structural* Protocol, not a concrete dataclass. The
+    interactive-tmux driver defines its own `AwaitResult` dataclass
+    (`providers/workspaces/interactive-tmux/driver/interactive_tmux.py`)
+    and that real object is what `interactive_session().await_completion()`
+    actually returns. Declaring this as a Protocol (rather than a duplicate
+    dataclass) means `isinstance(driver_result, AwaitResult)` is True at
+    runtime, the two definitions can never drift, and `agentic_isolation`
+    still never needs to import the driver (which is stdlib-only and lives
+    outside this package).
+
+    Exposes only the read surface consumers need:
+
+      - ready=True                          -> adapter is_ready() held stable
+      - timed_out=True, ready=False         -> deadline hit before idle
+      - ready=False, reason="never_ready"   -> never reached even one ready frame
+      - ready=False, reason="unstable"      -> ready frames seen but pane kept changing
+
+    `pane` carries the last captured pane text so callers don't have to
+    re-capture to inspect post-mortem; `success` mirrors `ready`.
+    Serialization (`to_dict()`) lives on the concrete driver dataclass, not
+    on this read port.
+    """
+
+    @property
+    def ready(self) -> bool: ...
+
+    @property
+    def timed_out(self) -> bool: ...
+
+    @property
+    def reason(self) -> str: ...
+
+    @property
+    def duration_ms(self) -> float: ...
+
+    @property
+    def stable_polls_observed(self) -> int: ...
+
+    @property
+    def pane(self) -> str: ...
+
+    @property
+    def error(self) -> str | None: ...
+
+    @property
+    def success(self) -> bool: ...
+
+
 @dataclass
 class Workspace:
     """Represents an active isolated workspace."""
@@ -178,6 +231,48 @@ class WorkspaceProvider(Protocol):
         ...
 
 
+@runtime_checkable
+class InteractiveSession(Protocol):
+    """Typed port for driving an interactive, prompt-based agent session
+    (e.g. a tmux-driven claude/codex/gemini TUI running in a container).
+
+    This is a structural protocol: any object exposing these three
+    methods with compatible signatures satisfies it, including the
+    driver's `InteractiveTmuxWorkspace` instance today (no wrapper class
+    needed). It exists so consumers can type against a stable port
+    instead of reaching into a provider-specific `Workspace._handle: Any`.
+    """
+
+    def send_message(self, agent: str, text: str) -> None:
+        """Send a message/prompt to the named agent's pane."""
+        ...
+
+    def await_completion(
+        self,
+        agent: str,
+        *,
+        timeout: float = 60.0,
+        stable_polls: int = 4,
+        poll_interval: float = 0.5,
+    ) -> AwaitResult:
+        """Block until the named agent's pane reaches a stable ready state.
+
+        Args:
+            agent: Agent name (e.g. "claude", "codex", "gemini").
+            timeout: Overall deadline in seconds.
+            stable_polls: Number of consecutive "ready" polls required.
+            poll_interval: Seconds between polls.
+
+        Returns:
+            AwaitResult describing whether/how readiness was reached.
+        """
+        ...
+
+    def capture_response(self, agent: str) -> str:
+        """Capture the current response text from the named agent's pane."""
+        ...
+
+
 class BaseProvider(ABC):
     """Abstract base class for workspace providers.
 
@@ -240,6 +335,16 @@ class BaseProvider(ABC):
     ) -> bool:
         """Check if file exists."""
         ...
+
+    def interactive_session(self, workspace: Workspace) -> InteractiveSession | None:
+        """Return an `InteractiveSession` port for `workspace`, if supported.
+
+        Default implementation returns `None`: most providers (docker,
+        local) don't support interactive prompt round-trips. Providers
+        that do (e.g. `InteractiveTmuxProvider`) should override this to
+        return an object satisfying the `InteractiveSession` protocol.
+        """
+        return None
 
     @staticmethod
     async def _terminate_process(proc: asyncio.subprocess.Process) -> None:

@@ -51,7 +51,9 @@ from agentic_isolation.config import (
     WorkspaceConfig,
 )
 from agentic_isolation.providers import (
+    AwaitResult,
     ExecuteResult,
+    InteractiveSession,
     Workspace,
     WorkspaceDockerProvider,
     WorkspaceLocalProvider,
@@ -93,6 +95,8 @@ __all__ = [
     "WorkspaceProvider",
     "Workspace",
     "ExecuteResult",
+    "InteractiveSession",
+    "AwaitResult",
     "WorkspaceLocalProvider",
     "WorkspaceDockerProvider",
     # Workspace file staging primitives

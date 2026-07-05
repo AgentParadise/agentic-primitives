@@ -94,7 +94,7 @@ class TestThrowawayDirCleanup:
         no_real_subprocess: list[list[str]],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        def failing_run(cmd, check=True, capture=True):
+        def failing_run(cmd, check=True, capture=True, timeout_s=None):
             if cmd[:2] == ["docker", "run"]:
                 raise subprocess.CalledProcessError(125, cmd)
             return subprocess.CompletedProcess(cmd, 0, "", "")
