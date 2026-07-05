@@ -248,8 +248,10 @@ pub fn prepare_codex(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth>
     }
     let dst_dir = ctx.throwaway_dir.join("codex.dir");
     // Skip tmp/log/logs: codex races there during normal operation. The auth
-    // surface lives at `auth.json` / `config.toml` / `sessions/`.
-    copy_tree(host_src, &dst_dir, &["tmp", "log", "logs"])?;
+    // surface lives at `auth.json` / `config.toml` / `sessions/`. Also skip
+    // plugins/: a large plugin/dependency cache (node_modules), never auth,
+    // and staging it turns start_workspace into a multi-minute crawl.
+    copy_tree(host_src, &dst_dir, &["tmp", "log", "logs", "plugins"])?;
     Ok(PreparedAuth(vec![StagedPath {
         host: dst_dir,
         container: "/home/agent/.codex".to_string(),
