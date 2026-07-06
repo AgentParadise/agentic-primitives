@@ -20,7 +20,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = []
+dependencies = [
+    "pydantic==2.13.4",
+]
 
 [project.optional-dependencies]
 docker = [
