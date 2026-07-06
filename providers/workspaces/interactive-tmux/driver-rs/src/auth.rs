@@ -108,6 +108,33 @@ fn copy_file(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copy only the top-level regular files of `src` whose names are in
+/// `allow_names` into `dst`. Directories and any other entries are ignored.
+///
+/// This is the allowlist counterpart to `copy_tree`'s denylist: for agents
+/// whose home directory mixes a tiny auth/config surface with hundreds of
+/// megabytes of operational state (caches, session transcripts, sqlite
+/// journals), an allowlist is the only stable way to keep credential staging
+/// from crawling. New bloat directories can appear at any release without
+/// breaking the stage, because nothing outside `allow_names` is ever copied.
+fn copy_named_files(src: &Path, dst: &Path, allow_names: &[&str]) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if !allow_names.iter().any(|s| **s == *name.to_string_lossy()) {
+            continue;
+        }
+        if entry.file_type()?.is_file() {
+            fs::copy(entry.path(), dst.join(&name))?;
+        }
+    }
+    Ok(())
+}
+
 fn copy_tree(src: &Path, dst: &Path, skip_names: &[&str]) -> Result<()> {
     if !src.exists() {
         return Ok(());
@@ -239,6 +266,12 @@ pub fn prepare_claude(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth
 // ---------------------------------------------------------------------------
 // Codex - EXP-02
 
+/// Top-level `~/.codex` entries that make up the codex auth/config surface.
+/// Everything else (session transcripts, sqlite journals, caches, plugin
+/// bundles, `.tmp/`) is operational bloat and must never be staged. Keep in
+/// sync with the Python driver's `_CodexAdapter` allowlist.
+const CODEX_AUTH_FILES: [&str; 4] = ["auth.json", "config.toml", "config.json", "AGENTS.md"];
+
 pub fn prepare_codex(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth> {
     if !host_src.is_dir() {
         return Err(Error::new(
@@ -247,11 +280,20 @@ pub fn prepare_codex(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth>
         ));
     }
     let dst_dir = ctx.throwaway_dir.join("codex.dir");
-    // Skip tmp/log/logs: codex races there during normal operation. The auth
-    // surface lives at `auth.json` / `config.toml` / `sessions/`. Also skip
-    // plugins/: a large plugin/dependency cache (node_modules), never auth,
-    // and staging it turns start_workspace into a multi-minute crawl.
-    copy_tree(host_src, &dst_dir, &["tmp", "log", "logs", "plugins"])?;
+    // Stage ONLY the codex auth/config surface via an allowlist. A modern
+    // `~/.codex` (codex-cli 0.139.0) mixes a few small credential/config files
+    // (`auth.json`, `config.toml`) with hundreds of megabytes of operational
+    // state under directories that vary by release: `.tmp/`, `sessions/`,
+    // `archived_sessions/`, `logs_2.sqlite*`, `computer-use/`, `plugins/`,
+    // `cache/`, etc. The old `{tmp, log, logs, plugins}` denylist missed all of
+    // those, turning start_workspace into a multi-minute, thousands-of-`docker
+    // exec` crawl that never completes (the `--startup-timeout` bound only
+    // covers the post-launch readiness wait, not credential staging). An
+    // allowlist is the only stable fix: it can't regress when codex adds new
+    // state directories. `auth.json` carries the credentials; `config.toml`
+    // pins the model/approval settings; `config.json`/`AGENTS.md` are copied
+    // when present so per-user config/instructions survive.
+    copy_named_files(host_src, &dst_dir, &CODEX_AUTH_FILES)?;
     Ok(PreparedAuth(vec![StagedPath {
         host: dst_dir,
         container: "/home/agent/.codex".to_string(),
