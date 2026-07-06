@@ -16,6 +16,10 @@ const CLAUDE_WELCOME: &str = include_str!("fixtures/claude/welcome_started.txt")
 const CODEX_READY: &str = include_str!("fixtures/codex/ready_post_turn.txt");
 const CODEX_WORKING: &str = include_str!("fixtures/codex/working.txt");
 const CODEX_IDLE_HINT: &str = include_str!("fixtures/codex/idle_hint_only.txt");
+/// Real `itmux start --agents codex` first-ready pane captured live from
+/// codex-cli 0.139.0 in the fat image (trust banner accepted, hooks modal
+/// dismissed, composer visible). Guards the actual start path predicate.
+const CODEX_FRESH_LAUNCH: &str = include_str!("fixtures/codex/ready_fresh_launch.txt");
 
 const GEMINI_READY: &str = include_str!("fixtures/gemini/ready_post_turn.txt");
 const GEMINI_THINKING: &str = include_str!("fixtures/gemini/thinking.txt");
@@ -89,6 +93,21 @@ fn codex_idle_with_hint_only_is_ready() {
 #[test]
 fn codex_empty_pane_is_not_ready() {
     assert!(!codex_is_ready(""));
+}
+
+#[test]
+fn codex_fresh_launch_pane_is_ready() {
+    // The real 0.139.0 first-ready pane after `itmux start --agents codex`:
+    // the composer shows `› Explain this codebase` and a `Tip:` line, and no
+    // `• Working` marker. Both the ready and started predicates must pass so
+    // start_workspace reports the codex agent ready (rc=0). Regression guard
+    // for the credential-staging fix that lets start_workspace reach this pane
+    // at all.
+    assert!(
+        codex_is_ready(CODEX_FRESH_LAUNCH),
+        "real 0.139.0 fresh-launch pane must satisfy codex_is_ready"
+    );
+    assert!(codex_is_started(CODEX_FRESH_LAUNCH));
 }
 
 #[test]
