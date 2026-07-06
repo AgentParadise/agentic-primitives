@@ -1,8 +1,8 @@
-"""Tests for RunSpec/RunResult contract (Plan 1b Task 2).
+"""Tests for AgentRunSpec/AgentRunResult contract (Plan 1b Task 2).
 
-Covers: RunSpec (recipe + task + credentials + limits) validation,
-RunCredentials rejecting unknown harness keys, RunResult required
-fields, and the RunEvent discriminated union.
+Covers: AgentRunSpec (recipe + task + credentials + limits) validation,
+AgentRunCredentials rejecting unknown harness keys, AgentRunResult required
+fields, and the AgentRunEvent discriminated union.
 """
 
 from pathlib import Path
@@ -11,23 +11,23 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from agentic_isolation.recipe import AgentRecipe
-from agentic_isolation.run_events import (
-    RunEvent,
-    RunEventEnvelope,
+from agentic_isolation.agent_run_events import (
+    AgentRunEvent,
+    AgentRunEventEnvelope,
     SessionEndEvent,
     TokenUsageEvent,
     ToolEndEvent,
     ToolStartEvent,
 )
-from agentic_isolation.run_result import RunOutcome, RunResult
-from agentic_isolation.run_spec import (
+from agentic_isolation.agent_run_result import AgentRunOutcome, AgentRunResult
+from agentic_isolation.agent_run_spec import (
+    AgentRunCredentials,
+    AgentRunSpec,
     ClaudeCredentials,
     CodexCredentials,
     ObservabilityExporter,
-    RunCredentials,
-    RunSpec,
 )
+from agentic_isolation.recipe import AgentRecipe
 
 RECIPE: dict[str, Any] = {
     "name": "quick-fix",
@@ -40,8 +40,8 @@ RECIPE: dict[str, Any] = {
 
 
 class TestRunSpec:
-    def test_full_run_spec_validates(self) -> None:
-        spec = RunSpec.model_validate(
+    def test_full_agent_run_spec_validates(self) -> None:
+        spec = AgentRunSpec.model_validate(
             {
                 "recipe": RECIPE,
                 "task": "Fix the failing test in test_foo.py",
@@ -61,8 +61,8 @@ class TestRunSpec:
         assert spec.limits.timeout_s == 300.0
         assert spec.limits.token_budget == 100000
 
-    def test_minimal_run_spec_defaults(self) -> None:
-        spec = RunSpec.model_validate(
+    def test_minimal_agent_run_spec_defaults(self) -> None:
+        spec = AgentRunSpec.model_validate(
             {
                 "recipe": RECIPE,
                 "task": "Do the thing",
@@ -76,14 +76,14 @@ class TestRunSpec:
         assert spec.credentials.claude is None
         assert spec.credentials.codex is None
 
-    def test_run_spec_is_frozen(self) -> None:
-        spec = RunSpec.model_validate({"recipe": RECIPE, "task": "task", "credentials": {}})
+    def test_agent_run_spec_is_frozen(self) -> None:
+        spec = AgentRunSpec.model_validate({"recipe": RECIPE, "task": "task", "credentials": {}})
         with pytest.raises(ValidationError):
             spec.task = "renamed"  # type: ignore[misc]
 
     def test_unknown_top_level_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            RunSpec.model_validate(
+            AgentRunSpec.model_validate(
                 {
                     "recipe": RECIPE,
                     "task": "task",
@@ -95,17 +95,17 @@ class TestRunSpec:
 
 class TestRunCredentials:
     def test_claude_credentials(self) -> None:
-        creds = RunCredentials.model_validate({"claude": {"oauth_token": "tok"}})
+        creds = AgentRunCredentials.model_validate({"claude": {"oauth_token": "tok"}})
         assert creds.claude == ClaudeCredentials(oauth_token="tok")
         assert creds.codex is None
 
     def test_codex_credentials(self) -> None:
-        creds = RunCredentials.model_validate({"codex": {"auth_json": "{}"}})
+        creds = AgentRunCredentials.model_validate({"codex": {"auth_json": "{}"}})
         assert creds.codex == CodexCredentials(auth_json="{}")
         assert creds.claude is None
 
     def test_both_credentials(self) -> None:
-        creds = RunCredentials.model_validate(
+        creds = AgentRunCredentials.model_validate(
             {
                 "claude": {"oauth_token": "tok"},
                 "codex": {"auth_json": "{}"},
@@ -116,10 +116,10 @@ class TestRunCredentials:
 
     def test_unknown_harness_key_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            RunCredentials.model_validate({"gemini": {"api_key": "x"}})
+            AgentRunCredentials.model_validate({"gemini": {"api_key": "x"}})
 
     def test_empty_credentials_allowed(self) -> None:
-        creds = RunCredentials.model_validate({})
+        creds = AgentRunCredentials.model_validate({})
         assert creds.claude is None
         assert creds.codex is None
 
@@ -149,23 +149,23 @@ class TestObservabilityExporter:
 class TestRunResult:
     def test_requires_result_and_session_log(self) -> None:
         with pytest.raises(ValidationError):
-            RunResult.model_validate({})
+            AgentRunResult.model_validate({})
 
-    def test_valid_run_result(self) -> None:
-        result = RunResult.model_validate(
+    def test_valid_agent_run_result(self) -> None:
+        result = AgentRunResult.model_validate(
             {
                 "result": {"success": True, "summary": "Fixed the test"},
                 "output_artifacts": ["/tmp/output.txt"],
                 "session_log": "session-log-contents",
             }
         )
-        assert result.result == RunOutcome(success=True, summary="Fixed the test")
+        assert result.result == AgentRunOutcome(success=True, summary="Fixed the test")
         assert result.output_artifacts == (Path("/tmp/output.txt"),)
         assert result.session_log == "session-log-contents"
         assert result.observability is None
 
-    def test_run_result_is_frozen(self) -> None:
-        result = RunResult.model_validate(
+    def test_agent_run_result_is_frozen(self) -> None:
+        result = AgentRunResult.model_validate(
             {
                 "result": {"success": False, "summary": "failed"},
                 "session_log": "log",
@@ -176,7 +176,7 @@ class TestRunResult:
 
     def test_unknown_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            RunResult.model_validate(
+            AgentRunResult.model_validate(
                 {
                     "result": {"success": True, "summary": "ok"},
                     "session_log": "log",
@@ -187,14 +187,14 @@ class TestRunResult:
 
 class TestRunEvents:
     def test_tool_start_event(self) -> None:
-        event: RunEvent = ToolStartEvent.model_validate(
+        event: AgentRunEvent = ToolStartEvent.model_validate(
             {"type": "tool_start", "tool_name": "bash", "tool_use_id": "t1"}
         )
         assert isinstance(event, ToolStartEvent)
         assert event.tool_name == "bash"
 
     def test_tool_end_event(self) -> None:
-        event: RunEvent = ToolEndEvent.model_validate(
+        event: AgentRunEvent = ToolEndEvent.model_validate(
             {
                 "type": "tool_end",
                 "tool_name": "bash",
@@ -206,7 +206,7 @@ class TestRunEvents:
         assert event.success is True
 
     def test_token_usage_event(self) -> None:
-        event: RunEvent = TokenUsageEvent.model_validate(
+        event: AgentRunEvent = TokenUsageEvent.model_validate(
             {
                 "type": "token_usage",
                 "input_tokens": 100,
@@ -217,23 +217,25 @@ class TestRunEvents:
         assert event.input_tokens == 100
 
     def test_session_end_event(self) -> None:
-        event: RunEvent = SessionEndEvent.model_validate({"type": "session_end", "success": True})
+        event: AgentRunEvent = SessionEndEvent.model_validate(
+            {"type": "session_end", "success": True}
+        )
         assert isinstance(event, SessionEndEvent)
 
     def test_discriminated_union_dispatches_on_type(self) -> None:
-        envelope = RunEventEnvelope.model_validate(
+        envelope = AgentRunEventEnvelope.model_validate(
             {"event": {"type": "tool_start", "tool_name": "bash", "tool_use_id": "t1"}}
         )
         assert isinstance(envelope.event, ToolStartEvent)
 
-        envelope2 = RunEventEnvelope.model_validate(
+        envelope2 = AgentRunEventEnvelope.model_validate(
             {"event": {"type": "session_end", "success": False}}
         )
         assert isinstance(envelope2.event, SessionEndEvent)
 
     def test_unknown_type_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            RunEventEnvelope.model_validate({"event": {"type": "bogus_event"}})
+            AgentRunEventEnvelope.model_validate({"event": {"type": "bogus_event"}})
 
     def test_event_variants_are_frozen_and_forbid_extra(self) -> None:
         event = SessionEndEvent(type="session_end", success=True)

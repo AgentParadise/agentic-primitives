@@ -1,9 +1,9 @@
-"""RunSpec: task-specific invocation contract for an agent recipe.
+"""AgentRunSpec: task-specific invocation contract for an agent recipe.
 
-Implements Plan 1b Task 2 of the RunSpec/RunResult contract work: a
-`RunSpec` pairs a harness-neutral `AgentRecipe` (see `recipe.py`) with
+Implements Plan 1b Task 2 of the AgentRunSpec/AgentRunResult contract work: a
+`AgentRunSpec` pairs a harness-neutral `AgentRecipe` (see `recipe.py`) with
 the task-specific input, credentials, and limits needed to actually
-execute a run. Recipes stay reusable and credential-free; `RunSpec` is
+execute a run. Recipes stay reusable and credential-free; `AgentRunSpec` is
 the per-invocation envelope.
 """
 
@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from agentic_isolation.recipe import AgentRecipe
 
 
-class RunLimits(BaseModel):
+class AgentRunLimits(BaseModel):
     """Resource limits for a single run."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -53,7 +53,7 @@ class CodexCredentials(BaseModel):
     auth_json: str = Field(min_length=1)
 
 
-class RunCredentials(BaseModel):
+class AgentRunCredentials(BaseModel):
     """Per-harness credentials for a run, keyed by harness name.
 
     Only known harnesses (`claude`, `codex`) are accepted as keys;
@@ -82,7 +82,7 @@ class ObservabilityExporter(BaseModel):
     config: dict[str, str] = Field(default_factory=dict)
 
 
-class RunSpec(BaseModel):
+class AgentRunSpec(BaseModel):
     """A single task-specific invocation of an agent recipe.
 
     Pairs a harness-neutral `recipe` with the `task` description,
@@ -99,6 +99,6 @@ class RunSpec(BaseModel):
     # list field is only shallow-frozen. Pydantic coerces list/JSON-array
     # input to a tuple on validation.
     input_artifacts: tuple[Path, ...] = Field(default_factory=tuple)
-    credentials: RunCredentials
+    credentials: AgentRunCredentials
     observability: tuple[ObservabilityExporter, ...] = Field(default_factory=tuple)
-    limits: RunLimits | None = None
+    limits: AgentRunLimits | None = None

@@ -1,11 +1,11 @@
-"""`run()`: orchestrates a single `RunSpec` execution over an `ItmuxClient`.
+"""`run()`: orchestrates a single `AgentRunSpec` execution over an `ItmuxClient`.
 
 Implements Plan 1b Task 4. This module is the glue between the
-harness-neutral contract types (`AgentRecipe`, `RunSpec`, `RunResult`,
-`RunEvent`) and the concrete `itmux` subprocess client
+harness-neutral contract types (`AgentRecipe`, `AgentRunSpec`, `AgentRunResult`,
+`AgentRunEvent`) and the concrete `itmux` subprocess client
 (`itmux_client.py`): it maps a recipe onto `ItmuxClient.start()`
 arguments, drives the `start -> send -> await -> capture -> stop`
-sequence, emits live `RunEvent`s at each orchestration boundary, and
+sequence, emits live `AgentRunEvent`s at each orchestration boundary, and
 supports two-tier cancellation (`graceful` / `hard`) via `CancelToken`.
 
 Known gaps (documented rather than papered over):
@@ -26,12 +26,12 @@ Known gaps (documented rather than papered over):
   `itmux send`. `build_submit_text()` documents how `append` and
   `replace` currently collapse to the same wire format as a result
   (see its docstring).
-- `RunSpec.credentials` and `RunSpec.input_artifacts` are collected by
+- `AgentRunSpec.credentials` and `AgentRunSpec.input_artifacts` are collected by
   the contract but NOT yet applied by `run()`. `itmux` currently
   sources credentials from the host environment
-  (`ITMUX_CLAUDE_HOME` / `$HOME`), so per-`RunSpec` credentials are
+  (`ITMUX_CLAUDE_HOME` / `$HOME`), so per-`AgentRunSpec` credentials are
   ignored, and no input artifacts are staged into the workspace before
-  the agent runs. Staging per-`RunSpec` credentials and input
+  the agent runs. Staging per-`AgentRunSpec` credentials and input
   artifacts into the workspace is a Plan 1b Task 5 (provider rewire)
   follow-on. Until then, `run()` deliberately does not read these two
   fields rather than silently half-applying them.
@@ -54,27 +54,27 @@ from typing import TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 
-from agentic_isolation.itmux_client import AwaitResult, ItmuxClient
-from agentic_isolation.recipe import AgentRecipe
-from agentic_isolation.run_events import (
-    CancelMode,
-    EventCallback,
-    RunEvent,
+from agentic_isolation.agent_run_events import (
+    AgentRunCancelMode,
+    AgentRunEvent,
+    AgentRunEventCallback,
     SessionEndEvent,
     ToolEndEvent,
     ToolStartEvent,
 )
-from agentic_isolation.run_result import RunOutcome, RunResult
-from agentic_isolation.run_spec import RunSpec
+from agentic_isolation.agent_run_result import AgentRunOutcome, AgentRunResult
+from agentic_isolation.agent_run_spec import AgentRunSpec
+from agentic_isolation.itmux_client import AwaitResult, ItmuxClient
+from agentic_isolation.recipe import AgentRecipe
 
 # `itmux start --startup-timeout` default: how long to wait for the
 # harness process itself to come up in the pane before `start` gives
-# up. This is distinct from `RunSpec.limits.timeout_s`, which bounds
+# up. This is distinct from `AgentRunSpec.limits.timeout_s`, which bounds
 # how long we wait for the *agent* to finish the task (`await_ready`).
 DEFAULT_STARTUP_TIMEOUT_S = 60.0
 
-# Default `itmux await --timeout` when `RunSpec.limits.timeout_s` is
-# not set. `RunSpec.limits.timeout_s`, when present, is authoritative
+# Default `itmux await --timeout` when `AgentRunSpec.limits.timeout_s` is
+# not set. `AgentRunSpec.limits.timeout_s`, when present, is authoritative
 # and overrides this.
 DEFAULT_AWAIT_TIMEOUT_S = 120.0
 
@@ -169,7 +169,7 @@ class CancelToken:
 
     `request("graceful")` asks the run to stop after the current
     orchestration step completes, still collecting a best-effort
-    partial `RunResult` (a final `capture` is still performed).
+    partial `AgentRunResult` (a final `capture` is still performed).
 
     `request("hard")` asks the run to stop immediately: no further
     `itmux` calls are made after the request is observed, only
@@ -182,19 +182,19 @@ class CancelToken:
 
     def __init__(self) -> None:
         self._event = asyncio.Event()
-        self._mode: CancelMode | None = None
+        self._mode: AgentRunCancelMode | None = None
 
-    def request(self, mode: CancelMode) -> None:
+    def request(self, mode: AgentRunCancelMode) -> None:
         if self._mode == "hard":
             return
         self._mode = mode
         self._event.set()
 
     @property
-    def mode(self) -> CancelMode | None:
+    def mode(self) -> AgentRunCancelMode | None:
         return self._mode
 
-    async def wait(self) -> CancelMode:
+    async def wait(self) -> AgentRunCancelMode:
         await self._event.wait()
         assert self._mode is not None
         return self._mode
@@ -203,11 +203,11 @@ class CancelToken:
 class _HardCancelRequested(Exception):
     """Internal signal: a hard cancel was observed before or during an
     itmux call. Caught at the top of `run()` to build a minimal
-    `RunResult` without performing any further itmux calls.
+    `AgentRunResult` without performing any further itmux calls.
     """
 
 
-def _emit(on_event: EventCallback | None, event: RunEvent) -> None:
+def _emit(on_event: AgentRunEventCallback | None, event: AgentRunEvent) -> None:
     if on_event is not None:
         on_event(event)
 
@@ -245,7 +245,7 @@ async def _call(
     if cancel is None:
         return await call_task
 
-    cancel_task: asyncio.Task[CancelMode] = asyncio.ensure_future(cancel.wait())
+    cancel_task: asyncio.Task[AgentRunCancelMode] = asyncio.ensure_future(cancel.wait())
     done, _pending = await asyncio.wait(
         {call_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED
     )
@@ -267,17 +267,17 @@ async def _call(
 
 
 async def run(
-    spec: RunSpec,
+    spec: AgentRunSpec,
     *,
     client: ItmuxClient,
-    on_event: EventCallback | None = None,
+    on_event: AgentRunEventCallback | None = None,
     image: str,
     workdir: str = "/workspace",
     name: str | None = None,
     cancel: CancelToken | None = None,
-) -> RunResult:
+) -> AgentRunResult:
     """Execute `spec` over `client`, driving `start -> send -> await ->
-    capture -> stop` and emitting `RunEvent`s at each step boundary.
+    capture -> stop` and emitting `AgentRunEvent`s at each step boundary.
 
     `spec.limits.timeout_s`, when set, is authoritative for the
     `await_ready` call (overrides `DEFAULT_AWAIT_TIMEOUT_S`).
@@ -380,8 +380,8 @@ async def run(
                     else f"agent did not become ready: {await_result.reason}"
                 )
 
-            result = RunResult(
-                result=RunOutcome(success=success, summary=summary),
+            result = AgentRunResult(
+                result=AgentRunOutcome(success=success, summary=summary),
                 session_log=session_log,
             )
             _emit(on_event, SessionEndEvent(success=success))
@@ -393,8 +393,8 @@ async def run(
                 emit_tool_end(open_tool, success=False)
                 open_tool = None
             _emit(on_event, SessionEndEvent(success=False))
-            return RunResult(
-                result=RunOutcome(
+            return AgentRunResult(
+                result=AgentRunOutcome(
                     success=False, summary="run cancelled (hard): no result collected"
                 ),
                 session_log="",

@@ -17,11 +17,16 @@ from typing import cast
 
 import pytest
 
+from agentic_isolation.agent_run_events import (
+    AgentRunEvent,
+    SessionEndEvent,
+    ToolEndEvent,
+    ToolStartEvent,
+)
+from agentic_isolation.agent_run_result import AgentRunResult
+from agentic_isolation.agent_run_spec import AgentRunCredentials, AgentRunLimits, AgentRunSpec
 from agentic_isolation.itmux_client import AwaitResult, ItmuxClient, StartReport
 from agentic_isolation.recipe import AgentRecipe, ModelSpec, SystemInstructions
-from agentic_isolation.run_events import RunEvent, SessionEndEvent, ToolEndEvent, ToolStartEvent
-from agentic_isolation.run_result import RunResult
-from agentic_isolation.run_spec import RunCredentials, RunLimits, RunSpec
 from agentic_isolation.workspace_run import (
     CancelToken,
     ItmuxStartArgs,
@@ -119,8 +124,8 @@ class FakeItmuxClient:
         return None
 
 
-def _make_spec(recipe: AgentRecipe, *, task: str = "do the thing") -> RunSpec:
-    return RunSpec(recipe=recipe, task=task, credentials=RunCredentials())
+def _make_spec(recipe: AgentRecipe, *, task: str = "do the thing") -> AgentRunSpec:
+    return AgentRunSpec(recipe=recipe, task=task, credentials=AgentRunCredentials())
 
 
 def as_client(fake: FakeItmuxClient) -> ItmuxClient:
@@ -206,7 +211,7 @@ class TestRunOrdering:
 
         call_names = [c[0] for c in client.calls]
         assert call_names == ["start", "send", "await_ready", "capture", "stop"]
-        assert isinstance(result, RunResult)
+        assert isinstance(result, AgentRunResult)
         assert result.session_log == client.captured_pane
         assert result.result.success is True
 
@@ -259,11 +264,11 @@ class TestRunOrdering:
 
     async def test_timeout_s_from_limits_passed_to_await_ready(self) -> None:
         client = FakeItmuxClient()
-        spec = RunSpec(
+        spec = AgentRunSpec(
             recipe=CLAUDE_RECIPE,
             task="do it",
-            credentials=RunCredentials(),
-            limits=RunLimits(timeout_s=17.0),
+            credentials=AgentRunCredentials(),
+            limits=AgentRunLimits(timeout_s=17.0),
         )
 
         await run(spec, client=as_client(client), image="img:latest", name="ws-4")
@@ -276,7 +281,7 @@ class TestRunEventsDelivery:
     async def test_on_event_receives_start_and_session_end(self) -> None:
         client = FakeItmuxClient()
         spec = _make_spec(CLAUDE_RECIPE)
-        events: list[RunEvent] = []
+        events: list[AgentRunEvent] = []
 
         await run(
             spec, client=as_client(client), on_event=events.append, image="img:latest", name="ws-5"
@@ -290,7 +295,7 @@ class TestRunEventsDelivery:
     async def test_on_event_receives_tool_end_pairs(self) -> None:
         client = FakeItmuxClient()
         spec = _make_spec(CLAUDE_RECIPE)
-        events: list[RunEvent] = []
+        events: list[AgentRunEvent] = []
 
         await run(
             spec, client=as_client(client), on_event=events.append, image="img:latest", name="ws-6"
@@ -308,7 +313,7 @@ class TestRunEventsDelivery:
         # SessionEnd(success=False) before the exception propagates.
         client = FakeItmuxClient(raise_on_await=RuntimeError("await blew up"))
         spec = _make_spec(CLAUDE_RECIPE)
-        events: list[RunEvent] = []
+        events: list[AgentRunEvent] = []
 
         with pytest.raises(RuntimeError):
             await run(
@@ -381,7 +386,7 @@ class TestCancellation:
         cancel = CancelToken()
         client = FakeItmuxClient(on_send=lambda: cancel.request("hard"))
         spec = _make_spec(CLAUDE_RECIPE)
-        events: list[RunEvent] = []
+        events: list[AgentRunEvent] = []
 
         await run(
             spec,

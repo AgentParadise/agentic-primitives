@@ -1,14 +1,14 @@
-"""RunEvent: the live event stream emitted while executing a RunSpec.
+"""AgentRunEvent: the live event stream emitted while executing a AgentRunSpec.
 
-Implements Plan 1b Task 2 of the RunSpec/RunResult contract work: a
+Implements Plan 1b Task 2 of the AgentRunSpec/AgentRunResult contract work: a
 discriminated union of event variants a harness adapter emits during
 a run (tool lifecycle, token usage, session end), plus the
-`EventCallback` signature callers register to observe them and a
-`CancelMode` used to request cancellation of an in-flight run.
+`AgentRunEventCallback` signature callers register to observe them and a
+`AgentRunCancelMode` used to request cancellation of an in-flight run.
 
-This is the live-streaming counterpart to the terminal `RunResult`
-(see `run_result.py`); `RunResult.observability` is the
-after-the-fact summary, `RunEvent` is the moment-by-moment feed.
+This is the live-streaming counterpart to the terminal `AgentRunResult`
+(see `agent_run_result.py`); `AgentRunResult.observability` is the
+after-the-fact summary, `AgentRunEvent` is the moment-by-moment feed.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CancelMode = Literal["graceful", "hard"]
+AgentRunCancelMode = Literal["graceful", "hard"]
 
 
 class ToolStartEvent(BaseModel):
@@ -61,21 +61,21 @@ class SessionEndEvent(BaseModel):
     success: bool
 
 
-RunEvent = Annotated[
+AgentRunEvent = Annotated[
     ToolStartEvent | ToolEndEvent | TokenUsageEvent | SessionEndEvent,
     Field(discriminator="type"),
 ]
 
 
-class RunEventEnvelope(BaseModel):
-    """Wraps a `RunEvent` so the discriminated union can be validated
+class AgentRunEventEnvelope(BaseModel):
+    """Wraps a `AgentRunEvent` so the discriminated union can be validated
     directly (pydantic v2 requires a `BaseModel` field to trigger
     union discrimination outside of a `TypeAdapter`).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    event: RunEvent
+    event: AgentRunEvent
 
 
-EventCallback = Callable[[RunEvent], None]
+AgentRunEventCallback = Callable[[AgentRunEvent], None]

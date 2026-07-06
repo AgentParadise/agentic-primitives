@@ -1,8 +1,8 @@
-"""RunResult: the outcome contract for a completed RunSpec execution.
+"""AgentRunResult: the outcome contract for a completed AgentRunSpec execution.
 
-Implements Plan 1b Task 2 of the RunSpec/RunResult contract work: a
-`RunResult` is what an isolation provider hands back after executing
-a `RunSpec` (see `run_spec.py`) - whether the run succeeded, what
+Implements Plan 1b Task 2 of the AgentRunSpec/AgentRunResult contract work: a
+`AgentRunResult` is what an isolation provider hands back after executing
+a `AgentRunSpec` (see `agent_run_spec.py`) - whether the run succeeded, what
 artifacts it produced, and the raw session log.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class RunOutcome(BaseModel):
+class AgentRunOutcome(BaseModel):
     """Whether a run succeeded and a short human-readable summary."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -23,7 +23,7 @@ class RunOutcome(BaseModel):
 
 
 class ObservabilityBundle(BaseModel):
-    """Placeholder for the observability payload attached to a RunResult.
+    """Placeholder for the observability payload attached to a AgentRunResult.
 
     Minimal shape for Plan 1b Task 2: a `session_id` correlating this
     bundle back to the run, and an opaque `metrics` bag. Plan 3 will
@@ -37,8 +37,8 @@ class ObservabilityBundle(BaseModel):
     metrics: dict[str, float] = Field(default_factory=dict)
 
 
-class RunResult(BaseModel):
-    """The outcome of executing a RunSpec.
+class AgentRunResult(BaseModel):
+    """The outcome of executing a AgentRunSpec.
 
     `result` carries the pass/fail summary, `output_artifacts` lists
     any files the run produced, and `session_log` is the raw
@@ -48,7 +48,7 @@ class RunResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    result: RunOutcome
+    result: AgentRunOutcome
     # Tuple (not list) for real immutability on this frozen model - a list
     # field is only shallow-frozen. Pydantic coerces list input to a tuple.
     output_artifacts: tuple[Path, ...] = Field(default_factory=tuple)
