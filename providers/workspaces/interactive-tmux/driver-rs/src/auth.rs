@@ -117,6 +117,12 @@ fn copy_file(src: &Path, dst: &Path) -> Result<()> {
 /// journals), an allowlist is the only stable way to keep credential staging
 /// from crawling. New bloat directories can appear at any release without
 /// breaking the stage, because nothing outside `allow_names` is ever copied.
+///
+/// The file-type decision follows symlinks (`fs::metadata`, not
+/// `DirEntry::file_type`, which stats the link itself): dotfile managers like
+/// stow/chezmoi routinely symlink `auth.json`/`config.toml` into `~/.codex`,
+/// and those must be staged as their target regular files. This also keeps
+/// parity with the Python driver, whose `Path.is_file()` follows symlinks.
 fn copy_named_files(src: &Path, dst: &Path, allow_names: &[&str]) -> Result<()> {
     if !src.exists() {
         return Ok(());
@@ -128,8 +134,11 @@ fn copy_named_files(src: &Path, dst: &Path, allow_names: &[&str]) -> Result<()> 
         if !allow_names.iter().any(|s| **s == *name.to_string_lossy()) {
             continue;
         }
-        if entry.file_type()?.is_file() {
-            fs::copy(entry.path(), dst.join(&name))?;
+        let path = entry.path();
+        // `fs::metadata` follows symlinks; a symlink-to-regular-file counts as
+        // a file and is copied by-value (`fs::copy` also follows the link).
+        if fs::metadata(&path).map(|m| m.is_file()).unwrap_or(false) {
+            fs::copy(&path, dst.join(&name))?;
         }
     }
     Ok(())
