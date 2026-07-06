@@ -158,20 +158,39 @@ def resolve_itmux_bin(*, repo_root: Path | None = None) -> str:
 class ItmuxRunner(Protocol):
     """Injectable subprocess runner shape.
 
-    Called as `runner(argv, stdin=..., timeout_s=...)` ->
-    `(returncode, stdout, stderr)`. Tests supply a fake implementation
-    that records calls instead of shelling out.
+    Called as `runner(argv, stdin=..., timeout_s=..., env=...)` ->
+    `(returncode, stdout, stderr)`. `env` carries extra environment
+    variables for the subprocess (merged over `os.environ` by the real
+    runner); `None` means "inherit the parent environment unchanged".
+    Tests supply a fake implementation that records calls instead of
+    shelling out.
     """
 
     def __call__(
-        self, argv: Sequence[str], *, stdin: str | None, timeout_s: float
+        self,
+        argv: Sequence[str],
+        *,
+        stdin: str | None,
+        timeout_s: float,
+        env: dict[str, str] | None,
     ) -> tuple[int, str, str]: ...
 
 
 def _run_subprocess(
-    argv: Sequence[str], *, stdin: str | None, timeout_s: float
+    argv: Sequence[str],
+    *,
+    stdin: str | None,
+    timeout_s: float,
+    env: dict[str, str] | None,
 ) -> tuple[int, str, str]:
-    """Real subprocess runner used by `ItmuxClient` by default."""
+    """Real subprocess runner used by `ItmuxClient` by default.
+
+    `env` (if given) is merged over the inherited process environment,
+    so callers only specify the variables they want to add or override.
+    """
+    subprocess_env: dict[str, str] | None = None
+    if env is not None:
+        subprocess_env = {**os.environ, **env}
     completed = subprocess.run(  # noqa: S603
         list(argv),
         input=stdin,
@@ -179,6 +198,7 @@ def _run_subprocess(
         text=True,
         timeout=timeout_s,
         check=False,
+        env=subprocess_env,
     )
     return completed.returncode, completed.stdout, completed.stderr
 
@@ -197,12 +217,19 @@ class ItmuxClient:
         self._run: ItmuxRunner = runner if runner is not None else _run_subprocess
         self._default_timeout_s = default_timeout_s
 
-    def _invoke(self, args: Sequence[str], *, timeout_s: float | None = None) -> str:
+    def _invoke(
+        self,
+        args: Sequence[str],
+        *,
+        timeout_s: float | None = None,
+        env: dict[str, str] | None = None,
+    ) -> str:
         argv = [self._itmux_bin, *args]
         returncode, stdout, stderr = self._run(
             argv,
             stdin=None,
             timeout_s=timeout_s if timeout_s is not None else self._default_timeout_s,
+            env=env,
         )
         if returncode != 0:
             raise ItmuxError(argv, returncode, stderr)
@@ -234,9 +261,16 @@ class ItmuxClient:
         ]
         if strict_startup:
             args.append("--strict-startup")
+        # `itmux` has no CLI flag for plugin dirs: it reads the
+        # colon-separated `ITMUX_CLAUDE_PLUGIN_DIRS` env var (like $PATH)
+        # and translates each entry to a `claude --plugin-dir <path>`
+        # launch flag. This is the only mechanism that actually loads
+        # Claude Code plugins (settings.json injection is ignored by the
+        # TUI), so skill injection depends on setting it here.
+        env: dict[str, str] | None = None
         if claude_plugin_dirs:
-            args.extend(["--claude-plugin-dirs", ":".join(claude_plugin_dirs)])
-        stdout = self._invoke(args, timeout_s=startup_timeout_s + self._default_timeout_s)
+            env = {"ITMUX_CLAUDE_PLUGIN_DIRS": ":".join(claude_plugin_dirs)}
+        stdout = self._invoke(args, timeout_s=startup_timeout_s + self._default_timeout_s, env=env)
         return StartReport.model_validate_json(stdout)
 
     def send(self, name: str, agent: str, text: str) -> None:
@@ -271,7 +305,7 @@ class ItmuxClient:
 
         argv = [self._itmux_bin, *args]
         returncode, stdout, stderr = self._run(
-            argv, stdin=None, timeout_s=timeout_s + self._default_timeout_s
+            argv, stdin=None, timeout_s=timeout_s + self._default_timeout_s, env=None
         )
         # `itmux await` uses exit code 0 (ready) or 2 (not ready, not an
         # error) for a valid AwaitResult; any other non-zero code is a
@@ -287,7 +321,7 @@ class ItmuxClient:
         args = ["exec", "--name", name, "--", *argv]
         full_argv = [self._itmux_bin, *args]
         returncode, stdout, stderr = self._run(
-            full_argv, stdin=None, timeout_s=self._default_timeout_s
+            full_argv, stdin=None, timeout_s=self._default_timeout_s, env=None
         )
         # `itmux exec` forwards the inner command's exit code; a non-zero
         # code here is a normal result (the inner command failed), not a

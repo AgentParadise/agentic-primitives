@@ -59,6 +59,7 @@ REAL_AWAIT_JSON = json.dumps(
 class RecordedCall:
     argv: list[str]
     stdin: str | None
+    env: dict[str, str] | None
 
 
 @dataclass
@@ -71,9 +72,14 @@ class FakeRunner:
     calls: list[RecordedCall] = field(default_factory=list)
 
     def __call__(
-        self, argv: Sequence[str], *, stdin: str | None, timeout_s: float
+        self,
+        argv: Sequence[str],
+        *,
+        stdin: str | None,
+        timeout_s: float,
+        env: dict[str, str] | None,
     ) -> tuple[int, str, str]:
-        self.calls.append(RecordedCall(argv=list(argv), stdin=stdin))
+        self.calls.append(RecordedCall(argv=list(argv), stdin=stdin, env=env))
         return self.returncode, self.stdout, self.stderr
 
 
@@ -127,7 +133,7 @@ class TestStart:
         argv = runner.calls[0].argv
         assert "--strict-startup" not in argv
 
-    def test_claude_plugin_dirs_joined_with_colon(self) -> None:
+    def test_claude_plugin_dirs_passed_via_env_not_flag(self) -> None:
         runner = FakeRunner(stdout=REAL_START_JSON, returncode=0)
         client = make_client(runner)
 
@@ -141,10 +147,29 @@ class TestStart:
             claude_plugin_dirs=["/plugins/a", "/plugins/b"],
         )
 
-        argv = runner.calls[0].argv
-        assert "--claude-plugin-dirs" in argv
-        idx = argv.index("--claude-plugin-dirs")
-        assert argv[idx + 1] == "/plugins/a:/plugins/b"
+        call = runner.calls[0]
+        # itmux has no CLI flag for plugin dirs; they travel via env.
+        assert "--claude-plugin-dirs" not in call.argv
+        assert call.env is not None
+        assert call.env["ITMUX_CLAUDE_PLUGIN_DIRS"] == "/plugins/a:/plugins/b"
+
+    def test_no_plugin_dirs_means_no_env_override(self) -> None:
+        runner = FakeRunner(stdout=REAL_START_JSON, returncode=0)
+        client = make_client(runner)
+
+        client.start(
+            "itmuxdbg-60524",
+            image="agentic-workspace-interactive-tmux:latest",
+            workdir="/workspace",
+            agents=["claude"],
+            startup_timeout_s=45.0,
+            strict_startup=True,
+        )
+
+        call = runner.calls[0]
+        # No plugin dirs: env is left untouched (inherit parent), so the
+        # var must not appear in any per-call override.
+        assert call.env is None or "ITMUX_CLAUDE_PLUGIN_DIRS" not in call.env
 
     def test_parses_real_start_report_shape(self) -> None:
         runner = FakeRunner(stdout=REAL_START_JSON, returncode=0)
