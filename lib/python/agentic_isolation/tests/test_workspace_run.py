@@ -9,6 +9,8 @@ two-tier (`graceful` / `hard`) cancellation contract.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
@@ -32,7 +34,7 @@ CLAUDE_RECIPE = AgentRecipe(
     name="quick-fix",
     agent="claude",
     model=ModelSpec(name="anthropic/claude-opus-4-8", effort="low"),
-    skills=["/plugins/skill-a", "/plugins/skill-b"],
+    skills=("/plugins/skill-a", "/plugins/skill-b"),
 )
 
 CODEX_RECIPE = AgentRecipe(
@@ -75,11 +77,22 @@ class FakeItmuxClient:
     raise_on_await: Exception | None = None
     raise_on_start: Exception | None = None
     raise_on_stop: Exception | None = None
+    # When set, `start` blocks (in its worker thread) on this gate until
+    # the test releases it - used to hold `start` in flight while a hard
+    # cancel is requested, exercising the drain-before-teardown ordering.
+    start_gate: threading.Event | None = None
+    # Coarse lifecycle order (start begin/registered, stop) so tests can
+    # assert that teardown happens AFTER an in-flight start registers.
+    lifecycle: list[str] = field(default_factory=list)
 
     def start(self, name: str, **kwargs: object) -> StartReport:
         self.calls.append(("start", (name,), kwargs))
+        self.lifecycle.append("start:begin")
+        if self.start_gate is not None:
+            self.start_gate.wait(timeout=5.0)
         if self.raise_on_start is not None:
             raise self.raise_on_start
+        self.lifecycle.append("start:registered")
         return _make_start_report(name)
 
     def send(self, name: str, agent: str, text: str) -> None:
@@ -100,6 +113,7 @@ class FakeItmuxClient:
 
     def stop(self, name: str) -> None:
         self.calls.append(("stop", (name,), {}))
+        self.lifecycle.append("stop")
         if self.raise_on_stop is not None:
             raise self.raise_on_stop
         return None
@@ -124,13 +138,13 @@ class TestRecipeToStartArgs:
         assert args == ItmuxStartArgs(
             image="img:latest",
             workdir="/workspace",
-            agents=["claude"],
-            claude_plugin_dirs=["/plugins/skill-a", "/plugins/skill-b"],
+            agents=("claude",),
+            claude_plugin_dirs=("/plugins/skill-a", "/plugins/skill-b"),
         )
 
     def test_codex_recipe_has_no_plugin_dirs(self) -> None:
         args = recipe_to_start_args(CODEX_RECIPE, image="img:latest", workdir="/workspace")
-        assert args.agents == ["codex"]
+        assert args.agents == ("codex",)
         assert args.claude_plugin_dirs is None
 
     def test_claude_recipe_without_skills_has_no_plugin_dirs(self) -> None:
@@ -287,6 +301,40 @@ class TestRunEventsDelivery:
         assert starts == ["itmux.start", "itmux.send", "itmux.await", "itmux.capture"]
         assert ends == starts
 
+    async def test_failure_closes_open_tool_and_session(self) -> None:
+        # When an itmux boundary raises, the live stream must not be left
+        # with a permanently-open tool/session: the interrupted tool gets
+        # ToolEnd(success=False) and the session ends with
+        # SessionEnd(success=False) before the exception propagates.
+        client = FakeItmuxClient(raise_on_await=RuntimeError("await blew up"))
+        spec = _make_spec(CLAUDE_RECIPE)
+        events: list[RunEvent] = []
+
+        with pytest.raises(RuntimeError):
+            await run(
+                spec,
+                client=as_client(client),
+                on_event=events.append,
+                image="img:latest",
+                name="ws-fail",
+            )
+
+        # The last opened tool was itmux.await; it must be closed as a
+        # failure, and the very last event is the failed SessionEnd.
+        assert isinstance(events[-1], SessionEndEvent)
+        assert events[-1].success is False
+        last_await_end = [
+            e for e in events if isinstance(e, ToolEndEvent) and e.tool_name == "itmux.await"
+        ]
+        assert last_await_end == [
+            ToolEndEvent(tool_name="itmux.await", tool_use_id="ws-fail", success=False)
+        ]
+        # No dangling open await: exactly one start and one (failed) end.
+        await_starts = [
+            e for e in events if isinstance(e, ToolStartEvent) and e.tool_name == "itmux.await"
+        ]
+        assert len(await_starts) == 1
+
 
 class TestCancellation:
     async def test_graceful_cancel_returns_partial_result_and_stops(self) -> None:
@@ -346,3 +394,47 @@ class TestCancellation:
 
         assert isinstance(events[-1], SessionEndEvent)
         assert events[-1].success is False
+
+    async def test_hard_cancel_during_start_drains_before_teardown(self) -> None:
+        # Orphan race: a hard cancel fires while `start` is still in
+        # flight (thread blocked on the gate). Teardown MUST wait for
+        # start to finish registering the container before calling stop -
+        # otherwise stop returns NotFound-success and the container leaks.
+        gate = threading.Event()
+        cancel = CancelToken()
+        client = FakeItmuxClient(start_gate=gate)
+        spec = _make_spec(CLAUDE_RECIPE)
+
+        run_task = asyncio.ensure_future(
+            run(
+                spec,
+                client=as_client(client),
+                image="img:latest",
+                name="ws-race",
+                cancel=cancel,
+            )
+        )
+
+        # Wait until `start` is actually in flight (thread entered and is
+        # blocked on the gate), then request the hard cancel.
+        for _ in range(200):
+            await asyncio.sleep(0.01)
+            if client.lifecycle and client.lifecycle[0] == "start:begin":
+                break
+        assert client.lifecycle == ["start:begin"]
+
+        cancel.request("hard")
+        # Let the run loop observe the cancel and abandon the in-flight
+        # start to the drain list. stop must NOT have run yet - start is
+        # still blocked on the gate.
+        await asyncio.sleep(0.02)
+        assert "stop" not in client.lifecycle
+        assert "start:registered" not in client.lifecycle
+
+        # Release start; teardown drains it, THEN stops.
+        gate.set()
+        result = await run_task
+
+        assert client.lifecycle == ["start:begin", "start:registered", "stop"]
+        assert result.result.success is False
+        assert "hard" in result.result.summary

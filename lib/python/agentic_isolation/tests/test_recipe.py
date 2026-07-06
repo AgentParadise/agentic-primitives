@@ -44,7 +44,7 @@ class TestAgentRecipeValid:
         assert recipe.name == "pr-reviewer"
         assert recipe.agent == "claude"
         assert recipe.model == ModelSpec(name="anthropic/claude-opus-4-8", effort="high")
-        assert recipe.skills == ["code-review", "security-review"]
+        assert recipe.skills == ("code-review", "security-review")
         assert recipe.system_instructions == SystemInstructions(
             mode="append",
             content=FULL_RECIPE["system_instructions"]["content"],
@@ -60,8 +60,8 @@ class TestAgentRecipeValid:
         assert recipe.name == "quick-fix"
         assert recipe.agent == "codex"
         assert recipe.model == ModelSpec(name="openai/gpt-5-codex", effort="low")
-        # skills defaults to empty list when omitted (spec 3.5).
-        assert recipe.skills == []
+        # skills defaults to an empty tuple when omitted (spec 3.5).
+        assert recipe.skills == ()
         # system_instructions is optional (spec 3.2).
         assert recipe.system_instructions is None
 

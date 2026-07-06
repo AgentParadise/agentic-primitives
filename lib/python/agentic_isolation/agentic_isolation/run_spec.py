@@ -95,7 +95,10 @@ class RunSpec(BaseModel):
 
     recipe: AgentRecipe
     task: str = Field(min_length=1)
-    input_artifacts: list[Path] = Field(default_factory=list)
+    # Tuples (not lists) for real immutability on this frozen model - a
+    # list field is only shallow-frozen. Pydantic coerces list/JSON-array
+    # input to a tuple on validation.
+    input_artifacts: tuple[Path, ...] = Field(default_factory=tuple)
     credentials: RunCredentials
-    observability: list[ObservabilityExporter] = Field(default_factory=list)
+    observability: tuple[ObservabilityExporter, ...] = Field(default_factory=tuple)
     limits: RunLimits | None = None

@@ -54,7 +54,7 @@ class TestRunSpec:
 
         assert isinstance(spec.recipe, AgentRecipe)
         assert spec.task == "Fix the failing test in test_foo.py"
-        assert spec.input_artifacts == [Path("/tmp/input.txt")]
+        assert spec.input_artifacts == (Path("/tmp/input.txt"),)
         assert spec.credentials.claude is not None
         assert spec.credentials.claude.oauth_token == "sk-oauth-token"
         assert spec.limits is not None
@@ -70,8 +70,8 @@ class TestRunSpec:
             }
         )
 
-        assert spec.input_artifacts == []
-        assert spec.observability == []
+        assert spec.input_artifacts == ()
+        assert spec.observability == ()
         assert spec.limits is None
         assert spec.credentials.claude is None
         assert spec.credentials.codex is None
@@ -160,7 +160,7 @@ class TestRunResult:
             }
         )
         assert result.result == RunOutcome(success=True, summary="Fixed the test")
-        assert result.output_artifacts == [Path("/tmp/output.txt")]
+        assert result.output_artifacts == (Path("/tmp/output.txt"),)
         assert result.session_log == "session-log-contents"
         assert result.observability is None
 

@@ -61,12 +61,15 @@ class AgentRecipe(BaseModel):
     name: str = Field(min_length=1)
     agent: Literal["claude", "codex"]
     model: ModelSpec
-    skills: list[str] = Field(default_factory=list)
+    # Tuple (not list) so the frozen model is deeply immutable - a list
+    # field is only shallow-frozen and callers could still `.append(...)`.
+    # Pydantic coerces a JSON array / list input to a tuple on validation.
+    skills: tuple[str, ...] = Field(default_factory=tuple)
     system_instructions: SystemInstructions | None = None
 
     @field_validator("skills")
     @classmethod
-    def _skills_non_empty(cls, skills: list[str]) -> list[str]:
+    def _skills_non_empty(cls, skills: tuple[str, ...]) -> tuple[str, ...]:
         """Each skill reference MUST be a non-empty string (spec section 3.5)."""
         if any(not skill for skill in skills):
             raise ValueError("each skill reference must be a non-empty string")

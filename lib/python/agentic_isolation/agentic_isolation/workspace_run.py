@@ -50,7 +50,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Callable
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -95,8 +95,9 @@ class ItmuxStartArgs(BaseModel):
 
     image: str
     workdir: str
-    agents: list[str]
-    claude_plugin_dirs: list[str] | None = None
+    # Tuples (not lists) for real immutability on this frozen model.
+    agents: tuple[str, ...]
+    claude_plugin_dirs: tuple[str, ...] | None = None
 
 
 def recipe_to_start_args(recipe: AgentRecipe, *, image: str, workdir: str) -> ItmuxStartArgs:
@@ -114,11 +115,13 @@ def recipe_to_start_args(recipe: AgentRecipe, *, image: str, workdir: str) -> It
       anything: `itmux` has no flag or env var for it yet. This is a
       known, documented gap, not an oversight.
     """
-    claude_plugin_dirs = list(recipe.skills) if recipe.agent == "claude" and recipe.skills else None
+    claude_plugin_dirs = (
+        tuple(recipe.skills) if recipe.agent == "claude" and recipe.skills else None
+    )
     return ItmuxStartArgs(
         image=image,
         workdir=workdir,
-        agents=[recipe.agent],
+        agents=(recipe.agent,),
         claude_plugin_dirs=claude_plugin_dirs,
     )
 
@@ -211,6 +214,7 @@ def _emit(on_event: EventCallback | None, event: RunEvent) -> None:
 
 async def _call(
     cancel: CancelToken | None,
+    inflight: list[asyncio.Task[object]],
     fn: Callable[..., T],
     *args: object,
     **kwargs: object,
@@ -220,10 +224,14 @@ async def _call(
 
     - If `cancel` already reports `hard` before the call even starts,
       raise `_HardCancelRequested` immediately without invoking `fn`.
-    - If `cancel` reports `hard` while the call is in flight, raise
-      `_HardCancelRequested` without waiting for the call to finish
-      (the background thread is not killed - see module docstring -
-      but its result is discarded).
+    - If `cancel` reports `hard` while the call is in flight, register
+      the still-running task in `inflight` (so `run()`'s teardown can
+      DRAIN it - await its completion - BEFORE calling `stop`) and
+      raise `_HardCancelRequested`. The background thread cannot be
+      killed (see module docstring), so draining is how we guarantee an
+      in-flight `start` finishes registering the container before we
+      tear it down; it also observes any exception the abandoned task
+      raises, avoiding an unobserved-task warning.
     - If `cancel` reports `graceful` (before or during the call),
       let the call run to completion and return its result normally;
       graceful cancellation only takes effect at the caller's
@@ -246,7 +254,13 @@ async def _call(
         return call_task.result()
 
     # cancel_task fired first.
+    cancel_task.cancel()
     if cancel.mode == "hard":
+        # Do NOT abandon the in-flight thread: hand it to run() to drain
+        # before teardown, so `start` finishes registering the container
+        # before `stop` runs. cast() is needed because `asyncio.Task[T]`
+        # is invariant in T and does not widen to `asyncio.Task[object]`.
+        inflight.append(cast("asyncio.Task[object]", call_task))
         raise _HardCancelRequested()
     # graceful: let the in-flight call finish and use its result.
     return await call_task
@@ -284,62 +298,74 @@ async def run(
         if spec.limits is not None and spec.limits.timeout_s is not None
         else DEFAULT_AWAIT_TIMEOUT_S
     )
+    # In-flight itmux calls abandoned by a hard cancel. Drained (awaited)
+    # before teardown so, e.g., an in-flight `start` finishes registering
+    # the container before `stop` runs - otherwise `stop` could return
+    # NotFound-success and the container would leak.
+    inflight: list[asyncio.Task[object]] = []
+    # Tracks the currently-open tool boundary so a failure can close it
+    # with a matching `ToolEndEvent(success=False)` before propagating,
+    # instead of leaving live consumers with a permanently-open tool.
+    open_tool: str | None = None
+
+    async def boundary(tool_name: str, fn: Callable[..., T], *args: object, **kwargs: object) -> T:
+        nonlocal open_tool
+        _emit(on_event, ToolStartEvent(tool_name=tool_name, tool_use_id=workspace_name))
+        open_tool = tool_name
+        result = await _call(cancel, inflight, fn, *args, **kwargs)
+        # On success the caller emits the ToolEnd (await's success flag
+        # reflects readiness, not just "did not raise"), so only clear
+        # the open-tool marker here.
+        open_tool = None
+        return result
+
+    def emit_tool_end(tool_name: str, *, success: bool) -> None:
+        _emit(
+            on_event,
+            ToolEndEvent(tool_name=tool_name, tool_use_id=workspace_name, success=success),
+        )
 
     try:
         try:
-            _emit(on_event, ToolStartEvent(tool_name="itmux.start", tool_use_id=workspace_name))
-            await _call(
-                cancel,
+            await boundary(
+                "itmux.start",
                 client.start,
                 workspace_name,
                 image=start_args.image,
                 workdir=start_args.workdir,
-                agents=start_args.agents,
+                agents=list(start_args.agents),
                 startup_timeout_s=DEFAULT_STARTUP_TIMEOUT_S,
                 strict_startup=True,
-                claude_plugin_dirs=start_args.claude_plugin_dirs,
+                claude_plugin_dirs=(
+                    list(start_args.claude_plugin_dirs)
+                    if start_args.claude_plugin_dirs is not None
+                    else None
+                ),
             )
-            _emit(
-                on_event,
-                ToolEndEvent(tool_name="itmux.start", tool_use_id=workspace_name, success=True),
-            )
+            emit_tool_end("itmux.start", success=True)
 
             submit_text = build_submit_text(recipe, spec.task)
-            _emit(on_event, ToolStartEvent(tool_name="itmux.send", tool_use_id=workspace_name))
-            await _call(cancel, client.send, workspace_name, agent, submit_text)
-            _emit(
-                on_event,
-                ToolEndEvent(tool_name="itmux.send", tool_use_id=workspace_name, success=True),
-            )
+            await boundary("itmux.send", client.send, workspace_name, agent, submit_text)
+            emit_tool_end("itmux.send", success=True)
 
-            _emit(on_event, ToolStartEvent(tool_name="itmux.await", tool_use_id=workspace_name))
-            await_result: AwaitResult = await _call(
-                cancel,
+            await_result: AwaitResult = await boundary(
+                "itmux.await",
                 client.await_ready,
                 workspace_name,
                 agent,
                 timeout_s=await_timeout_s,
             )
-            _emit(
-                on_event,
-                ToolEndEvent(
-                    tool_name="itmux.await",
-                    tool_use_id=workspace_name,
-                    success=await_result.ready,
-                ),
-            )
+            emit_tool_end("itmux.await", success=await_result.ready)
 
             # Sampled once after `await_ready` returns: a graceful cancel
             # requested up to this point still gets one final `capture`
             # (below) before `run()` returns a partial result.
             graceful_cancelled = cancel is not None and cancel.mode == "graceful"
 
-            _emit(on_event, ToolStartEvent(tool_name="itmux.capture", tool_use_id=workspace_name))
-            session_log: str = await _call(cancel, client.capture, workspace_name, agent)
-            _emit(
-                on_event,
-                ToolEndEvent(tool_name="itmux.capture", tool_use_id=workspace_name, success=True),
+            session_log: str = await boundary(
+                "itmux.capture", client.capture, workspace_name, agent
             )
+            emit_tool_end("itmux.capture", success=True)
 
             if graceful_cancelled:
                 success = False
@@ -361,6 +387,11 @@ async def run(
             _emit(on_event, SessionEndEvent(success=success))
             return result
         except _HardCancelRequested:
+            # Close the interrupted tool boundary and the session so live
+            # consumers never see a permanently-open tool/session.
+            if open_tool is not None:
+                emit_tool_end(open_tool, success=False)
+                open_tool = None
             _emit(on_event, SessionEndEvent(success=False))
             return RunResult(
                 result=RunOutcome(
@@ -368,18 +399,36 @@ async def run(
                 ),
                 session_log="",
             )
+        except Exception:
+            # Any itmux boundary raised (e.g. `start` exit 3, `await`
+            # failure). Close the open tool with success=False and end
+            # the session before propagating, so the live-event stream is
+            # never left dangling. Then re-raise - the caller still sees
+            # the real exception.
+            if open_tool is not None:
+                emit_tool_end(open_tool, success=False)
+                open_tool = None
+            _emit(on_event, SessionEndEvent(success=False))
+            raise
     finally:
+        # Drain any in-flight itmux call abandoned by a hard cancel BEFORE
+        # tearing down. An in-flight `start` must finish registering the
+        # container before `stop` runs, or `stop` returns NotFound-success
+        # and the container leaks. Draining also observes exceptions the
+        # abandoned task raised (no unobserved-task warning).
+        for task in inflight:
+            try:
+                await task
+            except Exception:  # noqa: BLE001 - draining a best-effort abandoned call
+                pass
         # Unconditional, best-effort teardown. The real `itmux` binary
         # CREATES and REGISTERS the container before it checks agent
         # startup readiness, then exits non-zero (exit 3) if an agent
-        # fails to become ready - the common failure. In that case
-        # `client.start()` raised and `started` is still False, but the
-        # container + registry entry already exist and would leak if we
-        # gated teardown on `started`. `itmux stop` on an unregistered
-        # name is NotFound-tolerant (exit 0), so calling it even when
-        # nothing was created is safe. Errors here are swallowed so a
-        # teardown failure never masks the run's real outcome (and this
-        # also best-effort covers a hard cancel racing start).
+        # fails to become ready - the common failure - so `client.start()`
+        # can raise with a live container behind it. `itmux stop` on an
+        # unregistered name is NotFound-tolerant (exit 0), so calling it
+        # even when nothing was created is safe. Errors here are swallowed
+        # so a teardown failure never masks the run's real outcome.
         try:
             await asyncio.to_thread(client.stop, workspace_name)
         except Exception:  # noqa: BLE001 - best-effort teardown must not mask the run outcome

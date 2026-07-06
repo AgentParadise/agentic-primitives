@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 DEFAULT_TIMEOUT_S = 120.0
 
@@ -105,15 +105,43 @@ class ItmuxError(Exception):
     """Raised when an `itmux` subprocess exits with a non-zero status
     that the caller does not treat as a domain result (e.g. `start`,
     `send`, `capture`, `stop` failures, or `await` exit code 1).
+
+    `stdout` is preserved because `itmux` prints structured JSON on
+    stdout even on some non-zero exits (notably `start` exit 3, which
+    still emits a full `StartReport` describing which agent failed
+    readiness). Losing it would discard the actionable diagnostics.
     """
 
-    def __init__(self, command: Sequence[str], returncode: int, stderr: str) -> None:
+    def __init__(
+        self, command: Sequence[str], returncode: int, stderr: str, stdout: str = ""
+    ) -> None:
         self.command = list(command)
         self.returncode = returncode
         self.stderr = stderr
+        self.stdout = stdout
         super().__init__(
             f"itmux command failed (exit {returncode}): {' '.join(self.command)}\n{stderr}"
         )
+
+
+class ItmuxStartupError(ItmuxError):
+    """Raised by `ItmuxClient.start` when `itmux` exits 3 (agent startup
+    readiness failure) but still printed a parseable `StartReport` on
+    stdout. Carries the parsed `report` so callers can inspect
+    `report.startup_status` to see which agent failed and why, instead
+    of only seeing stderr.
+    """
+
+    def __init__(
+        self,
+        command: Sequence[str],
+        returncode: int,
+        stderr: str,
+        stdout: str,
+        report: StartReport,
+    ) -> None:
+        super().__init__(command, returncode, stderr, stdout)
+        self.report = report
 
 
 def resolve_itmux_bin(*, repo_root: Path | None = None) -> str:
@@ -232,7 +260,7 @@ class ItmuxClient:
             env=env,
         )
         if returncode != 0:
-            raise ItmuxError(argv, returncode, stderr)
+            raise ItmuxError(argv, returncode, stderr, stdout)
         return stdout
 
     def start(
@@ -270,7 +298,27 @@ class ItmuxClient:
         env: dict[str, str] | None = None
         if claude_plugin_dirs:
             env = {"ITMUX_CLAUDE_PLUGIN_DIRS": ":".join(claude_plugin_dirs)}
-        stdout = self._invoke(args, timeout_s=startup_timeout_s + self._default_timeout_s, env=env)
+        try:
+            stdout = self._invoke(
+                args, timeout_s=startup_timeout_s + self._default_timeout_s, env=env
+            )
+        except ItmuxError as exc:
+            # `itmux start` exits 3 when the container came up but an
+            # agent failed startup readiness - the common failure. It
+            # still prints a full `StartReport` (with per-agent
+            # `startup_status`) on stdout before exiting. Surface that as
+            # a typed `ItmuxStartupError` carrying the parsed report so
+            # callers can see which agent failed and why, instead of
+            # discarding the diagnostics behind a bare stderr string.
+            if exc.returncode == 3 and exc.stdout:
+                try:
+                    report = StartReport.model_validate_json(exc.stdout)
+                except ValidationError:
+                    raise exc from None
+                raise ItmuxStartupError(
+                    exc.command, exc.returncode, exc.stderr, exc.stdout, report
+                ) from exc
+            raise
         return StartReport.model_validate_json(stdout)
 
     def send(self, name: str, agent: str, text: str) -> None:

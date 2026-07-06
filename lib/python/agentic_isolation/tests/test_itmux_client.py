@@ -19,6 +19,7 @@ from agentic_isolation.itmux_client import (
     ItmuxBinaryNotFound,
     ItmuxClient,
     ItmuxError,
+    ItmuxStartupError,
     StartReport,
     resolve_itmux_bin,
 )
@@ -215,6 +216,86 @@ class TestStart:
         err = exc_info.value
         assert err.stderr == "docker: not found"
         assert "start" in err.command
+
+    def test_itmux_error_preserves_stdout(self) -> None:
+        # itmux can print structured JSON on stdout even on a non-zero
+        # exit; that stdout must be preserved on the raised ItmuxError.
+        runner = FakeRunner(stdout='{"some":"json"}', stderr="boom", returncode=1)
+        client = make_client(runner)
+
+        with pytest.raises(ItmuxError) as exc_info:
+            client.start(
+                "itmuxdbg-60524",
+                image="agentic-workspace-interactive-tmux:latest",
+                workdir="/workspace",
+                agents=["claude"],
+                startup_timeout_s=45.0,
+                strict_startup=True,
+            )
+
+        assert exc_info.value.stdout == '{"some":"json"}'
+
+    def test_exit_3_with_startreport_raises_typed_startup_error(self) -> None:
+        # The real `itmux start` exits 3 on agent startup-readiness
+        # failure but still prints a full StartReport (with per-agent
+        # startup_status) on stdout. That must surface as a typed
+        # ItmuxStartupError carrying the parsed report.
+        failed_report_json = json.dumps(
+            {
+                "name": "itmuxdbg-60524",
+                "container": "interactive-tmux-itmuxdbg-60524-23a2e180",
+                "agents": ["codex"],
+                "startup_status": {
+                    "codex": {
+                        "duration_ms": 45000.0,
+                        "error": "never became ready",
+                        "pane": "boot log...",
+                        "ready": False,
+                        "reason": "timeout_never_ready",
+                        "stable_polls_observed": 0,
+                        "timed_out": True,
+                    }
+                },
+            }
+        )
+        runner = FakeRunner(stdout=failed_report_json, stderr="agent not ready", returncode=3)
+        client = make_client(runner)
+
+        with pytest.raises(ItmuxStartupError) as exc_info:
+            client.start(
+                "itmuxdbg-60524",
+                image="agentic-workspace-interactive-tmux:latest",
+                workdir="/workspace",
+                agents=["codex"],
+                startup_timeout_s=45.0,
+                strict_startup=True,
+            )
+
+        err = exc_info.value
+        assert isinstance(err, ItmuxError)  # subclass, so generic callers still catch it
+        assert err.returncode == 3
+        assert err.report.startup_status["codex"].ready is False
+        assert err.report.startup_status["codex"].reason == "timeout_never_ready"
+        assert err.stdout == failed_report_json
+
+    def test_exit_3_with_unparseable_stdout_raises_plain_itmux_error(self) -> None:
+        # If itmux exits 3 but stdout is not a parseable StartReport,
+        # fall back to a plain ItmuxError (not the typed startup error).
+        runner = FakeRunner(stdout="not json", stderr="agent not ready", returncode=3)
+        client = make_client(runner)
+
+        with pytest.raises(ItmuxError) as exc_info:
+            client.start(
+                "itmuxdbg-60524",
+                image="agentic-workspace-interactive-tmux:latest",
+                workdir="/workspace",
+                agents=["codex"],
+                startup_timeout_s=45.0,
+                strict_startup=True,
+            )
+
+        assert not isinstance(exc_info.value, ItmuxStartupError)
+        assert exc_info.value.stdout == "not json"
 
 
 class TestSend:

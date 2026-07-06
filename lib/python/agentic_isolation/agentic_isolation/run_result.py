@@ -49,6 +49,8 @@ class RunResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     result: RunOutcome
-    output_artifacts: list[Path] = Field(default_factory=list)
+    # Tuple (not list) for real immutability on this frozen model - a list
+    # field is only shallow-frozen. Pydantic coerces list input to a tuple.
+    output_artifacts: tuple[Path, ...] = Field(default_factory=tuple)
     session_log: str
     observability: ObservabilityBundle | None = None
