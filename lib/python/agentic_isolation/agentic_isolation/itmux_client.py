@@ -323,9 +323,17 @@ class ItmuxClient:
         returncode, stdout, stderr = self._run(
             full_argv, stdin=None, timeout_s=self._default_timeout_s, env=None
         )
-        # `itmux exec` forwards the inner command's exit code; a non-zero
-        # code here is a normal result (the inner command failed), not a
-        # driver failure, so it does not raise.
+        # `exit_code` is the itmux-level exit code, NOT the inner
+        # command's. The real `itmux exec` (`handle_exec`,
+        # driver-rs/src/main.rs) ALWAYS returns success (0) on its Ok
+        # path and only 1 on a driver-level failure - it does NOT
+        # forward the inner command's exit code today. So a failing
+        # inner command (e.g. `test -e /missing` -> inner exit 1) still
+        # surfaces here as `exit_code == 0`. A non-zero code here means
+        # itmux itself failed, so this does not raise.
+        # TODO(follow-on): itmux exec should forward the inner exit code
+        # so provider file-ops (e.g. file_exists via `test -e`) work -
+        # tracked for Plan 1b Task 5.
         return ExecResult(exit_code=returncode, stdout=stdout, stderr=stderr)
 
     def stop(self, name: str) -> None:

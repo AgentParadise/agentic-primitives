@@ -26,6 +26,15 @@ Known gaps (documented rather than papered over):
   `itmux send`. `build_submit_text()` documents how `append` and
   `replace` currently collapse to the same wire format as a result
   (see its docstring).
+- `RunSpec.credentials` and `RunSpec.input_artifacts` are collected by
+  the contract but NOT yet applied by `run()`. `itmux` currently
+  sources credentials from the host environment
+  (`ITMUX_CLAUDE_HOME` / `$HOME`), so per-`RunSpec` credentials are
+  ignored, and no input artifacts are staged into the workspace before
+  the agent runs. Staging per-`RunSpec` credentials and input
+  artifacts into the workspace is a Plan 1b Task 5 (provider rewire)
+  follow-on. Until then, `run()` deliberately does not read these two
+  fields rather than silently half-applying them.
 - Cancellation races a background `asyncio.to_thread` call against a
   cancel signal at each orchestration boundary. Python threads cannot
   be killed, so a `hard` cancel that fires *while* a blocking itmux
@@ -260,9 +269,11 @@ async def run(
     `await_ready` call (overrides `DEFAULT_AWAIT_TIMEOUT_S`).
 
     Always tears the workspace down via `client.stop(name)` in a
-    `finally`, provided `client.start()` actually completed - no
-    orphaned workspace is left behind, including when `await_ready`
-    raises or when cancellation is requested.
+    `finally` - unconditionally and best-effort - so no orphaned
+    workspace is left behind even when `client.start()` itself raises
+    (the real `itmux` registers the container before failing agent
+    readiness), when `await_ready` raises, or when cancellation is
+    requested.
     """
     workspace_name = name if name is not None else f"run-{uuid.uuid4().hex[:12]}"
     recipe = spec.recipe
@@ -274,7 +285,6 @@ async def run(
         else DEFAULT_AWAIT_TIMEOUT_S
     )
 
-    started = False
     try:
         try:
             _emit(on_event, ToolStartEvent(tool_name="itmux.start", tool_use_id=workspace_name))
@@ -289,7 +299,6 @@ async def run(
                 strict_startup=True,
                 claude_plugin_dirs=start_args.claude_plugin_dirs,
             )
-            started = True
             _emit(
                 on_event,
                 ToolEndEvent(tool_name="itmux.start", tool_use_id=workspace_name, success=True),
@@ -360,5 +369,18 @@ async def run(
                 session_log="",
             )
     finally:
-        if started:
+        # Unconditional, best-effort teardown. The real `itmux` binary
+        # CREATES and REGISTERS the container before it checks agent
+        # startup readiness, then exits non-zero (exit 3) if an agent
+        # fails to become ready - the common failure. In that case
+        # `client.start()` raised and `started` is still False, but the
+        # container + registry entry already exist and would leak if we
+        # gated teardown on `started`. `itmux stop` on an unregistered
+        # name is NotFound-tolerant (exit 0), so calling it even when
+        # nothing was created is safe. Errors here are swallowed so a
+        # teardown failure never masks the run's real outcome (and this
+        # also best-effort covers a hard cancel racing start).
+        try:
             await asyncio.to_thread(client.stop, workspace_name)
+        except Exception:  # noqa: BLE001 - best-effort teardown must not mask the run outcome
+            pass

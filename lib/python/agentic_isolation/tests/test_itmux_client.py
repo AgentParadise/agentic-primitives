@@ -285,6 +285,29 @@ class TestAwaitReady:
         with pytest.raises(ItmuxError):
             client.await_ready("itmuxdbg-60524", "claude", timeout_s=60.0)
 
+    def test_parses_when_pane_key_absent(self) -> None:
+        # The real `itmux await` strips `pane` from its printed JSON
+        # (see `handle_await` in driver-rs/src/main.rs), so the client
+        # must still parse the result with `pane` defaulting to "".
+        no_pane_json = json.dumps(
+            {
+                "ready": True,
+                "timed_out": False,
+                "reason": "ready",
+                "duration_ms": 123.45,
+                "stable_polls_observed": 4,
+                "error": None,
+            }
+        )
+        assert "pane" not in json.loads(no_pane_json)
+        runner = FakeRunner(stdout=no_pane_json, returncode=0)
+        client = make_client(runner)
+
+        result = client.await_ready("itmuxdbg-60524", "claude", timeout_s=60.0)
+
+        assert result.ready is True
+        assert result.pane == ""
+
 
 class TestCapture:
     def test_returns_raw_stdout_text(self) -> None:
@@ -313,14 +336,32 @@ class TestExec:
         assert argv[1] == "exec"
         assert argv[-3:] == ["--", "echo", "hi"]
 
-    def test_nonzero_exit_code_is_not_an_error(self) -> None:
-        runner = FakeRunner(stdout="", stderr="boom", returncode=1)
+    def test_exit_code_is_itmux_level_not_inner_command(self) -> None:
+        # `exit_code` is the itmux-level exit code, not the inner
+        # command's. The real `itmux exec` ALWAYS returns 0 on its Ok
+        # path (it does NOT forward the inner command's code today), so
+        # a failing inner command like `test -e /missing` still surfaces
+        # here as exit_code == 0. The fake reproduces that real
+        # behaviour: itmux returns 0 even though the inner command
+        # "failed".
+        runner = FakeRunner(stdout="", stderr="", returncode=0)
         client = make_client(runner)
 
-        result = client.exec("itmuxdbg-60524", ["false"])
+        result = client.exec("itmuxdbg-60524", ["test", "-e", "/missing"])
+
+        assert result.exit_code == 0
+
+    def test_driver_error_exit_code_is_surfaced_not_raised(self) -> None:
+        # A driver-level failure (itmux returns 1) is surfaced on the
+        # ExecResult rather than raised - `exec` never raises on a
+        # non-zero code, unlike start/send/capture/stop.
+        runner = FakeRunner(stdout="", stderr="exec: driver failure", returncode=1)
+        client = make_client(runner)
+
+        result = client.exec("itmuxdbg-60524", ["echo", "hi"])
 
         assert result.exit_code == 1
-        assert result.stderr == "boom"
+        assert result.stderr == "exec: driver failure"
 
 
 class TestStop:

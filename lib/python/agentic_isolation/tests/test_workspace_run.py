@@ -73,9 +73,13 @@ class FakeItmuxClient:
     captured_pane: str = "session pane output"
     on_send: Callable[[], None] | None = None
     raise_on_await: Exception | None = None
+    raise_on_start: Exception | None = None
+    raise_on_stop: Exception | None = None
 
     def start(self, name: str, **kwargs: object) -> StartReport:
         self.calls.append(("start", (name,), kwargs))
+        if self.raise_on_start is not None:
+            raise self.raise_on_start
         return _make_start_report(name)
 
     def send(self, name: str, agent: str, text: str) -> None:
@@ -96,6 +100,8 @@ class FakeItmuxClient:
 
     def stop(self, name: str) -> None:
         self.calls.append(("stop", (name,), {}))
+        if self.raise_on_stop is not None:
+            raise self.raise_on_stop
         return None
 
 
@@ -208,6 +214,34 @@ class TestRunOrdering:
         call_names = [c[0] for c in client.calls]
         assert "stop" in call_names
         assert call_names[-1] == "stop"
+
+    async def test_stop_called_when_start_raises(self) -> None:
+        # The real itmux registers the container BEFORE checking agent
+        # startup readiness, then exits non-zero if an agent fails to
+        # boot - so `start()` can raise with a live container behind it.
+        # Teardown must run unconditionally, not gated on a successful
+        # start, or the container + registry entry leak.
+        client = FakeItmuxClient(raise_on_start=RuntimeError("agent failed startup (exit 3)"))
+        spec = _make_spec(CLAUDE_RECIPE)
+
+        with pytest.raises(RuntimeError):
+            await run(spec, client=as_client(client), image="img:latest", name="ws-leak")
+
+        call_names = [c[0] for c in client.calls]
+        assert call_names == ["start", "stop"]
+        # stop was called with the same workspace name that start used.
+        stop_call = next(c for c in client.calls if c[0] == "stop")
+        assert stop_call[1] == ("ws-leak",)
+
+    async def test_stop_error_is_swallowed_and_does_not_mask_run_outcome(self) -> None:
+        # A teardown failure must not mask the run's real result.
+        client = FakeItmuxClient(raise_on_stop=RuntimeError("stop failed"))
+        spec = _make_spec(CLAUDE_RECIPE)
+
+        result = await run(spec, client=as_client(client), image="img:latest", name="ws-10")
+
+        assert result.result.success is True
+        assert [c[0] for c in client.calls][-1] == "stop"
 
     async def test_timeout_s_from_limits_passed_to_await_ready(self) -> None:
         client = FakeItmuxClient()
