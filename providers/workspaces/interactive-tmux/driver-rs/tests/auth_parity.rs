@@ -168,9 +168,11 @@ fn codex_stages_only_the_auth_allowlist() {
     // behind so start_workspace can't crawl hundreds of megabytes over
     // per-file `docker exec` and hang forever.
     let host = tmp("codex-host");
-    // Allowed auth/config surface.
+    // Allowed auth/config surface (full declared allowlist).
     fs::write(host.join("auth.json"), b"{}").unwrap();
     fs::write(host.join("config.toml"), b"model = \"x\"").unwrap();
+    fs::write(host.join("config.json"), b"{}").unwrap();
+    fs::write(host.join("AGENTS.md"), b"# global instructions").unwrap();
     // Non-auth bloat that MUST NOT be staged.
     fs::create_dir_all(host.join(".tmp")).unwrap();
     fs::create_dir_all(host.join("sessions")).unwrap();
@@ -195,6 +197,11 @@ fn codex_stages_only_the_auth_allowlist() {
         dst.join("config.toml").is_file(),
         "config.toml must be staged"
     );
+    assert!(
+        dst.join("config.json").is_file(),
+        "config.json must be staged"
+    );
+    assert!(dst.join("AGENTS.md").is_file(), "AGENTS.md must be staged");
     // Everything else left behind.
     assert!(!dst.join(".tmp").exists(), ".tmp/ must NOT be staged");
     assert!(
@@ -209,5 +216,45 @@ fn codex_stages_only_the_auth_allowlist() {
     assert!(
         !dst.join("logs_2.sqlite").exists(),
         "sqlite journals must NOT be staged"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_stages_symlinked_auth_files() {
+    // Dotfile managers (stow/chezmoi) symlink `auth.json`/`config.toml` into
+    // `~/.codex`. The allowlist decision must follow symlinks (parity with
+    // Python's `Path.is_file()`), or the exact files the fix exists to
+    // preserve get silently dropped.
+    use std::os::unix::fs::symlink;
+
+    let real = tmp("codex-real-store");
+    fs::write(real.join("auth.json"), b"{\"token\":\"real\"}").unwrap();
+    fs::write(real.join("config.toml"), b"model = \"y\"").unwrap();
+
+    let host = tmp("codex-symlink-host");
+    symlink(real.join("auth.json"), host.join("auth.json")).unwrap();
+    symlink(real.join("config.toml"), host.join("config.toml")).unwrap();
+
+    let ctx = AuthContext {
+        workdir: "/workspace".to_string(),
+        throwaway_dir: tmp("codex-symlink-throwaway"),
+        host_claude_dotjson: None,
+    };
+    let mounts = prepare(Agent::Codex, &host, &ctx).unwrap();
+    let dst = &mounts[0].host;
+    // Symlinked entries are staged as their target's regular-file contents.
+    assert!(
+        dst.join("auth.json").is_file(),
+        "symlinked auth.json must be staged"
+    );
+    assert!(
+        dst.join("config.toml").is_file(),
+        "symlinked config.toml must be staged"
+    );
+    assert_eq!(
+        fs::read(dst.join("auth.json")).unwrap(),
+        b"{\"token\":\"real\"}",
+        "staged copy must carry the symlink target's bytes"
     );
 }
