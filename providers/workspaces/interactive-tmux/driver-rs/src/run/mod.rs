@@ -7,4 +7,5 @@
 pub mod contract;
 pub mod orchestrator;
 pub mod recipe_loader;
+pub mod secret_env;
 pub mod workspace_executor;
