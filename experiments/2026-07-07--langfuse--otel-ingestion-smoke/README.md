@@ -3,7 +3,8 @@
 ## Question
 
 Can a reachable LangFuse deployment ingest a minimal agentic trace through OTLP
-HTTP/protobuf before we wire the full `itmux run` exporter?
+HTTP/protobuf, and can the current `itmux codex-exec --observability-langfuse`
+path report a successful LangFuse exporter against that backend?
 
 ## Hypothesis
 
@@ -13,6 +14,9 @@ HTTP/protobuf before we wire the full `itmux run` exporter?
    run id.
 3. `session.id`, `service.name`, and `langfuse.environment` are preserved well
    enough to filter or identify the run.
+4. The current reusable exporter path reports `kind = langfuse_otlp`,
+   `status = ok`, and more than zero exported events when the same backend is
+   configured through `LANGFUSE_*`.
 
 ## Setup
 
@@ -23,14 +27,19 @@ HTTP/protobuf before we wire the full `itmux run` exporter?
   durable target is a self-hosted Mac Mini deployment.
 - Credentials: supplied through env/keychain-backed injection, never committed.
 
-Expected env shape:
+Expected env shape for the current `itmux` exporter:
 
 ```bash
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
 LANGFUSE_TRACING_ENVIRONMENT=agentic-primitives-exp
+LANGFUSE_PROJECT_ID=... # optional, enables UI trace links
+```
 
+For direct OpenTelemetry CLI probes, the derived OTEL shape is:
+
+```bash
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_ENDPOINT=$LANGFUSE_BASE_URL/api/public/otel
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=$LANGFUSE_BASE_URL/api/public/otel/v1/traces
@@ -52,11 +61,11 @@ The OTLP Authorization header should be Basic auth over
 - redacted OTEL exporter env
 - synthetic trace source or fixture
 - exporter response/log
+- current `itmux codex-exec` result JSON
 - LangFuse UI screenshot or API response proving the trace exists
 - field preservation notes for the required attributes
 
 ## Out of Scope
 
-- Full `itmux run` event mapping.
 - Claude or Codex live-session capture.
 - LangFuse self-hosting automation.

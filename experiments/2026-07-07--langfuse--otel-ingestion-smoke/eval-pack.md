@@ -32,6 +32,25 @@ Capture:
 - `runs/langfuse-trace-screenshot.png` or `runs/langfuse-trace-api-response.json`
 - `runs/field-preservation-table.md`
 
+## Probe C: Current `itmux` Exporter Path
+
+Run the current reusable exporter path against the same backend:
+
+```bash
+itmux codex-exec \
+  --prompt "Reply exactly: LANGFUSE_SMOKE_OK" \
+  --observability-file /tmp/agentic-langfuse-smoke/events.jsonl \
+  --observability-langfuse \
+  --result-file /tmp/agentic-langfuse-smoke/result.json
+```
+
+Capture:
+
+- `/tmp/agentic-langfuse-smoke/events.jsonl`
+- `/tmp/agentic-langfuse-smoke/result.json`
+- the `AgentRunResult.observability.exporters[]` entry for `langfuse_otlp`
+- LangFuse UI screenshot or API response proving the same trace is discoverable
+
 ## Scoring
 
 Pass requires:
@@ -41,6 +60,8 @@ Pass requires:
 - root span plus all three child spans appear
 - `session.id`, `service.name`, and `langfuse.environment` are visible or
   queryable
+- the current `itmux` exporter reports `langfuse_otlp` with `status = ok` and
+  `events_exported > 0`
 
 Classify failures as:
 
@@ -48,3 +69,4 @@ Classify failures as:
 - unsupported protocol or endpoint shape
 - successful ingestion but delayed or missing UI/API visibility
 - trace exists but required attributes are lost
+- current exporter succeeds locally but does not produce a backend-visible trace

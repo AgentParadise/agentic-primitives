@@ -67,6 +67,12 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   env/credentials are present. The local `.9` implementation now has the typed
   `langfuse_otlp` exporter, fail-fast config validation, mock-proven
   HTTP/protobuf transport, trace-link reporting, and CLI setup flags.
+- The refreshed
+  `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
+  both minimal OTLP ingestion and the current
+  `itmux codex-exec --observability-langfuse` exporter path. Current redacted
+  evidence shows no `LANGFUSE_*` env and no matching macOS Keychain entries in
+  this environment.
 - `docs/guides/langfuse-observability-setup.md` documents the secret-safe setup
   path for MacBooks, Mac Minis, VPS hosts, and Docker workspaces, plus the real
   backend smoke criteria for `.9`.

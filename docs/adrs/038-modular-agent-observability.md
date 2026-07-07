@@ -253,9 +253,12 @@ The first hypothesis-first probes produced these architecture constraints:
   remains a coarse observer until another live source is proven.
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke` generated the local
   synthetic root span plus three child spans, but did not export because no
-  LangFuse base URL, credentials, or OTEL exporter env were present. `.9`
-  should fail fast on missing config and should not proceed to run-event mapping
-  until this smoke passes against LangFuse Cloud or the Mac Mini self-host.
+  LangFuse base URL or credentials were present. The refreshed experiment also
+  checked the documented macOS Keychain service names and found them absent in
+  this environment. `.9` should fail fast on missing config and should not close
+  or claim production LangFuse readiness until this smoke passes against
+  LangFuse Cloud or the Mac Mini self-host through the current
+  `itmux codex-exec --observability-langfuse` path.
 - `experiments/2026-07-07--observability--langfuse-otel-export` originally
   confirmed the backend gap when the substrate only fanned out to `file`. It
   was later rerun against the current CLI/exporter path and now shows the
