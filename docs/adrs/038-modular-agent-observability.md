@@ -317,8 +317,8 @@ end-to-end paths: `codex_exec_json` observer -> normalized `AgentRunEvent` ->
 file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
 `hook_event` -> file fanout -> `ObservabilityBundle`. `.9` now has typed
 LangFuse exporter config, fail-fast reporting, and mock-proven OTLP
-HTTP/protobuf transport, but still waits on real LangFuse connectivity before
-claiming ingestion or queryability.
+HTTP/protobuf transport plus project-aware trace link reporting, but still
+waits on real LangFuse connectivity before claiming ingestion or queryability.
 
 Validated gates and follow-ups for `okrs-51p.6`:
 
@@ -342,7 +342,8 @@ Next steps for `okrs-51p.9`:
    exporter config (**mock-proven; real backend smoke pending**).
 2. Support self-hosted Mac Mini configuration through env/keychain-backed
    secrets.
-3. Emit linkable LangFuse trace URLs in `ObservabilityBundle`.
+3. Emit linkable LangFuse trace URLs in `ObservabilityBundle` (**mock-proven
+   with optional `LANGFUSE_PROJECT_ID`; real URL resolution pending**).
 4. Run hypothesis-first experiments before marking the backend complete.
 5. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
    config/auth/header/attribute regression coverage.

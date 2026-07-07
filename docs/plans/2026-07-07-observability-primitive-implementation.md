@@ -75,6 +75,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--langfuse--otlp-transport-mock` passed:
   the actual Rust exporter sends OTLP HTTP/protobuf to a mock receiver and
   reports `ok` on a 2xx response.
+- `experiments/2026-07-07--langfuse--trace-link-reporting` passed:
+  the LangFuse exporter accepts optional project id metadata and reports a
+  human-facing `/project/<project_id>/traces/<32_hex_trace_id>` link after a
+  successful mock export.
 
 ## `.6` Implementation Sequence
 
@@ -149,7 +153,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - child observations for provision, launch, submit, await, capture.
    - resource/span attributes for `session.id`, `service.name`,
      `langfuse.environment`, `langfuse.session.id`, `langfuse.trace.name`.
-7. Emit a trace link in `ObservabilityBundle`.
+7. Emit a trace link in `ObservabilityBundle`:
+   **mock-proven with optional `LANGFUSE_PROJECT_ID`; real URL resolution
+   pending**.
 8. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
    score the verdict before closing `.9`.
 

@@ -1,0 +1,20 @@
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/experiment/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/standard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/substandard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+    Checking itmux v0.1.0 (/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/interactive-tmux/driver-rs)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.05s
