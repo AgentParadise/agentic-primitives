@@ -157,8 +157,32 @@ Passing backend criteria:
 
 - LangFuse accepts the OTLP payload;
 - the trace is visible and queryable in the LangFuse UI;
+- `itmux langfuse-trace --run-id <run_id> --from-start-time <start> --to-start-time <end>`
+  returns observation rows for the exported trace after the expected ingestion
+  delay;
 - the trace has at least three child observations;
 - the reported trace link resolves when project id metadata is available.
 
 `okrs-51p.9` remains open until both the local and backend criteria pass against
 LangFuse Cloud or the planned self-hosted Mac Mini deployment.
+
+## Agent Trace Query
+
+Use the same secret injection model as export:
+
+```bash
+itmux langfuse-trace \
+  --run-id <itmux-run-id> \
+  --from-start-time 2026-07-07T20:00:00Z \
+  --to-start-time 2026-07-07T21:00:00Z
+```
+
+The command derives the deterministic LangFuse trace id from the run id and
+queries `/api/public/v2/observations` with bounded `fromStartTime` and
+`toStartTime`. You can also pass `--trace-id <32-hex-trace-id>` directly.
+For self-hosted LangFuse deployments that do not expose the v2 observations
+endpoint, pass `--api legacy-trace` to query `/api/public/traces/{traceId}`.
+
+LangFuse documentation says newly ingested data is typically queryable after
+about 15-30 seconds, so backend smoke runs should wait before checking
+discoverability.

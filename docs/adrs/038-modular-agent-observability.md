@@ -367,6 +367,11 @@ Current status for `okrs-51p.9`:
    `ObservabilityExportReport`.
 6. Mixed exporter isolation is proven: file export stays `ok` while LangFuse
    reports missing config.
+7. First agent-facing trace query utility is implemented as
+   `itmux langfuse-trace`. It can derive the deterministic trace id from an
+   `itmux` run id, queries bounded LangFuse observation rows, supports a
+   legacy trace endpoint for self-host compatibility, and fails safely with
+   redacted missing-config JSON.
 
 Remaining gate for `okrs-51p.9`:
 
@@ -379,10 +384,11 @@ Remaining gate for `okrs-51p.9`:
 2. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` and the
    current `itmux codex-exec --observability-langfuse` export path against that
    backend.
-3. Verify backend acceptance, trace visibility/queryability, and generated URL
-   resolution before closing `.9` or claiming production LangFuse readiness.
-4. Only after that, broaden run-event-to-span/generation mapping and add any
-   backend-specific query/discovery utilities.
+3. Verify backend acceptance, generated URL resolution, and
+   `itmux langfuse-trace` queryability before closing `.9` or claiming
+   production LangFuse readiness.
+4. Only after that, broaden run-event-to-span/generation mapping and richer
+   backend-specific discovery utilities.
 
 ## References
 

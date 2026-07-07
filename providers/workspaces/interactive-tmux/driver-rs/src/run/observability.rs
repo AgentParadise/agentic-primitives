@@ -566,6 +566,26 @@ fn trace_id_for_run(run_id: &str) -> [u8; 16] {
     out
 }
 
+/// Return the deterministic 32-hex LangFuse/OpenTelemetry trace id used for an
+/// `itmux` run id.
+pub fn langfuse_trace_id_for_run(run_id: &str) -> String {
+    hex_lower(&trace_id_for_run(run_id))
+}
+
+/// Return the LangFuse UI/API origin for a configured origin, OTEL base, or
+/// OTEL traces endpoint.
+pub fn langfuse_api_base_url(base_url: &str) -> String {
+    langfuse_ui_base_url(base_url)
+}
+
+/// Build the LangFuse Basic auth header from public/secret key values.
+pub fn langfuse_basic_auth_header(public_key: &str, secret_key: &str) -> String {
+    format!(
+        "Basic {}",
+        base64_encode(format!("{public_key}:{secret_key}").as_bytes())
+    )
+}
+
 fn span_id_for(run_id: &str, seq: u64) -> [u8; 8] {
     let value = hash64(&(run_id, seq));
     let value = if value == 0 { 1 } else { value };

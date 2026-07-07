@@ -66,10 +66,10 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | CLI setup exists for `itmux run` and `itmux codex-exec` | Proven locally | `experiments/2026-07-07--langfuse--cli-setup-path/results.md`; driver README | Public/secret keys remain env refs. |
 | Mixed local+LangFuse export is safe during setup | Proven | `experiments/2026-07-07--observability--mixed-exporter-isolation/results.md` | Local file JSONL remains complete when LangFuse is absent. |
 | Repeatable real-backend smoke runner exists | Proven locally | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `runs/real-backend-smoke/summary.txt` | Runner exits `78` without attempting export when required config is missing and records only redacted env/keychain state. |
+| Agent trace-query integration exists | Proven locally | `itmux langfuse-trace`; `experiments/2026-07-07--langfuse--trace-query-cli/results.md` | The command derives trace id from run id, queries bounded Observations API v2 rows or a legacy trace endpoint for self-host compatibility, and fails safely when query config is absent. |
 | Real LangFuse backend accepts traces | Missing | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/keychain-check.redacted.txt` | Current environment has no `LANGFUSE_*` env and no documented Keychain entries. |
-| Trace is discoverable/queryable in LangFuse | Missing | Same ingestion smoke | This is the primary `.9` close gate. |
+| Trace is discoverable/queryable in LangFuse | Missing | Same ingestion smoke plus `itmux langfuse-trace` against real backend | This is the primary `.9` close gate. |
 | Trace link resolves in real LangFuse UI | Missing | Same ingestion smoke | Requires optional `LANGFUSE_PROJECT_ID` or equivalent project metadata. |
-| Agent trace-query integration exists | Missing | OKR `.9` description | Should follow real backend acceptance and schema confirmation. |
 
 ## `.9` Required Next Proof
 
@@ -83,7 +83,7 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 4. Capture redacted evidence that:
    - `langfuse_otlp` reports `status = ok`;
    - `events_exported > 0`;
-   - the backend trace is visible/queryable by run id;
+   - the backend trace is visible/queryable by run id via `itmux langfuse-trace`;
    - at least three child observations are present;
    - the trace link resolves when project metadata is configured.
 5. Only then close `.9` or claim production LangFuse readiness.

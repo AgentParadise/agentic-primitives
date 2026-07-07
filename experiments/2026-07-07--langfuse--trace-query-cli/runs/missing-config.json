@@ -1,0 +1,1 @@
+{"ok":false,"error":"missing required LangFuse query configuration","missing":["LANGFUSE_BASE_URL","LANGFUSE_PUBLIC_KEY","LANGFUSE_SECRET_KEY"]}

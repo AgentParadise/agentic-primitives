@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -19,7 +19,10 @@ use itmux::run::contract::{
     AgentRunSpec, ObservabilityExporter,
 };
 use itmux::run::harness_observer::{CodexExecJsonObserver, HarnessObserver};
-use itmux::run::observability::ObservabilityFanout;
+use itmux::run::observability::{
+    langfuse_api_base_url, langfuse_basic_auth_header, langfuse_trace_id_for_run,
+    ObservabilityFanout,
+};
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
@@ -204,6 +207,42 @@ enum Cmd {
         /// Label for the LangFuse observability link in AgentRunResult.
         #[arg(long)]
         langfuse_label: Option<String>,
+    },
+    /// Query LangFuse observations for an exported trace. This is the first
+    /// agent-facing read path for inspecting traces after export.
+    #[command(name = "langfuse-trace")]
+    LangFuseTrace {
+        /// Existing 32-hex LangFuse/OpenTelemetry trace id.
+        #[arg(long, conflicts_with = "run_id")]
+        trace_id: Option<String>,
+        /// `itmux` run id; the command derives the deterministic trace id used
+        /// by the exporter.
+        #[arg(long, conflicts_with = "trace_id")]
+        run_id: Option<String>,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Lower bound for observation start time. Keep this bounded.
+        #[arg(long)]
+        from_start_time: String,
+        /// Upper bound for observation start time. Keep this bounded.
+        #[arg(long)]
+        to_start_time: String,
+        /// LangFuse observation field groups to request.
+        #[arg(long, default_value = "core,basic,usage,trace_context")]
+        fields: String,
+        /// Maximum observation rows to request.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+        /// LangFuse read API to use.
+        #[arg(long, value_enum, default_value = "observations-v2")]
+        api: LangFuseTraceApi,
     },
 }
 
@@ -936,6 +975,263 @@ fn handle_codex_exec(
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LangFuseTraceApi {
+    /// Recommended row-level API for current LangFuse Cloud/newer deployments.
+    ObservationsV2,
+    /// Compatibility path for self-hosted deployments that do not expose v2.
+    LegacyTrace,
+}
+
+impl LangFuseTraceApi {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ObservationsV2 => "observations_v2",
+            Self::LegacyTrace => "legacy_trace",
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct LangFuseTraceQueryRequest {
+    api: &'static str,
+    endpoint: String,
+    trace_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
+    fields: String,
+    limit: u32,
+    from_start_time: String,
+    to_start_time: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_langfuse_trace(
+    trace_id: Option<String>,
+    run_id: Option<String>,
+    base_url: Option<String>,
+    public_key_env: String,
+    secret_key_env: String,
+    from_start_time: String,
+    to_start_time: String,
+    fields: String,
+    limit: u32,
+    api: LangFuseTraceApi,
+) -> ExitCode {
+    let Some(trace_id) = trace_id.or_else(|| run_id.as_deref().map(langfuse_trace_id_for_run))
+    else {
+        println!(
+            "{}",
+            json!({
+                "ok": false,
+                "error": "provide exactly one of --trace-id or --run-id"
+            })
+        );
+        return ExitCode::from(2);
+    };
+
+    let mut missing = Vec::new();
+    let base_url = base_url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| std::env::var("LANGFUSE_BASE_URL").ok())
+        .unwrap_or_else(|| {
+            missing.push("LANGFUSE_BASE_URL".to_string());
+            String::new()
+        });
+    let public_key = std::env::var(&public_key_env).unwrap_or_else(|_| {
+        missing.push(public_key_env.clone());
+        String::new()
+    });
+    let secret_key = std::env::var(&secret_key_env).unwrap_or_else(|_| {
+        missing.push(secret_key_env.clone());
+        String::new()
+    });
+
+    if !missing.is_empty() {
+        println!(
+            "{}",
+            json!({
+                "ok": false,
+                "error": "missing required LangFuse query configuration",
+                "missing": missing,
+            })
+        );
+        return ExitCode::from(78);
+    }
+
+    let endpoint = build_langfuse_trace_query_url(
+        api,
+        &base_url,
+        &trace_id,
+        &from_start_time,
+        &to_start_time,
+        &fields,
+        limit,
+    );
+    let request = LangFuseTraceQueryRequest {
+        api: api.as_str(),
+        endpoint: endpoint.clone(),
+        trace_id,
+        run_id,
+        fields,
+        limit,
+        from_start_time,
+        to_start_time,
+    };
+
+    let response = ureq::get(&endpoint)
+        .set(
+            "Authorization",
+            &langfuse_basic_auth_header(&public_key, &secret_key),
+        )
+        .call();
+
+    match response {
+        Ok(response) if (200..300).contains(&response.status()) => {
+            let body = response.into_string().unwrap_or_default();
+            let parsed = serde_json::from_str::<Value>(&body).unwrap_or_else(|err| {
+                json!({
+                    "parse_error": err.to_string(),
+                    "body": body,
+                })
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": true,
+                    "request": request,
+                    "response": parsed,
+                }))
+                .unwrap()
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(response) => {
+            let status = response.status();
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(ureq::Error::Status(status, response)) => {
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "error": err.to_string(),
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn build_langfuse_observations_v2_url(
+    base_url: &str,
+    trace_id: &str,
+    from_start_time: &str,
+    to_start_time: &str,
+    fields: &str,
+    limit: u32,
+) -> String {
+    let base = langfuse_api_base_url(base_url);
+    format!(
+        "{}/api/public/v2/observations?traceId={}&fromStartTime={}&toStartTime={}&fields={}&limit={}",
+        base.trim_end_matches('/'),
+        url_query_encode(trace_id),
+        url_query_encode(from_start_time),
+        url_query_encode(to_start_time),
+        url_query_encode(fields),
+        limit
+    )
+}
+
+fn build_langfuse_trace_query_url(
+    api: LangFuseTraceApi,
+    base_url: &str,
+    trace_id: &str,
+    from_start_time: &str,
+    to_start_time: &str,
+    fields: &str,
+    limit: u32,
+) -> String {
+    match api {
+        LangFuseTraceApi::ObservationsV2 => build_langfuse_observations_v2_url(
+            base_url,
+            trace_id,
+            from_start_time,
+            to_start_time,
+            fields,
+            limit,
+        ),
+        LangFuseTraceApi::LegacyTrace => {
+            let base = langfuse_api_base_url(base_url);
+            format!(
+                "{}/api/public/traces/{}",
+                base.trim_end_matches('/'),
+                url_path_encode(trace_id)
+            )
+        }
+    }
+}
+
+fn url_path_encode(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push(char::from(b"0123456789ABCDEF"[(byte >> 4) as usize]));
+            out.push(char::from(b"0123456789ABCDEF"[(byte & 0x0f) as usize]));
+        }
+    }
+    out
+}
+
+fn url_query_encode(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push(char::from(b"0123456789ABCDEF"[(byte >> 4) as usize]));
+            out.push(char::from(b"0123456789ABCDEF"[(byte & 0x0f) as usize]));
+        }
+    }
+    out
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.cmd {
@@ -1028,6 +1324,29 @@ fn main() -> ExitCode {
                 label: langfuse_label,
             },
         ),
+        Cmd::LangFuseTrace {
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            from_start_time,
+            to_start_time,
+            fields,
+            limit,
+            api,
+        } => handle_langfuse_trace(
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            from_start_time,
+            to_start_time,
+            fields,
+            limit,
+            api,
+        ),
     }
 }
 
@@ -1103,5 +1422,41 @@ mod cli_tests {
             }
             ObservabilityExporter::File { .. } => panic!("expected LangFuse exporter"),
         }
+    }
+
+    #[test]
+    fn langfuse_trace_query_url_is_bounded_and_encoded() {
+        let url = build_langfuse_trace_query_url(
+            LangFuseTraceApi::ObservationsV2,
+            "https://langfuse.example.com/api/public/otel/v1/traces",
+            "abc123",
+            "2026-07-07T20:00:00Z",
+            "2026-07-07T20:30:00Z",
+            "core,basic,usage,trace_context",
+            25,
+        );
+
+        assert_eq!(
+            url,
+            "https://langfuse.example.com/api/public/v2/observations?traceId=abc123&fromStartTime=2026-07-07T20%3A00%3A00Z&toStartTime=2026-07-07T20%3A30%3A00Z&fields=core%2Cbasic%2Cusage%2Ctrace_context&limit=25"
+        );
+    }
+
+    #[test]
+    fn langfuse_trace_query_supports_legacy_self_host_trace_api() {
+        let url = build_langfuse_trace_query_url(
+            LangFuseTraceApi::LegacyTrace,
+            "https://langfuse.example.com/api/public/otel",
+            "trace id/with spaces",
+            "2026-07-07T20:00:00Z",
+            "2026-07-07T20:30:00Z",
+            "core,basic",
+            25,
+        );
+
+        assert_eq!(
+            url,
+            "https://langfuse.example.com/api/public/traces/trace%20id%2Fwith%20spaces"
+        );
     }
 }
