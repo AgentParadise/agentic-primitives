@@ -311,7 +311,9 @@ fn resolve_launch_credentials(
             // Fallback: `OPENAI_API_KEY` sourced as an env var (no file).
             let host_auth = if let Some(auth_json) = secrets.codex_auth_json {
                 let dir = fresh_cred_dir("codex")?;
-                fs::write(dir.join("auth.json"), auth_json.as_bytes())?;
+                // Create the auth.json 0600 at creation (atomic, no brief 0644
+                // window) - it carries the codex token (PR #254 review).
+                crate::workspace::write_private_file(&dir.join("auth.json"), auth_json.as_bytes())?;
                 cred_tmp_dirs.push(dir.clone());
                 Some(dir)
             } else {
@@ -355,20 +357,16 @@ fn env_host_auth(override_env: &str, home_subdir: &str) -> Option<PathBuf> {
     candidate.is_dir().then_some(candidate)
 }
 
-/// Create a fresh 0700 temp dir under the system temp dir for credential
-/// materialisation.
+/// Create a fresh temp dir under the system temp dir for credential
+/// materialisation, with mode 0700 set ATOMICALLY at creation (no brief 0755
+/// window) - it holds staged secret files (PR #254 review).
 fn fresh_cred_dir(agent: &str) -> io::Result<PathBuf> {
     let base = std::env::temp_dir();
     let mut path = base.join(format!("itmux-run-cred-{agent}-{}", unique_suffix()));
     while path.exists() {
         path = base.join(format!("itmux-run-cred-{agent}-{}", unique_suffix()));
     }
-    fs::create_dir_all(&path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o700));
-    }
+    crate::workspace::create_private_dir(&path)?;
     Ok(path)
 }
 

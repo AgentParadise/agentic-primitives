@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Error, ErrorKind, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -121,6 +121,53 @@ fn random_suffix() -> String {
     #[allow(clippy::cast_possible_truncation)]
     let low = (mix & 0xFFFF_FFFF) as u64;
     format!("{low:08x}")
+}
+
+/// Create `path` as a fresh directory with mode `0700` set ATOMICALLY at
+/// creation (via `mkdir(mode)`), so it is never briefly world-traversable
+/// (`0755`) before a follow-up `chmod`. This matters because the dir holds
+/// staged secret material (the `0600` secret env files). Fails if `path`
+/// already exists (callers pass a freshly-minted unique path).
+pub(crate) fn create_private_dir(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().mode(0o700).create(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(path)
+    }
+}
+
+/// Create `path` as a fresh file with mode `0600` set ATOMICALLY at creation
+/// (via `open(O_CREAT | O_EXCL, 0600)`) and write `contents`, so the file is
+/// never briefly world-readable (`0644`) before a follow-up `chmod` - closing
+/// the local-read window on secret material (PR #254 review). `create_new`
+/// guarantees this process is the creator; callers pass a path inside a fresh
+/// `0700` dir, so there is no pre-existing file to clobber.
+pub(crate) fn write_private_file(path: &Path, contents: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut file = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(path)?
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)?
+        }
+    };
+    file.write_all(contents)?;
+    Ok(())
 }
 
 /// Build the `docker run` argv for a bare, credential-free container:
@@ -275,7 +322,9 @@ impl Workspace {
                     random_suffix()
                 ));
             }
-            fs::create_dir_all(&path)?;
+            // Create the throwaway dir 0700 at creation (it holds the staged
+            // 0600 secret env files) - no brief world-traversable window.
+            create_private_dir(&path)?;
             path
         };
 
@@ -334,10 +383,10 @@ impl Workspace {
                 auth::stage_into_container(&container, prepared)?;
             }
 
-            // Stage per-agent secret env files (R1). Each is written to a
-            // throwaway host file (0600) and transferred via the SAME
-            // base64-over-stdin path as credentials - the values never touch
-            // argv. The in-container file is re-secured to 0600 by
+            // Stage per-agent secret env files (R1). Each is created 0600 at
+            // creation (atomic, no brief 0644 window) and transferred via the
+            // SAME base64-over-stdin path as credentials - the values never
+            // touch argv. The in-container file is re-secured to 0600 by
             // `secure_path_plan`. Record the container path so the launch step
             // sources it.
             let mut secret_env_files: HashMap<Agent, String> = HashMap::new();
@@ -347,17 +396,18 @@ impl Workspace {
                 };
                 let container_path = format!("/home/agent/.itmux-secret-env-{}", agent.as_str());
                 let host_file = throwaway.join(format!("secret-env-{}", agent.as_str()));
-                fs::write(&host_file, secret_env::render_env_file(env))?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let _ = fs::set_permissions(&host_file, fs::Permissions::from_mode(0o600));
-                }
+                write_private_file(&host_file, secret_env::render_env_file(env).as_bytes())?;
                 let staged = PreparedAuth(vec![StagedPath {
-                    host: host_file,
+                    host: host_file.clone(),
                     container: container_path.clone(),
                 }]);
                 auth::stage_into_container(&container, &staged)?;
+                // Secret hygiene: the container now holds its own 0600 copy, so
+                // remove the host copy immediately rather than waiting for
+                // teardown - the plaintext secret should linger on the host for
+                // the shortest possible time. Best-effort; teardown's
+                // `remove_dir_all(throwaway)` is the fallback.
+                let _ = fs::remove_file(&host_file);
                 secret_env_files.insert(agent, container_path);
             }
             Ok((enabled, secret_env_files))
@@ -651,5 +701,61 @@ impl Workspace {
     pub fn load_from_registry(name: &str) -> Result<Self> {
         let rec = registry::load(name)?;
         Self::from_record(&rec)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod secret_mode_tests {
+    //! PR #254 review: the mode guarantee on host-side secret files/dirs must
+    //! be load-bearing. These drive the REAL creation helpers used by
+    //! `Workspace::start` (factored out so they are testable without docker)
+    //! and assert the mode is restrictive AT creation.
+
+    use super::{create_private_dir, write_private_file};
+    use std::os::unix::fs::PermissionsExt;
+
+    fn unique_base(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "itmux-secret-mode-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn private_dir_is_0700_and_private_file_is_0600() {
+        let dir = unique_base("dir");
+        create_private_dir(&dir).expect("create 0700 dir");
+        let dir_mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o700, "throwaway dir must be 0700 at creation");
+
+        // A staged secret env file inside it - the exact path shape
+        // `Workspace::start` uses.
+        let file = dir.join("secret-env-claude");
+        write_private_file(&file, b"CLAUDE_CODE_OAUTH_TOKEN='tok'\n").expect("write 0600 file");
+        let file_mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(file_mode, 0o600, "secret env file must be 0600 at creation");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "CLAUDE_CODE_OAUTH_TOKEN='tok'\n"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_private_file_refuses_to_clobber_existing() {
+        let dir = unique_base("clobber");
+        create_private_dir(&dir).unwrap();
+        let file = dir.join("secret");
+        write_private_file(&file, b"first").unwrap();
+        // create_new(true): a second create must fail rather than truncate a
+        // file whose mode we did not set.
+        let err = write_private_file(&file, b"second").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
