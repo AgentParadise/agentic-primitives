@@ -23,12 +23,16 @@ from agentic_isolation.run_client import (
     AgentRunEvent,
     AgentRunResult,
     ItmuxRunError,
+    ItmuxRunRequest,
     ResultEvent,
     SessionEndEvent,
     TokenUsageEvent,
     ToolEndEvent,
     ToolStartEvent,
+    _materialized_env_file,
+    _render_env_file,
     _terminate_process_group,
+    build_run_argv,
     parse_event,
     run_agent,
 )
@@ -506,3 +510,34 @@ def test_run_agent_breaks_on_result_without_waiting_for_eof(tmp_path: Path) -> N
     elapsed = time.time() - start
     assert result.result.summary == "ok"
     assert elapsed < 30, f"run_agent blocked waiting for EOF ({elapsed:.1f}s)"
+
+
+def test_build_run_argv_forwards_env_file_without_secret_values() -> None:
+    secret = "SECRET_SENTINEL_DO_NOT_LOG"
+    argv = build_run_argv(
+        ItmuxRunRequest(
+            recipe=Path("/recipes/reviewer"),
+            task="review",
+            env_file=Path("/private/run.env"),
+            allow_host_auth_fallback=True,
+        )
+    )
+    assert argv[argv.index("--env-file") + 1] == "/private/run.env"
+    assert "--allow-host-auth-fallback" in argv
+    assert secret not in argv
+
+
+def test_materialized_credentials_are_allowlisted_private_and_removed() -> None:
+    secret = "SECRET_SENTINEL_DO_NOT_LOG"
+    with _materialized_env_file(
+        {"CLAUDE_CODE_OAUTH_TOKEN": secret, "UNRELATED_KEY": "dropped"}
+    ) as path:
+        assert (path.stat().st_mode & 0o777) == 0o600
+        body = path.read_text(encoding="utf-8")
+        assert secret in body
+        assert "UNRELATED_KEY" not in body
+    assert not path.exists()
+
+
+def test_render_env_file_quotes_single_quotes() -> None:
+    assert _render_env_file({"ANTHROPIC_API_KEY": "ab'cd"}) == "ANTHROPIC_API_KEY='ab'\\\\''cd'\n"

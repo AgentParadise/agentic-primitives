@@ -26,9 +26,12 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -53,8 +56,70 @@ __all__ = [
     "ResultEvent",
     "AgentRunEvent",
     "ItmuxRunError",
+    "ItmuxRunRequest",
+    "build_run_argv",
     "run_agent",
 ]
+
+
+_ALLOWED_SECRET_KEYS: frozenset[str] = frozenset(
+    {"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_AUTH_FILE"}
+)
+
+
+@dataclass(frozen=True)
+class ItmuxRunRequest:
+    """Credential-safe input for building an ``itmux run`` command."""
+
+    recipe: Path
+    task: str
+    image: str | None = None
+    env_file: Path | None = None
+    credentials: Mapping[str, str] | None = None
+    allow_host_auth_fallback: bool = False
+
+
+def build_run_argv(request: ItmuxRunRequest, *, binary: str = "itmux") -> list[str]:
+    """Build argv without placing credential values in it."""
+
+    argv = [binary, "run", "--recipe", str(request.recipe), "--task", request.task]
+    if request.image is not None:
+        argv += ["--image", request.image]
+    if request.env_file is not None:
+        argv += ["--env-file", str(request.env_file)]
+    if request.allow_host_auth_fallback:
+        argv.append("--allow-host-auth-fallback")
+    argv += ["--json", "true"]
+    return argv
+
+
+def _render_env_file(credentials: Mapping[str, str]) -> str:
+    """Render allowlisted credentials as a shell-compatible private env file."""
+
+    lines: list[str] = []
+    for key, value in credentials.items():
+        if key in _ALLOWED_SECRET_KEYS:
+            escaped = value.replace("'", "'\\\\''")
+            lines.append(f"{key}='{escaped}'")
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+@contextmanager
+def _materialized_env_file(credentials: Mapping[str, str]) -> Iterator[Path]:
+    """Materialize credentials to a 0600 file and remove it after the run."""
+
+    fd, name = tempfile.mkstemp(prefix="itmux-run-creds-", suffix=".env")
+    path = Path(name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(_render_env_file(credentials))
+        yield path
+    finally:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +373,9 @@ def run_agent(
     itmux_bin: str = "itmux",
     on_event: Callable[[AgentRunEvent], None] | None = None,
     timeout: float | None = None,
+    env_file: Path | None = None,
+    credentials: Mapping[str, str] | None = None,
+    allow_host_auth_fallback: bool = False,
 ) -> AgentRunResult:
     """Run a recipe via ``itmux run`` and return its terminal result.
 
@@ -328,12 +396,31 @@ def run_agent(
         ItmuxRunError: on non-zero exit with no result, unparseable output,
             a missing terminal result, or timeout.
     """
-    argv = [itmux_bin, "run", "--recipe", str(recipe), "--task", task]
-    if image is not None:
-        argv += ["--image", image]
-    # `--json` is a clap `ArgAction::Set` bool (default true): it REQUIRES an
-    # explicit value, so pass `--json true` rather than a bare `--json` flag.
-    argv += ["--json", "true"]
+    if credentials is not None and env_file is not None:
+        raise ValueError("set only one of env_file or credentials")
+    if credentials is not None:
+        with _materialized_env_file(credentials) as materialized:
+            return run_agent(
+                recipe,
+                task,
+                image=image,
+                itmux_bin=itmux_bin,
+                on_event=on_event,
+                timeout=timeout,
+                env_file=materialized,
+                allow_host_auth_fallback=allow_host_auth_fallback,
+            )
+
+    argv = build_run_argv(
+        ItmuxRunRequest(
+            recipe=recipe,
+            task=task,
+            image=image,
+            env_file=env_file,
+            allow_host_auth_fallback=allow_host_auth_fallback,
+        ),
+        binary=itmux_bin,
+    )
 
     # `start_new_session=True` -> os.setsid in the child: it leads a new process
     # group so cleanup can signal the whole tree (Rust + docker exec children).
