@@ -1,0 +1,25 @@
+{
+  "result": {
+    "success": true,
+    "summary": "agent settled to a ready state with no error markers (liveness floor; true task-completion detection is a known interactive-TUI limit)"
+  },
+  "output_artifacts": [],
+  "session_log": "agent@5bf9ec3158cd:/workspace$ codex --no-alt-screen\n> You are in /workspace\n\n  Do you trust the contents of this directory? Working with untrusted contents comes with higher risk of prompt injection. Trusting the directory allows project-local config, hooks, and exec policies\n  to load.\n\n› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue\n\n╭─────────────────────────────────────────────────╮\n│ ✨ Update available! 0.139.0 -> 0.142.5         │\n│ Run npm install -g @openai/codex to update.     │\n│                                                 │\n│ See full release notes:                         │\n│ https://github.com/openai/codex/releases/latest │\n╰─────────────────────────────────────────────────╯\n\n╭────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.139.0)                     │\n│                                                │\n│ model:       gpt-5.5 medium   /model to change │\n│ directory:   /workspace                        │\n│ permissions: YOLO mode                         │\n╰────────────────────────────────────────────────╯\n\n  Tip: When the composer is empty, press Esc to step back and edit your last message; Enter confirms.\n\n⚠ MCP client for `node_repl` failed to start: MCP startup failed: No such file or directory (os error 2)\n\n⚠ MCP startup interrupted. The following servers were not initialized: codex_apps\n\n⚠ MCP startup incomplete (failed: node_repl)\n\n\n› Answer with the requested exact text and no extra commentary.\n\n\n\n\n  Reply exactly: CODEX_OBSERVABILITY_OK\n\n\n• CODEX_OBSERVABILITY_OK\n\n\n› Explain this codebase\n\n  gpt-5.5 medium · /workspace\n\n\n\n\n\n\n\n\n\n\n\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--observability--codex-token-cost-surface/runs/codex-events.jsonl",
+        "events_exported": 11,
+        "links": [
+          {
+            "label": "itmux run events",
+            "uri": "experiments/2026-07-07--observability--codex-token-cost-surface/runs/codex-events.jsonl"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

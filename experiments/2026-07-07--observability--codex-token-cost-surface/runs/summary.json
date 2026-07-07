@@ -1,0 +1,61 @@
+{
+  "tui": {
+    "exit": "exit_code:0",
+    "stdout_events": 11,
+    "exported_events": 11,
+    "event_types": [
+      "session_end",
+      "tool_end",
+      "tool_start"
+    ],
+    "result_success": true,
+    "exporter_event_count": 11,
+    "session_contains_answer": true,
+    "token_usage_events": 0
+  },
+  "exec_gpt5_failure": {
+    "exit": "exit_code:1",
+    "event_types": [
+      "thread.started",
+      "item.completed",
+      "turn.started",
+      "error",
+      "turn.failed"
+    ]
+  },
+  "exec_default_success": {
+    "exit": "exit_code:0",
+    "events": [
+      {
+        "type": "thread.started",
+        "thread_id": "019f3dba-df0e-7282-8614-7ded2fd6dae7"
+      },
+      {
+        "type": "turn.started"
+      },
+      {
+        "type": "item.completed",
+        "item": {
+          "id": "item_0",
+          "type": "agent_message",
+          "text": "CODEX_EXEC_OBSERVABILITY_OK"
+        }
+      },
+      {
+        "type": "turn.completed",
+        "usage": {
+          "input_tokens": 15919,
+          "cached_input_tokens": 9600,
+          "output_tokens": 11,
+          "reasoning_output_tokens": 0
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 15919,
+      "cached_input_tokens": 9600,
+      "output_tokens": 11,
+      "reasoning_output_tokens": 0
+    }
+  }
+}
