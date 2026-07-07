@@ -132,6 +132,19 @@ enum Cmd {
         /// (never a downstream `Duration::from_secs_f64` panic).
         #[arg(long, value_parser = parse_positive_timeout)]
         timeout: Option<f64>,
+        /// Path to a `.env` file supplying run credentials (highest precedence,
+        /// above process env). Recognized keys: `CLAUDE_CODE_OAUTH_TOKEN`
+        /// (preferred) / `ANTHROPIC_API_KEY` for claude; `CODEX_AUTH_FILE`
+        /// (preferred) / `OPENAI_API_KEY` for codex. Only the PATH is ever on
+        /// argv - the secret values travel via stdin + an in-container 0600 file.
+        #[arg(long)]
+        env_file: Option<PathBuf>,
+        /// Re-enable the legacy host `$HOME/.<agent>` credential fallback when no
+        /// `.env`/process-env credentials are found. Off by default (fail fast).
+        /// The host `.credentials.json` is often stale (-> 401); prefer
+        /// `--env-file` / `CLAUDE_CODE_OAUTH_TOKEN`.
+        #[arg(long, default_value_t = false)]
+        allow_host_auth_fallback: bool,
     },
 }
 
@@ -514,8 +527,25 @@ fn handle_run(
     json: bool,
     result_file: Option<PathBuf>,
     timeout: Option<f64>,
+    env_file: Option<PathBuf>,
+    allow_host_auth_fallback: bool,
 ) -> ExitCode {
-    let spec = build_run_spec(recipe, task, timeout);
+    // Load run credentials from --env-file / process env (R1-R4). This is the
+    // fix for the stale-file 401: the run spec now carries fresh credentials
+    // instead of leaving `credentials` empty and falling back to the host
+    // `$HOME/.claude` file. Secret VALUES never reach argv here - `env_file` is
+    // a PATH; the values load into the spec and, later, an in-container 0600
+    // file. A load failure (unreadable/malformed) is fatal and human-only on
+    // stderr (never echoes a secret).
+    let credentials = match itmux::run::secret_env::load_credentials(env_file.as_deref()) {
+        Ok(creds) => creds,
+        Err(err) => {
+            eprintln!("[itmux run] {err}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut spec = build_run_spec(recipe, task, timeout);
+    spec.credentials = credentials;
     let run_id = generate_run_id();
     let cancel = CancelToken::new();
 
@@ -541,7 +571,14 @@ fn handle_run(
         }
     };
 
-    let run_result = run_orchestrated(&spec, &image, &run_id, &cancel, &mut emit);
+    let run_result = run_orchestrated(
+        &spec,
+        &image,
+        &run_id,
+        &cancel,
+        allow_host_auth_fallback,
+        &mut emit,
+    );
 
     // Stop the signal watcher before handling the result (best-effort).
     #[cfg(unix)]
@@ -646,7 +683,18 @@ fn main() -> ExitCode {
             json,
             result_file,
             timeout,
-        } => handle_run(recipe, task, image, json, result_file, timeout),
+            env_file,
+            allow_host_auth_fallback,
+        } => handle_run(
+            recipe,
+            task,
+            image,
+            json,
+            result_file,
+            timeout,
+            env_file,
+            allow_host_auth_fallback,
+        ),
     }
 }
 
@@ -663,7 +711,6 @@ mod tests {
         );
         let limits = spec.limits.expect("timeout should populate limits");
         assert_eq!(limits.timeout_s, Some(12.5));
-        // Only the timeout is set; the token budget stays unset.
         assert_eq!(limits.token_budget, None);
     }
 
@@ -674,8 +721,6 @@ mod tests {
 
     #[test]
     fn parse_positive_timeout_rejects_non_positive_and_non_finite() {
-        // Each of these would reach Duration::from_secs_f64 and panic if it
-        // slipped through - the parser must reject them cleanly instead.
         for bad in ["-1", "0", "NaN", "inf", "-inf", "not-a-number"] {
             assert!(
                 parse_positive_timeout(bad).is_err(),
@@ -686,8 +731,6 @@ mod tests {
 
     #[test]
     fn build_run_spec_without_timeout_leaves_limits_none() {
-        // Omitting --timeout must not change existing behaviour: no limits, so
-        // the orchestrator's default await bound applies.
         let spec = build_run_spec(
             PathBuf::from("/recipes/hello"),
             "do the thing".to_string(),
