@@ -1,0 +1,38 @@
+{
+  "result": {
+    "success": true,
+    "summary": "codex exec completed successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "{\"type\":\"thread.started\",\"thread_id\":\"synthetic-thread\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"SYNTHETIC_CODEX_OK\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":3,\"reasoning_output_tokens\":0}}\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/real-backend-smoke/events.jsonl",
+        "events_exported": 6,
+        "links": [
+          {
+            "label": "codex exec events",
+            "uri": "file:///Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/real-backend-smoke/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "ok",
+        "target": "http://localhost:3000/api/public/otel/v1/traces",
+        "events_exported": 6,
+        "links": [
+          {
+            "label": "LangFuse trace",
+            "uri": "http://localhost:3000/project/agentic-primitives-local-project/traces/e8ec439f180e38c5bcb34c1baad4f978"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

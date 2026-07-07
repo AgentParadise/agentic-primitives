@@ -139,13 +139,22 @@ scripts/langfuse-local.sh status
 
 The wrapper clones the official LangFuse repository into `.agentic/langfuse/`,
 which is ignored by git. It does not vendor LangFuse's compose file into this
-repository and does not commit secrets. After startup, open
-`http://localhost:3000`, create a project and API keys, load those keys into the
-environment or macOS Keychain, then run:
+repository and does not commit secrets. For local smoke testing, it writes an
+ignored Compose override and `.env` into the cloned LangFuse checkout. The
+override exposes only LangFuse web on host port `3000`; Postgres, ClickHouse,
+Redis, MinIO, and the worker stay internal to the Compose network to avoid
+MacBook/VPS port conflicts.
+
+After startup, run:
 
 ```bash
 scripts/langfuse-local.sh smoke
 ```
+
+The smoke uses the provisioned local project/API keys, exports a current
+`itmux codex-exec --observability-langfuse` run, polls LangFuse for
+discoverability through `itmux langfuse-trace --api legacy-trace`, and checks
+that the emitted trace URL resolves.
 
 This local bootstrap is for development and smoke testing. For production or
 durable Mac Mini hosting, review LangFuse's current self-hosting guidance and
@@ -177,6 +186,9 @@ Passing local criteria:
   report with `status` set to `ok`;
 - `events_exported` is greater than zero;
 - when `LANGFUSE_PROJECT_ID` is set, the report includes a LangFuse trace link.
+- `itmux langfuse-trace` can query the trace. For LangFuse v3 Docker Compose,
+  use `--api legacy-trace`; Observations API v2 requires LangFuse v4 write mode.
+- the emitted trace link resolves in the LangFuse UI.
 
 Passing backend criteria:
 

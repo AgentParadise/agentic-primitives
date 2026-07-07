@@ -1,1 +1,16 @@
-not attempted: missing required LangFuse configuration: LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_TRACING_ENVIRONMENT
+exit_code=0
+langfuse_status=ok
+langfuse_events_exported=6
+langfuse_target=http://localhost:3000/api/public/otel/v1/traces
+langfuse_links=1
+langfuse_error=
+run_id=run-223bc2a0
+trace_id=e8ec439f180e38c5bcb34c1baad4f978
+trace_url=http://localhost:3000/project/agentic-primitives-local-project/traces/e8ec439f180e38c5bcb34c1baad4f978
+langfuse_trace_query_v2_exit=1
+langfuse_trace_query_legacy_exit=0
+langfuse_trace_query_legacy_attempts=2
+langfuse_observation_count=7
+langfuse_root_start_time=2026-07-07T23:50:27.000Z
+langfuse_trace_ui_exit=0
+langfuse_trace_ui_status=200 http://localhost:3000/project/agentic-primitives-local-project/traces/e8ec439f180e38c5bcb34c1baad4f978

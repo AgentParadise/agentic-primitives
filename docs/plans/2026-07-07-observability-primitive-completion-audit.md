@@ -65,11 +65,11 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | Trace links can be reported when project id is known | Local-receiver-proven | `experiments/2026-07-07--langfuse--trace-link-reporting/results.md` | Real URL resolution is still pending real backend ingestion. |
 | CLI setup exists for `itmux run` and `itmux codex-exec` | Proven locally | `experiments/2026-07-07--langfuse--cli-setup-path/results.md`; driver README | Public/secret keys remain env refs. |
 | Mixed local+LangFuse export is safe during setup | Proven | `experiments/2026-07-07--observability--mixed-exporter-isolation/results.md` | Local file JSONL remains complete when LangFuse is absent. |
-| Repeatable real-backend smoke runner exists | Proven locally | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `runs/real-backend-smoke/summary.txt` | Runner exits `78` without attempting export when required config is missing and records only redacted env/keychain state. |
+| Repeatable real-backend smoke runner exists | Proven | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `scripts/langfuse-local.sh`; `runs/real-backend-smoke/summary.txt` | Wrapper starts the local LangFuse Docker Compose stack, seeds ignored local env, exports the current `itmux` path, polls queryability, and checks trace URL resolution. |
 | Agent trace-query integration exists | Proven locally/local-receiver-proven | `itmux langfuse-trace`; `experiments/2026-07-07--langfuse--trace-query-cli/results.md` | The command derives trace id from run id, queries bounded Observations API v2 rows or a legacy trace endpoint for self-host compatibility, fails safely when query config is absent, and the actual CLI GET/auth/JSON path is proven against a local receiver. |
-| Real LangFuse backend accepts traces | Missing | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/keychain-check.redacted.txt` | Current environment has no `LANGFUSE_*` env and no documented Keychain entries. |
-| Trace is discoverable/queryable in LangFuse | Missing | Same ingestion smoke plus `itmux langfuse-trace` against real backend | This is the primary `.9` close gate. |
-| Trace link resolves in real LangFuse UI | Missing | Same ingestion smoke | Requires optional `LANGFUSE_PROJECT_ID` or equivalent project metadata. |
+| Real LangFuse backend accepts traces | Proven on local Docker Compose | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/real-backend-smoke/result.json` | Local LangFuse v3 Docker Compose accepted OTLP HTTP/protobuf export and reported `status=ok`, `events_exported=6`. |
+| Trace is discoverable/queryable in LangFuse | Proven on local Docker Compose | `runs/real-backend-smoke/langfuse-trace-query-legacy.json` | `itmux langfuse-trace --api legacy-trace` returned the trace with 7 observations. Observations API v2 returned the expected v3/v4-mode 404. |
+| Trace link resolves in real LangFuse UI | Proven on local Docker Compose | `runs/real-backend-smoke/trace-ui-response.txt` | Emitted trace URL returned HTTP 200. |
 
 ## `.9` Required Next Proof
 

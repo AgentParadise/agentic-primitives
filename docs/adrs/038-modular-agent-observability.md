@@ -373,21 +373,20 @@ Current status for `okrs-51p.9`:
    legacy trace endpoint for self-host compatibility, fails safely with
    redacted missing-config JSON, and is local-receiver-proven through the actual CLI
    GET/auth/JSON response path.
+8. The local real-backend smoke is proven against LangFuse v3 Docker Compose on
+   this MacBook: `scripts/langfuse-local.sh smoke` exports the current
+   `itmux codex-exec --observability-langfuse` path, LangFuse accepts six
+   events, `itmux langfuse-trace --api legacy-trace` returns seven
+   observations, and the emitted trace URL resolves with HTTP 200.
 
-Remaining gate for `okrs-51p.9`:
+Remaining gate for production deployment:
 
-1. Provide a reachable LangFuse deployment and secret injection path for
-   `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`,
-   `LANGFUSE_TRACING_ENVIRONMENT`, and optional `LANGFUSE_PROJECT_ID`. The
-   durable target is the self-hosted Mac Mini, but the smoke can run against any
-   trusted reachable LangFuse first. Use
-   `docs/guides/langfuse-observability-setup.md` for the repeatable setup path.
-2. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` and the
-   current `itmux codex-exec --observability-langfuse` export path against that
-   backend.
-3. Verify backend acceptance, generated URL resolution, and
-   `itmux langfuse-trace` queryability before closing `.9` or claiming
-   production LangFuse readiness.
+1. Move the same Compose/bootstrap pattern to the durable Mac Mini host with
+   persistent secrets, storage, backups, and upgrade policy.
+2. Decide whether `.9` closes on local real-backend proof or waits for the Mac
+   Mini deployment proof. The current smoke has satisfied backend acceptance,
+   generated URL resolution, and `itmux langfuse-trace` queryability on this
+   MacBook.
 4. Only after that, broaden run-event-to-span/generation mapping and richer
    backend-specific discovery utilities.
 

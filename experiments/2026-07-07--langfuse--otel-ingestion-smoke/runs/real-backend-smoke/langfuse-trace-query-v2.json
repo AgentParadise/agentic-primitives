@@ -1,0 +1,16 @@
+{
+  "ok": false,
+  "request": {
+    "api": "observations_v2",
+    "endpoint": "http://localhost:3000/api/public/v2/observations?traceId=e8ec439f180e38c5bcb34c1baad4f978&fromStartTime=2020-01-01T00%3A00%3A00Z&toStartTime=2100-01-01T00%3A00%3A00Z&fields=core%2Cbasic%2Cusage%2Ctrace_context&limit=20",
+    "trace_id": "e8ec439f180e38c5bcb34c1baad4f978",
+    "run_id": "run-223bc2a0",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 20,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
+  },
+  "status": 404,
+  "status_text": "Not Found",
+  "body": "{\"message\":\"The observations v2 API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\",\"error\":\"LangfuseNotFoundError\"}"
+}

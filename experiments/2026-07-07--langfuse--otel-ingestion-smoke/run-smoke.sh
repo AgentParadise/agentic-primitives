@@ -29,6 +29,10 @@ response="$RUN_DIR/langfuse-ingest-response.txt"
 stdout_jsonl="$RUN_DIR/stdout.jsonl"
 events_jsonl="$RUN_DIR/events.jsonl"
 result_json="$RUN_DIR/result.json"
+trace_query_v2="$RUN_DIR/langfuse-trace-query-v2.json"
+trace_query_legacy="$RUN_DIR/langfuse-trace-query-legacy.json"
+trace_ui_response="$RUN_DIR/trace-ui-response.txt"
+trace_ui_html="$RUN_DIR/trace-ui.html"
 summary="$RUN_DIR/summary.txt"
 
 : >"$redacted_env"
@@ -85,7 +89,14 @@ if [ ! -x "$FAKE_CODEX_BIN" ]; then
   exit 78
 fi
 
-rm -f "$stdout_jsonl" "$events_jsonl" "$result_json"
+rm -f \
+  "$stdout_jsonl" \
+  "$events_jsonl" \
+  "$result_json" \
+  "$trace_query_v2" \
+  "$trace_query_legacy" \
+  "$trace_ui_response" \
+  "$trace_ui_html"
 
 set +e
 "$ITMUX_BIN" codex-exec \
@@ -110,6 +121,74 @@ set -e
     printf 'langfuse_status=<unknown>\n'
   fi
 } | tee "$summary"
+
+if [ "$exit_code" -eq 0 ] && [ -f "$result_json" ] && [ -s "$events_jsonl" ] && command -v jq >/dev/null 2>&1; then
+  run_id="$(head -n 1 "$events_jsonl" | jq -r '.run_id // ""')"
+  trace_url="$(jq -r '.observability.exporters[] | select(.kind == "langfuse_otlp") | .links[0].uri // ""' "$result_json")"
+  trace_id="${trace_url##*/}"
+  query_from="${LANGFUSE_QUERY_FROM_START_TIME:-2020-01-01T00:00:00Z}"
+  query_to="${LANGFUSE_QUERY_TO_START_TIME:-2100-01-01T00:00:00Z}"
+
+  {
+    printf 'run_id=%s\n' "$run_id"
+    printf 'trace_id=%s\n' "$trace_id"
+    printf 'trace_url=%s\n' "$trace_url"
+  } >>"$summary"
+
+  set +e
+  "$ITMUX_BIN" langfuse-trace \
+    --run-id "$run_id" \
+    --from-start-time "$query_from" \
+    --to-start-time "$query_to" \
+    --limit 20 \
+    >"$trace_query_v2"
+  trace_query_v2_exit=$?
+
+  trace_query_legacy_exit=1
+  trace_query_legacy_attempts=0
+  for attempt in $(seq 1 10); do
+    trace_query_legacy_attempts="$attempt"
+    "$ITMUX_BIN" langfuse-trace \
+      --api legacy-trace \
+      --run-id "$run_id" \
+      --from-start-time "$query_from" \
+      --to-start-time "$query_to" \
+      --limit 20 \
+      >"$trace_query_legacy"
+    trace_query_legacy_exit=$?
+    if [ "$trace_query_legacy_exit" -eq 0 ]; then
+      break
+    fi
+    sleep 2
+  done
+
+  trace_ui_status="$(curl -sS -L -o "$trace_ui_html" -w '%{http_code} %{url_effective}' "$trace_url" 2>"$RUN_DIR/trace-ui-stderr.txt")"
+  trace_ui_exit=$?
+  set -e
+
+  printf '%s\n' "$trace_ui_status" >"$trace_ui_response"
+  observation_count="<unknown>"
+  root_start_time="<unknown>"
+  if [ "$trace_query_legacy_exit" -eq 0 ]; then
+    observation_count="$(jq -r '(.response.observations // []) | length' "$trace_query_legacy")"
+    root_start_time="$(jq -r '.response.observations[] | select(.name == "agentic_primitives.run") | .startTime' "$trace_query_legacy" | head -n 1)"
+  fi
+
+  {
+    printf 'langfuse_trace_query_v2_exit=%s\n' "$trace_query_v2_exit"
+    printf 'langfuse_trace_query_legacy_exit=%s\n' "$trace_query_legacy_exit"
+    printf 'langfuse_trace_query_legacy_attempts=%s\n' "$trace_query_legacy_attempts"
+    printf 'langfuse_observation_count=%s\n' "$observation_count"
+    printf 'langfuse_root_start_time=%s\n' "$root_start_time"
+    printf 'langfuse_trace_ui_exit=%s\n' "$trace_ui_exit"
+    printf 'langfuse_trace_ui_status=%s\n' "$trace_ui_status"
+  } >>"$summary"
+
+  if [ "$trace_query_legacy_exit" -ne 0 ] || [ "$trace_ui_exit" -ne 0 ]; then
+    cp "$summary" "$response"
+    exit 1
+  fi
+fi
 
 cp "$summary" "$response"
 exit "$exit_code"

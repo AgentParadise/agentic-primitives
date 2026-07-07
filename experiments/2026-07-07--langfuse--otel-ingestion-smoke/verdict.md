@@ -1,34 +1,38 @@
 # Verdict
 
-**No-go on LangFuse export in the current environment; go on local trace shape.**
+**Go on local LangFuse backend export, queryability, and trace-link resolution.**
 
-The synthetic trace shape is ready for an OTLP exporter, but the actual LangFuse
-ingestion question remains unanswered until a reachable LangFuse deployment and
-credentials are provided. The current `itmux` exporter path is implemented and
-local-receiver-proven elsewhere; this experiment is now the real-backend close gate for
-`.9`, not a prerequisite for local exporter implementation.
+The current `itmux` exporter path was run against a real local LangFuse Docker
+Compose backend on this MacBook. LangFuse accepted the OTLP HTTP/protobuf
+export, the trace became discoverable through the self-host-compatible legacy
+trace API, and the emitted UI trace link resolved with HTTP 200.
 
 `run-smoke.sh` is now the repeatable close-gate runner for the current exporter
-path. In the current environment it exited `78` before export and recorded only
-redacted missing-env/keychain evidence under `runs/real-backend-smoke/`.
+path. `scripts/langfuse-local.sh smoke` seeds local LangFuse env from the
+ignored `.agentic/langfuse/langfuse/.env`, exports the current `itmux`
+observability path, polls for backend queryability, and records trace-link
+evidence under `runs/real-backend-smoke/`.
 
 ## Hypothesis scorecard
 
 | Predicted | Observed | Score | Notes |
 |---|---|---|---|
-| Synthetic root span and three child spans export through OTLP HTTP/protobuf | Local trace generated, export not attempted | partial | `runs/synthetic-trace-source.json`; missing env blocked export. |
-| Trace appears in LangFuse within 60 seconds and is findable by run id | Not observed | wrong | No LangFuse config present; see `runs/langfuse-ingest-response.txt`. |
-| Required attributes survive for filtering/identification | Present locally, backend preservation unverified | partial | See `runs/field-preservation-table.md`. |
-| Current `itmux` exporter reports `langfuse_otlp` success against the backend | Not observed | wrong | No LangFuse config/keychain entries present in this environment. |
-| Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; export skipped | correct | `runs/real-backend-smoke/summary.txt`, `runs/real-backend-smoke/otel-exporter-env.redacted.txt`, `runs/real-backend-smoke/keychain-check.redacted.txt`. |
+| Synthetic root span and three child spans export through OTLP HTTP/protobuf | Current `itmux` smoke exported root + six event spans | correct | `runs/real-backend-smoke/result.json`; `events_exported=6`. |
+| Trace appears in LangFuse within 60 seconds and is findable by run id | Legacy trace query succeeded after 2 attempts | correct | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`; `observation_count=7`. |
+| Required attributes survive for filtering/identification | Tool, usage, session, resource, and environment attributes are present in backend response | correct | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`. |
+| Current `itmux` exporter reports `langfuse_otlp` success against the backend | Observed `status=ok`, `events_exported=6`, one trace link | correct | `runs/real-backend-smoke/summary.txt`. |
+| Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; local ignored env is not committed | correct | `run-smoke.sh`; `scripts/langfuse-local.sh`; `.agentic/` ignored. |
 
 ## Design Impact
 
-- `.9` should not close and should not claim production LangFuse readiness until
-  this smoke passes against either LangFuse Cloud or the planned Mac Mini
-  self-host.
-- The reusable exporter architecture remains valid for local/file export and
-  local-receiver-proven LangFuse transport, but backend-dependent trace discoverability is
-  still unverified.
-- The exporter should continue to fail fast with a clear config error when
-  required LangFuse env vars are missing.
+- `.9` now has real local-backend evidence for export acceptance,
+  backend queryability, and trace-link resolution.
+- LangFuse v3 Docker Compose returns 404 for Observations API v2 because that
+  path requires v4 write mode. The `itmux langfuse-trace --api legacy-trace`
+  compatibility path is required for this v3 self-host stack.
+- The real backend revealed and validated a root-span timestamp fix: root spans
+  must inherit the first run event timestamp instead of defaulting to Unix
+  epoch.
+- Mac Mini/VPS setup should use the same official Compose stack plus the
+  agentic local override pattern: expose LangFuse web, keep backing stores
+  internal unless explicitly needed.

@@ -454,31 +454,38 @@ fn encode_otlp_trace_request(
     let trace_id = trace_id_for_run(run_id);
     let mut spans = Vec::with_capacity(events.len() + 1);
     let root_span_id = span_id_for(run_id, u64::MAX);
-    spans.push(encode_span(
-        &trace_id,
-        &root_span_id,
-        None,
-        "agentic_primitives.run",
+    let root_nanos = events
+        .first()
+        .map(|event| unix_nanos_from_rfc3339_seconds(&event.ts))
+        .unwrap_or(0);
+    spans.push(encode_span(SpanEncodeInput {
+        trace_id: &trace_id,
+        span_id: &root_span_id,
+        parent_span_id: None,
+        name: "agentic_primitives.run",
         run_id,
-        None,
-        &[
+        event: None,
+        extra_attributes: &[
             ("session.id", run_id),
             ("langfuse.session.id", run_id),
             ("langfuse.trace.name", "agentic_primitives.run"),
             ("langfuse.trace.metadata.run_id", run_id),
         ],
-    ));
+        start_nanos: root_nanos,
+    }));
     for event in events {
         let span_id = span_id_for(&event.run_id, event.seq);
-        spans.push(encode_span(
-            &trace_id,
-            &span_id,
-            Some(&root_span_id),
-            event.payload.type_name(),
-            &event.run_id,
-            Some(event),
-            &[],
-        ));
+        let nanos = unix_nanos_from_rfc3339_seconds(&event.ts);
+        spans.push(encode_span(SpanEncodeInput {
+            trace_id: &trace_id,
+            span_id: &span_id,
+            parent_span_id: Some(&root_span_id),
+            name: event.payload.type_name(),
+            run_id: &event.run_id,
+            event: Some(event),
+            extra_attributes: &[],
+            start_nanos: nanos,
+        }));
     }
 
     let mut scope_spans = Vec::new();
@@ -515,33 +522,33 @@ fn encode_instrumentation_scope(name: &str) -> Vec<u8> {
     out
 }
 
-fn encode_span(
-    trace_id: &[u8; 16],
-    span_id: &[u8; 8],
-    parent_span_id: Option<&[u8; 8]>,
-    name: &str,
-    run_id: &str,
-    event: Option<&AgentRunEvent>,
-    extra_attributes: &[(&str, &str)],
-) -> Vec<u8> {
+struct SpanEncodeInput<'a> {
+    trace_id: &'a [u8; 16],
+    span_id: &'a [u8; 8],
+    parent_span_id: Option<&'a [u8; 8]>,
+    name: &'a str,
+    run_id: &'a str,
+    event: Option<&'a AgentRunEvent>,
+    extra_attributes: &'a [(&'a str, &'a str)],
+    start_nanos: u64,
+}
+
+fn encode_span(input: SpanEncodeInput<'_>) -> Vec<u8> {
     let mut out = Vec::new();
-    push_bytes(&mut out, 1, trace_id);
-    push_bytes(&mut out, 2, span_id);
-    if let Some(parent_span_id) = parent_span_id {
+    push_bytes(&mut out, 1, input.trace_id);
+    push_bytes(&mut out, 2, input.span_id);
+    if let Some(parent_span_id) = input.parent_span_id {
         push_bytes(&mut out, 4, parent_span_id);
     }
-    push_string(&mut out, 5, name);
+    push_string(&mut out, 5, input.name);
     push_varint_field(&mut out, 6, 1); // SpanKind::Internal.
-    let nanos = event
-        .map(|event| unix_nanos_from_rfc3339_seconds(&event.ts))
-        .unwrap_or(0);
-    push_fixed64(&mut out, 7, nanos);
-    push_fixed64(&mut out, 8, nanos.saturating_add(1_000_000));
-    push_message(&mut out, 9, &encode_key_value("session.id", run_id));
-    for (key, value) in extra_attributes {
+    push_fixed64(&mut out, 7, input.start_nanos);
+    push_fixed64(&mut out, 8, input.start_nanos.saturating_add(1_000_000));
+    push_message(&mut out, 9, &encode_key_value("session.id", input.run_id));
+    for (key, value) in input.extra_attributes {
         push_message(&mut out, 9, &encode_key_value(key, value));
     }
-    if let Some(event) = event {
+    if let Some(event) = input.event {
         push_message(
             &mut out,
             9,

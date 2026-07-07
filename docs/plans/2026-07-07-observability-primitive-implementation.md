@@ -65,22 +65,24 @@ Completion audit:
 - `experiments/2026-07-07--observability--stock-itmux-hook-sink` passed:
   the stock interactive-tmux provider image now contains the observability
   plugin/runtime and emits the same normalized hook events.
-- Real LangFuse backend export is not validated because no LangFuse
-  env/credentials are present. The local `.9` implementation now has the typed
+- Real LangFuse backend export is now validated against the local Docker
+  Compose stack on this MacBook. The `.9` implementation has the typed
   `langfuse_otlp` exporter, fail-fast config validation, local-receiver-proven
-  HTTP/protobuf transport, trace-link reporting, and CLI setup flags.
+  HTTP/protobuf transport, real-backend trace-query evidence, trace-link
+  reporting, and CLI setup flags.
 - The refreshed
   `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
   both minimal OTLP ingestion and the current
-  `itmux codex-exec --observability-langfuse` exporter path. Current redacted
-  evidence shows no `LANGFUSE_*` env and no matching macOS Keychain entries in
-  this environment.
+  `itmux codex-exec --observability-langfuse` exporter path. Current evidence
+  shows `scripts/langfuse-local.sh smoke` exporting to local LangFuse v3,
+  querying it back via `itmux langfuse-trace --api legacy-trace`, and resolving
+  the emitted trace URL.
 - `docs/guides/langfuse-observability-setup.md` documents the secret-safe setup
   path for MacBooks, Mac Minis, VPS hosts, and Docker workspaces, plus the real
   backend smoke criteria for `.9`.
 - `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` passed locally:
   endpoint/auth/header/attribute construction is proven against a local receiver,
-  but real LangFuse ingestion remains unproven.
+  and the later real-backend smoke validated LangFuse ingestion.
 - `experiments/2026-07-07--langfuse--exporter-config-failfast` passed:
   `ObservabilityExporter::LangFuseOtlp` config round-trips, the schema includes
   `langfuse_otlp`, and missing env produces a failed exporter report.
@@ -107,9 +109,8 @@ Completion audit:
   matched exactly.
 - `experiments/2026-07-07--observability--langfuse-otel-export` was rerun
   against the current CLI/exporter path: the old "no exporter exists" result is
-  superseded. Current state is file exporter `ok`, LangFuse exporter `failed`
-  on missing `LANGFUSE_BASE_URL`, and real backend trace visibility remains
-  unproven.
+  superseded. The final real-backend smoke now proves LangFuse exporter `ok`,
+  trace discoverability, and trace-link resolution against local Docker Compose.
 
 ## `.6` Implementation Sequence
 
@@ -182,17 +183,17 @@ Completion audit:
    - explicit config validation and redacted error reporting.
    - OTLP HTTP/protobuf, not gRPC, for first LangFuse path.
 4. Implement OTLP HTTP/protobuf transport and semantic span encoding:
-   **local-receiver-proven for transport/root span/event spans; real backend pending**.
+   **local-receiver-proven and real-backend-proven against local Docker Compose**.
 5. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
-   reachable LangFuse deployment.
+   reachable LangFuse deployment: **done against local Docker Compose**.
 6. Map normalized run events to spans:
    - one root trace per run.
    - child observations for provision, launch, submit, await, capture.
    - resource/span attributes for `session.id`, `service.name`,
      `langfuse.environment`, `langfuse.session.id`, `langfuse.trace.name`.
 7. Emit a trace link in `ObservabilityBundle`:
-   **local-receiver-proven with optional `LANGFUSE_PROJECT_ID`; real URL resolution
-   pending**.
+   **proven with optional `LANGFUSE_PROJECT_ID`; URL returned HTTP 200 against
+   local Docker Compose**.
 8. Expose setup through CLI flags:
    **done for `itmux run --observability-langfuse` and
    `itmux codex-exec --observability-langfuse`**.
@@ -202,7 +203,8 @@ Completion audit:
    **done for file exporter ok plus LangFuse failed in one `itmux codex-exec`
    run**.
 11. Rerun `experiments/2026-07-07--observability--langfuse-otel-export`:
-   **done against current CLI/exporter path; real backend still config-blocked**.
+   **done against current CLI/exporter path; real backend proof captured in the
+   LangFuse ingestion smoke**.
 
 ## `.9` Exit Criteria
 
