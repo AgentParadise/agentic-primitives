@@ -88,11 +88,11 @@ The `itmux` Rust driver owns the first reusable fanout primitive:
 - The first exporter is `file`, which appends event JSONL to a configured path
   that can live on a Mac, VPS, or Docker-mounted filesystem.
 
-LangFuse support will be added as a backend exporter after the fanout primitive
-is stable. For Rust and cross-language compatibility, the preferred first
-LangFuse path is OTLP/OpenTelemetry to LangFuse's OTEL endpoint rather than a
-direct dependency on a Python or JS SDK. Direct SDK exporters can still be
-implemented where the runtime makes that cheaper.
+LangFuse support is a backend exporter layered onto the same fanout primitive.
+For Rust and cross-language compatibility, the first LangFuse path is
+OTLP/OpenTelemetry to LangFuse's OTEL endpoint rather than a direct dependency
+on a Python or JS SDK. Direct SDK exporters can still be implemented where the
+runtime makes that cheaper.
 
 LangFuse's native OTEL integration accepts OTLP over HTTP/protobuf at
 `/api/public/otel`; gRPC should not be assumed for the first implementation.
@@ -255,10 +255,12 @@ The first hypothesis-first probes produced these architecture constraints:
   LangFuse base URL, credentials, or OTEL exporter env were present. `.9`
   should fail fast on missing config and should not proceed to run-event mapping
   until this smoke passes against LangFuse Cloud or the Mac Mini self-host.
-- `experiments/2026-07-07--observability--langfuse-otel-export` confirmed the
-  backend gap: the current completed substrate fans out to `file`, but LangFuse
-  trace creation and trace links still require a `.9` exporter variant plus
-  run-event span mapping.
+- `experiments/2026-07-07--observability--langfuse-otel-export` originally
+  confirmed the backend gap when the substrate only fanned out to `file`. It
+  was later rerun against the current CLI/exporter path and now shows the
+  `langfuse_otlp` exporter exists and fails safely when real LangFuse config is
+  absent. The remaining gap is backend acceptance and trace discoverability,
+  not local exporter construction.
 - `experiments/2026-07-07--langfuse--otel-preflight-mock` validated the
   locally testable LangFuse exporter contract without a backend: derived
   `/api/public/otel/v1/traces`, `POST`, `application/x-protobuf`, Basic auth,
@@ -343,32 +345,37 @@ Validated gates and follow-ups for `okrs-51p.6`:
 6. Preserve relative path behavior in reports, but document and test that only
    absolute file exporter paths can produce `file://` links.
 
-Next steps for `okrs-51p.9`:
+Current status for `okrs-51p.9`:
 
-1. Add real LangFuse/OTLP transport on top of the typed `langfuse_otlp`
-   exporter config (**mock-proven; real backend smoke pending**).
-2. Support self-hosted Mac Mini configuration through env/keychain-backed
-   secrets.
-3. Emit linkable LangFuse trace URLs in `ObservabilityBundle` (**mock-proven
-   with optional `LANGFUSE_PROJECT_ID`; real URL resolution pending**).
-4. Enable LangFuse from the CLI for new-machine setup (**implemented for
-   `itmux run --observability-langfuse` and
-   `itmux codex-exec --observability-langfuse`**).
-5. Prove missing setup fails safely through an actual CLI path (**implemented
-   for `itmux codex-exec --observability-langfuse` with absent env**).
-6. Prove mixed exporter isolation (**implemented for file exporter ok plus
-   LangFuse failed in one `itmux codex-exec` run**).
-7. Rerun the original run-event LangFuse export experiment against current code
-   (**current rerun shows exporter exists, but real backend config is absent**).
-8. Run hypothesis-first experiments before marking the backend complete.
-9. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
-   config/auth/header/attribute regression coverage.
-10. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
-   reachable LangFuse deployment to validate real OTLP ingestion and trace
-   visibility before richer run-event mapping work.
-8. Treat missing LangFuse env as a first-class exporter configuration failure
-   with a clear `ObservabilityExportReport.error` (**implemented for missing
-   env config**).
+1. Typed `langfuse_otlp` exporter config, schema round-trip, endpoint
+   derivation, Basic auth derivation, and missing-env fail-fast are implemented
+   and locally tested.
+2. The Rust OTLP HTTP/protobuf transport is implemented and mock-proven with
+   `x-langfuse-ingestion-version: 4`.
+3. Link reporting is mock-proven when a `LANGFUSE_PROJECT_ID` or explicit
+   project id is available.
+4. CLI setup is implemented for `itmux run --observability-langfuse` and
+   `itmux codex-exec --observability-langfuse`.
+5. Missing setup fails safely through the actual `itmux codex-exec` CLI path:
+   the run remains usable and the exporter reports a failed
+   `ObservabilityExportReport`.
+6. Mixed exporter isolation is proven: file export stays `ok` while LangFuse
+   reports missing config.
+
+Remaining gate for `okrs-51p.9`:
+
+1. Provide a reachable LangFuse deployment and secret injection path for
+   `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`,
+   `LANGFUSE_TRACING_ENVIRONMENT`, and optional `LANGFUSE_PROJECT_ID`. The
+   durable target is the self-hosted Mac Mini, but the smoke can run against any
+   trusted reachable LangFuse first.
+2. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` and the
+   current `itmux codex-exec --observability-langfuse` export path against that
+   backend.
+3. Verify backend acceptance, trace visibility/queryability, and generated URL
+   resolution before closing `.9` or claiming production LangFuse readiness.
+4. Only after that, broaden run-event-to-span/generation mapping and add any
+   backend-specific query/discovery utilities.
 
 ## References
 

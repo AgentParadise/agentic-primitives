@@ -73,20 +73,40 @@ itmux run \
 The exporter appends the same normalized run events to the JSONL file and the
 final `AgentRunResult.observability.exporters[]` report includes status,
 event count, target, and a link URI. This works the same on a Mac, a VPS, or
-inside Docker when the path is mounted into the executing environment. Backend
-exporters such as LangFuse should plug into this fanout layer rather than the
-orchestrator directly.
+inside Docker when the path is mounted into the executing environment.
+
+LangFuse plugs into the same fanout layer through OTLP HTTP/protobuf:
+
+```bash
+export LANGFUSE_BASE_URL=https://your-langfuse.example
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_TRACING_ENVIRONMENT=local
+export LANGFUSE_PROJECT_ID=... # optional, enables UI trace links
+
+itmux run \
+  --recipe /path/to/recipe \
+  --task "Implement the change" \
+  --observability-file /tmp/itmux-run-events.jsonl \
+  --observability-langfuse \
+  --result-file /tmp/itmux-run-result.json
+```
+
+If LangFuse config is missing or invalid, the run still completes and local
+file export still works; the LangFuse exporter reports `status:"failed"` in the
+final observability bundle.
 
 ## `itmux codex-exec` observer export
 
 `itmux codex-exec` runs `codex exec --json`, normalizes Codex's structured
 events into the shared `AgentRunEvent` stream, and uses the same observability
-file exporter:
+exporters:
 
 ```bash
 itmux codex-exec \
   --prompt "Reply exactly: OK" \
   --observability-file /tmp/codex-exec-events.jsonl \
+  --observability-langfuse \
   --result-file /tmp/codex-exec-result.json
 ```
 

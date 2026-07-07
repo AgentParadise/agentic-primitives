@@ -63,9 +63,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--stock-itmux-hook-sink` passed:
   the stock interactive-tmux provider image now contains the observability
   plugin/runtime and emits the same normalized hook events.
-- LangFuse OTLP export is not validated because no LangFuse env/credentials are
-  present, and the current `.9` implementation still needs a LangFuse/OTLP
-  exporter variant.
+- Real LangFuse backend export is not validated because no LangFuse
+  env/credentials are present. The local `.9` implementation now has the typed
+  `langfuse_otlp` exporter, fail-fast config validation, mock-proven
+  HTTP/protobuf transport, trace-link reporting, and CLI setup flags.
 - `experiments/2026-07-07--langfuse--otel-preflight-mock` passed locally:
   endpoint/auth/header/attribute construction is proven against a mock receiver,
   but real LangFuse ingestion remains unproven.
@@ -164,11 +165,11 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 2. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` as local
    regression coverage for endpoint/auth/header/attribute construction.
 3. Add typed exporter config: **done for config/fail-fast slice**.
-   - `ObservabilityExporter::Otlp` or `ObservabilityExporter::LangFuse`.
+   - `ObservabilityExporter::LangFuseOtlp`.
    - explicit config validation and redacted error reporting.
    - OTLP HTTP/protobuf, not gRPC, for first LangFuse path.
-4. Implement real OTLP transport and semantic span encoding:
-   **mock-proven for transport/root span/event spans**.
+4. Implement OTLP HTTP/protobuf transport and semantic span encoding:
+   **mock-proven for transport/root span/event spans; real backend pending**.
 5. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment.
 6. Map normalized run events to spans:
@@ -198,3 +199,5 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - Final result includes a human-usable trace link.
 - Missing or invalid credentials produce a failed exporter report, not silent
   success and not stdout corruption.
+- Mixed file+LangFuse export preserves local JSONL observability when LangFuse
+  is absent or misconfigured.
