@@ -316,9 +316,10 @@ These results preserve the original three-layer architecture and validate two
 end-to-end paths: `codex_exec_json` observer -> normalized `AgentRunEvent` ->
 file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
 `hook_event` -> file fanout -> `ObservabilityBundle`. `.9` now has typed
-LangFuse exporter config, fail-fast reporting, and mock-proven OTLP
-HTTP/protobuf transport plus project-aware trace link reporting, but still
-waits on real LangFuse connectivity before claiming ingestion or queryability.
+LangFuse exporter config, fail-fast reporting, mock-proven OTLP HTTP/protobuf
+transport, project-aware trace link reporting, and CLI setup flags for
+`itmux run` / `itmux codex-exec`, but still waits on real LangFuse
+connectivity before claiming ingestion or queryability.
 
 Validated gates and follow-ups for `okrs-51p.6`:
 
@@ -344,13 +345,16 @@ Next steps for `okrs-51p.9`:
    secrets.
 3. Emit linkable LangFuse trace URLs in `ObservabilityBundle` (**mock-proven
    with optional `LANGFUSE_PROJECT_ID`; real URL resolution pending**).
-4. Run hypothesis-first experiments before marking the backend complete.
-5. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
+4. Enable LangFuse from the CLI for new-machine setup (**implemented for
+   `itmux run --observability-langfuse` and
+   `itmux codex-exec --observability-langfuse`**).
+5. Run hypothesis-first experiments before marking the backend complete.
+6. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
    config/auth/header/attribute regression coverage.
-6. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
+7. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment to validate real OTLP ingestion and trace
    visibility before richer run-event mapping work.
-7. Treat missing LangFuse env as a first-class exporter configuration failure
+8. Treat missing LangFuse env as a first-class exporter configuration failure
    with a clear `ObservabilityExportReport.error` (**implemented for missing
    env config**).
 

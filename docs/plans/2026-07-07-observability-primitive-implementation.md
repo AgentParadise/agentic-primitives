@@ -79,6 +79,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   the LangFuse exporter accepts optional project id metadata and reports a
   human-facing `/project/<project_id>/traces/<32_hex_trace_id>` link after a
   successful mock export.
+- `experiments/2026-07-07--langfuse--cli-setup-path` passed:
+  `itmux run` and `itmux codex-exec` both expose `--observability-langfuse`
+  plus base-url, project-id, and label flags, and the shared CLI builder maps
+  them to the typed LangFuse exporter with env-only secret references.
 
 ## `.6` Implementation Sequence
 
@@ -138,6 +142,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - `LANGFUSE_PUBLIC_KEY`
    - `LANGFUSE_SECRET_KEY`
    - `LANGFUSE_TRACING_ENVIRONMENT`
+   - optional `LANGFUSE_PROJECT_ID` for trace links
 2. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` as local
    regression coverage for endpoint/auth/header/attribute construction.
 3. Add typed exporter config: **done for config/fail-fast slice**.
@@ -156,7 +161,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 7. Emit a trace link in `ObservabilityBundle`:
    **mock-proven with optional `LANGFUSE_PROJECT_ID`; real URL resolution
    pending**.
-8. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
+8. Expose setup through CLI flags:
+   **done for `itmux run --observability-langfuse` and
+   `itmux codex-exec --observability-langfuse`**.
+9. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
    score the verdict before closing `.9`.
 
 ## `.9` Exit Criteria
