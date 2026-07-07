@@ -8,7 +8,7 @@ Two independent sources, with **strict, non-overlapping ownership** of event typ
 
 | Source | Mechanism | Owns these event types | Output channel |
 |---|---|---|---|
-| `observe.py` | Claude Code hooks (PreToolUse, PostToolUse, …) | `tool_execution_started`, `tool_execution_completed`, `tool_execution_failed`, `session_started`, `session_completed`, `user_prompt_submitted`, `permission_requested`, `system_notification`, `subagent_started`, `subagent_stopped`, `agent_stopped`, `teammate_idle`, `task_completed`, `context_compacted` | **stdout** |
+| `observe.py` | Claude Code hooks (PreToolUse, PostToolUse, …) | `tool_execution_started`, `tool_execution_completed`, `tool_execution_failed`, `session_started`, `session_completed`, `user_prompt_submitted`, `permission_requested`, `system_notification`, `subagent_started`, `subagent_stopped`, `agent_stopped`, `teammate_idle`, `task_completed`, `context_compacted` | **stderr**, plus `AGENTIC_EVENTS_JSONL` sink when set |
 | git hooks | Real git hooks (`post-commit`, `post-merge`, …) | `git_commit`, `git_push`, `git_merge`, `git_rewrite`, `git_checkout` — exclusively | **stderr** |
 
 **Critical invariant: `observe.py` must never emit git event types. Git hooks are the sole source of truth for all `git_*` events.**
@@ -17,8 +17,13 @@ This separation ensures git events carry real post-operation metadata (actual SH
 
 ## Output channel rationale
 
-### `observe.py` → stdout
-Claude Code captures the stdout of each hook subprocess and embeds it in the `hook_response` stream-json event. The engine reads it from there.
+### `observe.py` → stderr and optional sink
+Claude hook subprocess stdout is reserved for hook responses. `observe.py`
+therefore writes observability JSONL to stderr by default and, when
+`AGENTIC_EVENTS_JSONL` is set, tees the same JSONL to that file. The
+interactive-tmux workspace driver sets this sink for Claude runs, drains it
+before teardown, and normalizes those lines into `hook_event` records in the
+`AgentRunEvent` stream.
 
 ### git hooks → stderr
 Git hooks run as subprocesses triggered by git — they are **not** children of the Bash tool process. Their stderr flows into the docker exec stream, which the adapter merges into the stdout pipe via `stderr=asyncio.subprocess.STDOUT`. The engine reads every line of that merged stream and stores any line containing `event_type` as an observation.
@@ -132,13 +137,13 @@ Consumers merge `{**context, **metadata}` to get all fields in a flat dict.
 │       │                                                     │
 │       └─► observe.py                                        │
 │                │                                            │
-│                └─► EventEmitter(output=sys.stdout)          │
+│                └─► EventEmitter(output=sys.stderr)          │
 │                         │                                   │
-│                         └─► stdout JSONL                    │
+│                         └─► stderr JSONL                    │
 │                                  │                          │
-│                    embedded in hook_response stream-json    │
+│                         optional AGENTIC_EVENTS_JSONL tee   │
 │                                  │                          │
-│                         engine reads → stores event         │
+│          workspace driver drains → normalized hook_event    │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
