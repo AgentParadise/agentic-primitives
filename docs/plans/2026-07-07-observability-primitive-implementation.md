@@ -16,6 +16,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--claude-env-token-passthrough`
 - `experiments/2026-07-07--observability--claude-hook-fanout-after-auth`
 - `experiments/2026-07-07--observability--baked-claude-hook-runtime`
+- `experiments/2026-07-07--observability--claude-hook-sink-capture`
 
 ## Current Facts
 
@@ -51,6 +52,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--baked-claude-hook-runtime` proved the
   plugin runtime can emit hook JSONL when run directly, but Claude TUI does not
   surface that output to the current `itmux run` capture path.
+- `experiments/2026-07-07--observability--claude-hook-sink-capture` passed:
+  explicit `AGENTIC_EVENTS_JSONL` sink capture produced 3 normalized
+  `hook_event` records in stdout and exporter output, with `session_end` still
+  last.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
   present, and the current Rust exporter enum supports only `file`.
 
@@ -76,11 +81,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 5. Revalidate Claude hook fanout with credential health fixed:
    - **done for auth/plugin launch; no-go for hook visibility**.
    - **done for baked runtime; direct handler emits, TUI capture still no-go**.
-   - next, add an explicit hook sink such as `AGENTIC_EVENTS_JSONL` that
-     `observe.py` writes in-container, then have the driver collect and
-     normalize it.
-   - verify hook output can be captured without contaminating `itmux run`
-     stdout contract JSONL.
+   - **done for explicit hook sink; live run emitted normalized hook events**.
+   - next, make stock interactive-tmux packaging include the observability
+     plugin and `agentic_events`, then rerun without a temporary derived image.
    - preserve the narrow `CLAUDE_CODE_OAUTH_TOKEN` Docker env passthrough and
      do not put token values in argv/stdout.
 6. Implement `claude_hooks` observer after hook output shape is proven:

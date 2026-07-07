@@ -1,0 +1,2 @@
+{"event_type": "session_started", "timestamp": "2026-07-07T18:43:01.294873+00:00", "session_id": "exp-sink", "provider": "claude", "context": {"source": "startup"}, "metadata": {"transcript_path": null, "cwd": "/workspace", "permission_mode": null}}
+
