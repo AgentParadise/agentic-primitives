@@ -1,0 +1,18 @@
+{
+  "run_id": "agentic-primitives-smoke-59f35a18c406",
+  "trace_id": "eec32c30af534841a50c4631dddc2c55",
+  "span_count": 4,
+  "root_spans": [
+    "agentic_primitives.synthetic_run"
+  ],
+  "child_spans": [
+    "session_started",
+    "tool_execution_started",
+    "tool_execution_completed"
+  ],
+  "required_attributes_present": [
+    "session.id",
+    "service.name",
+    "langfuse.environment"
+  ]
+}

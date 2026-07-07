@@ -1,0 +1,53 @@
+{
+  "run_id": "agentic-primitives-smoke-59f35a18c406",
+  "trace_id": "eec32c30af534841a50c4631dddc2c55",
+  "resource": {
+    "service.name": "agentic-primitives",
+    "langfuse.environment": "agentic-primitives-exp",
+    "deployment.environment.name": "agentic-primitives-exp"
+  },
+  "attributes": {
+    "session.id": "agentic-primitives-smoke-59f35a18c406",
+    "langfuse.session.id": "agentic-primitives-smoke-59f35a18c406",
+    "langfuse.trace.name": "agentic_primitives.synthetic_run",
+    "langfuse.trace.metadata.okr": "okrs-51p.9"
+  },
+  "spans": [
+    {
+      "name": "agentic_primitives.synthetic_run",
+      "kind": "root",
+      "span_id": "db61bf1743ce4e14",
+      "parent_span_id": null,
+      "trace_id": "eec32c30af534841a50c4631dddc2c55",
+      "start_time_unix_nano": 1783447127262614016,
+      "end_time_unix_nano": 1783447127263614016
+    },
+    {
+      "name": "session_started",
+      "kind": "child",
+      "span_id": "2a6a89a97454464e",
+      "parent_span_id": "db61bf1743ce4e14",
+      "trace_id": "eec32c30af534841a50c4631dddc2c55",
+      "start_time_unix_nano": 1783447127263614016,
+      "end_time_unix_nano": 1783447127264614016
+    },
+    {
+      "name": "tool_execution_started",
+      "kind": "child",
+      "span_id": "5f710ef4f9724052",
+      "parent_span_id": "db61bf1743ce4e14",
+      "trace_id": "eec32c30af534841a50c4631dddc2c55",
+      "start_time_unix_nano": 1783447127264614016,
+      "end_time_unix_nano": 1783447127265614016
+    },
+    {
+      "name": "tool_execution_completed",
+      "kind": "child",
+      "span_id": "ec3a273b9e6f4623",
+      "parent_span_id": "db61bf1743ce4e14",
+      "trace_id": "eec32c30af534841a50c4631dddc2c55",
+      "start_time_unix_nano": 1783447127265614016,
+      "end_time_unix_nano": 1783447127266614016
+    }
+  ]
+}
