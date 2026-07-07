@@ -1,0 +1,20 @@
+{
+  "result": {
+    "success": true,
+    "summary": "codex exec completed successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "{\"type\":\"thread.started\",\"thread_id\":\"synthetic-thread\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"SYNTHETIC_CODEX_OK\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":3,\"reasoning_output_tokens\":0}}\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "langfuse_otlp",
+        "status": "failed",
+        "target": null,
+        "events_exported": 0,
+        "links": [],
+        "error": "missing required LangFuse config: LANGFUSE_BASE_URL"
+      }
+    ]
+  }
+}

@@ -318,8 +318,11 @@ file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
 `hook_event` -> file fanout -> `ObservabilityBundle`. `.9` now has typed
 LangFuse exporter config, fail-fast reporting, mock-proven OTLP HTTP/protobuf
 transport, project-aware trace link reporting, and CLI setup flags for
-`itmux run` / `itmux codex-exec`, but still waits on real LangFuse
-connectivity before claiming ingestion or queryability.
+`itmux run` / `itmux codex-exec`. Runtime fail-fast through
+`itmux codex-exec --observability-langfuse` is also proven: missing LangFuse
+env produces a failed exporter report while the run and stdout event stream
+remain usable. The design still waits on real LangFuse connectivity before
+claiming ingestion or queryability.
 
 Validated gates and follow-ups for `okrs-51p.6`:
 
@@ -348,10 +351,12 @@ Next steps for `okrs-51p.9`:
 4. Enable LangFuse from the CLI for new-machine setup (**implemented for
    `itmux run --observability-langfuse` and
    `itmux codex-exec --observability-langfuse`**).
-5. Run hypothesis-first experiments before marking the backend complete.
-6. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
+5. Prove missing setup fails safely through an actual CLI path (**implemented
+   for `itmux codex-exec --observability-langfuse` with absent env**).
+6. Run hypothesis-first experiments before marking the backend complete.
+7. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
    config/auth/header/attribute regression coverage.
-7. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
+8. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment to validate real OTLP ingestion and trace
    visibility before richer run-event mapping work.
 8. Treat missing LangFuse env as a first-class exporter configuration failure

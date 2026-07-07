@@ -1,0 +1,297 @@
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/experiment/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/standard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/substandard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/itmux-78722c010ac9ab9a)
+
+running 15 tests
+test auth::base64_tests::rfc4648_and_high_bit_vectors ... ok
+test registry::tests::validate_name_rejects_traversal_and_separators ... ok
+test registry::tests::validate_name_accepts_generated_and_simple_names ... ok
+test registry::tests::record_path_errors_on_bad_name_and_stays_in_registry ... ok
+test run::observability::tests::langfuse_otlp_config_accepts_otel_base_or_trace_endpoint ... ok
+test run::harness_observer::tests::codex_exec_json_maps_failed_turn ... ok
+test run::observability::tests::langfuse_otlp_exporter_reports_missing_env_without_secrets ... ok
+test run::observability::tests::langfuse_otlp_config_derives_traces_endpoint_and_auth ... ok
+test run::harness_observer::tests::codex_exec_json_maps_successful_turn_usage ... ok
+test run::workspace_executor::tests::sanitize_name_replaces_unsafe_chars ... ok
+test run::workspace_executor::tests::rfc3339_formats_known_epochs ... ok
+test tmux::tests::redact_args_leaves_non_literal_commands_intact ... ok
+test tmux::tests::redact_args_hides_literal_payload_after_dash_l ... ok
+test run::observability::tests::file_exporter_writes_event_jsonl_and_reports_link ... ok
+test run::observability::tests::langfuse_otlp_exporter_posts_protobuf_to_mock_receiver ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/itmux-ed87d3bd0cd45734)
+
+running 2 tests
+test cli_tests::cli_exporters_include_file_and_langfuse_when_enabled ... ok
+test cli_tests::cli_exporters_do_not_require_langfuse_project_id ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/auth_parity.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/auth_parity-63d2766b4ceedbc7)
+
+running 7 tests
+test claude_rejects_missing_credentials_file ... ok
+test claude_honors_explicit_dotjson_override_dood_case ... ok
+test claude_seeds_synthetic_dotjson_when_host_missing ... ok
+test gemini_patches_folder_trust_in_settings ... ok
+test codex_stages_symlinked_auth_files ... ok
+test claude_seeds_carry_oauth_account_through_when_host_present ... ok
+test codex_stages_only_the_auth_allowlist ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cancellation.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/cancellation-cf5a0262d2f42b62)
+
+running 4 tests
+test first_interrupt_is_graceful_second_is_hard ... ok
+test hard_is_never_downgraded_by_a_later_interrupt ... ok
+test terminate_goes_straight_to_hard ... ok
+test three_interrupts_stay_hard ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contract_json.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/contract_json-4a17a9b08d6ccfd0)
+
+running 25 tests
+test agent_run_credentials_round_trip_and_reject_unknown_field ... ok
+test agent_run_event_rejects_unknown_top_level_field ... ok
+test agent_run_event_envelope_has_run_id_seq_ts_and_typed_payload ... ok
+test agent_run_event_token_usage_defaults_codex_specific_fields ... ok
+test agent_run_event_rejects_unknown_variant_tag ... ok
+test agent_run_event_token_usage_round_trips ... ok
+test agent_run_limits_round_trip_and_reject_unknown_field ... ok
+test agent_run_event_tool_end_round_trips ... ok
+test agent_run_event_session_end_carries_terminal_outcome ... ok
+test agent_run_event_jsonl_stream_of_four_events_parses_line_by_line ... ok
+test agent_run_outcome_rejects_unknown_field ... ok
+test agent_run_event_hook_event_round_trips ... ok
+test agent_run_event_tool_start_round_trips ... ok
+test agent_run_result_round_trips_minimal ... ok
+test agent_run_event_result_variant_round_trips_as_an_event ... ok
+test agent_run_result_round_trips_full_and_rejects_unknown_field ... ok
+test agent_run_spec_recipe_is_a_directory_path_not_inline ... ok
+test agent_run_spec_rejects_unknown_field ... ok
+test agent_run_spec_round_trips_full ... ok
+test agent_run_spec_round_trips_minimal ... ok
+test claude_credentials_reject_unknown_field ... ok
+test codex_credentials_hold_contents_not_a_path ... ok
+test observability_bundle_reports_exporter_status_and_links ... ok
+test observability_file_exporter_round_trips_with_typed_config ... ok
+test observability_langfuse_otlp_exporter_round_trips_with_env_refs ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cred_transfer.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/cred_transfer-70a8a73126bb3fe3)
+
+running 10 tests
+test default_env_passthrough_only_enables_claude_token_for_claude ... ok
+test docker_run_argv_allows_non_secret_env_values ... ok
+test docker_run_argv_carries_no_v_flags ... ok
+test docker_run_argv_passes_env_names_without_secret_values ... ok
+test secure_path_plan_chowns_1000_1000_and_chmods_600_for_a_file ... ok
+test secure_path_plan_chowns_recursively_and_chmods_600_every_file_for_a_dir ... ok
+test write_bytes_plan_never_puts_payload_in_argv ... ok
+test prepare_yields_staged_destination_paths_not_mount_bind_args ... ok
+test plan_for_prepared_claude_auth_includes_transfer_and_secure_steps_for_every_staged_path ... ok
+test stage_into_container_without_docker_fails_cleanly_not_via_v_mount ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/exec_timeout.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/exec_timeout-7b449dbb829677ed)
+
+running 3 tests
+test run_bounded_returns_output_for_a_fast_command ... ok
+test run_bounded_kills_and_errors_on_timeout_without_blocking ... ok
+test run_bounded_does_not_leak_a_hung_child_process ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/orchestrator.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/orchestrator-aa9fbbcc544f7b63)
+
+running 14 tests
+test cancel_during_await_collects_partial_result_and_reports_graceful ... ok
+test graceful_then_hard_signals_terminalize_once_with_hard_reason ... ok
+test happy_path_does_not_reap_orphans ... ok
+test happy_path_runs_phases_in_order_and_emits_terminal_session_end ... ok
+test hard_cancel_outranks_adapter_error_on_err_path ... ok
+test hard_cancel_while_launch_in_flight_bails_and_tears_down_no_orphan ... ok
+test provision_failure_reports_error_with_nothing_to_tear_down ... ok
+test hard_cancel_before_provision_reaps_orphans_best_effort ... ok
+test start_failure_after_partial_startup_tears_down_and_no_orphan ... ok
+test exactly_one_session_end_in_every_scenario ... ok
+test success_flows_from_detect_outcome_not_liveness ... ok
+test observed_events_are_emitted_before_terminal_session_end ... ok
+test teardown_failure_does_not_mask_a_successful_outcome ... ok
+test timeout_during_cancel_prefers_timeout_over_graceful ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/orchestrator_harness_neutral.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/orchestrator_harness_neutral-bac9784737ef641a)
+
+running 1 test
+test orchestrator_contains_no_harness_name_literals ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/outcome_detection.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/outcome_detection-4fcf366bde59363c)
+
+running 14 tests
+test claude_api_error_pane_is_failure ... ok
+test claude_login_required_pane_is_failure ... ok
+test claude_401_on_an_error_line_is_failure ... ok
+test claude_not_ready_pane_is_failure_without_error_marker ... ok
+test codex_benign_mcp_warning_is_not_treated_as_failure ... ok
+test codex_clean_ready_pane_is_success ... ok
+test codex_markers_do_not_collide_with_benign_warning_vocabulary ... ok
+test gemini_has_no_hard_error_markers_yet ... ok
+test codex_not_authenticated_pane_is_failure ... ok
+test codex_prose_mentioning_401_is_not_a_hard_error ... ok
+test codex_unauthorized_pane_is_failure ... ok
+test claude_clean_ready_pane_is_success ... ok
+test claude_prose_mentioning_401_is_not_a_hard_error ... ok
+test claude_prose_mentioning_invalid_api_key_is_not_a_hard_error ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pane_tail.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/pane_tail-431f730cbfd68959)
+
+running 10 tests
+test pane_tail_empty_yields_empty ... ok
+test pane_tail_long_truncates_to_last_n_lines ... ok
+test pane_tail_short_returns_pane_verbatim ... ok
+test gemini_tail_correctly_reports_ready ... ok
+test gemini_full_buffer_with_stale_thinking_breaks_predicate ... ok
+test claude_full_buffer_with_stale_generation_breaks_predicate ... ok
+test codex_full_buffer_with_stale_working_breaks_predicate ... ok
+test codex_tail_correctly_reports_ready ... ok
+test claude_tail_correctly_reports_ready_on_multi_paragraph_history ... ok
+test claude_full_pane_taller_than_one_screen ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/plugin_dirs.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/plugin_dirs-2b812da039912317)
+
+running 6 tests
+test no_plugin_dirs_yields_bare_claude ... ok
+test multiple_plugin_dirs_emit_one_flag_per_path ... ok
+test paths_with_embedded_single_quote_safely_escaped ... ok
+test single_plugin_dir ... ok
+test flag_order_matches_input_order ... ok
+test paths_with_spaces_get_shell_quoted ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/poll_resilience.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/poll_resilience-ba63a4576e5ee970)
+
+running 6 tests
+test generic_capture_failure_is_transient ... ok
+test docker_daemon_outage_strings_are_not_classified_as_container_dead ... ok
+test poll_sequence_transient_transient_ready_does_not_abort_on_first_error ... ok
+test timed_out_capture_is_always_transient ... ok
+test real_container_dead_markers_are_classified_as_dead ... ok
+test timeout_is_never_classified_as_dead_even_with_a_death_marker_in_the_message ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/readiness.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/readiness-f050eac62621a199)
+
+running 15 tests
+test claude_generating_pane_is_not_ready ... ok
+test claude_missing_footer_is_not_ready ... ok
+test codex_empty_pane_is_not_ready ... ok
+test codex_idle_with_hint_only_is_ready ... ok
+test codex_fresh_launch_pane_is_ready ... ok
+test codex_tip_only_satisfies_readiness ... ok
+test codex_post_turn_pane_is_ready ... ok
+test codex_working_pane_is_not_ready ... ok
+test gemini_cold_no_prompt_is_not_ready ... ok
+test gemini_esc_to_cancel_alone_vetoes_readiness ... ok
+test gemini_thinking_pane_is_not_ready ... ok
+test gemini_post_turn_pane_is_ready ... ok
+test claude_empty_prompt_regex_tolerates_trailing_whitespace ... ok
+test claude_post_turn_pane_is_ready ... ok
+test claude_welcome_pane_is_started_but_not_ready ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/recipe_loader.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/recipe_loader-450983a705931c4c)
+
+running 9 tests
+test build_submit_text_append_semantics ... ok
+test build_submit_text_without_system_is_task_only ... ok
+test missing_recipe_directory_is_an_error ... ok
+test resolve_skill_plugin_dirs_passes_container_relative_and_rejects_bundled ... ok
+test maps_container_relative_skill_ref_in_listed_order ... ok
+test loads_recipe_and_maps_default_agent_to_claude ... ok
+test subagents_are_present_but_not_mapped_to_execution ... ok
+test submit_text_prepends_resolved_system_and_ends_with_task ... ok
+test bundled_skill_is_rejected_pending_staging ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/result_parity.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/result_parity-5778fdc07f43bb35)
+
+running 6 tests
+test agent_parse_round_trips_for_each_name ... ok
+test agent_response_markers_match_python_constants ... ok
+test await_result_error_includes_message ... ok
+test await_result_timeout_unstable_preserves_stable_polls ... ok
+test await_result_ready_json_shape_matches_python ... ok
+test await_result_timeout_never_ready_carries_zero_stable_polls ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/send_literal.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/send_literal-0b7050f3c1d71e29)
+
+running 8 tests
+test boundary_exactly_at_threshold_uses_send_keys ... ok
+test boundary_one_byte_over_threshold_uses_paste_buffer ... ok
+test buffer_names_are_unique_per_call ... ok
+test large_payload_uses_paste_buffer ... ok
+test threshold_constant_matches_python_parity ... ok
+test small_payload_plan_has_no_paste_buffer_args ... ok
+test small_payload_uses_send_keys ... ok
+test large_payload_plan_uses_bracketed_paste_and_named_buffer ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/submit_readiness.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/submit_readiness-d30d980bfe475d20)
+
+running 9 tests
+test claude_empty_prompt_pane_does_not_reflect_submission ... ok
+test claude_landed_pane_reflects_submission ... ok
+test claude_reflects_submission_survives_wrapped_prompt ... ok
+test codex_submit_sends_once_without_verification ... ok
+test codex_landed_pane_reflects_submission ... ok
+test claude_submit_gives_up_after_max_attempts_but_still_submits ... ok
+test claude_submit_retries_until_prompt_lands_then_submits_once ... ok
+test only_claude_needs_submit_verification ... ok
+test submit_fragment_uses_first_line_normalised_and_capped ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests itmux
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -83,6 +83,11 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   `itmux run` and `itmux codex-exec` both expose `--observability-langfuse`
   plus base-url, project-id, and label flags, and the shared CLI builder maps
   them to the typed LangFuse exporter with env-only secret references.
+- `experiments/2026-07-07--langfuse--cli-runtime-failfast` passed:
+  with real LangFuse env absent, `itmux codex-exec --observability-langfuse`
+  still completed a synthetic successful run, kept stdout as valid
+  `AgentRunEvent` JSONL, and reported `langfuse_otlp` as a failed exporter in
+  the final result with a clear missing `LANGFUSE_BASE_URL` error.
 
 ## `.6` Implementation Sequence
 
@@ -164,7 +169,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 8. Expose setup through CLI flags:
    **done for `itmux run --observability-langfuse` and
    `itmux codex-exec --observability-langfuse`**.
-9. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
+9. Validate CLI runtime fail-fast for missing LangFuse setup:
+   **done for `itmux codex-exec --observability-langfuse` with absent env**.
+10. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
    score the verdict before closing `.9`.
 
 ## `.9` Exit Criteria
