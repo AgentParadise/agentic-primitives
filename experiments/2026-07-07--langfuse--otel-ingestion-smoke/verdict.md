@@ -11,7 +11,7 @@ credentials are provided.
 | Predicted | Observed | Score | Notes |
 |---|---|---|---|
 | Synthetic root span and three child spans export through OTLP HTTP/protobuf | Local trace generated, export not attempted | partial | `runs/synthetic-trace-source.json`; missing env blocked export. |
-| Trace appears in LangFuse within 60 seconds and is findable by run id | Not observed | wrong | No LangFuse config present; see `runs/langfuse-ingest-response.log`. |
+| Trace appears in LangFuse within 60 seconds and is findable by run id | Not observed | wrong | No LangFuse config present; see `runs/langfuse-ingest-response.txt`. |
 | Required attributes survive for filtering/identification | Present locally, backend preservation unverified | partial | See `runs/field-preservation-table.md`. |
 
 ## Design Impact

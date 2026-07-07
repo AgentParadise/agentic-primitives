@@ -3,7 +3,7 @@
 | Probe | Evidence | Result |
 |---|---|---|
 | Local synthetic trace | `runs/synthetic-trace-source.json`, `runs/local-trace-summary.json` | Generated one root span plus three child spans with required local attributes. |
-| LangFuse OTLP export | `runs/otel-exporter-env.redacted.txt`, `runs/langfuse-ingest-response.log`, `runs/field-preservation-table.md` | Not attempted: required LangFuse base URL, credentials, and OTEL exporter env were absent. |
+| LangFuse OTLP export | `runs/otel-exporter-env.redacted.txt`, `runs/langfuse-ingest-response.txt`, `runs/field-preservation-table.md` | Not attempted: required LangFuse base URL, credentials, and OTEL exporter env were absent. |
 
 ## Local Synthetic Trace
 
