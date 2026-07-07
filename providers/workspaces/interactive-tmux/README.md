@@ -292,6 +292,101 @@ so they survive the tmux send-keys path.
 Codex and Gemini ignore `claude_plugin_dirs` (no equivalent CLI flag);
 the signature parity exists for future agent additions.
 
+## `itmux run` credentials: the `.env` secrets contract
+
+`itmux run` (the Rust driver's recipe-execution subcommand) loads run
+credentials from a `.env` file / process env and injects them into the
+container. This is the fix for the recurring **stale-file 401**: previously
+`itmux run` left its credentials empty and silently fell back to the host
+`$HOME/.claude/.credentials.json`, which on macOS expires within hours (the
+live token lives in the login Keychain, not that file). The scrape-the-Keychain
+workaround is retired - supply a fresh, long-lived credential instead.
+
+**Credentials live in the run / workspace layer, NEVER in the recipe.** A
+recipe directory describes the agent, skills, and system prompt; it must never
+carry tokens. The consumer supplies secrets at run time via `--env-file` or the
+process environment.
+
+### Recognized keys and precedence
+
+```dotenv
+# claude (preferred first)
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-...   # preferred: 1-year token from `claude setup-token`
+# ANTHROPIC_API_KEY=sk-ant-...           # fallback: raw API key
+
+# codex (preferred first)
+CODEX_AUTH_FILE=~/.codex/auth.json       # preferred: its CONTENTS are staged as auth.json
+# OPENAI_API_KEY=sk-...                  # fallback: raw API key
+```
+
+- **claude:** `CLAUDE_CODE_OAUTH_TOKEN` (preferred) ELSE `ANTHROPIC_API_KEY`.
+  The OAuth token is injected as the container **env var**
+  `CLAUDE_CODE_OAUTH_TOKEN` (the sanctioned headless path) - NOT synthesized
+  into a `.credentials.json`. The driver still stages a seeded `~/.claude.json`
+  so the trust/onboarding dialogs are pre-accepted.
+- **codex:** `CODEX_AUTH_FILE` contents (preferred) ELSE `OPENAI_API_KEY`.
+- **Source precedence:** `--env-file <path>` > process env > (opt-in) host
+  fallback.
+
+The `.env` parser is intentionally narrow: `KEY=VALUE`, `#` comments,
+single/double quotes, blank lines. No variable expansion, no multiline, no
+`export`. Unsupported syntax is rejected with `file:line`.
+
+### Fail-fast, opt-in host fallback
+
+By default, if no `.env`/process-env credential is found for the recipe's
+agent, `itmux run` **fails fast** with an actionable error naming the missing
+var. Pass `--allow-host-auth-fallback` to re-enable the legacy host
+`$HOME/.<agent>` path (a warning naming the selected source PATH is printed -
+never token contents). Prefer `--env-file` / `CLAUDE_CODE_OAUTH_TOKEN`; the
+host file is often stale.
+
+```bash
+# fresh token, fail-fast default
+itmux run --recipe ./recipes/pr-reviewer --task "review PR #42" \
+  --env-file ./run.env
+
+# legacy host-file fallback (may be stale -> 401), opt-in
+itmux run --recipe ./recipes/pr-reviewer --task "review PR #42" \
+  --allow-host-auth-fallback
+```
+
+### How the secret reaches the pane (no argv leak)
+
+The secret VALUES never touch a `docker run`/`docker exec` argv or a `tmux`
+command line (argv is world-readable via `ps` / `/proc/<pid>/cmdline`).
+Instead, the driver stages a per-agent `0600` env file into the container over
+the existing base64-over-stdin transfer, then launches the harness pane through
+a wrapper that `source`s that file and `exec`s the CLI:
+
+```sh
+set -a; . /home/agent/.itmux-secret-env-claude; set +a; exec claude
+```
+
+`set -a` exports each `KEY='value'` line into the harness child's environment.
+The only artifacts that ever contain a raw secret are the in-memory run spec,
+the base64 stdin payload, and the in-container `0600` file. This invariant is
+pinned by `driver-rs/tests/secret_redaction.rs`.
+
+### Python passthrough
+
+`agentic_isolation.run_client` forwards `--env-file` to `itmux run` and never
+logs the value:
+
+```python
+from pathlib import Path
+from agentic_isolation.run_client import ItmuxRunRequest, run
+
+# Pass an existing .env by path...
+run(ItmuxRunRequest(recipe=Path("./recipes/pr-reviewer"), task="review",
+                    env_file=Path("./run.env")))
+
+# ...or an in-memory mapping (materialized to a private 0600 temp file whose
+# PATH - never its contents - is forwarded, then removed after the run):
+run(ItmuxRunRequest(recipe=Path("./recipes/pr-reviewer"), task="review",
+                    credentials={"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-..."}))
+```
+
 ## Credentials are NEVER baked or committed
 
 `docker run` mounts throwaway host-side copies. The image contains zero
