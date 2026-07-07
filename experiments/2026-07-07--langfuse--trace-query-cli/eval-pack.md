@@ -36,3 +36,13 @@ env -u LANGFUSE_BASE_URL -u LANGFUSE_PUBLIC_KEY -u LANGFUSE_SECRET_KEY \
 
 Pass requires exit `78` and JSON that names only missing env vars, with no
 secret values.
+
+## Probe D: Actual CLI Query Against Mock Receiver
+
+```bash
+experiments/2026-07-07--langfuse--trace-query-cli/run-mock-query.sh
+```
+
+Pass requires exit `0`, a captured `GET /api/public/v2/observations?...`
+request, redacted evidence that Basic auth matched the synthetic credentials,
+and a parsed JSON response in the command output.

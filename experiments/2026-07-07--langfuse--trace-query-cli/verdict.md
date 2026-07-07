@@ -10,6 +10,10 @@ id, and queries a bounded observations window. It also has an explicit
 expose the v2 observations endpoint. The missing-config run confirms the
 command fails before network access without leaking secrets.
 
+The mock-query runner additionally proves the actual CLI network path, not just
+URL construction: the command sends a GET to a receiver, uses Basic auth derived
+from env vars, and parses JSON response data.
+
 Next proof must be against a real backend: run the OTLP smoke, wait for
 LangFuse processing, then query the exported run with `itmux langfuse-trace`
 and verify returned observation rows.

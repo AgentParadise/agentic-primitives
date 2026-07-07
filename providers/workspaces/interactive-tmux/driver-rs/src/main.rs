@@ -1034,16 +1034,16 @@ fn handle_langfuse_trace(
     let base_url = base_url
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .or_else(|| std::env::var("LANGFUSE_BASE_URL").ok())
+        .or_else(|| non_empty_env("LANGFUSE_BASE_URL"))
         .unwrap_or_else(|| {
             missing.push("LANGFUSE_BASE_URL".to_string());
             String::new()
         });
-    let public_key = std::env::var(&public_key_env).unwrap_or_else(|_| {
+    let public_key = non_empty_env(&public_key_env).unwrap_or_else(|| {
         missing.push(public_key_env.clone());
         String::new()
     });
-    let secret_key = std::env::var(&secret_key_env).unwrap_or_else(|_| {
+    let secret_key = non_empty_env(&secret_key_env).unwrap_or_else(|| {
         missing.push(secret_key_env.clone());
         String::new()
     });
@@ -1153,6 +1153,13 @@ fn handle_langfuse_trace(
             ExitCode::from(1)
         }
     }
+}
+
+fn non_empty_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn build_langfuse_observations_v2_url(
@@ -1458,5 +1465,21 @@ mod cli_tests {
             url,
             "https://langfuse.example.com/api/public/traces/trace%20id%2Fwith%20spaces"
         );
+    }
+
+    #[test]
+    fn non_empty_env_rejects_blank_values() {
+        std::env::set_var("ITMUX_TEST_BLANK_ENV", "  ");
+        std::env::set_var("ITMUX_TEST_VALUE_ENV", " value ");
+
+        assert_eq!(non_empty_env("ITMUX_TEST_BLANK_ENV"), None);
+        assert_eq!(
+            non_empty_env("ITMUX_TEST_VALUE_ENV").as_deref(),
+            Some("value")
+        );
+        assert_eq!(non_empty_env("ITMUX_TEST_MISSING_ENV"), None);
+
+        std::env::remove_var("ITMUX_TEST_BLANK_ENV");
+        std::env::remove_var("ITMUX_TEST_VALUE_ENV");
     }
 }

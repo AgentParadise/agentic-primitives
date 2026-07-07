@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "request": {
+    "api": "observations_v2",
+    "endpoint": "http://127.0.0.1:54470/api/public/v2/observations?traceId=abc123&fromStartTime=2026-07-07T20%3A00%3A00Z&toStartTime=2026-07-07T21%3A00%3A00Z&fields=core%2Cbasic%2Cusage%2Ctrace_context&limit=25",
+    "trace_id": "abc123",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 25,
+    "from_start_time": "2026-07-07T20:00:00Z",
+    "to_start_time": "2026-07-07T21:00:00Z"
+  },
+  "response": {
+    "data": [
+      {
+        "id": "obs-1",
+        "traceId": "abc123",
+        "type": "SPAN",
+        "name": "agentic_primitives.run"
+      }
+    ],
+    "meta": {
+      "totalItems": 1
+    }
+  }
+}

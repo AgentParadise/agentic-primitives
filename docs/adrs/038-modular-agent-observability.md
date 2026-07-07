@@ -370,8 +370,9 @@ Current status for `okrs-51p.9`:
 7. First agent-facing trace query utility is implemented as
    `itmux langfuse-trace`. It can derive the deterministic trace id from an
    `itmux` run id, queries bounded LangFuse observation rows, supports a
-   legacy trace endpoint for self-host compatibility, and fails safely with
-   redacted missing-config JSON.
+   legacy trace endpoint for self-host compatibility, fails safely with
+   redacted missing-config JSON, and is mock-proven through the actual CLI
+   GET/auth/JSON response path.
 
 Remaining gate for `okrs-51p.9`:
 

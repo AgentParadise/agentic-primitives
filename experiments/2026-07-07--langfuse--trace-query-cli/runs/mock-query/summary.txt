@@ -1,0 +1,3 @@
+exit_code=0
+captured_request=runs/mock-query/captured-request.redacted.json
+query_response=runs/mock-query/query-response.json
