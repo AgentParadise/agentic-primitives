@@ -205,8 +205,15 @@ class ItmuxRunError(RuntimeError):
 # Process-group cleanup (R10).
 # ---------------------------------------------------------------------------
 
+# Grace for crash / timeout / cancel teardown: the Rust leader may be mid-run
+# and needs time after SIGTERM to tear its container down before we SIGKILL.
 _DEFAULT_KILL_GRACE_S = 5.0
-_GROUP_POLL_INTERVAL_S = 0.02
+# Grace once a terminal result has already been delivered: the leader has
+# finished its work (the orchestrator tears the container down BEFORE emitting
+# the result) and is exiting, so only a short SIGTERM->SIGKILL window is needed.
+_RESULT_TEARDOWN_GRACE_S = 0.5
+# Chunk the grace sleep so we do not oversleep a short grace.
+_GRACE_SLEEP_CHUNK_S = 0.05
 
 
 def _killpg_quiet(pgid: int, sig: int) -> bool:
@@ -222,15 +229,6 @@ def _killpg_quiet(pgid: int, sig: int) -> bool:
         return False
 
 
-def _group_alive(pgid: int) -> bool:
-    """True while ANY process (including an unreaped zombie) remains in the group.
-
-    Uses signal ``0`` as an existence probe - it delivers nothing but raises
-    ``ProcessLookupError`` once the group is empty.
-    """
-    return _killpg_quiet(pgid, 0)
-
-
 def _terminate_process_group(
     proc: subprocess.Popen[str],
     *,
@@ -242,26 +240,32 @@ def _terminate_process_group(
     process group whose pgid equals the leader pid. Signalling the group reaches
     the Rust process AND any ``docker exec`` grandchildren it spawned.
 
-    Ordering (codex must-fix 1+2):
+    Ordering (codex must-fix 1+2, refined):
 
     1. ``SIGTERM`` the whole group FIRST so the Rust leader can run its own
        graceful container teardown; a premature ``SIGKILL`` would orphan the
        docker CONTAINER (the orchestrator tears it down on graceful signals,
        see #248).
-    2. Wait a bounded grace period, polling for the *group* to drain - not
-       ``proc.wait()`` on the leader alone, which would both block escalation
-       and miss a grandchild that outlives the leader.
-    3. ``SIGKILL`` the group to reap any survivor (the leader may already be
-       gone while a docker-exec grandchild lingers).
+    2. Wait a bounded grace period WITHOUT reaping the leader.
+    3. ``SIGKILL`` the whole group to reap any survivor (a docker-exec
+       grandchild can outlive the leader).
     4. ONLY THEN reap the leader zombie.
 
-    PID-reuse safety: we never signal a group we have already reaped. Once the
-    leader is reaped its returncode is set, so an early-return guard prevents a
-    late watchdog from ``killpg``-ing a possibly-recycled pgid; and step 3 only
-    fires while the group is still non-empty (which reserves the pgid).
+    PID-reuse safety - the load-bearing invariant: the leader must stay
+    UNREAPED (alive or zombie) until AFTER the final group signal. An unreaped
+    leader keeps its pid (== pgid) reserved by the kernel, so every ``killpg``
+    below provably targets OUR group and can never hit a recycled pgid. This is
+    why the grace phase must NOT call ``proc.poll()`` / ``proc.wait()`` /
+    ``os.waitpid`` - reaping the zombie frees the pid and the pgid could be
+    recycled by a concurrent fork before step 3. ``killpg(pgid, 0)`` also cannot
+    detect "descendants gone" while the unreaped zombie still occupies the
+    group, so there is no correct non-reaping early exit: we simply sleep the
+    (short) grace. Teardown latency is an acceptable trade for the guarantee.
+    The early ``returncode`` guard covers a second teardown pass: if the leader
+    was already reaped, never signal its possibly-recycled pgid again.
     """
-    # Guard: if the leader has already been reaped, its pgid may have been
-    # recycled by the kernel - never signal it again.
+    # Guard: if the leader has already been reaped, its pid (== pgid) may have
+    # been recycled by the kernel - never signal it again.
     if proc.returncode is not None:
         return
 
@@ -271,34 +275,24 @@ def _terminate_process_group(
     # 1. Graceful group termination first.
     _killpg_quiet(pgid, signal.SIGTERM)
 
-    # 2. Bounded grace: let the leader exit gracefully and the group drain.
+    # 2. Bounded grace, WITHOUT reaping (see the PID-reuse invariant above).
     deadline = time.monotonic() + grace_s
-    escalate = True
-    while time.monotonic() < deadline:
-        # poll() reaps the leader zombie the instant it exits.
-        proc.poll()
-        if proc.returncode is not None:
-            # Leader gone. If no descendants remain the group has fully drained
-            # and its pgid may now be recycled - stop without signalling again.
-            if not _group_alive(pgid):
-                escalate = False
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             break
-        time.sleep(_GROUP_POLL_INTERVAL_S)
+        time.sleep(min(_GRACE_SLEEP_CHUNK_S, remaining))
 
-    if not escalate:
-        return
-
-    # 3. Force-kill any survivor (grace expired with the leader alive, or the
-    #    leader exited but a grandchild is still holding the group open). The
-    #    group is still non-empty here, so its pgid is still reserved to us.
+    # 3. Force-kill the whole group. Provably safe: the still-unreaped leader
+    #    has kept the pgid reserved to us. Any surviving grandchild dies here.
     _killpg_quiet(pgid, signal.SIGKILL)
 
-    # 4. Reap the leader zombie if we have not already.
-    if proc.returncode is None:
-        try:
-            proc.wait(timeout=grace_s)
-        except subprocess.TimeoutExpired:
-            pass
+    # 4. Reap the leader LAST. Grandchildren SIGKILL'd above are orphaned to
+    #    init, which reaps them.
+    try:
+        proc.wait(timeout=grace_s)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -363,13 +357,33 @@ def run_agent(
     stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
     stderr_thread.start()
 
+    # Teardown must run at most once. The watchdog (on timeout) and the finally
+    # block are two independent teardown paths on different threads; if both ran
+    # a full SIGTERM->grace->SIGKILL->reap, one could reap the leader while the
+    # other is still sleeping its grace, freeing the pgid before that thread's
+    # SIGKILL (the exact PID-reuse race we must avoid). The lock + once-flag
+    # serialize them: the first caller does the whole teardown holding the lock;
+    # the second blocks, then sees it is done and returns.
+    teardown_lock = threading.Lock()
+    torn_down = False
+
+    def _teardown(grace_s: float) -> None:
+        nonlocal torn_down
+        with teardown_lock:
+            if torn_down:
+                return
+            _terminate_process_group(proc, grace_s=grace_s)
+            torn_down = True
+
     timed_out = threading.Event()
     watchdog: threading.Timer | None = None
     if timeout is not None:
 
         def _on_timeout() -> None:
             timed_out.set()
-            _terminate_process_group(proc)
+            # Timeout/cancel path: the leader may be mid-run - give it the full
+            # grace to tear its container down after SIGTERM.
+            _teardown(_DEFAULT_KILL_GRACE_S)
 
         watchdog = threading.Timer(timeout, _on_timeout)
         watchdog.daemon = True
@@ -395,11 +409,12 @@ def run_agent(
     finally:
         if watchdog is not None:
             watchdog.cancel()
-        # Kill-before-reap (codex must-fix 1+2): tear the whole process group
-        # down BEFORE reaping the leader, so a surviving docker-exec grandchild
-        # is killed even when the Rust leader has already exited. Runs on every
-        # exit path - normal return, timeout, parse error, KeyboardInterrupt.
-        _terminate_process_group(proc)
+        # Kill-before-reap: tear the whole process group down BEFORE reaping the
+        # leader (see `_terminate_process_group`). Runs on every exit path -
+        # normal return, timeout, parse error, KeyboardInterrupt. A delivered
+        # result means the leader has finished and is exiting, so a short grace
+        # suffices; otherwise use the full crash/cancel grace.
+        _teardown(_RESULT_TEARDOWN_GRACE_S if result is not None else _DEFAULT_KILL_GRACE_S)
         # Join the stderr drain only AFTER the group is dead - otherwise a
         # surviving grandchild holding the stderr pipe could block the join.
         stderr_thread.join(timeout=_DEFAULT_KILL_GRACE_S)

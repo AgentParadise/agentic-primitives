@@ -17,8 +17,10 @@ from pathlib import Path
 
 import pytest
 
+from agentic_isolation import run_client
 from agentic_isolation.run_client import (
     _EVENT_ADAPTER,
+    AgentRunEvent,
     AgentRunResult,
     ItmuxRunError,
     ResultEvent,
@@ -30,6 +32,20 @@ from agentic_isolation.run_client import (
     parse_event,
     run_agent,
 )
+
+
+@pytest.fixture(autouse=True)
+def _fast_teardown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shrink the teardown grace so no-result / timeout tests stay fast.
+
+    Production defaults (5s crash grace, 0.5s post-result grace) are correct but
+    slow to sit through in every subprocess test. `run_agent` reads these as
+    module globals at call time, so patching them here takes effect without
+    changing behavior under test.
+    """
+    monkeypatch.setattr(run_client, "_DEFAULT_KILL_GRACE_S", 0.3)
+    monkeypatch.setattr(run_client, "_RESULT_TEARDOWN_GRACE_S", 0.1)
+
 
 # ---------------------------------------------------------------------------
 # Canned event stream mirroring the Rust contract wire shape.
@@ -436,20 +452,38 @@ def test_run_agent_reaps_grandchild_when_leader_exits_first(tmp_path: Path) -> N
 
 
 def test_run_agent_result_wins_over_simultaneous_timeout(tmp_path: Path) -> None:
-    # A run that delivers a valid result must return it even if the wall-clock
-    # timeout fires in the same instant (Claude nit 1). Emit the result, then
-    # sleep past the tiny timeout so the watchdog fires while we hold a result.
+    # A run that delivers a valid result must return it even when the wall-clock
+    # timeout has fired (Claude nit 1). Deterministic: an on_event callback that
+    # blocks on the ResultEvent lets the watchdog fire (setting timed_out and
+    # tearing the group down) WHILE run_agent already holds the parsed result -
+    # so both `timed_out.is_set()` and a non-None result are true at decision
+    # time, and the result must win.
     body = (
-        "import sys, time\n"
+        "import sys\n"
         'print(\'{"run_id": "r", "seq": 0, "ts": "t", "type": "result", '
         '"result": {"result": {"success": true, "summary": "ok"}, '
         '"session_log": "x"}}\')\n'
         "sys.stdout.flush()\n"
-        "time.sleep(30)\n"  # outlive the timeout; result was already delivered
+        "sys.exit(0)\n"
     )
     fake = _write_fake_itmux(tmp_path, body)
 
-    result = run_agent(Path("/recipes/demo"), "task", itmux_bin=str(fake), timeout=0.3)
+    def block_on_result(event: AgentRunEvent) -> None:
+        if isinstance(event, ResultEvent):
+            # Block well past the timeout so the watchdog fires (and tears the
+            # group down) while run_agent already holds the parsed result.
+            time.sleep(1.0)
+
+    # timeout comfortably exceeds the fake's process startup so the result line
+    # is always read first; the long on_event block is what makes the watchdog
+    # fire afterwards, deterministically.
+    result = run_agent(
+        Path("/recipes/demo"),
+        "task",
+        itmux_bin=str(fake),
+        on_event=block_on_result,
+        timeout=0.5,
+    )
     assert result.result.summary == "ok"
 
 
