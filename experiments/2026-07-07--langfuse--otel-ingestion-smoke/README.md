@@ -65,6 +65,14 @@ The OTLP Authorization header should be Basic auth over
 - LangFuse UI screenshot or API response proving the trace exists
 - field preservation notes for the required attributes
 
+## Repeatable Runner
+
+Use `./run-smoke.sh` from this experiment directory to capture redacted
+preflight state and, when `LANGFUSE_*` is configured, exercise the current
+`itmux codex-exec --observability-langfuse` exporter path with a deterministic
+fake Codex fixture. The script exits `78` when required LangFuse config is
+missing and does not print secret values.
+
 ## Out of Scope
 
 - Claude or Codex live-session capture.

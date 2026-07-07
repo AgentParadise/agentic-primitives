@@ -1,0 +1,1 @@
+not attempted: missing required LangFuse configuration: LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_TRACING_ENVIRONMENT

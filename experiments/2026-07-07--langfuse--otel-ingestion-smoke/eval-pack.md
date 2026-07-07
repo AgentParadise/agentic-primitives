@@ -34,20 +34,34 @@ Capture:
 
 ## Probe C: Current `itmux` Exporter Path
 
-Run the current reusable exporter path against the same backend:
+Run the current reusable exporter path against the same backend with the
+repeatable smoke runner:
+
+```bash
+experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh
+```
+
+The runner records redacted env/keychain state and exits `78` without attempting
+export when required `LANGFUSE_*` config is missing. When config is present, it
+runs the current exporter path with a deterministic fake Codex fixture:
 
 ```bash
 itmux codex-exec \
+  --codex-bin experiments/2026-07-07--langfuse--cli-runtime-failfast/fixtures/fake-codex-success.sh \
   --prompt "Reply exactly: LANGFUSE_SMOKE_OK" \
-  --observability-file /tmp/agentic-langfuse-smoke/events.jsonl \
+  --observability-file experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/real-backend-smoke/events.jsonl \
   --observability-langfuse \
-  --result-file /tmp/agentic-langfuse-smoke/result.json
+  --result-file experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/real-backend-smoke/result.json
 ```
 
 Capture:
 
-- `/tmp/agentic-langfuse-smoke/events.jsonl`
-- `/tmp/agentic-langfuse-smoke/result.json`
+- `runs/real-backend-smoke/otel-exporter-env.redacted.txt`
+- `runs/real-backend-smoke/keychain-check.redacted.txt`
+- `runs/real-backend-smoke/stdout.jsonl`
+- `runs/real-backend-smoke/events.jsonl`
+- `runs/real-backend-smoke/result.json`
+- `runs/real-backend-smoke/summary.txt`
 - the `AgentRunResult.observability.exporters[]` entry for `langfuse_otlp`
 - LangFuse UI screenshot or API response proving the same trace is discoverable
 

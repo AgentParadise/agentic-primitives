@@ -65,6 +65,7 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | Trace links can be reported when project id is known | Mock-proven | `experiments/2026-07-07--langfuse--trace-link-reporting/results.md` | Real URL resolution is still pending real backend ingestion. |
 | CLI setup exists for `itmux run` and `itmux codex-exec` | Proven locally | `experiments/2026-07-07--langfuse--cli-setup-path/results.md`; driver README | Public/secret keys remain env refs. |
 | Mixed local+LangFuse export is safe during setup | Proven | `experiments/2026-07-07--observability--mixed-exporter-isolation/results.md` | Local file JSONL remains complete when LangFuse is absent. |
+| Repeatable real-backend smoke runner exists | Proven locally | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `runs/real-backend-smoke/summary.txt` | Runner exits `78` without attempting export when required config is missing and records only redacted env/keychain state. |
 | Real LangFuse backend accepts traces | Missing | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/keychain-check.redacted.txt` | Current environment has no `LANGFUSE_*` env and no documented Keychain entries. |
 | Trace is discoverable/queryable in LangFuse | Missing | Same ingestion smoke | This is the primary `.9` close gate. |
 | Trace link resolves in real LangFuse UI | Missing | Same ingestion smoke | Requires optional `LANGFUSE_PROJECT_ID` or equivalent project metadata. |
@@ -74,8 +75,9 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 
 1. Load a real LangFuse configuration using
    `docs/guides/langfuse-observability-setup.md`.
-2. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against
-   LangFuse Cloud or the planned Mac Mini self-host.
+2. Rerun
+   `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`
+   against LangFuse Cloud or the planned Mac Mini self-host.
 3. Run the current `itmux codex-exec --observability-langfuse` smoke against
    that backend.
 4. Capture redacted evidence that:
