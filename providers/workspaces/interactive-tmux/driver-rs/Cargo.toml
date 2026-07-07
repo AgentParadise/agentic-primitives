@@ -30,6 +30,14 @@ regex = "1"
 schemars = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Signal handling for `itmux run` two-tier cancellation. Required because the
+# crate forbids `unsafe` (`unsafe_code = "forbid"`) and std has no safe API to
+# install a SIGINT/SIGTERM handler - a raw `sigaction` needs `unsafe`.
+# signal-hook encapsulates that FFI and exposes a safe, async-signal-safe
+# self-pipe `Signals` iterator we drive from a normal watcher thread. Minimal,
+# widely-used, unix-only (matching this docker/tmux host-side driver).
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3"
 
 [profile.release]
 lto = "thin"

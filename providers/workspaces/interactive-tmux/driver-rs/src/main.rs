@@ -16,6 +16,8 @@ use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
 use itmux::run::contract::{AgentRunResult, AgentRunSpec};
 use itmux::run::orchestrator::CancelToken;
+#[cfg(unix)]
+use itmux::run::orchestrator::{CancelEscalator, SignalKind};
 use itmux::run::workspace_executor::{generate_run_id, run as run_orchestrated};
 use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
@@ -434,6 +436,43 @@ struct ResultLine<'a> {
     result: &'a AgentRunResult,
 }
 
+/// Install a SIGINT/SIGTERM watcher that folds signals into `cancel` via the
+/// two-tier [`CancelEscalator`]. Returns the signal handle + the watcher thread
+/// so the caller can stop and join it after the run.
+///
+/// Signal safety: `signal_hook::iterator::Signals` registers an
+/// async-signal-safe handler (a self-pipe write) inside the crate; the closure
+/// below runs on an ORDINARY thread draining that pipe, so it may safely call
+/// into the `CancelToken`. No `unsafe` and no work in handler context.
+#[cfg(unix)]
+fn install_signal_watcher(
+    cancel: CancelToken,
+) -> Option<(signal_hook::iterator::Handle, std::thread::JoinHandle<()>)> {
+    use signal_hook::consts::{SIGINT, SIGTERM};
+    use signal_hook::iterator::Signals;
+
+    let mut signals = match Signals::new([SIGINT, SIGTERM]) {
+        Ok(signals) => signals,
+        Err(err) => {
+            eprintln!("[itmux run] could not install signal handler (run is uncancellable): {err}");
+            return None;
+        }
+    };
+    let handle = signals.handle();
+    let join = std::thread::spawn(move || {
+        let mut escalator = CancelEscalator::new();
+        for signal in signals.forever() {
+            let kind = if signal == SIGTERM {
+                SignalKind::Terminate
+            } else {
+                SignalKind::Interrupt
+            };
+            escalator.on_signal(kind, &cancel);
+        }
+    });
+    Some((handle, join))
+}
+
 fn handle_run(
     recipe: PathBuf,
     task: String,
@@ -450,8 +489,15 @@ fn handle_run(
         limits: None,
     };
     let run_id = generate_run_id();
-    // Task 6 wires OS signals to this token; here it simply stays uncancelled.
     let cancel = CancelToken::new();
+
+    // Wire OS signals to the two-tier cancellation (Task 6): first Ctrl-C ->
+    // graceful, second Ctrl-C or SIGTERM -> hard. On any signal path the
+    // orchestrator's single terminalization still tears the workspace down
+    // exactly once, so there is no orphaned container even on Ctrl-C. The
+    // watcher runs on a normal thread (unix only); non-unix builds skip it.
+    #[cfg(unix)]
+    let signal_watcher = install_signal_watcher(cancel.clone());
 
     // Emit each event as one JSON line on stdout (R6). stderr stays human-only.
     let mut emit = |event: &_| {
@@ -463,7 +509,16 @@ fn handle_run(
         }
     };
 
-    let result = match run_orchestrated(&spec, &image, &run_id, &cancel, &mut emit) {
+    let run_result = run_orchestrated(&spec, &image, &run_id, &cancel, &mut emit);
+
+    // Stop the signal watcher before handling the result (best-effort).
+    #[cfg(unix)]
+    if let Some((handle, join)) = signal_watcher {
+        handle.close();
+        let _ = join.join();
+    }
+
+    let result = match run_result {
         Ok(result) => result,
         Err(err) => {
             // Precondition failure (e.g. the recipe failed to load) before any

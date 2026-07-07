@@ -14,7 +14,7 @@ use std::time::Duration;
 use itmux::adapter::Agent;
 use itmux::result::AwaitResult;
 use itmux::run::contract::{AgentRunEvent, AgentRunEventPayload, AgentRunOutcome};
-use itmux::run::orchestrator::{run_core, CancelToken, RunExecutor};
+use itmux::run::orchestrator::{run_core, CancelEscalator, CancelToken, RunExecutor, SignalKind};
 use itmux::run::recipe_loader::RecipeExecutionPlan;
 
 // --- fake executor ---------------------------------------------------------
@@ -55,6 +55,10 @@ struct FakeExecutor {
     teardown_fails: bool,
     /// Pane text `capture` returns.
     pane: String,
+    /// Deliver N interrupt "signals" through a real `CancelEscalator` when this
+    /// phase runs (simulates Ctrl-C: 1 = graceful, 2 = escalate to hard).
+    escalate_at: Option<(FakePhase, u32)>,
+    escalator: RefCell<CancelEscalator>,
 }
 
 impl FakeExecutor {
@@ -67,6 +71,8 @@ impl FakeExecutor {
             await_timed_out: false,
             teardown_fails: false,
             pane: "session pane".to_string(),
+            escalate_at: None,
+            escalator: RefCell::new(CancelEscalator::new()),
         }
     }
 
@@ -76,6 +82,15 @@ impl FakeExecutor {
                 match kind {
                     CancelKind::Graceful => self.cancel.cancel_graceful(),
                     CancelKind::Hard => self.cancel.cancel_hard(),
+                }
+            }
+        }
+        if let Some((at, count)) = self.escalate_at {
+            if at == phase {
+                for _ in 0..count {
+                    self.escalator
+                        .borrow_mut()
+                        .on_signal(SignalKind::Interrupt, &self.cancel);
                 }
             }
         }
@@ -392,6 +407,23 @@ fn hard_cancel_while_launch_in_flight_bails_and_tears_down_no_orphan() {
     assert!(
         run.result.result.summary.contains("hard"),
         "summary: {}",
+        run.result.result.summary
+    );
+}
+
+#[test]
+fn graceful_then_hard_signals_terminalize_once_with_hard_reason() {
+    // Two Ctrl-C during await, driven through the real CancelEscalator: the
+    // first requests graceful, the second escalates to hard. Precedence means
+    // the terminal reason is hard, terminalized exactly once, torn down once.
+    let run = drive(|e| e.escalate_at = Some((FakePhase::Await, 2)));
+
+    assert_eq!(run.record.teardowns, 1, "torn down exactly once, no orphan");
+    assert_eq!(session_end_count(&run.events), 1, "exactly one session_end");
+    assert!(!run.result.result.success);
+    assert!(
+        run.result.result.summary.contains("hard"),
+        "escalated to hard reason: {}",
         run.result.result.summary
     );
 }

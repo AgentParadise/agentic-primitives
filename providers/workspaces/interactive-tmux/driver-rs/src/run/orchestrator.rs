@@ -133,6 +133,52 @@ impl CancelToken {
     }
 }
 
+/// A cancellation-relevant OS signal, abstracted from the platform so the
+/// escalation logic is testable without raising real signals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalKind {
+    /// Interactive interrupt (SIGINT / Ctrl-C).
+    Interrupt,
+    /// Termination request (SIGTERM).
+    Terminate,
+}
+
+/// Two-tier cancellation escalation (Task 6): the FIRST interrupt requests a
+/// GRACEFUL cancel (let the run collect a partial result + emit a terminal
+/// `session_end`); a SECOND interrupt, or any terminate, escalates to HARD
+/// (immediate teardown). Pure and unit-testable without OS signals.
+///
+/// Async-signal-safety note: this type does real work (it calls into the
+/// `CancelToken`), so it MUST run on a normal thread, NOT inside a signal
+/// handler. The CLI drives it from a watcher thread fed by a self-pipe (see
+/// `main.rs`), so the async-signal-safe part (writing the pipe) stays in the
+/// signal-handling crate and this logic runs in ordinary thread context.
+#[derive(Debug, Default)]
+pub struct CancelEscalator {
+    interrupts: u32,
+}
+
+impl CancelEscalator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Fold one observed signal into `token`, escalating per the two-tier rule.
+    pub fn on_signal(&mut self, signal: SignalKind, token: &CancelToken) {
+        match signal {
+            SignalKind::Terminate => token.cancel_hard(),
+            SignalKind::Interrupt => {
+                self.interrupts = self.interrupts.saturating_add(1);
+                if self.interrupts >= 2 {
+                    token.cancel_hard();
+                } else {
+                    token.cancel_graceful();
+                }
+            }
+        }
+    }
+}
+
 /// The single terminal reason chosen at the one terminalization point.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalReason {
