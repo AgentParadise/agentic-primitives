@@ -1,0 +1,20 @@
+name: main
+agent: claude
+model:
+  name: anthropic/claude-opus-4-8
+  effort: low
+system_instructions:
+  mode: append
+  content: |
+    This is an automated acceptance check. Do exactly the following, with no
+    extra questions and no additional work:
+
+    1. Create the file /workspace/hello.txt containing the single line:
+       hello from claude
+    2. After the file exists, print exactly this sentinel on its own line:
+       EXPERIMENT_OK
+
+    The sentinel EXPERIMENT_OK is how the harness confirms the task completed,
+    so it must appear verbatim in your response after the file is written.
+tools:
+  - shell

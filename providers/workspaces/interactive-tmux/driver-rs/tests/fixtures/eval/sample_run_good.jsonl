@@ -1,0 +1,12 @@
+{"run_id":"run-4a7d7860","seq":0,"ts":"2026-07-07T08:22:18Z","type":"tool_start","tool_name":"provision","tool_input":null}
+{"run_id":"run-4a7d7860","seq":1,"ts":"2026-07-07T08:22:20Z","type":"tool_end","tool_name":"provision","success":true,"output_summary":null}
+{"run_id":"run-4a7d7860","seq":2,"ts":"2026-07-07T08:22:20Z","type":"tool_start","tool_name":"launch","tool_input":null}
+{"run_id":"run-4a7d7860","seq":3,"ts":"2026-07-07T08:22:20Z","type":"tool_end","tool_name":"launch","success":true,"output_summary":null}
+{"run_id":"run-4a7d7860","seq":4,"ts":"2026-07-07T08:22:20Z","type":"tool_start","tool_name":"submit","tool_input":null}
+{"run_id":"run-4a7d7860","seq":5,"ts":"2026-07-07T08:22:20Z","type":"tool_end","tool_name":"submit","success":true,"output_summary":null}
+{"run_id":"run-4a7d7860","seq":6,"ts":"2026-07-07T08:22:20Z","type":"tool_start","tool_name":"await","tool_input":null}
+{"run_id":"run-4a7d7860","seq":7,"ts":"2026-07-07T08:22:25Z","type":"tool_end","tool_name":"await","success":true,"output_summary":null}
+{"run_id":"run-4a7d7860","seq":8,"ts":"2026-07-07T08:22:25Z","type":"tool_start","tool_name":"capture","tool_input":null}
+{"run_id":"run-4a7d7860","seq":9,"ts":"2026-07-07T08:22:25Z","type":"tool_end","tool_name":"capture","success":true,"output_summary":null}
+{"run_id":"run-4a7d7860","seq":10,"ts":"2026-07-07T08:22:25Z","type":"session_end","outcome":{"success":true,"summary":"agent settled to a ready state with no error markers"}}
+{"run_id":"run-4a7d7860","seq":11,"ts":"2026-07-07T08:22:25Z","type":"result","result":{"result":{"success":true,"summary":"agent settled to a ready state with no error markers"},"output_artifacts":[],"session_log":"agent@host:/workspace$ claude\n> hello\nhello from claude\nEXPERIMENT_OK\n","observability":null}}
