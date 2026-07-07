@@ -4,6 +4,8 @@ Status: proposed
 Date: 2026-07-07
 OKRs: `okrs-51p.6` blocks `okrs-51p.9`
 ADR: `docs/adrs/038-modular-agent-observability.md`
+Completion audit:
+`docs/plans/2026-07-07-observability-primitive-completion-audit.md`
 
 ## Empirical Inputs
 

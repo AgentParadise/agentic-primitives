@@ -18,6 +18,8 @@ tags: [architecture, observability, workspaces, langfuse, otel, plugins]
 - Author(s): Neural
 - Related: ADR-022, ADR-027, ADR-033, ADR-035, ADR-037
 - OKRs: `okrs-51p.6` blocks `okrs-51p.9`
+- Completion audit:
+  `docs/plans/2026-07-07-observability-primitive-completion-audit.md`
 
 ## Context
 
