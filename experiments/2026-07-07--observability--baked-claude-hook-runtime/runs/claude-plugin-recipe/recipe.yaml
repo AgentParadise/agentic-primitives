@@ -1,0 +1,3 @@
+name: baked-claude-hook-runtime
+version: 0.1.0
+default_agent: main
