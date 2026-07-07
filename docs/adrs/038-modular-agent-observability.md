@@ -224,6 +224,9 @@ Current branch `feat/observability-exporter-primitive` starts this decision:
   defines the first observer boundary and a `codex_exec_json` parser that maps
   `codex exec --json` lifecycle and `turn.completed.usage` events into
   normalized payloads.
+- `itmux codex-exec` is the first runnable observer path: it runs
+  `codex exec --json`, envelopes observed payloads as `AgentRunEvent`s, and
+  feeds them through the same file exporter/final result reporting layer.
 - `providers/workspaces/interactive-tmux/driver-rs/src/run/observability.rs`
   implements file fanout.
 - `workspace_executor.rs` fans out `AgentRunEvent`s while preserving stdout

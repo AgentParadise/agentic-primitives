@@ -4,9 +4,9 @@
 //! can mirror `smoke.sh` line-for-line.
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
 
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -14,7 +14,12 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
-use itmux::run::contract::{AgentRunEvent, AgentRunLimits, AgentRunSpec, ObservabilityExporter};
+use itmux::run::contract::{
+    AgentRunEvent, AgentRunEventPayload, AgentRunLimits, AgentRunOutcome, AgentRunResult,
+    AgentRunSpec, ObservabilityExporter,
+};
+use itmux::run::harness_observer::{CodexExecJsonObserver, HarnessObserver};
+use itmux::run::observability::ObservabilityFanout;
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
@@ -132,21 +137,45 @@ enum Cmd {
         /// (never a downstream `Duration::from_secs_f64` panic).
         #[arg(long, value_parser = parse_positive_timeout)]
         timeout: Option<f64>,
-        /// Path to a `.env` file supplying run credentials (highest precedence,
-        /// above process env). Recognized keys: `CLAUDE_CODE_OAUTH_TOKEN`
-        /// (preferred) / `ANTHROPIC_API_KEY` for claude; `CODEX_AUTH_FILE`
-        /// (preferred) / `OPENAI_API_KEY` for codex. Only the PATH is ever on
-        /// argv - the secret values travel via stdin + an in-container 0600 file.
+        /// Path to a `.env` file supplying run credentials. Secret values are
+        /// loaded from the file and never appear in command arguments.
         #[arg(long)]
         env_file: Option<PathBuf>,
-        /// Re-enable the legacy host `$HOME/.<agent>` credential fallback when no
-        /// `.env`/process-env credentials are found. Off by default (fail fast).
-        /// The host `.credentials.json` is often stale (-> 401); prefer
-        /// `--env-file` / `CLAUDE_CODE_OAUTH_TOKEN`.
+        /// Permit the legacy host credential fallback when no fresh secret is
+        /// available. Disabled by default to avoid stale credential reuse.
         #[arg(long, default_value_t = false)]
         allow_host_auth_fallback: bool,
         /// Append normalized run events to this JSONL file as an observability
         /// artifact. Relative paths resolve in the driver process.
+        #[arg(long)]
+        observability_file: Option<PathBuf>,
+    },
+    /// Run `codex exec --json`, normalize its event stream, and fan it out to
+    /// observability exporters. This is the first runnable harness-observer
+    /// path for Codex token/usage events.
+    #[command(name = "codex-exec")]
+    CodexExec {
+        /// Prompt handed to `codex exec`.
+        #[arg(long)]
+        prompt: String,
+        /// Codex binary to execute.
+        #[arg(long, default_value = "codex")]
+        codex_bin: String,
+        /// Optional model override passed as `--model`.
+        #[arg(long)]
+        model: Option<String>,
+        /// Sandbox policy passed to `codex exec`.
+        #[arg(long, default_value = "read-only")]
+        sandbox: String,
+        /// Emit normalized AgentRunEvent JSONL on stdout.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        json: bool,
+        /// Write the final `AgentRunResult` JSON to this file. If omitted and
+        /// `--json true`, the result is emitted as a final `type:"result"`
+        /// event on stdout.
+        #[arg(long)]
+        result_file: Option<PathBuf>,
+        /// Append normalized observer events to this JSONL file.
         #[arg(long)]
         observability_file: Option<PathBuf>,
     },
@@ -536,15 +565,8 @@ fn handle_run(
     allow_host_auth_fallback: bool,
     observability_file: Option<PathBuf>,
 ) -> ExitCode {
-    // Load run credentials from --env-file / process env (R1-R4). This is the
-    // fix for the stale-file 401: the run spec now carries fresh credentials
-    // instead of leaving `credentials` empty and falling back to the host
-    // `$HOME/.claude` file. Secret VALUES never reach argv here - `env_file` is
-    // a PATH; the values load into the spec and, later, an in-container 0600
-    // file. A load failure (unreadable/malformed) is fatal and human-only on
-    // stderr (never echoes a secret).
     let credentials = match itmux::run::secret_env::load_credentials(env_file.as_deref()) {
-        Ok(creds) => creds,
+        Ok(credentials) => credentials,
         Err(err) => {
             eprintln!("[itmux run] {err}");
             return ExitCode::from(2);
@@ -656,6 +678,207 @@ fn handle_run(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn handle_codex_exec(
+    prompt: String,
+    codex_bin: String,
+    model: Option<String>,
+    sandbox: String,
+    json: bool,
+    result_file: Option<PathBuf>,
+    observability_file: Option<PathBuf>,
+) -> ExitCode {
+    let exporters: Vec<_> = observability_file
+        .map(|path| ObservabilityExporter::File {
+            path,
+            label: Some("codex exec events".to_string()),
+        })
+        .into_iter()
+        .collect();
+    let mut fanout = ObservabilityFanout::new(&exporters);
+    let mut observer = CodexExecJsonObserver::new();
+    let run_id = generate_run_id();
+    let mut seq = 0u64;
+    let mut session_log = String::new();
+    let mut parse_error: Option<String> = None;
+
+    let mut emit_payload = |payload: AgentRunEventPayload, fanout: &mut ObservabilityFanout| {
+        let event = AgentRunEvent {
+            run_id: run_id.clone(),
+            seq,
+            ts: now_rfc3339(),
+            payload,
+        };
+        seq += 1;
+        fanout.emit(&event);
+        if json {
+            match serde_json::to_string(&event) {
+                Ok(line) => println!("{line}"),
+                Err(err) => eprintln!("[itmux codex-exec] failed to serialize event: {err}"),
+            }
+        }
+    };
+
+    let mut cmd = Command::new(&codex_bin);
+    cmd.arg("exec")
+        .arg("--json")
+        .arg("--sandbox")
+        .arg(&sandbox)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(model) = model {
+        cmd.arg("--model").arg(model);
+    }
+    cmd.arg(prompt);
+
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            eprintln!("[itmux codex-exec] failed to spawn {codex_bin}: {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let stderr = child.stderr.take();
+    let stderr_join = stderr.map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = stderr.read_to_string(&mut buf);
+            buf
+        })
+    });
+
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    session_log.push_str(&line);
+                    session_log.push('\n');
+                    match observer.observe_jsonl_line(&line) {
+                        Ok(events) => {
+                            for observed in events {
+                                emit_payload(observed.payload, &mut fanout);
+                            }
+                        }
+                        Err(err) => {
+                            let message = err.to_string();
+                            parse_error.get_or_insert_with(|| message.clone());
+                            emit_payload(
+                                AgentRunEventPayload::ToolEnd {
+                                    tool_name: "codex_exec.parse".to_string(),
+                                    success: false,
+                                    output_summary: Some(message),
+                                },
+                                &mut fanout,
+                            );
+                        }
+                    }
+                }
+                Err(err) => {
+                    let message = format!("failed reading codex stdout: {err}");
+                    parse_error.get_or_insert_with(|| message.clone());
+                    emit_payload(
+                        AgentRunEventPayload::ToolEnd {
+                            tool_name: "codex_exec.read".to_string(),
+                            success: false,
+                            output_summary: Some(message),
+                        },
+                        &mut fanout,
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
+    let status = match child.wait() {
+        Ok(status) => status,
+        Err(err) => {
+            eprintln!("[itmux codex-exec] failed waiting for codex process: {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let stderr = stderr_join
+        .and_then(|join| join.join().ok())
+        .unwrap_or_default();
+    if !stderr.is_empty() {
+        session_log.push_str("\n[stderr]\n");
+        session_log.push_str(&stderr);
+        let mut stderr_out = std::io::stderr().lock();
+        let _ = stderr_out.write_all(stderr.as_bytes());
+    }
+
+    let success = status.success() && parse_error.is_none();
+    let summary = if let Some(err) = parse_error {
+        format!("codex exec observer parse/read failure: {err}")
+    } else if success {
+        "codex exec completed successfully".to_string()
+    } else {
+        format!(
+            "codex exec exited with status {}",
+            status
+                .code()
+                .map_or_else(|| "signal".to_string(), |code| code.to_string())
+        )
+    };
+    let outcome = AgentRunOutcome { success, summary };
+    emit_payload(
+        AgentRunEventPayload::SessionEnd {
+            outcome: outcome.clone(),
+        },
+        &mut fanout,
+    );
+
+    let result = AgentRunResult {
+        result: outcome,
+        output_artifacts: Vec::new(),
+        session_log,
+        observability: fanout.finish(),
+    };
+
+    match result_file {
+        Some(path) => match serde_json::to_vec_pretty(&result) {
+            Ok(bytes) => {
+                if let Err(err) = std::fs::write(&path, bytes) {
+                    eprintln!(
+                        "[itmux codex-exec] failed to write result file {}: {err}",
+                        path.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("[itmux codex-exec] failed to serialize result: {err}");
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            if json {
+                let event = AgentRunEvent::result(&run_id, seq, now_rfc3339(), result);
+                match serde_json::to_string(&event) {
+                    Ok(line) => println!("{line}"),
+                    Err(err) => eprintln!("[itmux codex-exec] failed to serialize result: {err}"),
+                }
+            } else {
+                println!(
+                    "codex exec {}: success={}",
+                    run_id,
+                    if success { "true" } else { "false" }
+                );
+            }
+        }
+    }
+
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(3)
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.cmd {
@@ -709,6 +932,23 @@ fn main() -> ExitCode {
             timeout,
             env_file,
             allow_host_auth_fallback,
+            observability_file,
+        ),
+        Cmd::CodexExec {
+            prompt,
+            codex_bin,
+            model,
+            sandbox,
+            json,
+            result_file,
+            observability_file,
+        } => handle_codex_exec(
+            prompt,
+            codex_bin,
+            model,
+            sandbox,
+            json,
+            result_file,
             observability_file,
         ),
     }

@@ -77,6 +77,24 @@ inside Docker when the path is mounted into the executing environment. Backend
 exporters such as LangFuse should plug into this fanout layer rather than the
 orchestrator directly.
 
+## `itmux codex-exec` observer export
+
+`itmux codex-exec` runs `codex exec --json`, normalizes Codex's structured
+events into the shared `AgentRunEvent` stream, and uses the same observability
+file exporter:
+
+```bash
+itmux codex-exec \
+  --prompt "Reply exactly: OK" \
+  --observability-file /tmp/codex-exec-events.jsonl \
+  --result-file /tmp/codex-exec-result.json
+```
+
+This is intentionally separate from the interactive Codex TUI path. The
+empirical token/cost surface is `codex exec --json`: `turn.completed.usage`
+maps to `type:"token_usage"` with `input_tokens`, `cached_input_tokens`,
+`output_tokens`, and `reasoning_output_tokens`.
+
 ## Per-agent matrix (parity-encoded — callers should not need this)
 
 | Concern    | Claude                                                                | Codex                                                                       | Gemini                                                       |

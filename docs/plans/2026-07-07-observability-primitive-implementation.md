@@ -26,6 +26,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - First implementation slice landed a `harness_observer` module with
   `CodexExecJsonObserver`; it parses `codex exec --json` lifecycle/failure
   events and maps `turn.completed.usage` to `token_usage`.
+- Second implementation slice added the `itmux codex-exec` command, which runs
+  `codex exec --json`, envelopes observed payloads with run id/sequence/time,
+  and sends them through the same file fanout/report path.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
   present, and the current Rust exporter enum supports only `file`.
 
@@ -37,12 +40,13 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - `HarnessObserver` trait or equivalent module boundary.
    - observer output is normalized `AgentRunEvent`.
    - observer diagnostics go to stderr or exporter reports, never stdout.
-3. Implement `codex_exec_json` observer: **parser done, runtime wiring next**.
+3. Implement `codex_exec_json` observer: **done**.
    - parse `thread.started`, `turn.started`, `item.completed`,
      `turn.completed`, and `turn.failed`.
    - map `turn.completed.usage` to `AgentRunEventPayload::TokenUsage`.
    - preserve failure lifecycle for rejected model/account configurations.
-4. Wire `codex_exec_json` into a runnable execution path:
+4. Wire `codex_exec_json` into a runnable execution path: **implemented,
+   experiment pending**.
    - add a non-interactive Codex execution mode or adapter entry point.
    - attach run id, sequence, and timestamps to observed payloads.
    - feed resulting `AgentRunEvent`s through the existing exporter fanout.
