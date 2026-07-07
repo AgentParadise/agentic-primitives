@@ -14,6 +14,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring`
 - `experiments/2026-07-07--observability--claude-credential-health`
 - `experiments/2026-07-07--observability--claude-env-token-passthrough`
+- `experiments/2026-07-07--observability--claude-hook-fanout-after-auth`
 
 ## Current Facts
 
@@ -42,6 +43,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--claude-env-token-passthrough` passed:
   recipe-driven Claude in Docker exited 0, returned `CLAUDE_ENV_TOKEN_OK`, and
   preserved 11 stdout events / 11 exported events with exporter status `ok`.
+- `experiments/2026-07-07--observability--claude-hook-fanout-after-auth`
+  passed for auth and plugin launch, but no hook `event_type` JSONL appeared in
+  stdout, exporter, stderr, or session log. Current fanout is still driver
+  events only.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
   present, and the current Rust exporter enum supports only `file`.
 
@@ -65,8 +70,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - feed resulting `AgentRunEvent`s through the existing exporter fanout.
    - add an acceptance test using captured `codex exec --json` fixtures.
 5. Revalidate Claude hook fanout with credential health fixed:
-   - run the observability plugin through `ITMUX_CLAUDE_PLUGIN_DIRS` /
-     recipe plugin-dir path.
+   - **done for auth/plugin launch; no-go for hook visibility**.
+   - next, build a temporary or baked interactive-tmux image that includes
+     `plugins/observability` and `agentic_events`, then rerun.
    - verify hook output can be captured without contaminating `itmux run`
      stdout contract JSONL.
    - preserve the narrow `CLAUDE_CODE_OAUTH_TOKEN` Docker env passthrough and

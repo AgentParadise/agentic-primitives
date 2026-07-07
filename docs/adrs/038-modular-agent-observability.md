@@ -274,6 +274,11 @@ The first hypothesis-first probes produced these architecture constraints:
   by env var name (`-e NAME`, not `NAME=value`). The same recipe-driven Claude
   prompt exited 0, returned the expected text, and preserved 11/11
   stdout-to-file exporter parity.
+- `experiments/2026-07-07--observability--claude-hook-fanout-after-auth`
+  removed auth from the Claude hook question: the plugin recipe launched with
+  `claude --plugin-dir /workspace/plugins/observability`, the prompt succeeded,
+  and exporter parity held, but no raw hook `event_type` JSONL appeared in
+  stdout, stderr, session log, or exporter output.
 
 These results preserve the original three-layer architecture and validate the
 first end-to-end path: `codex_exec_json` observer -> normalized `AgentRunEvent`
@@ -301,9 +306,12 @@ Next steps for `okrs-51p.6`:
    `CLAUDE_CODE_OAUTH_TOKEN`, and the env-token passthrough probe validated
    Docker `-e CLAUDE_CODE_OAUTH_TOKEN` as a working fix without argv value
    leakage.
-8. Wire the implemented `codex_exec_json` observer before promising Codex
+8. Make Claude hook ingestion real: prove the container has the observability
+   plugin plus `agentic_events`, capture Claude hook output, and normalize it
+   into `AgentRunEvent` without polluting stdout contract JSONL.
+9. Wire the implemented `codex_exec_json` observer before promising Codex
    token/cost parity in the TUI path.
-9. Preserve relative path behavior in reports, but document and test that only
+10. Preserve relative path behavior in reports, but document and test that only
    absolute file exporter paths can produce `file://` links.
 
 Next steps for `okrs-51p.9`:
