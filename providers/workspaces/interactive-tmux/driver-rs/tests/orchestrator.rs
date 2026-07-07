@@ -130,12 +130,22 @@ impl RunExecutor for FakeExecutor {
     fn detect_outcome(
         &self,
         _h: &Self::Handle,
-        _pane: &str,
-        await_result: &AwaitResult,
+        pane: &str,
+        _await_result: &AwaitResult,
     ) -> AgentRunOutcome {
-        AgentRunOutcome {
-            success: await_result.ready,
-            summary: "fake outcome".to_string(),
+        // Mirror the real executor: outcome is derived from the PANE (a fake
+        // harness marker here), not from liveness - so an "errored" pane yields
+        // success=false through the orchestrator.
+        if pane.contains("FAKE_ERROR") {
+            AgentRunOutcome {
+                success: false,
+                summary: "fake harness error detected".to_string(),
+            }
+        } else {
+            AgentRunOutcome {
+                success: true,
+                summary: "fake outcome".to_string(),
+            }
         }
     }
 
@@ -262,6 +272,26 @@ fn happy_path_runs_phases_in_order_and_emits_terminal_session_end() {
     assert!(run.result.result.success);
     assert_eq!(run.result.session_log, "session pane");
     assert!(terminal_outcome(&run.events).success);
+}
+
+#[test]
+fn success_flows_from_detect_outcome_not_liveness() {
+    // The run reaches a clean, ready await (liveness would say success), but
+    // the captured pane carries a harness error marker - detect_outcome must
+    // drive the terminal outcome to failure. This is the Gap 2 fix.
+    let run = drive(|e| e.pane = "session pane\nFAKE_ERROR: auth failed".to_string());
+
+    assert!(
+        run.record.calls.contains(&FakePhase::Capture),
+        "the run completed the await + capture cycle"
+    );
+    assert_eq!(run.record.teardowns, 1);
+    assert_eq!(session_end_count(&run.events), 1);
+    assert!(
+        !run.result.result.success,
+        "an errored pane must yield success=false even though the pane was 'ready'"
+    );
+    assert!(!terminal_outcome(&run.events).success);
 }
 
 // --- adapter error (partial-startup no-orphan) -----------------------------

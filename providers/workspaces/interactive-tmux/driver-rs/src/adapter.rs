@@ -162,6 +162,115 @@ pub fn is_started(agent: Agent, pane: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Outcome detection (Gap 2 - per-harness, harness-neutral)
+//
+// A live eval found that deriving run success from pane LIVENESS
+// (`AwaitResult.ready`) is wrong: a pane going stable only means the TUI
+// settled, NOT that the task succeeded, so an idle-or-errored run reads as
+// success. Outcome detection is therefore a PER-HARNESS adapter concern (like
+// readiness and submit): each harness declares its own hard-error markers, and
+// `detect_outcome` reports failure when one is present.
+//
+// KNOWN LIMIT (documented, by design): true "the task completed successfully"
+// detection is NOT possible on an interactive TUI - there is no structured
+// completion signal in the pane. This function is a FLOOR, not a ceiling: it
+// catches hard errors (auth/API failures) and otherwise treats a clean, ready
+// pane with no error markers as success. A real completion sentinel (or an
+// observability-hook / JSONL completion signal) is a Plan 3 follow-up. Until
+// then, "success" means "the agent settled to a ready state and emitted no
+// known hard-error marker".
+
+/// How many bottom-of-pane lines readiness is evaluated over (mirrors the
+/// await loop's tail-based readiness; a full-scrollback capture would let old
+/// text fool the absence checks).
+pub const OUTCOME_TAIL_LINES: usize = 50;
+
+/// A harness-aware run outcome derived from the captured pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunOutcomeSignal {
+    pub success: bool,
+    pub reason: String,
+}
+
+/// Claude hard-error markers. Presence of ANY of these means the run failed
+/// (auth/API errors, login-required). Sourced from the observed claude TUI
+/// error surface and the interactive-tmux README's `Please run /login` case.
+const CLAUDE_ERROR_MARKERS: [&str; 5] = [
+    "API Error",
+    "authentication_error",
+    "401",
+    "Please run /login",
+    "Invalid API key",
+];
+
+/// Codex hard-error markers. Deliberately CONSERVATIVE and auth-focused: a
+/// healthy codex launch prints benign warnings like
+/// `⚠ MCP client ... error: ...` / `error: HTTP request failed` (observed in
+/// `runs/smoke-codex.txt`), so a bare `error`/`failed` marker would
+/// false-positive. These target the not-authenticated / unauthorized surface
+/// only. See the report note (g): codex's exact error vocabulary is less
+/// certain than claude's; widen this set once the live codex-error pane is
+/// captured (Task 8).
+const CODEX_ERROR_MARKERS: [&str; 6] = [
+    "not logged in",
+    "Not authenticated",
+    "codex login",
+    "401 Unauthorized",
+    "Unauthorized",
+    "Invalid API key",
+];
+
+/// Gemini is not a Task 5 target; it declares no hard-error markers yet, so its
+/// outcome rests purely on the readiness floor. Widen when gemini's error
+/// vocabulary is characterised.
+const GEMINI_ERROR_MARKERS: [&str; 0] = [];
+
+/// The per-harness hard-error marker set. All harness specifics stay here.
+pub fn error_markers(agent: Agent) -> &'static [&'static str] {
+    match agent {
+        Agent::Claude => &CLAUDE_ERROR_MARKERS,
+        Agent::Codex => &CODEX_ERROR_MARKERS,
+        Agent::Gemini => &GEMINI_ERROR_MARKERS,
+    }
+}
+
+/// The first hard-error marker for `agent` present anywhere in `pane`, if any.
+/// Scans the whole pane (not just the tail) so an error banner that scrolled
+/// up a little is still caught within a single-task run.
+fn first_error_marker(agent: Agent, pane: &str) -> Option<&'static str> {
+    error_markers(agent)
+        .iter()
+        .copied()
+        .find(|marker| pane.contains(marker))
+}
+
+/// Harness-aware outcome for a captured `pane` (Gap 2 floor - see the section
+/// note above). A hard-error marker means failure; otherwise a pane that has
+/// settled to a ready state with no error markers is treated as success.
+pub fn detect_outcome(agent: Agent, pane: &str) -> RunOutcomeSignal {
+    if let Some(marker) = first_error_marker(agent, pane) {
+        return RunOutcomeSignal {
+            success: false,
+            reason: format!("harness hard-error marker present: {marker:?}"),
+        };
+    }
+    let tail = tmux::pane_tail(pane, OUTCOME_TAIL_LINES);
+    if is_ready(agent, &tail) {
+        RunOutcomeSignal {
+            success: true,
+            reason: "agent settled to a ready state with no error markers (liveness floor; \
+                     true task-completion detection is a known interactive-TUI limit)"
+                .to_string(),
+        }
+    } else {
+        RunOutcomeSignal {
+            success: false,
+            reason: "agent did not settle to a ready state".to_string(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Launch + submit (the per-agent matrix)
 
 /// Build the shell command this driver sends to tmux to launch `claude`.

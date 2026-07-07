@@ -129,29 +129,19 @@ impl RunExecutor for WorkspaceExecutor {
 
     fn detect_outcome(
         &self,
-        _handle: &Self::Handle,
-        _pane: &str,
-        await_result: &AwaitResult,
+        handle: &Self::Handle,
+        pane: &str,
+        _await_result: &AwaitResult,
     ) -> AgentRunOutcome {
-        // Placeholder (#246): success is derived from pane LIVENESS (did the
-        // agent settle to a ready state), NOT from harness-aware success/error
-        // markers. Task 5 replaces this with per-harness detection in the
-        // adapter. Interactive harnesses cannot yet report true task
-        // completion, so this is intentionally coarse.
-        if await_result.ready {
-            AgentRunOutcome {
-                success: true,
-                summary: "agent session settled to a ready state (liveness placeholder)"
-                    .to_string(),
-            }
-        } else {
-            AgentRunOutcome {
-                success: false,
-                summary: format!(
-                    "agent did not reach a ready state (liveness placeholder): {}",
-                    await_result.reason
-                ),
-            }
+        // Gap 2 (#246): success is derived from HARNESS-AWARE state via the
+        // per-harness adapter, NOT from pane liveness. The adapter scans the
+        // pane for that harness's hard-error markers and applies the readiness
+        // floor. All harness specifics live in the adapter; this executor just
+        // maps the adapter's signal onto the contract's outcome type.
+        let signal = crate::adapter::detect_outcome(handle.agent, pane);
+        AgentRunOutcome {
+            success: signal.success,
+            summary: signal.reason,
         }
     }
 
