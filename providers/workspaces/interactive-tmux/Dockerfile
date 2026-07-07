@@ -41,7 +41,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 #   tmux                — the interactive transport
 #   git/jq/curl/procps  — workspace basics
 #   ca-certificates     — TLS for npm + agent APIs
-#   python3             — for any container-side driver helpers
+#   python3/pip         — for plugin hooks + any container-side helpers
 #   gnupg               — required by gh CLI keyring step (parity w/ claude-cli)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
@@ -51,6 +51,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     procps \
     python3 \
+    python3-pip \
     gnupg \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -85,6 +86,17 @@ COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
 RUN chmod 755 /opt/agentic/entrypoint.sh \
     && mkdir -p /opt/agentic \
     && chown -R agent:agent /opt/agentic
+
+# Observability runtime for Claude Code hooks. The driver sets
+# AGENTIC_EVENTS_JSONL for `itmux run`, and observe.py appends hook JSONL there
+# so the host-side fanout can normalize it without relying on TUI stderr/stdout.
+COPY plugins/observability /opt/agentic/plugins/observability
+COPY packages/agentic_events-*.whl /tmp/packages/
+RUN python3 -m pip install --break-system-packages --no-cache-dir /tmp/packages/agentic_events-*.whl \
+    && rm -rf /tmp/packages \
+    && chmod -R a+rX /opt/agentic/plugins/observability \
+    && chmod 755 /opt/agentic/plugins/observability/hooks/handlers/observe.py \
+    && chown -R agent:agent /opt/agentic/plugins
 
 # Security hardening: strip setuid bits outside /usr/local (which holds
 # the npm-installed CLIs and the Node runtime — leave those untouched).
