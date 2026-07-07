@@ -113,7 +113,8 @@ by vendor. The initial observer set is:
 
 Secrets must not be embedded in specs, examples, CLI args, or committed files.
 LangFuse credentials should come from environment injection, keychain-backed
-env setup on Macs, or an external redacted config path:
+env setup on Macs, or an external redacted config path. The operator procedure
+is documented in `docs/guides/langfuse-observability-setup.md`:
 
 - `LANGFUSE_BASE_URL`
 - `LANGFUSE_PUBLIC_KEY`
@@ -368,7 +369,8 @@ Remaining gate for `okrs-51p.9`:
    `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`,
    `LANGFUSE_TRACING_ENVIRONMENT`, and optional `LANGFUSE_PROJECT_ID`. The
    durable target is the self-hosted Mac Mini, but the smoke can run against any
-   trusted reachable LangFuse first.
+   trusted reachable LangFuse first. Use
+   `docs/guides/langfuse-observability-setup.md` for the repeatable setup path.
 2. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` and the
    current `itmux codex-exec --observability-langfuse` export path against that
    backend.

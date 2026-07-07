@@ -67,6 +67,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   env/credentials are present. The local `.9` implementation now has the typed
   `langfuse_otlp` exporter, fail-fast config validation, mock-proven
   HTTP/protobuf transport, trace-link reporting, and CLI setup flags.
+- `docs/guides/langfuse-observability-setup.md` documents the secret-safe setup
+  path for MacBooks, Mac Minis, VPS hosts, and Docker workspaces, plus the real
+  backend smoke criteria for `.9`.
 - `experiments/2026-07-07--langfuse--otel-preflight-mock` passed locally:
   endpoint/auth/header/attribute construction is proven against a mock receiver,
   but real LangFuse ingestion remains unproven.
@@ -162,6 +165,8 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - `LANGFUSE_SECRET_KEY`
    - `LANGFUSE_TRACING_ENVIRONMENT`
    - optional `LANGFUSE_PROJECT_ID` for trace links
+   - setup/smoke protocol:
+     `docs/guides/langfuse-observability-setup.md`
 2. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` as local
    regression coverage for endpoint/auth/header/attribute construction.
 3. Add typed exporter config: **done for config/fail-fast slice**.

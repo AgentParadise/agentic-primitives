@@ -78,12 +78,6 @@ inside Docker when the path is mounted into the executing environment.
 LangFuse plugs into the same fanout layer through OTLP HTTP/protobuf:
 
 ```bash
-export LANGFUSE_BASE_URL=https://your-langfuse.example
-export LANGFUSE_PUBLIC_KEY=pk-lf-...
-export LANGFUSE_SECRET_KEY=sk-lf-...
-export LANGFUSE_TRACING_ENVIRONMENT=local
-export LANGFUSE_PROJECT_ID=... # optional, enables UI trace links
-
 itmux run \
   --recipe /path/to/recipe \
   --task "Implement the change" \
@@ -91,6 +85,11 @@ itmux run \
   --observability-langfuse \
   --result-file /tmp/itmux-run-result.json
 ```
+
+Load `LANGFUSE_*` from the operator's secret manager before running this
+command. See
+[`docs/guides/langfuse-observability-setup.md`](../../../../docs/guides/langfuse-observability-setup.md)
+for the macOS Keychain, VPS, Docker, and real backend smoke procedure.
 
 If LangFuse config is missing or invalid, the run still completes and local
 file export still works; the LangFuse exporter reports `status:"failed"` in the
