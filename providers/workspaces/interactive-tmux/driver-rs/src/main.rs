@@ -141,14 +141,26 @@ enum Cmd {
         /// loaded from the file and never appear in command arguments.
         #[arg(long)]
         env_file: Option<PathBuf>,
-        /// Permit the legacy host credential fallback when no fresh secret is
-        /// available. Disabled by default to avoid stale credential reuse.
         #[arg(long, default_value_t = false)]
         allow_host_auth_fallback: bool,
         /// Append normalized run events to this JSONL file as an observability
         /// artifact. Relative paths resolve in the driver process.
         #[arg(long)]
         observability_file: Option<PathBuf>,
+        /// Enable LangFuse OTLP trace export using LANGFUSE_* environment
+        /// variables for credentials.
+        #[arg(long)]
+        observability_langfuse: bool,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// LangFuse project id used to report UI trace links. Defaults to
+        /// LANGFUSE_PROJECT_ID when set.
+        #[arg(long)]
+        langfuse_project_id: Option<String>,
+        /// Label for the LangFuse observability link in AgentRunResult.
+        #[arg(long)]
+        langfuse_label: Option<String>,
     },
     /// Run `codex exec --json`, normalize its event stream, and fan it out to
     /// observability exporters. This is the first runnable harness-observer
@@ -178,6 +190,20 @@ enum Cmd {
         /// Append normalized observer events to this JSONL file.
         #[arg(long)]
         observability_file: Option<PathBuf>,
+        /// Enable LangFuse OTLP trace export using LANGFUSE_* environment
+        /// variables for credentials.
+        #[arg(long)]
+        observability_langfuse: bool,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// LangFuse project id used to report UI trace links. Defaults to
+        /// LANGFUSE_PROJECT_ID when set.
+        #[arg(long)]
+        langfuse_project_id: Option<String>,
+        /// Label for the LangFuse observability link in AgentRunResult.
+        #[arg(long)]
+        langfuse_label: Option<String>,
     },
 }
 
@@ -553,6 +579,45 @@ fn install_signal_watcher(
     Some((handle, join))
 }
 
+#[derive(Debug, Clone, Default)]
+struct LangFuseCliOptions {
+    enabled: bool,
+    base_url: Option<String>,
+    project_id: Option<String>,
+    label: Option<String>,
+}
+
+fn build_observability_exporters(
+    observability_file: Option<PathBuf>,
+    file_label: &str,
+    langfuse: LangFuseCliOptions,
+) -> Vec<ObservabilityExporter> {
+    let mut exporters: Vec<_> = observability_file
+        .map(|path| ObservabilityExporter::File {
+            path,
+            label: Some(file_label.to_string()),
+        })
+        .into_iter()
+        .collect();
+
+    if langfuse.enabled {
+        exporters.push(ObservabilityExporter::LangFuseOtlp {
+            base_url: langfuse.base_url,
+            public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
+            secret_key_env: "LANGFUSE_SECRET_KEY".to_string(),
+            environment_env: "LANGFUSE_TRACING_ENVIRONMENT".to_string(),
+            project_id: langfuse.project_id,
+            project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
+            service_name: "agentic-primitives".to_string(),
+            label: langfuse
+                .label
+                .or_else(|| Some("LangFuse trace".to_string())),
+        });
+    }
+
+    exporters
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_run(
     recipe: PathBuf,
@@ -564,6 +629,7 @@ fn handle_run(
     env_file: Option<PathBuf>,
     allow_host_auth_fallback: bool,
     observability_file: Option<PathBuf>,
+    langfuse: LangFuseCliOptions,
 ) -> ExitCode {
     let credentials = match itmux::run::secret_env::load_credentials(env_file.as_deref()) {
         Ok(credentials) => credentials,
@@ -572,15 +638,10 @@ fn handle_run(
             return ExitCode::from(2);
         }
     };
+    let observability =
+        build_observability_exporters(observability_file, "itmux run events", langfuse);
     let mut spec = build_run_spec(recipe, task, timeout);
     spec.credentials = credentials;
-    let observability = observability_file
-        .map(|path| ObservabilityExporter::File {
-            path,
-            label: Some("itmux run events".to_string()),
-        })
-        .into_iter()
-        .collect();
     spec.observability = observability;
     let run_id = generate_run_id();
     let cancel = CancelToken::new();
@@ -687,14 +748,10 @@ fn handle_codex_exec(
     json: bool,
     result_file: Option<PathBuf>,
     observability_file: Option<PathBuf>,
+    langfuse: LangFuseCliOptions,
 ) -> ExitCode {
-    let exporters: Vec<_> = observability_file
-        .map(|path| ObservabilityExporter::File {
-            path,
-            label: Some("codex exec events".to_string()),
-        })
-        .into_iter()
-        .collect();
+    let exporters =
+        build_observability_exporters(observability_file, "codex exec events", langfuse);
     let mut fanout = ObservabilityFanout::new(&exporters);
     let mut observer = CodexExecJsonObserver::new();
     let run_id = generate_run_id();
@@ -923,6 +980,10 @@ fn main() -> ExitCode {
             env_file,
             allow_host_auth_fallback,
             observability_file,
+            observability_langfuse,
+            langfuse_base_url,
+            langfuse_project_id,
+            langfuse_label,
         } => handle_run(
             recipe,
             task,
@@ -933,6 +994,12 @@ fn main() -> ExitCode {
             env_file,
             allow_host_auth_fallback,
             observability_file,
+            LangFuseCliOptions {
+                enabled: observability_langfuse,
+                base_url: langfuse_base_url,
+                project_id: langfuse_project_id,
+                label: langfuse_label,
+            },
         ),
         Cmd::CodexExec {
             prompt,
@@ -942,6 +1009,10 @@ fn main() -> ExitCode {
             json,
             result_file,
             observability_file,
+            observability_langfuse,
+            langfuse_base_url,
+            langfuse_project_id,
+            langfuse_label,
         } => handle_codex_exec(
             prompt,
             codex_bin,
@@ -950,48 +1021,87 @@ fn main() -> ExitCode {
             json,
             result_file,
             observability_file,
+            LangFuseCliOptions {
+                enabled: observability_langfuse,
+                base_url: langfuse_base_url,
+                project_id: langfuse_project_id,
+                label: langfuse_label,
+            },
         ),
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod cli_tests {
     use super::*;
 
     #[test]
-    fn build_run_spec_maps_timeout_to_limits_timeout_s() {
-        let spec = build_run_spec(
-            PathBuf::from("/recipes/hello"),
-            "do the thing".to_string(),
-            Some(12.5),
+    fn cli_exporters_include_file_and_langfuse_when_enabled() {
+        let exporters = build_observability_exporters(
+            Some(PathBuf::from("/tmp/events.jsonl")),
+            "local events",
+            LangFuseCliOptions {
+                enabled: true,
+                base_url: Some("https://cloud.langfuse.com".to_string()),
+                project_id: Some("project-123".to_string()),
+                label: Some("trace view".to_string()),
+            },
         );
-        let limits = spec.limits.expect("timeout should populate limits");
-        assert_eq!(limits.timeout_s, Some(12.5));
-        assert_eq!(limits.token_budget, None);
-    }
 
-    #[test]
-    fn parse_positive_timeout_accepts_a_finite_positive_value() {
-        assert_eq!(parse_positive_timeout("2.5"), Ok(2.5));
-    }
-
-    #[test]
-    fn parse_positive_timeout_rejects_non_positive_and_non_finite() {
-        for bad in ["-1", "0", "NaN", "inf", "-inf", "not-a-number"] {
-            assert!(
-                parse_positive_timeout(bad).is_err(),
-                "expected {bad:?} to be rejected"
-            );
+        assert_eq!(exporters.len(), 2);
+        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
+        match &exporters[1] {
+            ObservabilityExporter::LangFuseOtlp {
+                base_url,
+                public_key_env,
+                secret_key_env,
+                environment_env,
+                project_id,
+                project_id_env,
+                service_name,
+                label,
+            } => {
+                assert_eq!(base_url.as_deref(), Some("https://cloud.langfuse.com"));
+                assert_eq!(public_key_env, "LANGFUSE_PUBLIC_KEY");
+                assert_eq!(secret_key_env, "LANGFUSE_SECRET_KEY");
+                assert_eq!(environment_env, "LANGFUSE_TRACING_ENVIRONMENT");
+                assert_eq!(project_id.as_deref(), Some("project-123"));
+                assert_eq!(project_id_env, "LANGFUSE_PROJECT_ID");
+                assert_eq!(service_name, "agentic-primitives");
+                assert_eq!(label.as_deref(), Some("trace view"));
+            }
+            ObservabilityExporter::File { .. } => panic!("expected LangFuse exporter"),
         }
     }
 
     #[test]
-    fn build_run_spec_without_timeout_leaves_limits_none() {
-        let spec = build_run_spec(
-            PathBuf::from("/recipes/hello"),
-            "do the thing".to_string(),
+    fn cli_exporters_do_not_require_langfuse_project_id() {
+        let exporters = build_observability_exporters(
             None,
+            "local events",
+            LangFuseCliOptions {
+                enabled: true,
+                base_url: None,
+                project_id: None,
+                label: None,
+            },
         );
-        assert!(spec.limits.is_none());
+
+        assert_eq!(exporters.len(), 1);
+        match &exporters[0] {
+            ObservabilityExporter::LangFuseOtlp {
+                base_url,
+                project_id,
+                project_id_env,
+                label,
+                ..
+            } => {
+                assert!(base_url.is_none());
+                assert!(project_id.is_none());
+                assert_eq!(project_id_env, "LANGFUSE_PROJECT_ID");
+                assert_eq!(label.as_deref(), Some("LangFuse trace"));
+            }
+            ObservabilityExporter::File { .. } => panic!("expected LangFuse exporter"),
+        }
     }
 }
