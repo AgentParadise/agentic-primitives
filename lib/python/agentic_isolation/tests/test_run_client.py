@@ -172,6 +172,51 @@ def test_optional_defaults_match_contract() -> None:
     assert event.output_summary is None
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        # seq is u64 (schema minimum:0) - a negative value must be rejected.
+        json.dumps({"run_id": "r", "seq": -1, "ts": "t", "type": "tool_start", "tool_name": "B"}),
+        # input_tokens is u64 - a string must NOT be coerced (serde would reject it).
+        json.dumps(
+            {
+                "run_id": "r",
+                "seq": 0,
+                "ts": "t",
+                "type": "token_usage",
+                "input_tokens": "1",
+                "output_tokens": 2,
+            }
+        ),
+        # output_tokens is u64 - a negative value must be rejected.
+        json.dumps(
+            {
+                "run_id": "r",
+                "seq": 0,
+                "ts": "t",
+                "type": "token_usage",
+                "input_tokens": 1,
+                "output_tokens": -2,
+            }
+        ),
+        # success is bool - a string must NOT be coerced.
+        json.dumps(
+            {
+                "run_id": "r",
+                "seq": 0,
+                "ts": "t",
+                "type": "tool_end",
+                "tool_name": "B",
+                "success": "false",
+            }
+        ),
+    ],
+)
+def test_parse_event_rejects_malformed_scalar(line: str) -> None:
+    with pytest.raises(ItmuxRunError):
+        parse_event(line)
+
+
 # ---------------------------------------------------------------------------
 # run_agent happy path.
 # ---------------------------------------------------------------------------
@@ -296,6 +341,35 @@ def test_terminate_process_group_signals_pgid(monkeypatch: pytest.MonkeyPatch) -
         proc.wait(timeout=5)
 
 
+def _process_running(pid: int) -> bool:
+    """True only if ``pid`` is a *live* (non-zombie) process.
+
+    ``os.kill(pid, 0)`` is unusable here: it succeeds for a zombie (killed but
+    not yet reaped), so it would call a dead-but-unreaped process "alive". We
+    instead read the process state via ``ps``; a missing process or a zombie
+    (state ``Z``) counts as not running.
+    """
+    proc = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "state="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return False  # no such process
+    state = proc.stdout.strip()
+    return state != "" and not state.startswith("Z")
+
+
+def _wait_until_dead(pid: int, timeout_s: float = 5.0) -> bool:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if not _process_running(pid):
+            return True
+        time.sleep(0.05)
+    return not _process_running(pid)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only")
 def test_run_agent_timeout_reaps_child_tree(tmp_path: Path) -> None:
     # Fake emits one event, spawns a long-lived grandchild recording its PID,
@@ -316,19 +390,85 @@ def test_run_agent_timeout_reaps_child_tree(tmp_path: Path) -> None:
     with pytest.raises(ItmuxRunError, match="timed out"):
         run_agent(Path("/recipes/demo"), "task", itmux_bin=str(fake), timeout=1.0)
 
-    # Give the group signal a moment to land.
-    deadline = time.time() + 5.0
     grandchild_pid = int(pid_file.read_text().strip())
-    while time.time() < deadline:
-        try:
-            os.kill(grandchild_pid, 0)
-        except ProcessLookupError:
-            break  # reaped - success
-        time.sleep(0.05)
-    else:
-        # Still alive: clean up so we don't leak, then fail.
+    dead = _wait_until_dead(grandchild_pid)
+    if not dead:
         try:
             os.kill(grandchild_pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        pytest.fail("grandchild process was orphaned (not reaped by group cleanup)")
+    assert dead, "grandchild process was orphaned (not reaped by group cleanup)"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only")
+def test_run_agent_reaps_grandchild_when_leader_exits_first(tmp_path: Path) -> None:
+    # Root cause of codex must-fix 1+2: the leader exits 0 immediately, but a
+    # grandchild survives it (double-fork'd out of the leader's lifetime).
+    # Because the leader is gone, a poll()-short-circuit would skip the group
+    # kill and leak the grandchild. Kill-before-reap must still tear it down.
+    pid_file = tmp_path / "grandchild.pid"
+    body = (
+        "import os, sys, subprocess\n"
+        # Spawn a grandchild that outlives the leader, holding stdout open.
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        f"open({str(pid_file)!r}, 'w').write(str(child.pid))\n"
+        # Emit a valid result so run_agent returns normally, then exit 0 while
+        # the grandchild keeps sleeping.
+        'print(\'{"run_id": "r", "seq": 0, "ts": "t", "type": "result", '
+        '"result": {"result": {"success": true, "summary": "ok"}, '
+        '"session_log": "x"}}\')\n'
+        "sys.stdout.flush()\n"
+        "sys.exit(0)\n"
+    )
+    fake = _write_fake_itmux(tmp_path, body)
+
+    result = run_agent(Path("/recipes/demo"), "task", itmux_bin=str(fake))
+    assert result.result.success is True
+
+    grandchild_pid = int(pid_file.read_text().strip())
+    dead = _wait_until_dead(grandchild_pid)
+    if not dead:
+        try:
+            os.kill(grandchild_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    assert dead, "grandchild survived the leader and was leaked"
+
+
+def test_run_agent_result_wins_over_simultaneous_timeout(tmp_path: Path) -> None:
+    # A run that delivers a valid result must return it even if the wall-clock
+    # timeout fires in the same instant (Claude nit 1). Emit the result, then
+    # sleep past the tiny timeout so the watchdog fires while we hold a result.
+    body = (
+        "import sys, time\n"
+        'print(\'{"run_id": "r", "seq": 0, "ts": "t", "type": "result", '
+        '"result": {"result": {"success": true, "summary": "ok"}, '
+        '"session_log": "x"}}\')\n'
+        "sys.stdout.flush()\n"
+        "time.sleep(30)\n"  # outlive the timeout; result was already delivered
+    )
+    fake = _write_fake_itmux(tmp_path, body)
+
+    result = run_agent(Path("/recipes/demo"), "task", itmux_bin=str(fake), timeout=0.3)
+    assert result.result.summary == "ok"
+
+
+def test_run_agent_breaks_on_result_without_waiting_for_eof(tmp_path: Path) -> None:
+    # timeout=None (default): a child that emits the result then hangs forever
+    # must not block run_agent - it breaks on the terminal ResultEvent (Claude
+    # nit 2). A generous test-level guard proves we do not hang to EOF.
+    body = (
+        "import sys, time\n"
+        'print(\'{"run_id": "r", "seq": 0, "ts": "t", "type": "result", '
+        '"result": {"result": {"success": true, "summary": "ok"}, '
+        '"session_log": "x"}}\')\n'
+        "sys.stdout.flush()\n"
+        "time.sleep(60)\n"  # hang: EOF never arrives
+    )
+    fake = _write_fake_itmux(tmp_path, body)
+
+    start = time.time()
+    result = run_agent(Path("/recipes/demo"), "task", itmux_bin=str(fake))
+    elapsed = time.time() - start
+    assert result.result.summary == "ok"
+    assert elapsed < 30, f"run_agent blocked waiting for EOF ({elapsed:.1f}s)"

@@ -27,11 +27,20 @@ import os
 import signal
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    StrictBool,
+    TypeAdapter,
+    ValidationError,
+)
 
 __all__ = [
     "AgentRunOutcome",
@@ -57,13 +66,19 @@ __all__ = [
 # fails loudly instead of being silently ignored.
 _CONTRACT_CONFIG = ConfigDict(frozen=True, extra="forbid")
 
+# Rust `u64` fields (schema `minimum:0`). `strict=True` refuses lax coercion
+# (e.g. the string "1" -> 1) so malformed lines are rejected exactly as serde
+# would reject them; `ge=0` enforces the unsigned lower bound. `bool` fields use
+# `StrictBool` so the string "false" is rejected rather than coerced to a bool.
+_U64 = Annotated[int, Field(strict=True, ge=0)]
+
 
 class AgentRunOutcome(BaseModel):
     """The success/failure verdict for a run (Rust ``AgentRunOutcome``)."""
 
     model_config = _CONTRACT_CONFIG
 
-    success: bool
+    success: StrictBool
     summary: str
 
 
@@ -95,7 +110,7 @@ class _RunEventEnvelope(BaseModel):
     model_config = _CONTRACT_CONFIG
 
     run_id: str
-    seq: int
+    seq: _U64
     ts: str
 
 
@@ -112,7 +127,7 @@ class ToolEndEvent(_RunEventEnvelope):
 
     type: Literal["tool_end"] = "tool_end"
     tool_name: str
-    success: bool = False
+    success: StrictBool = False
     output_summary: str | None = None
 
 
@@ -120,8 +135,8 @@ class TokenUsageEvent(_RunEventEnvelope):
     """``type: "token_usage"`` payload."""
 
     type: Literal["token_usage"] = "token_usage"
-    input_tokens: int
-    output_tokens: int
+    input_tokens: _U64
+    output_tokens: _U64
     cost_usd: float | None = None
 
 
@@ -191,6 +206,29 @@ class ItmuxRunError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 _DEFAULT_KILL_GRACE_S = 5.0
+_GROUP_POLL_INTERVAL_S = 0.02
+
+
+def _killpg_quiet(pgid: int, sig: int) -> bool:
+    """Signal a process group, swallowing "already gone" errors.
+
+    Returns ``True`` if the signal was delivered (group still existed),
+    ``False`` if the group was already gone or the call was rejected.
+    """
+    try:
+        os.killpg(pgid, sig)
+        return True
+    except (ProcessLookupError, OSError):
+        return False
+
+
+def _group_alive(pgid: int) -> bool:
+    """True while ANY process (including an unreaped zombie) remains in the group.
+
+    Uses signal ``0`` as an existence probe - it delivers nothing but raises
+    ``ProcessLookupError`` once the group is empty.
+    """
+    return _killpg_quiet(pgid, 0)
 
 
 def _terminate_process_group(
@@ -198,38 +236,69 @@ def _terminate_process_group(
     *,
     grace_s: float = _DEFAULT_KILL_GRACE_S,
 ) -> None:
-    """Signal the child's whole process group: ``SIGTERM`` then ``SIGKILL``.
+    """Tear the child's whole process group down, kill-before-reap.
 
     The child is started with ``start_new_session=True`` so it leads its own
-    process group; signalling the group reaches the Rust process AND any
-    ``docker exec`` children it spawned, so nothing is left orphaned.
+    process group whose pgid equals the leader pid. Signalling the group reaches
+    the Rust process AND any ``docker exec`` grandchildren it spawned.
+
+    Ordering (codex must-fix 1+2):
+
+    1. ``SIGTERM`` the whole group FIRST so the Rust leader can run its own
+       graceful container teardown; a premature ``SIGKILL`` would orphan the
+       docker CONTAINER (the orchestrator tears it down on graceful signals,
+       see #248).
+    2. Wait a bounded grace period, polling for the *group* to drain - not
+       ``proc.wait()`` on the leader alone, which would both block escalation
+       and miss a grandchild that outlives the leader.
+    3. ``SIGKILL`` the group to reap any survivor (the leader may already be
+       gone while a docker-exec grandchild lingers).
+    4. ONLY THEN reap the leader zombie.
+
+    PID-reuse safety: we never signal a group we have already reaped. Once the
+    leader is reaped its returncode is set, so an early-return guard prevents a
+    late watchdog from ``killpg``-ing a possibly-recycled pgid; and step 3 only
+    fires while the group is still non-empty (which reserves the pgid).
     """
-    if proc.poll() is not None:
-        return
-    try:
-        pgid = os.getpgid(proc.pid)
-    except (ProcessLookupError, OSError):
+    # Guard: if the leader has already been reaped, its pgid may have been
+    # recycled by the kernel - never signal it again.
+    if proc.returncode is not None:
         return
 
-    try:
-        os.killpg(pgid, signal.SIGTERM)
-    except (ProcessLookupError, OSError):
+    # start_new_session=True guarantees pgid == leader pid.
+    pgid = proc.pid
+
+    # 1. Graceful group termination first.
+    _killpg_quiet(pgid, signal.SIGTERM)
+
+    # 2. Bounded grace: let the leader exit gracefully and the group drain.
+    deadline = time.monotonic() + grace_s
+    escalate = True
+    while time.monotonic() < deadline:
+        # poll() reaps the leader zombie the instant it exits.
+        proc.poll()
+        if proc.returncode is not None:
+            # Leader gone. If no descendants remain the group has fully drained
+            # and its pgid may now be recycled - stop without signalling again.
+            if not _group_alive(pgid):
+                escalate = False
+            break
+        time.sleep(_GROUP_POLL_INTERVAL_S)
+
+    if not escalate:
         return
 
-    try:
-        proc.wait(timeout=grace_s)
-        return
-    except subprocess.TimeoutExpired:
-        pass
+    # 3. Force-kill any survivor (grace expired with the leader alive, or the
+    #    leader exited but a grandchild is still holding the group open). The
+    #    group is still non-empty here, so its pgid is still reserved to us.
+    _killpg_quiet(pgid, signal.SIGKILL)
 
-    try:
-        os.killpg(pgid, signal.SIGKILL)
-    except (ProcessLookupError, OSError):
-        pass
-    try:
-        proc.wait(timeout=grace_s)
-    except subprocess.TimeoutExpired:
-        pass
+    # 4. Reap the leader zombie if we have not already.
+    if proc.returncode is None:
+        try:
+            proc.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +376,6 @@ def run_agent(
         watchdog.start()
 
     result: AgentRunResult | None = None
-    returncode: int = 0
     try:
         assert proc.stdout is not None  # PIPE is always set above
         for raw_line in proc.stdout:
@@ -319,38 +387,45 @@ def run_agent(
                 on_event(event)
             if isinstance(event, ResultEvent):
                 result = event.result
-        returncode = proc.wait()
-    except BaseException:
-        # KeyboardInterrupt, timeout-driven pipe close, parse failure, or any
-        # other error: tear the whole process group down before propagating so
-        # we never leave the Rust process (or its docker children) orphaned.
-        _terminate_process_group(proc)
-        raise
+                # The Rust contract guarantees the process exits after the
+                # terminal result event. We break rather than draining to EOF so
+                # a child that emits the result then hangs cannot block us when
+                # `timeout` is None - liveness must not depend on that guarantee.
+                break
     finally:
         if watchdog is not None:
             watchdog.cancel()
-        if proc.poll() is None:
-            _terminate_process_group(proc)
+        # Kill-before-reap (codex must-fix 1+2): tear the whole process group
+        # down BEFORE reaping the leader, so a surviving docker-exec grandchild
+        # is killed even when the Rust leader has already exited. Runs on every
+        # exit path - normal return, timeout, parse error, KeyboardInterrupt.
+        _terminate_process_group(proc)
+        # Join the stderr drain only AFTER the group is dead - otherwise a
+        # surviving grandchild holding the stderr pipe could block the join.
         stderr_thread.join(timeout=_DEFAULT_KILL_GRACE_S)
 
+    returncode = proc.returncode
     stderr_text = "".join(stderr_chunks)
 
+    # Result wins over a simultaneous timeout (Claude nit 1): if a valid terminal
+    # result was delivered, return it even if the watchdog fired in the same
+    # instant. Only treat the run as timed out / failed when there is no result.
+    if result is not None:
+        return result
     if timed_out.is_set():
         raise ItmuxRunError(
             f"itmux run timed out after {timeout}s",
             returncode=returncode,
             stderr=stderr_text,
         )
-    if result is None:
-        if returncode != 0:
-            raise ItmuxRunError(
-                f"itmux run exited with code {returncode} and produced no result",
-                returncode=returncode,
-                stderr=stderr_text,
-            )
+    if returncode is not None and returncode != 0:
         raise ItmuxRunError(
-            "itmux run produced no terminal result event",
+            f"itmux run exited with code {returncode} and produced no result",
             returncode=returncode,
             stderr=stderr_text,
         )
-    return result
+    raise ItmuxRunError(
+        "itmux run produced no terminal result event",
+        returncode=returncode,
+        stderr=stderr_text,
+    )
