@@ -291,6 +291,10 @@ The first hypothesis-first probes produced these architecture constraints:
   stdout/file fanout receive normalized `hook_event` records. The live run
   emitted 3 hook events (`session_started`, `user_prompt_submitted`,
   `agent_stopped`) with `session_end` still last.
+- `experiments/2026-07-07--observability--stock-itmux-hook-sink` then proved
+  the same path on the stock interactive-tmux provider image after baking
+  `plugins/observability` and the `agentic_events` wheel. The stock image run
+  emitted the same 3 normalized hook events with 14/14 stdout-to-file parity.
 
 These results preserve the original three-layer architecture and validate the
 first end-to-end path: `codex_exec_json` observer -> normalized `AgentRunEvent`
@@ -318,10 +322,10 @@ Next steps for `okrs-51p.6`:
    `CLAUDE_CODE_OAUTH_TOKEN`, and the env-token passthrough probe validated
    Docker `-e CLAUDE_CODE_OAUTH_TOKEN` as a working fix without argv value
    leakage.
-8. Make Claude hook ingestion real: bake/stage the observability plugin plus
-   `agentic_events`. The explicit container-side sink and driver normalization
-   path are proven by the hook-sink-capture experiment; the remaining step is
-   stock provider packaging.
+8. Keep Claude hook ingestion covered by regression tests and stock-provider
+   experiments. The explicit container-side sink, driver normalization path,
+   and baked image packaging are proven by the hook-sink-capture and
+   stock-itmux-hook-sink experiments.
 9. Wire the implemented `codex_exec_json` observer before promising Codex
    token/cost parity in the TUI path.
 10. Preserve relative path behavior in reports, but document and test that only

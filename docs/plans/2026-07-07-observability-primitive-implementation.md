@@ -17,6 +17,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--claude-hook-fanout-after-auth`
 - `experiments/2026-07-07--observability--baked-claude-hook-runtime`
 - `experiments/2026-07-07--observability--claude-hook-sink-capture`
+- `experiments/2026-07-07--observability--stock-itmux-hook-sink`
 
 ## Current Facts
 
@@ -56,6 +57,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   explicit `AGENTIC_EVENTS_JSONL` sink capture produced 3 normalized
   `hook_event` records in stdout and exporter output, with `session_end` still
   last.
+- `experiments/2026-07-07--observability--stock-itmux-hook-sink` passed:
+  the stock interactive-tmux provider image now contains the observability
+  plugin/runtime and emits the same normalized hook events.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
   present, and the current Rust exporter enum supports only `file`.
 
@@ -82,8 +86,8 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - **done for auth/plugin launch; no-go for hook visibility**.
    - **done for baked runtime; direct handler emits, TUI capture still no-go**.
    - **done for explicit hook sink; live run emitted normalized hook events**.
-   - next, make stock interactive-tmux packaging include the observability
-     plugin and `agentic_events`, then rerun without a temporary derived image.
+   - **done for stock provider packaging; live run emitted normalized hook
+     events without a temporary image**.
    - preserve the narrow `CLAUDE_CODE_OAUTH_TOKEN` Docker env passthrough and
      do not put token values in argv/stdout.
 6. Implement `claude_hooks` observer after hook output shape is proven:
