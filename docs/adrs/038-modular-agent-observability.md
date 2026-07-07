@@ -279,6 +279,12 @@ The first hypothesis-first probes produced these architecture constraints:
   `claude --plugin-dir /workspace/plugins/observability`, the prompt succeeded,
   and exporter parity held, but no raw hook `event_type` JSONL appeared in
   stdout, stderr, session log, or exporter output.
+- `experiments/2026-07-07--observability--baked-claude-hook-runtime` isolated
+  runtime packaging from capture semantics. A derived image containing
+  `plugins/observability` and `agentic_events` could run `observe.py` directly
+  and emit `event_type = session_started`, but `itmux run` still saw no hook
+  JSONL through stdout, stderr, session log, or file exporter. Therefore
+  Claude hook support needs an explicit sink/capture path.
 
 These results preserve the original three-layer architecture and validate the
 first end-to-end path: `codex_exec_json` observer -> normalized `AgentRunEvent`
@@ -306,9 +312,10 @@ Next steps for `okrs-51p.6`:
    `CLAUDE_CODE_OAUTH_TOKEN`, and the env-token passthrough probe validated
    Docker `-e CLAUDE_CODE_OAUTH_TOKEN` as a working fix without argv value
    leakage.
-8. Make Claude hook ingestion real: prove the container has the observability
-   plugin plus `agentic_events`, capture Claude hook output, and normalize it
-   into `AgentRunEvent` without polluting stdout contract JSONL.
+8. Make Claude hook ingestion real: bake/stage the observability plugin plus
+   `agentic_events`, write hook output to an explicit container-side sink, then
+   collect and normalize it into `AgentRunEvent` without polluting stdout
+   contract JSONL.
 9. Wire the implemented `codex_exec_json` observer before promising Codex
    token/cost parity in the TUI path.
 10. Preserve relative path behavior in reports, but document and test that only

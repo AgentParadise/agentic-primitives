@@ -1,0 +1,25 @@
+{
+  "result": {
+    "success": true,
+    "summary": "agent settled to a ready state with no error markers (liveness floor; true task-completion detection is a known interactive-TUI limit)"
+  },
+  "output_artifacts": [],
+  "session_log": "agent@bb5735afd6b3:/workspace$ claude --plugin-dir /opt/agentic/plugins/observability\n ▐▛███▜▌   Claude Code v2.1.126\n▝▜█████▛▘  Sonnet 4.6 · Claude API\n  ▘▘ ▝▝    /workspace\n\n  Opus 4.7 xhigh is now available! · /model to switch\n\n❯ Answer with the requested exact text and no extra commentary.\n\n\n\n\n  Reply exactly: BAKED_HOOK_RUNTIME_OK\n\n● BAKED_HOOK_RUNTIME_OK\n\n✻ Crunched for 2s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ? for shortcuts                                                                                                                 ✓ Anthropic marketplace installed · /plugin to see available plugins\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--observability--baked-claude-hook-runtime/runs/events.jsonl",
+        "events_exported": 11,
+        "links": [
+          {
+            "label": "itmux run events",
+            "uri": "experiments/2026-07-07--observability--baked-claude-hook-runtime/runs/events.jsonl"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}
