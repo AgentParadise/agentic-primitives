@@ -363,3 +363,42 @@ fn agent_run_event_jsonl_stream_of_four_events_parses_line_by_line() {
         AgentRunEventPayload::SessionEnd { .. }
     ));
 }
+
+#[test]
+fn agent_run_event_result_variant_round_trips_as_an_event() {
+    // Fix 4: the final result is delivered as a real AgentRunEvent (with the
+    // run_id/seq/ts envelope), so a stdout consumer can parse EVERY line as an
+    // AgentRunEvent. This exercises the `result` payload variant.
+    let result = AgentRunResult {
+        result: AgentRunOutcome {
+            success: true,
+            summary: "all good".to_string(),
+        },
+        output_artifacts: vec![PathBuf::from("/tmp/out/report.md")],
+        session_log: "pane".to_string(),
+        observability: None,
+    };
+    let event = AgentRunEvent::result("run-1", 11, "2026-07-07T12:00:00Z", result.clone());
+
+    // Envelope fields present + type-tagged as "result".
+    let value = serde_json::to_value(&event).unwrap();
+    assert_eq!(value["run_id"], "run-1");
+    assert_eq!(value["seq"], 11);
+    assert_eq!(value["ts"], "2026-07-07T12:00:00Z");
+    assert_eq!(value["type"], "result");
+
+    // Round-trips and carries the full result.
+    roundtrip(&event);
+    match &event.payload {
+        AgentRunEventPayload::Result { result: carried } => {
+            assert_eq!(**carried, result);
+        }
+        other => panic!("expected Result payload, got {other:?}"),
+    }
+
+    // Every serialized line still parses as an AgentRunEvent (R6 stdout purity).
+    let line = serde_json::to_string(&event).unwrap();
+    let parsed: AgentRunEvent =
+        serde_json::from_str(&line).expect("result line is an AgentRunEvent");
+    assert_eq!(parsed, event);
+}

@@ -192,56 +192,113 @@ pub struct RunOutcomeSignal {
     pub reason: String,
 }
 
-/// Claude hard-error markers. Presence of ANY of these means the run failed
-/// (auth/API errors, login-required). Sourced from the observed claude TUI
-/// error surface and the interactive-tmux README's `Please run /login` case.
-const CLAUDE_ERROR_MARKERS: [&str; 5] = [
+// Error markers are split into two anchored kinds so the agent's OWN reply
+// text cannot trigger a false hard-error (PR #247 Fix 5). A bare substring like
+// `401` scanned over the whole pane would misread a task that merely DISCUSSES
+// HTTP 401 (e.g. "the endpoint returns 401 on bad auth") as an auth failure.
+//
+// 1. BANNER phrases: distinctive multi-word error banners that indicate a hard
+//    failure on their own (low false-positive risk), matched case-insensitively.
+// 2. AMBIGUOUS tokens: short/common tokens (`401`, `Invalid API key`, ...) that
+//    only count when they appear on a line that ALSO reads as an error line
+//    (contains the word "error"), i.e. the harness's actual error-banner
+//    context - not the agent's prose.
+
+/// Claude error-banner phrases (see the note above). `401 Unauthorized` is the
+/// adjacent HTTP status phrase (an auth banner), distinct from a bare `401`.
+const CLAUDE_ERROR_BANNERS: [&str; 4] = [
     "API Error",
     "authentication_error",
-    "401",
     "Please run /login",
-    "Invalid API key",
+    "401 Unauthorized",
 ];
 
-/// Codex hard-error markers. Deliberately CONSERVATIVE and auth-focused: a
-/// healthy codex launch prints benign warnings like
-/// `⚠ MCP client ... error: ...` / `error: HTTP request failed` (observed in
-/// `runs/smoke-codex.txt`), so a bare `error`/`failed` marker would
-/// false-positive. These target the not-authenticated / unauthorized surface
-/// only. See the report note (g): codex's exact error vocabulary is less
-/// certain than claude's; widen this set once the live codex-error pane is
-/// captured (Task 8).
-const CODEX_ERROR_MARKERS: [&str; 6] = [
+/// Claude ambiguous tokens - only a hard error when on an error line.
+const CLAUDE_AMBIGUOUS_TOKENS: [&str; 2] = ["401", "Invalid API key"];
+
+/// Codex error-banner phrases. Deliberately CONSERVATIVE and auth-focused: a
+/// healthy codex launch prints benign warnings like `⚠ MCP client ... error:
+/// ...` / `error: HTTP request failed` (observed in `runs/smoke-codex.txt`), so
+/// a bare `error`/`failed` marker would false-positive. See report note (g):
+/// codex's exact error vocabulary is less certain than claude's; widen once the
+/// live codex-error pane is captured (Task 8).
+const CODEX_ERROR_BANNERS: [&str; 4] = [
     "not logged in",
     "Not authenticated",
     "codex login",
     "401 Unauthorized",
-    "Unauthorized",
-    "Invalid API key",
 ];
 
-/// Gemini is not a Task 5 target; it declares no hard-error markers yet, so its
-/// outcome rests purely on the readiness floor. Widen when gemini's error
-/// vocabulary is characterised.
-const GEMINI_ERROR_MARKERS: [&str; 0] = [];
+/// Codex ambiguous tokens - only a hard error when on an error line.
+const CODEX_AMBIGUOUS_TOKENS: [&str; 2] = ["401", "Invalid API key"];
 
-/// The per-harness hard-error marker set. All harness specifics stay here.
-pub fn error_markers(agent: Agent) -> &'static [&'static str] {
+/// Gemini is not a Task 5 target; no hard-error markers yet, so its outcome
+/// rests purely on the readiness floor.
+const GEMINI_ERROR_BANNERS: [&str; 0] = [];
+const GEMINI_AMBIGUOUS_TOKENS: [&str; 0] = [];
+
+/// The per-harness error-banner phrases. All harness specifics stay here.
+pub fn error_banners(agent: Agent) -> &'static [&'static str] {
     match agent {
-        Agent::Claude => &CLAUDE_ERROR_MARKERS,
-        Agent::Codex => &CODEX_ERROR_MARKERS,
-        Agent::Gemini => &GEMINI_ERROR_MARKERS,
+        Agent::Claude => &CLAUDE_ERROR_BANNERS,
+        Agent::Codex => &CODEX_ERROR_BANNERS,
+        Agent::Gemini => &GEMINI_ERROR_BANNERS,
     }
 }
 
-/// The first hard-error marker for `agent` present anywhere in `pane`, if any.
-/// Scans the whole pane (not just the tail) so an error banner that scrolled
-/// up a little is still caught within a single-task run.
-fn first_error_marker(agent: Agent, pane: &str) -> Option<&'static str> {
-    error_markers(agent)
+/// The per-harness ambiguous tokens (only count on an error line).
+pub fn ambiguous_error_tokens(agent: Agent) -> &'static [&'static str] {
+    match agent {
+        Agent::Claude => &CLAUDE_AMBIGUOUS_TOKENS,
+        Agent::Codex => &CODEX_AMBIGUOUS_TOKENS,
+        Agent::Gemini => &GEMINI_AMBIGUOUS_TOKENS,
+    }
+}
+
+/// The union of a harness's banner phrases and ambiguous tokens, for callers
+/// that want the full marker vocabulary (e.g. collision guards).
+pub fn error_markers(agent: Agent) -> Vec<&'static str> {
+    error_banners(agent)
         .iter()
+        .chain(ambiguous_error_tokens(agent))
         .copied()
-        .find(|marker| pane.contains(marker))
+        .collect()
+}
+
+/// Does `line` read as an error-banner line? The harness error banners are
+/// rendered with the word "error" (claude "API Error", codex "stream error:",
+/// "error: ..."), so requiring it anchors the ambiguous tokens to real banners
+/// and away from the agent's prose.
+fn is_error_line(line: &str) -> bool {
+    line.to_lowercase().contains("error")
+}
+
+/// The first anchored hard-error marker for `agent` in `pane`, if any.
+///
+/// A BANNER phrase matched anywhere (case-insensitive) is a hard error; an
+/// AMBIGUOUS token counts only when it appears on an error line (Fix 5).
+fn first_error_marker(agent: Agent, pane: &str) -> Option<String> {
+    let lower_pane = pane.to_lowercase();
+    for banner in error_banners(agent) {
+        if lower_pane.contains(&banner.to_lowercase()) {
+            return Some(format!("error banner {banner:?}"));
+        }
+    }
+    let tokens = ambiguous_error_tokens(agent);
+    if !tokens.is_empty() {
+        for line in pane.lines() {
+            if !is_error_line(line) {
+                continue;
+            }
+            let lower_line = line.to_lowercase();
+            for token in tokens {
+                if lower_line.contains(&token.to_lowercase()) {
+                    return Some(format!("error-line token {token:?}"));
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Harness-aware outcome for a captured `pane` (Gap 2 floor - see the section
@@ -251,7 +308,7 @@ pub fn detect_outcome(agent: Agent, pane: &str) -> RunOutcomeSignal {
     if let Some(marker) = first_error_marker(agent, pane) {
         return RunOutcomeSignal {
             success: false,
-            reason: format!("harness hard-error marker present: {marker:?}"),
+            reason: format!("harness hard-error detected ({marker})"),
         };
     }
     let tail = tmux::pane_tail(pane, OUTCOME_TAIL_LINES);

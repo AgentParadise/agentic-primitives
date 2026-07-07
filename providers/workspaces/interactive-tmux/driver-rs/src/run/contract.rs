@@ -164,6 +164,27 @@ pub struct AgentRunEvent {
     pub payload: AgentRunEventPayload,
 }
 
+impl AgentRunEvent {
+    /// Build the final-result DELIVERY event that wraps `result` in a valid
+    /// `AgentRunEvent` envelope (R6 stdout purity - see
+    /// [`AgentRunEventPayload::Result`]).
+    pub fn result(
+        run_id: impl Into<String>,
+        seq: u64,
+        ts: impl Into<String>,
+        result: AgentRunResult,
+    ) -> Self {
+        Self {
+            run_id: run_id.into(),
+            seq,
+            ts: ts.into(),
+            payload: AgentRunEventPayload::Result {
+                result: Box::new(result),
+            },
+        }
+    }
+}
+
 /// The `type`-tagged event payload. Internally tagged on `type` so the wire
 /// shape reads `{"type": "tool_start", "tool_name": "...", ...}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -190,8 +211,15 @@ pub enum AgentRunEventPayload {
         #[serde(default)]
         cost_usd: Option<f64>,
     },
-    /// Terminal event - always the last event of a run, carrying the
-    /// terminal outcome (mirrors `AgentRunResult.result`).
+    /// Terminal LIFECYCLE event - the last lifecycle event of a run, carrying
+    /// the terminal outcome (mirrors `AgentRunResult.result`).
     #[serde(rename = "session_end")]
     SessionEnd { outcome: AgentRunOutcome },
+    /// Final-result DELIVERY envelope. Carries the full [`AgentRunResult`] as a
+    /// valid `AgentRunEvent` so a consumer reading the stdout stream can treat
+    /// EVERY line as an `AgentRunEvent` (R6: stdout is pure event JSONL). Emitted
+    /// once, after `session_end`, only when the CLI is not writing the result to
+    /// a `--result-file`. Boxed to keep the enum small.
+    #[serde(rename = "result")]
+    Result { result: Box<AgentRunResult> },
 }

@@ -85,6 +85,14 @@ pub trait RunExecutor {
     /// the handle. May fail - the orchestrator logs and swallows the error
     /// without letting it mask the run's terminal outcome.
     fn teardown(&mut self, handle: Self::Handle) -> io::Result<()>;
+
+    /// Best-effort reap of a workspace that may have been orphaned by a hard
+    /// cancel arriving DURING a blocking provision - i.e. before a handle
+    /// existed to tear down. Called by `terminalize` ONLY on the hard-cancel
+    /// path when no handle is held. Default no-op (most executors have nothing
+    /// to reap). Implementations MUST be idempotent and MUST NOT fail the run
+    /// (log and swallow). See workspace_executor + #248.
+    fn teardown_orphans(&mut self) {}
 }
 
 /// Two-tier cancellation flag, shared with a signal handler (Task 6) or a test.
@@ -296,6 +304,28 @@ fn outcome_for(reason: &TerminalReason, detected: Option<AgentRunOutcome>) -> Ag
     }
 }
 
+/// Arbitrate a candidate terminal reason against the current cancel state,
+/// returning whichever has the higher precedence by [`TerminalReason::rank`].
+///
+/// This is the SINGLE place terminal-reason precedence is enforced, so the code
+/// and the documented table (hard_cancel > adapter_error > timeout >
+/// graceful_cancel > success) agree by construction. In particular, an
+/// `adapter_error` raised on any `Err` path can never beat a pending
+/// `hard_cancel` - the arbitration re-checks the cancel state at the moment the
+/// reason is chosen, closing the gap where a blocking call returned `Err` after
+/// a hard cancel had already been requested.
+fn arbitrate(candidate: TerminalReason, cancel: &CancelToken) -> TerminalReason {
+    let from_cancel = match cancel.level() {
+        CancelLevel::Hard => Some(TerminalReason::HardCancel),
+        CancelLevel::Graceful => Some(TerminalReason::GracefulCancel),
+        CancelLevel::None => None,
+    };
+    match from_cancel {
+        Some(reason) if reason.rank() > candidate.rank() => reason,
+        _ => candidate,
+    }
+}
+
 /// The SINGLE terminalization path (R7). Tears the handle down exactly once,
 /// emits exactly one `session_end`, and returns the final result. A teardown
 /// failure is logged + attached to the session log but never changes the
@@ -317,6 +347,12 @@ fn terminalize<E: RunExecutor>(
             eprintln!("[itmux run] teardown failed: {err}");
             session_log.push_str(&format!("\n[itmux run] teardown warning: {err}\n"));
         }
+    } else if matches!(reason, TerminalReason::HardCancel) {
+        // Hard cancel with NO handle held: the cancel may have arrived during a
+        // blocking provision that created a container before failing/returning.
+        // Best-effort reap so that window can't silently orphan a container
+        // (#248). Idempotent and non-failing by contract.
+        executor.teardown_orphans();
     }
 
     let outcome = outcome_for(&reason, detected);
@@ -381,7 +417,7 @@ pub fn run_core<E: RunExecutor>(
                 // nothing to orphan. Report the error.
                 let msg = err.to_string();
                 events.phase_end(Phase::Provision, false, Some(msg.clone()));
-                break 'drive TerminalReason::AdapterError(msg);
+                break 'drive arbitrate(TerminalReason::AdapterError(msg), cancel);
             }
         }
 
@@ -395,7 +431,7 @@ pub fn run_core<E: RunExecutor>(
             if let Err(err) = executor.launch(h) {
                 let msg = err.to_string();
                 events.phase_end(Phase::Launch, false, Some(msg.clone()));
-                break 'drive TerminalReason::AdapterError(msg);
+                break 'drive arbitrate(TerminalReason::AdapterError(msg), cancel);
             }
         }
         events.phase_end(Phase::Launch, true, None);
@@ -412,7 +448,7 @@ pub fn run_core<E: RunExecutor>(
             if let Err(err) = executor.submit(h) {
                 let msg = err.to_string();
                 events.phase_end(Phase::Submit, false, Some(msg.clone()));
-                break 'drive TerminalReason::AdapterError(msg);
+                break 'drive arbitrate(TerminalReason::AdapterError(msg), cancel);
             }
         }
         events.phase_end(Phase::Submit, true, None);
@@ -429,7 +465,7 @@ pub fn run_core<E: RunExecutor>(
                 Err(err) => {
                     let msg = err.to_string();
                     events.phase_end(Phase::Await, false, Some(msg.clone()));
-                    break 'drive TerminalReason::AdapterError(msg);
+                    break 'drive arbitrate(TerminalReason::AdapterError(msg), cancel);
                 }
             }
         };
@@ -451,7 +487,7 @@ pub fn run_core<E: RunExecutor>(
                 Err(err) => {
                     let msg = err.to_string();
                     events.phase_end(Phase::Capture, false, Some(msg.clone()));
-                    break 'drive TerminalReason::AdapterError(msg);
+                    break 'drive arbitrate(TerminalReason::AdapterError(msg), cancel);
                 }
             }
         }
@@ -462,15 +498,17 @@ pub fn run_core<E: RunExecutor>(
             detected = Some(executor.detect_outcome(h, &session_log, &await_result));
         }
 
-        // Choose among the remaining reasons by precedence: timeout beats a
-        // graceful cancel, which beats success. (hard_cancel and adapter_error
-        // have already short-circuited above with higher precedence.)
-        match (await_result.timed_out, cancel.level()) {
-            (true, _) => TerminalReason::Timeout,
-            (false, CancelLevel::Graceful) => TerminalReason::GracefulCancel,
-            (false, CancelLevel::Hard) => TerminalReason::HardCancel,
-            (false, CancelLevel::None) => TerminalReason::Success,
-        }
+        // Route the terminal reason through the SAME arbitration helper the Err
+        // paths use, so precedence is enforced in one place: the candidate is
+        // timeout (if the await timed out) or success, arbitrated against any
+        // pending cancel (graceful/hard). timeout outranks graceful_cancel;
+        // hard_cancel outranks both. (adapter_error already short-circuited.)
+        let candidate = if await_result.timed_out {
+            TerminalReason::Timeout
+        } else {
+            TerminalReason::Success
+        };
+        arbitrate(candidate, cancel)
     };
 
     terminalize(reason, handle, session_log, detected, executor, &mut events)

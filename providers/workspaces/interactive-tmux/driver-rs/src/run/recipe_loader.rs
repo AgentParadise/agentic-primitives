@@ -97,6 +97,18 @@ pub enum RecipeMapError {
         /// The `default_agent` name from `recipe.yaml`.
         default_agent: String,
     },
+    /// A skill ref resolved to a BUNDLED skill directory that exists on the
+    /// HOST (`<recipe>/skills/<ref>/`). Passing that host path to
+    /// `claude --plugin-dir` inside the container would reference a path that
+    /// does not exist there. Staging bundled skills into the container
+    /// (tar-over-docker-exec) is not implemented yet (#249); fail fast instead
+    /// of silently producing a broken `--plugin-dir`.
+    BundledSkillStagingUnsupported {
+        /// The skill ref from the agent manifest.
+        skill_ref: String,
+        /// The resolved host path to the bundled skill directory.
+        host_path: PathBuf,
+    },
 }
 
 impl fmt::Display for RecipeMapError {
@@ -107,6 +119,16 @@ impl fmt::Display for RecipeMapError {
                 f,
                 "recipe default_agent '{default_agent}' did not resolve to a parsed agent"
             ),
+            Self::BundledSkillStagingUnsupported {
+                skill_ref,
+                host_path,
+            } => write!(
+                f,
+                "bundled skill '{skill_ref}' resolves to a host path ({}) that does not exist \
+                 in the container; bundled skill staging is not yet supported (#249) - use a \
+                 container-relative skill ref instead",
+                host_path.display()
+            ),
         }
     }
 }
@@ -116,6 +138,7 @@ impl Error for RecipeMapError {
         match self {
             Self::Load(source) => Some(source),
             Self::DefaultAgentUnresolved { .. } => None,
+            Self::BundledSkillStagingUnsupported { .. } => None,
         }
     }
 }
@@ -138,19 +161,30 @@ pub const fn map_agent_kind(kind: AgentKind) -> Agent {
 
 /// Resolve an agent's `skills` refs to plugin-dir paths, in listed order (R3).
 ///
-/// For each ref: if `<recipe_dir>/skills/<ref>/` is an existing directory, use
-/// that path; otherwise use the ref verbatim as a path (an external skill
-/// path/name the consumer resolves elsewhere). Order is preserved exactly -
-/// callers rely on it.
-pub fn resolve_skill_plugin_dirs(recipe_dir: &Path, skills: &[String]) -> Vec<PathBuf> {
+/// For each ref: if `<recipe_dir>/skills/<ref>/` is an existing directory, the
+/// ref is a BUNDLED skill on the host. Staging it into the container is not yet
+/// implemented (#249), and passing the host path to `claude --plugin-dir` would
+/// reference a non-existent in-container path, so this returns
+/// [`RecipeMapError::BundledSkillStagingUnsupported`] (PR #247 Fix 3, fail-fast
+/// instead of a silently-broken `--plugin-dir`).
+///
+/// Otherwise the ref is used verbatim as a (container-relative) path - an
+/// external skill the container resolves. Order is preserved exactly.
+pub fn resolve_skill_plugin_dirs(
+    recipe_dir: &Path,
+    skills: &[String],
+) -> Result<Vec<PathBuf>, RecipeMapError> {
     skills
         .iter()
         .map(|skill_ref| {
             let bundled = recipe_dir.join("skills").join(skill_ref);
             if bundled.is_dir() {
-                bundled
+                Err(RecipeMapError::BundledSkillStagingUnsupported {
+                    skill_ref: skill_ref.clone(),
+                    host_path: bundled,
+                })
             } else {
-                PathBuf::from(skill_ref)
+                Ok(PathBuf::from(skill_ref))
             }
         })
         .collect()
@@ -189,7 +223,7 @@ pub fn plan_from_recipe(
             })?;
 
     let agent = map_agent_kind(default_agent.agent);
-    let claude_plugin_dirs = resolve_skill_plugin_dirs(recipe_dir, &default_agent.skills);
+    let claude_plugin_dirs = resolve_skill_plugin_dirs(recipe_dir, &default_agent.skills)?;
     let system = resolved_system(default_agent, recipe.system_md.as_deref());
     let submit_text = build_submit_text(system.as_deref(), task);
 

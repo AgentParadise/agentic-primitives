@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::adapter::Agent;
@@ -17,6 +18,7 @@ use crate::result::AwaitResult;
 use crate::run::contract::{AgentRunEvent, AgentRunOutcome, AgentRunResult, AgentRunSpec};
 use crate::run::orchestrator::{run_core, CancelToken, RunExecutor};
 use crate::run::recipe_loader::{load_execution_plan, RecipeExecutionPlan};
+use crate::tmux;
 use crate::workspace::{StartOptions, Workspace, DEFAULT_STARTUP_TIMEOUT_S};
 
 /// Default await bound (seconds) when the spec sets no `limits.timeout_s`.
@@ -34,6 +36,10 @@ pub struct WorkspaceHandle {
 /// recipe's default agent through it.
 pub struct WorkspaceExecutor {
     name: String,
+    /// Deterministic, unique container name computed UP FRONT (before
+    /// `provision`), so a hard cancel that orphans a container mid-provision can
+    /// be reaped precisely by name (see `teardown_orphans`, #248).
+    container_name: String,
     image: String,
     plan: RecipeExecutionPlan,
     submit_text: String,
@@ -59,8 +65,12 @@ impl WorkspaceExecutor {
         let auth_path = materialise_host_auth(spec, agent, &mut cred_tmp_dirs)?;
         host_auth.insert(agent, auth_path);
 
+        let name = sanitize_name(&plan.recipe_name);
+        let container_name = format!("interactive-tmux-{name}-{}", unique_suffix());
+
         Ok(Self {
-            name: sanitize_name(&plan.recipe_name),
+            name,
+            container_name,
             image: image.to_string(),
             plan: plan.clone(),
             submit_text: plan.submit_text.clone(),
@@ -81,8 +91,19 @@ impl RunExecutor for WorkspaceExecutor {
         // any failure it tears down the container it created, so a failed
         // provision leaks nothing. The orchestrator's Launching phase is a
         // no-op for this executor (see `launch`).
+        //
+        // TODO(#248): `Workspace::start` is BLOCKING and does not observe the
+        // orchestrator's `CancelToken`. A hard cancel that arrives while this
+        // call is in flight only takes effect once `start` returns - then the
+        // orchestrator tears down the returned handle (no orphan for catchable
+        // signals). The residual gap: a SIGKILL (uncatchable) or a wedged
+        // blocking call in that window can orphan a container. As a defense we
+        // pin a deterministic `container_name` up front so `teardown_orphans`
+        // can reap it by exact name on the hard-cancel path; a fully
+        // cancellable start is #248.
         let mut opts = StartOptions::new(&self.name);
         opts.image = self.image.clone();
+        opts.container_name = Some(self.container_name.clone());
         opts.host_auth = self.host_auth.clone();
         opts.host_claude_dotjson = self.host_claude_dotjson.clone();
         opts.claude_plugin_dirs = self.plan.claude_plugin_dirs.clone();
@@ -117,6 +138,11 @@ impl RunExecutor for WorkspaceExecutor {
         handle: &mut Self::Handle,
         timeout: Option<Duration>,
     ) -> io::Result<AwaitResult> {
+        // TODO(#248): like `provision`, `await_completion` is a BLOCKING bounded
+        // poll loop that does not observe the `CancelToken` mid-poll. A hard
+        // cancel takes effect only once this returns (bounded by `secs`); the
+        // orchestrator then tears down the handle. Making the poll loop
+        // cancel-aware (so a hard cancel returns promptly) is part of #248.
         let secs = timeout.map_or(DEFAULT_AWAIT_TIMEOUT_S, |d| d.as_secs_f64());
         handle
             .workspace
@@ -153,6 +179,25 @@ impl RunExecutor for WorkspaceExecutor {
             let _ = fs::remove_dir_all(dir);
         }
         result
+    }
+
+    fn teardown_orphans(&mut self) {
+        // Best-effort orphan reap for the hard-cancel-during-blocking-provision
+        // window (#248): the container name was pinned deterministically before
+        // `provision`, so we can `docker rm -f` it by EXACT name (never a
+        // prefix - so a concurrent run of the same recipe is never touched).
+        // Idempotent: if no such container exists (the common case), the removal
+        // is a harmless no-op. Never fails the run; we only log.
+        eprintln!(
+            "[itmux run] hard cancel with no live handle - best-effort reap of container {} (#248)",
+            self.container_name
+        );
+        let mut cmd = Command::new("docker");
+        cmd.args(["rm", "-f", &self.container_name]);
+        let _ = tmux::run_bounded(cmd, Duration::from_secs_f64(tmux::DEFAULT_RUN_TIMEOUT_S));
+        for dir in self.cred_tmp_dirs.drain(..) {
+            let _ = fs::remove_dir_all(dir);
+        }
     }
 }
 

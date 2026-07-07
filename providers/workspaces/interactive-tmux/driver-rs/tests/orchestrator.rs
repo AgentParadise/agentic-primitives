@@ -40,6 +40,7 @@ enum CancelKind {
 struct Record {
     calls: Vec<FakePhase>,
     teardowns: u32,
+    orphan_reaps: u32,
 }
 
 struct FakeExecutor {
@@ -59,6 +60,9 @@ struct FakeExecutor {
     /// phase runs (simulates Ctrl-C: 1 = graceful, 2 = escalate to hard).
     escalate_at: Option<(FakePhase, u32)>,
     escalator: RefCell<CancelEscalator>,
+    /// Request a hard cancel BEFORE the run starts (simulates a hard cancel
+    /// landing during a blocking provision, before any handle exists).
+    pre_cancel_hard: bool,
 }
 
 impl FakeExecutor {
@@ -73,6 +77,7 @@ impl FakeExecutor {
             pane: "session pane".to_string(),
             escalate_at: None,
             escalator: RefCell::new(CancelEscalator::new()),
+            pre_cancel_hard: false,
         }
     }
 
@@ -172,6 +177,10 @@ impl RunExecutor for FakeExecutor {
             Ok(())
         }
     }
+
+    fn teardown_orphans(&mut self) {
+        self.record.borrow_mut().orphan_reaps += 1;
+    }
 }
 
 // --- harness ---------------------------------------------------------------
@@ -197,6 +206,9 @@ fn drive(mut configure: impl FnMut(&mut FakeExecutor)) -> Run {
     let cancel = CancelToken::new();
     let mut executor = FakeExecutor::new(Rc::clone(&record), cancel.clone());
     configure(&mut executor);
+    if executor.pre_cancel_hard {
+        cancel.cancel_hard();
+    }
 
     let plan = fake_plan();
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -407,6 +419,58 @@ fn hard_cancel_while_launch_in_flight_bails_and_tears_down_no_orphan() {
     assert!(
         run.result.result.summary.contains("hard"),
         "summary: {}",
+        run.result.result.summary
+    );
+}
+
+#[test]
+fn hard_cancel_before_provision_reaps_orphans_best_effort() {
+    // Simulates a hard cancel that lands during a blocking provision, before any
+    // handle exists (#248). The orchestrator bails at the first boundary with no
+    // handle, and terminalize invokes the best-effort orphan reap so the window
+    // can't silently leak a container.
+    let run = drive(|e| e.pre_cancel_hard = true);
+
+    assert!(
+        run.record.calls.is_empty(),
+        "provision never ran (bailed on the pre-provision hard-cancel check)"
+    );
+    assert_eq!(run.record.teardowns, 0, "no handle to tear down");
+    assert_eq!(
+        run.record.orphan_reaps, 1,
+        "best-effort orphan reap invoked exactly once on the hard-cancel-no-handle path"
+    );
+    assert_eq!(session_end_count(&run.events), 1);
+    assert!(!run.result.result.success);
+    assert!(run.result.result.summary.contains("hard"));
+}
+
+#[test]
+fn happy_path_does_not_reap_orphans() {
+    let run = drive(|_| {});
+    assert_eq!(
+        run.record.orphan_reaps, 0,
+        "normal completion tears down via the handle, never the orphan reaper"
+    );
+}
+
+#[test]
+fn hard_cancel_outranks_adapter_error_on_err_path() {
+    // A hard cancel is pending AND the executor returns Err from the same phase
+    // (a blocking call that returned an error after the cancel was requested).
+    // Precedence hard_cancel > adapter_error must win: the terminal reason is
+    // HardCancel, still torn down once with one session_end.
+    let run = drive(|e| {
+        e.fail_at = Some(FakePhase::Await);
+        e.cancel_at = Some((FakePhase::Await, CancelKind::Hard));
+    });
+
+    assert_eq!(run.record.teardowns, 1, "torn down exactly once, no orphan");
+    assert_eq!(session_end_count(&run.events), 1);
+    assert!(!run.result.result.success);
+    assert!(
+        run.result.result.summary.contains("hard"),
+        "hard_cancel must outrank the adapter_error: {}",
         run.result.result.summary
     );
 }

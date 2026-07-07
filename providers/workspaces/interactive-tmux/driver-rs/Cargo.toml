@@ -18,10 +18,12 @@ path = "src/lib.rs"
 [dependencies]
 # Recipe-directory schema/loader (EXP-0005). Pinned to the tip of APSS PR #89
 # (branch feat/recipe-directory-standard), which carries the
-# `fix(workspace): exclude template skeletons` commit - without it, cargo's
-# git-source workspace resolution chokes on the template skeletons whose
-# package name is the literal `{{slug}}`. Repoint this to an APSS `main` rev
-# once #89 merges.
+# `fix(workspace): exclude template skeletons` commit. That exclude makes
+# cargo's git-source workspace RESOLUTION SUCCEED. Note: cargo still PRINTS
+# non-fatal `invalid character '{' in package name: '{{slug}}'` diagnostics
+# for the excluded template Cargo.tomls while scanning the workspace - they
+# are printed-but-non-fatal (the build and tests succeed). Repoint this to an
+# APSS `main` rev once #89 merges.
 agent_recipe = { git = "https://github.com/AgentParadise/agent-paradise-standards-system", rev = "ce786bc6b43311c8bb650a4a96652bbfa831d2e4", package = "apss-v1-0005-agent-recipe" }
 clap = { version = "4", features = ["derive"] }
 regex = "1"

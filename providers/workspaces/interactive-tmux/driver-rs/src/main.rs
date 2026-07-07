@@ -14,11 +14,11 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
-use itmux::run::contract::{AgentRunResult, AgentRunSpec};
+use itmux::run::contract::{AgentRunEvent, AgentRunSpec};
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
-use itmux::run::workspace_executor::{generate_run_id, run as run_orchestrated};
+use itmux::run::workspace_executor::{generate_run_id, now_rfc3339, run as run_orchestrated};
 use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
     DEFAULT_TMUX_ROWS, DEFAULT_WORKDIR,
@@ -426,16 +426,6 @@ fn handle_stop(name: String) -> ExitCode {
     }
 }
 
-/// One stdout line carrying the final result, tagged `type:"result"` so a
-/// consumer can distinguish it from the event JSONL (R6). The `AgentRunResult`
-/// fields are flattened alongside the tag.
-#[derive(Serialize)]
-struct ResultLine<'a> {
-    r#type: &'static str,
-    #[serde(flatten)]
-    result: &'a AgentRunResult,
-}
-
 /// Install a SIGINT/SIGTERM watcher that folds signals into `cancel` via the
 /// two-tier [`CancelEscalator`]. Returns the signal handle + the watcher thread
 /// so the caller can stop and join it after the run.
@@ -499,8 +489,12 @@ fn handle_run(
     #[cfg(unix)]
     let signal_watcher = install_signal_watcher(cancel.clone());
 
-    // Emit each event as one JSON line on stdout (R6). stderr stays human-only.
-    let mut emit = |event: &_| {
+    // Emit each event as one JSON line on stdout (R6: stdout is PURE
+    // AgentRunEvent JSONL; stderr stays human-only). Count events so the final
+    // result event (below) continues the monotonic `seq`.
+    let event_seq = std::cell::Cell::new(0u64);
+    let mut emit = |event: &AgentRunEvent| {
+        event_seq.set(event_seq.get().max(event.seq + 1));
         if json {
             match serde_json::to_string(event) {
                 Ok(line) => println!("{line}"),
@@ -528,7 +522,12 @@ fn handle_run(
         }
     };
 
-    // Deliver the final result on its distinguishable channel.
+    let success = result.result.success;
+
+    // Deliver the final result. When a result file is given, write it THERE and
+    // keep stdout as pure event JSONL. Otherwise, in JSON mode, emit the result
+    // as a real AgentRunEvent (`type:"result"`) so EVERY stdout line still
+    // parses as an AgentRunEvent (Fix 4 / R6 stdout purity).
     match result_file {
         Some(path) => match serde_json::to_vec_pretty(&result) {
             Ok(bytes) => {
@@ -547,11 +546,8 @@ fn handle_run(
         },
         None => {
             if json {
-                let line = ResultLine {
-                    r#type: "result",
-                    result: &result,
-                };
-                match serde_json::to_string(&line) {
+                let event = AgentRunEvent::result(&run_id, event_seq.get(), now_rfc3339(), result);
+                match serde_json::to_string(&event) {
                     Ok(line) => println!("{line}"),
                     Err(err) => eprintln!("[itmux run] failed to serialize result: {err}"),
                 }
@@ -564,7 +560,7 @@ fn handle_run(
         }
     }
 
-    if result.result.success {
+    if success {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(3)

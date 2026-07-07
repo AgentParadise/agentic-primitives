@@ -92,7 +92,7 @@
       "additionalProperties": false
     },
     {
-      "description": "Terminal event - always the last event of a run, carrying the terminal outcome (mirrors `AgentRunResult.result`).",
+      "description": "Terminal LIFECYCLE event - the last lifecycle event of a run, carrying the terminal outcome (mirrors `AgentRunResult.result`).",
       "type": "object",
       "required": [
         "outcome",
@@ -106,6 +106,26 @@
           "type": "string",
           "enum": [
             "session_end"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Final-result DELIVERY envelope. Carries the full [`AgentRunResult`] as a valid `AgentRunEvent` so a consumer reading the stdout stream can treat EVERY line as an `AgentRunEvent` (R6: stdout is pure event JSONL). Emitted once, after `session_end`, only when the CLI is not writing the result to a `--result-file`. Boxed to keep the enum small.",
+      "type": "object",
+      "required": [
+        "result",
+        "type"
+      ],
+      "properties": {
+        "result": {
+          "$ref": "#/definitions/AgentRunResult"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "result"
           ]
         }
       },
@@ -144,6 +164,58 @@
           "type": "boolean"
         },
         "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AgentRunResult": {
+      "description": "Terminal result of `itmux run`, emitted once after the run finishes (success, failure, timeout, or cancellation).",
+      "type": "object",
+      "required": [
+        "result",
+        "session_log"
+      ],
+      "properties": {
+        "observability": {
+          "description": "Plan 3 placeholder: aggregated observability data for the run.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ObservabilityBundle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_artifacts": {
+          "description": "Paths to output artifacts collected from the workspace.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "result": {
+          "$ref": "#/definitions/AgentRunOutcome"
+        },
+        "session_log": {
+          "description": "The captured pane / session transcript.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilityBundle": {
+      "description": "Plan 3 placeholder: aggregated observability data attached to the final `AgentRunResult`. Minimal until Plan 3 defines the real bundle shape.",
+      "type": "object",
+      "properties": {
+        "data": {
+          "default": null
+        },
+        "name": {
+          "default": "",
           "type": "string"
         }
       },

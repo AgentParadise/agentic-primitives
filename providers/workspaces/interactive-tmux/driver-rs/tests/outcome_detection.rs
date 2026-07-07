@@ -42,9 +42,33 @@ fn claude_api_error_pane_is_failure() {
 }
 
 #[test]
-fn claude_401_pane_is_failure() {
-    let pane = format!("{CLAUDE_READY}\n● Request failed with status 401\n");
+fn claude_401_on_an_error_line_is_failure() {
+    // Ambiguous token `401` counts only on an error-banner line (has "error").
+    let pane = format!("{CLAUDE_READY}\n● Error: request failed with status 401\n");
     assert_failure_mentions(&detect_outcome(Agent::Claude, &pane), "401");
+}
+
+#[test]
+fn claude_prose_mentioning_401_is_not_a_hard_error() {
+    // Fix 5: the agent's OWN reply discussing HTTP 401 must NOT be misread as a
+    // hard error - the `401` is not on an error-banner line.
+    let pane = format!("{CLAUDE_READY}\nThe endpoint returns 401 on bad auth, so guard it.\n");
+    let signal = detect_outcome(Agent::Claude, &pane);
+    assert!(
+        signal.success,
+        "prose mentioning 401 must not be a hard error: {signal:?}"
+    );
+}
+
+#[test]
+fn claude_prose_mentioning_invalid_api_key_is_not_a_hard_error() {
+    let pane =
+        format!("{CLAUDE_READY}\nA 403 differs from an Invalid API key rejection in practice.\n");
+    let signal = detect_outcome(Agent::Claude, &pane);
+    assert!(
+        signal.success,
+        "prose mentioning 'Invalid API key' off an error line must be success: {signal:?}"
+    );
 }
 
 #[test]
@@ -87,6 +111,17 @@ fn codex_not_authenticated_pane_is_failure() {
 fn codex_unauthorized_pane_is_failure() {
     let pane = format!("{CODEX_READY}\n▌ stream error: 401 Unauthorized\n");
     assert_failure_mentions(&detect_outcome(Agent::Codex, &pane), "Unauthorized");
+}
+
+#[test]
+fn codex_prose_mentioning_401_is_not_a_hard_error() {
+    // Fix 5: codex agent prose about 401 must not be misread as an auth failure.
+    let pane = format!("{CODEX_READY}\nNote: a 401 response usually means expired creds.\n");
+    let signal = detect_outcome(Agent::Codex, &pane);
+    assert!(
+        signal.success,
+        "codex prose mentioning 401 must be success: {signal:?}"
+    );
 }
 
 #[test]
