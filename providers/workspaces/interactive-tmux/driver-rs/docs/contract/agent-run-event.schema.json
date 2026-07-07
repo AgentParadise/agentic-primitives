@@ -64,6 +64,15 @@
         "type"
       ],
       "properties": {
+        "cached_input_tokens": {
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
         "cost_usd": {
           "default": null,
           "type": [
@@ -79,6 +88,15 @@
         },
         "output_tokens": {
           "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "reasoning_output_tokens": {
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
           "format": "uint64",
           "minimum": 0.0
         },

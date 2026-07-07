@@ -220,6 +220,10 @@ Current branch `feat/observability-exporter-primitive` starts this decision:
 
 - `providers/workspaces/interactive-tmux/driver-rs/src/run/contract.rs`
   defines typed observability exporters and exporter reports.
+- `providers/workspaces/interactive-tmux/driver-rs/src/run/harness_observer.rs`
+  defines the first observer boundary and a `codex_exec_json` parser that maps
+  `codex exec --json` lifecycle and `turn.completed.usage` events into
+  normalized payloads.
 - `providers/workspaces/interactive-tmux/driver-rs/src/run/observability.rs`
   implements file fanout.
 - `workspace_executor.rs` fans out `AgentRunEvent`s while preserving stdout
@@ -260,7 +264,7 @@ span mapping in `.9`.
 
 Next steps for `okrs-51p.6`:
 
-1. Add an explicit harness observer trait/module boundary.
+1. Wire the explicit harness observer boundary into a runnable command path.
 2. Prove Claude hook plugin loading for `interactive-tmux` using
    `ITMUX_CLAUDE_PLUGIN_DIRS` or recipe `claude_plugin_dirs` without assuming
    Codex has the same mechanism.
@@ -275,8 +279,8 @@ Next steps for `okrs-51p.6`:
    stderr. Stdout must remain reserved for `itmux run` contract JSONL.
 7. Fix or revalidate Claude credential transfer in the interactive-tmux image;
    the 2026-07-07 probe reached Claude Code but received Anthropic 401.
-8. Add a `codex_exec_json` observer before promising Codex token/cost parity in
-   the TUI path.
+8. Wire the implemented `codex_exec_json` observer before promising Codex
+   token/cost parity in the TUI path.
 9. Preserve relative path behavior in reports, but document and test that only
    absolute file exporter paths can produce `file://` links.
 

@@ -335,6 +335,8 @@ fn agent_run_event_token_usage_round_trips() {
         "type": "token_usage",
         "input_tokens": 1000,
         "output_tokens": 250,
+        "cached_input_tokens": 700,
+        "reasoning_output_tokens": 50,
         "cost_usd": 0.015
     }"#;
     let event: AgentRunEvent = serde_json::from_str(json).expect("deserialize");
@@ -342,15 +344,45 @@ fn agent_run_event_token_usage_round_trips() {
         AgentRunEventPayload::TokenUsage {
             input_tokens,
             output_tokens,
+            cached_input_tokens,
+            reasoning_output_tokens,
             cost_usd,
         } => {
             assert_eq!(*input_tokens, 1000);
             assert_eq!(*output_tokens, 250);
+            assert_eq!(*cached_input_tokens, Some(700));
+            assert_eq!(*reasoning_output_tokens, Some(50));
             assert_eq!(*cost_usd, Some(0.015));
         }
         other => panic!("expected TokenUsage, got {other:?}"),
     }
     roundtrip(&event);
+}
+
+#[test]
+fn agent_run_event_token_usage_defaults_codex_specific_fields() {
+    let json = r#"{
+        "run_id": "run-1",
+        "seq": 2,
+        "ts": "2026-07-07T12:00:02Z",
+        "type": "token_usage",
+        "input_tokens": 1000,
+        "output_tokens": 250
+    }"#;
+    let event: AgentRunEvent = serde_json::from_str(json).expect("deserialize");
+    match &event.payload {
+        AgentRunEventPayload::TokenUsage {
+            cached_input_tokens,
+            reasoning_output_tokens,
+            cost_usd,
+            ..
+        } => {
+            assert_eq!(*cached_input_tokens, None);
+            assert_eq!(*reasoning_output_tokens, None);
+            assert_eq!(*cost_usd, None);
+        }
+        other => panic!("expected TokenUsage, got {other:?}"),
+    }
 }
 
 #[test]
@@ -408,7 +440,7 @@ fn agent_run_event_jsonl_stream_of_four_events_parses_line_by_line() {
     let lines = [
         r#"{"run_id":"r1","seq":0,"ts":"2026-07-07T00:00:00Z","type":"tool_start","tool_name":"Read","tool_input":{}}"#,
         r#"{"run_id":"r1","seq":1,"ts":"2026-07-07T00:00:01Z","type":"tool_end","tool_name":"Read","success":true,"output_summary":null}"#,
-        r#"{"run_id":"r1","seq":2,"ts":"2026-07-07T00:00:02Z","type":"token_usage","input_tokens":10,"output_tokens":5,"cost_usd":null}"#,
+        r#"{"run_id":"r1","seq":2,"ts":"2026-07-07T00:00:02Z","type":"token_usage","input_tokens":10,"output_tokens":5,"cached_input_tokens":7,"reasoning_output_tokens":0,"cost_usd":null}"#,
         r#"{"run_id":"r1","seq":3,"ts":"2026-07-07T00:00:03Z","type":"session_end","outcome":{"success":true,"summary":"done"}}"#,
     ];
 

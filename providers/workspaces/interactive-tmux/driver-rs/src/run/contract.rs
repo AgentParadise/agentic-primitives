@@ -269,6 +269,10 @@ pub enum AgentRunEventPayload {
         input_tokens: u64,
         output_tokens: u64,
         #[serde(default)]
+        cached_input_tokens: Option<u64>,
+        #[serde(default)]
+        reasoning_output_tokens: Option<u64>,
+        #[serde(default)]
         cost_usd: Option<f64>,
     },
     /// Terminal LIFECYCLE event - the last lifecycle event of a run, carrying
