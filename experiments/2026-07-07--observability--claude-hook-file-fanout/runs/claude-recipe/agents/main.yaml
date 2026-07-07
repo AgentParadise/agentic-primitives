@@ -1,0 +1,8 @@
+name: main
+agent: claude
+model:
+  name: anthropic/claude-sonnet-4-5
+  effort: low
+system_instructions:
+  mode: append
+  content: ""

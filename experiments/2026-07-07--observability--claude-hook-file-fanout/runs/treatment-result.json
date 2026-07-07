@@ -1,0 +1,25 @@
+{
+  "result": {
+    "success": false,
+    "summary": "harness hard-error detected (error banner \"API Error\")"
+  },
+  "output_artifacts": [],
+  "session_log": "agent@f2ebb99cb580:/workspace$ claude --plugin-dir /workspace/plugins/observability\n ▐▛███▜▌   Claude Code v2.1.126\n▝▜█████▛▘  Opus 4.7 (1M context) · Claude Max\n  ▘▘ ▝▝    /workspace\n\n  Welcome to Opus 4.7 xhigh! · /effort to tune speed vs. intelligence\n\n❯ Answer with the requested exact text and no extra commentary.\n\n\n\n\n  Reply exactly: OBSERVABILITY_OK\n  ⎿  Please run /login · API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"Invalid authentication credentials\"},\"request_id\":\"req_011Cco8QoqA7hjdhMgak37Ry\"}\n\n✻ Baked for 2s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ? for shortcuts                                                                                                                 ✓ Anthropic marketplace installed · /plugin to see available plugins\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--observability--claude-hook-file-fanout/runs/treatment-events.jsonl",
+        "events_exported": 11,
+        "links": [
+          {
+            "label": "itmux run events",
+            "uri": "experiments/2026-07-07--observability--claude-hook-file-fanout/runs/treatment-events.jsonl"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}
