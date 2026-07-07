@@ -226,6 +226,38 @@ Current branch `feat/observability-exporter-primitive` starts this decision:
   purity.
 - `itmux run --observability-file <path>` enables the portable file exporter.
 
+## Experiment Results, 2026-07-07
+
+The first hypothesis-first probes produced these architecture constraints:
+
+- `experiments/2026-07-07--observability--claude-hook-file-fanout` validated
+  the file exporter: stdout event count and exported event count matched
+  exactly in baseline and treatment. It did not validate Claude hook-derived
+  events because Claude launched and then failed with Anthropic `API Error:
+  401`. The treatment did prove that recipe-driven `itmux run` can launch
+  `claude --plugin-dir /workspace/plugins/observability`.
+- `experiments/2026-07-07--observability--codex-token-cost-surface` showed
+  that Codex TUI currently provides only coarse driver/pane observability in
+  `itmux run`. A separate `codex exec --json` probe produced structured
+  `thread.started`, `turn.started`, `item.completed`, and `turn.completed`
+  events, with `turn.completed.usage` carrying token counts. Therefore
+  `codex_exec_json` is the first viable Codex usage observer; `codex_tui`
+  remains a coarse observer until another live source is proven.
+- `experiments/2026-07-07--langfuse--otel-ingestion-smoke` generated the local
+  synthetic root span plus three child spans, but did not export because no
+  LangFuse base URL, credentials, or OTEL exporter env were present. `.9`
+  should fail fast on missing config and should not proceed to run-event mapping
+  until this smoke passes against LangFuse Cloud or the Mac Mini self-host.
+- `experiments/2026-07-07--observability--langfuse-otel-export` confirmed the
+  technical blocker edge: the current `ObservabilityExporter` enum supports
+  `file` only, so LangFuse trace creation and trace links require a `.6`
+  exporter interface extension before `.9` implementation.
+
+These results preserve the original three-layer architecture but sharpen the
+implementation order: finish backend-independent fanout and observer boundaries
+in `.6`, then validate LangFuse OTLP connectivity, then implement run-event to
+span mapping in `.9`.
+
 Next steps for `okrs-51p.6`:
 
 1. Add an explicit harness observer trait/module boundary.
@@ -241,6 +273,12 @@ Next steps for `okrs-51p.6`:
 6. Resolve the observability plugin docs/code mismatch: the README says
    lifecycle hooks emit to stdout, while the handler currently writes through
    stderr. Stdout must remain reserved for `itmux run` contract JSONL.
+7. Fix or revalidate Claude credential transfer in the interactive-tmux image;
+   the 2026-07-07 probe reached Claude Code but received Anthropic 401.
+8. Add a `codex_exec_json` observer before promising Codex token/cost parity in
+   the TUI path.
+9. Preserve relative path behavior in reports, but document and test that only
+   absolute file exporter paths can produce `file://` links.
 
 Next steps for `okrs-51p.9`:
 
@@ -252,6 +290,8 @@ Next steps for `okrs-51p.9`:
 5. Start with `experiments/2026-07-07--langfuse--otel-ingestion-smoke` to
    validate OTLP HTTP auth, endpoint shape, and trace visibility before richer
    run-event mapping work.
+6. Treat missing LangFuse env as a first-class exporter configuration failure
+   with a clear `ObservabilityExportReport.error`.
 
 ## References
 
