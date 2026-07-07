@@ -190,6 +190,8 @@ fn observability_langfuse_otlp_exporter_round_trips_with_env_refs() {
         public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
         secret_key_env: "LANGFUSE_SECRET_KEY".to_string(),
         environment_env: "LANGFUSE_TRACING_ENVIRONMENT".to_string(),
+        project_id: Some("project-123".to_string()),
+        project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
         service_name: "agentic-primitives".to_string(),
         label: Some("LangFuse trace".to_string()),
     };
@@ -204,6 +206,8 @@ fn observability_langfuse_otlp_exporter_round_trips_with_env_refs() {
             public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
             secret_key_env: "LANGFUSE_SECRET_KEY".to_string(),
             environment_env: "LANGFUSE_TRACING_ENVIRONMENT".to_string(),
+            project_id: None,
+            project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
             service_name: "agentic-primitives".to_string(),
             label: None,
         }

@@ -152,6 +152,14 @@ pub enum ObservabilityExporter {
         secret_key_env: String,
         #[serde(default = "default_langfuse_environment_env")]
         environment_env: String,
+        /// Optional LangFuse project id used only to build human trace links.
+        /// Export still succeeds without this value.
+        #[serde(default)]
+        project_id: Option<String>,
+        /// Environment variable that may contain the LangFuse project id. Missing
+        /// or empty values are ignored because the OTLP ingest path does not need it.
+        #[serde(default = "default_langfuse_project_id_env")]
+        project_id_env: String,
         #[serde(default = "default_langfuse_service_name")]
         service_name: String,
         #[serde(default)]
@@ -178,6 +186,10 @@ fn default_langfuse_secret_key_env() -> String {
 
 fn default_langfuse_environment_env() -> String {
     "LANGFUSE_TRACING_ENVIRONMENT".to_string()
+}
+
+fn default_langfuse_project_id_env() -> String {
+    "LANGFUSE_PROJECT_ID".to_string()
 }
 
 fn default_langfuse_service_name() -> String {

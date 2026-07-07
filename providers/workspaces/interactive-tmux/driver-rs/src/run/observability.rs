@@ -85,18 +85,22 @@ impl ExporterState {
                 public_key_env,
                 secret_key_env,
                 environment_env,
+                project_id,
+                project_id_env,
                 service_name,
                 label,
             } => {
                 let env = SystemEnv;
-                match resolve_langfuse_otlp_config(
-                    base_url.as_deref(),
+                let input = LangFuseOtlpConfigInput {
+                    base_url: base_url.as_deref(),
                     public_key_env,
                     secret_key_env,
                     environment_env,
+                    project_id: project_id.as_deref(),
+                    project_id_env,
                     service_name,
-                    &env,
-                ) {
+                };
+                match resolve_langfuse_otlp_config(&input, &env) {
                     Ok(resolved) => Self {
                         kind: config.kind().to_string(),
                         target: Some(resolved.traces_endpoint.clone()),
@@ -147,25 +151,30 @@ impl ExporterState {
     }
 
     fn report(mut self) -> ObservabilityExportReport {
-        if let ExporterSink::LangFuseOtlp(sink) = &mut self.sink {
-            if let Err(err) = sink.export() {
-                self.error = Some(err);
+        let mut links = Vec::new();
+        match &mut self.sink {
+            ExporterSink::File(_) => {
+                if let Some(target) = self.target.as_deref() {
+                    links.push(ObservabilityLink {
+                        label: self.label.clone(),
+                        uri: file_uri(target),
+                    });
+                }
             }
+            ExporterSink::LangFuseOtlp(sink) => {
+                if let Err(err) = sink.export() {
+                    self.error = Some(err);
+                } else if let Some(link) = sink.trace_link(&self.label) {
+                    links.push(link);
+                }
+            }
+            ExporterSink::Disabled => {}
         }
         let status = if self.error.is_some() {
             ObservabilityExportStatus::Failed
         } else {
             ObservabilityExportStatus::Ok
         };
-        let links = self
-            .target
-            .as_deref()
-            .map(|target| ObservabilityLink {
-                label: self.label,
-                uri: file_uri(target),
-            })
-            .into_iter()
-            .collect();
         ObservabilityExportReport {
             kind: self.kind,
             status,
@@ -212,9 +221,21 @@ impl EnvLookup for SystemEnv {
 #[derive(Debug, PartialEq, Eq)]
 struct LangFuseOtlpResolvedConfig {
     traces_endpoint: String,
+    ui_base_url: String,
     authorization_header: String,
     environment: String,
+    project_id: Option<String>,
     service_name: String,
+}
+
+struct LangFuseOtlpConfigInput<'a> {
+    base_url: Option<&'a str>,
+    public_key_env: &'a str,
+    secret_key_env: &'a str,
+    environment_env: &'a str,
+    project_id: Option<&'a str>,
+    project_id_env: &'a str,
+    service_name: &'a str,
 }
 
 struct LangFuseOtlpSink {
@@ -262,31 +283,49 @@ impl LangFuseOtlpSink {
             Err(err) => Err(format!("langfuse_otlp export failed: {err}")),
         }
     }
+
+    fn trace_link(&self, label: &str) -> Option<ObservabilityLink> {
+        let project_id = self.config.project_id.as_deref()?;
+        let run_id = self.events.first()?.run_id.as_str();
+        let trace_id = hex_lower(&trace_id_for_run(run_id));
+        Some(ObservabilityLink {
+            label: label.to_string(),
+            uri: format!(
+                "{}/project/{}/traces/{}",
+                self.config.ui_base_url,
+                url_path_encode(project_id),
+                trace_id
+            ),
+        })
+    }
 }
 
 fn resolve_langfuse_otlp_config(
-    base_url: Option<&str>,
-    public_key_env: &str,
-    secret_key_env: &str,
-    environment_env: &str,
-    service_name: &str,
+    input: &LangFuseOtlpConfigInput<'_>,
     env: &impl EnvLookup,
 ) -> Result<LangFuseOtlpResolvedConfig, String> {
-    let base_url = required_value("LANGFUSE_BASE_URL", base_url, env.get("LANGFUSE_BASE_URL"))?;
-    let public_key = required_env(public_key_env, env)?;
-    let secret_key = required_env(secret_key_env, env)?;
-    let environment = required_env(environment_env, env)?;
-    if service_name.trim().is_empty() {
+    let base_url = required_value(
+        "LANGFUSE_BASE_URL",
+        input.base_url,
+        env.get("LANGFUSE_BASE_URL"),
+    )?;
+    let public_key = required_env(input.public_key_env, env)?;
+    let secret_key = required_env(input.secret_key_env, env)?;
+    let environment = required_env(input.environment_env, env)?;
+    let project_id = optional_value(input.project_id, env.get(input.project_id_env));
+    if input.service_name.trim().is_empty() {
         return Err("langfuse_otlp service_name must not be empty".to_string());
     }
     Ok(LangFuseOtlpResolvedConfig {
         traces_endpoint: langfuse_traces_endpoint(&base_url),
+        ui_base_url: langfuse_ui_base_url(&base_url),
         authorization_header: format!(
             "Basic {}",
             base64_encode(format!("{public_key}:{secret_key}").as_bytes())
         ),
         environment,
-        service_name: service_name.to_string(),
+        project_id,
+        service_name: input.service_name.to_string(),
     })
 }
 
@@ -311,6 +350,18 @@ fn required_env(name: &str, env: &impl EnvLookup) -> Result<String, String> {
         .ok_or_else(|| format!("missing required LangFuse env var: {name}"))
 }
 
+fn optional_value(explicit: Option<&str>, env_value: Option<String>) -> Option<String> {
+    explicit
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            env_value
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
 fn langfuse_traces_endpoint(base_url: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.ends_with("/api/public/otel/v1/traces") {
@@ -319,6 +370,17 @@ fn langfuse_traces_endpoint(base_url: &str) -> String {
         format!("{trimmed}/v1/traces")
     } else {
         format!("{trimmed}/api/public/otel/v1/traces")
+    }
+}
+
+fn langfuse_ui_base_url(base_url: &str) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if let Some(origin) = trimmed.strip_suffix("/api/public/otel/v1/traces") {
+        origin.to_string()
+    } else if let Some(origin) = trimmed.strip_suffix("/api/public/otel") {
+        origin.to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 
@@ -340,6 +402,30 @@ fn base64_encode(data: &[u8]) -> String {
             out.push(TABLE[(b2 & 0b0011_1111) as usize] as char);
         } else {
             out.push('=');
+        }
+    }
+    out
+}
+
+fn hex_lower(data: &[u8]) -> String {
+    const TABLE: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(data.len() * 2);
+    for byte in data {
+        out.push(TABLE[(byte >> 4) as usize] as char);
+        out.push(TABLE[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn url_path_encode(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push(char::from(b"0123456789ABCDEF"[(byte >> 4) as usize]));
+            out.push(char::from(b"0123456789ABCDEF"[(byte & 0x0f) as usize]));
         }
     }
     out
@@ -671,27 +757,31 @@ mod tests {
             ("LANGFUSE_PUBLIC_KEY", "pk-lf-test"),
             ("LANGFUSE_SECRET_KEY", "sk-lf-test"),
             ("LANGFUSE_TRACING_ENVIRONMENT", "agentic-primitives-test"),
+            ("LANGFUSE_PROJECT_ID", "project-123"),
         ]);
 
-        let resolved = resolve_langfuse_otlp_config(
-            Some("https://cloud.langfuse.com"),
-            "LANGFUSE_PUBLIC_KEY",
-            "LANGFUSE_SECRET_KEY",
-            "LANGFUSE_TRACING_ENVIRONMENT",
-            "agentic-primitives",
-            &env,
-        )
-        .expect("config resolves");
+        let input = LangFuseOtlpConfigInput {
+            base_url: Some("https://cloud.langfuse.com"),
+            public_key_env: "LANGFUSE_PUBLIC_KEY",
+            secret_key_env: "LANGFUSE_SECRET_KEY",
+            environment_env: "LANGFUSE_TRACING_ENVIRONMENT",
+            project_id: None,
+            project_id_env: "LANGFUSE_PROJECT_ID",
+            service_name: "agentic-primitives",
+        };
+        let resolved = resolve_langfuse_otlp_config(&input, &env).expect("config resolves");
 
         assert_eq!(
             resolved.traces_endpoint,
             "https://cloud.langfuse.com/api/public/otel/v1/traces"
         );
+        assert_eq!(resolved.ui_base_url, "https://cloud.langfuse.com");
         assert_eq!(
             resolved.authorization_header,
             "Basic cGstbGYtdGVzdDpzay1sZi10ZXN0"
         );
         assert_eq!(resolved.environment, "agentic-primitives-test");
+        assert_eq!(resolved.project_id.as_deref(), Some("project-123"));
         assert_eq!(resolved.service_name, "agentic-primitives");
     }
 
@@ -705,6 +795,14 @@ mod tests {
             langfuse_traces_endpoint("http://localhost:3000/api/public/otel/v1/traces"),
             "http://localhost:3000/api/public/otel/v1/traces"
         );
+        assert_eq!(
+            langfuse_ui_base_url("http://localhost:3000/api/public/otel"),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            langfuse_ui_base_url("http://localhost:3000/api/public/otel/v1/traces"),
+            "http://localhost:3000"
+        );
     }
 
     #[test]
@@ -714,6 +812,8 @@ mod tests {
             public_key_env: "MISSING_PUBLIC".to_string(),
             secret_key_env: "MISSING_SECRET".to_string(),
             environment_env: "MISSING_ENVIRONMENT".to_string(),
+            project_id: None,
+            project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
             service_name: "agentic-primitives".to_string(),
             label: None,
         }]);
@@ -777,12 +877,15 @@ mod tests {
         std::env::set_var("LANGFUSE_PUBLIC_KEY", "pk-lf-test");
         std::env::set_var("LANGFUSE_SECRET_KEY", "sk-lf-test");
         std::env::set_var("LANGFUSE_TRACING_ENVIRONMENT", "agentic-primitives-test");
+        std::env::set_var("LANGFUSE_PROJECT_ID", "project-123");
 
         let mut fanout = ObservabilityFanout::new(&[ObservabilityExporter::LangFuseOtlp {
             base_url: Some(format!("http://{addr}")),
             public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
             secret_key_env: "LANGFUSE_SECRET_KEY".to_string(),
             environment_env: "LANGFUSE_TRACING_ENVIRONMENT".to_string(),
+            project_id: None,
+            project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
             service_name: "agentic-primitives".to_string(),
             label: Some("mock LangFuse".to_string()),
         }]);
@@ -792,6 +895,7 @@ mod tests {
         std::env::remove_var("LANGFUSE_PUBLIC_KEY");
         std::env::remove_var("LANGFUSE_SECRET_KEY");
         std::env::remove_var("LANGFUSE_TRACING_ENVIRONMENT");
+        std::env::remove_var("LANGFUSE_PROJECT_ID");
 
         let request = rx.recv().expect("captured request");
         server.join().expect("server joined");
@@ -817,6 +921,18 @@ mod tests {
         assert_eq!(report.events_exported, 1);
         let expected_target = format!("http://{addr}/api/public/otel/v1/traces");
         assert_eq!(report.target.as_deref(), Some(expected_target.as_str()));
+        assert_eq!(report.links.len(), 1);
+        assert_eq!(report.links[0].label, "mock LangFuse");
+        assert!(report.links[0]
+            .uri
+            .starts_with(&format!("http://{addr}/project/project-123/traces/")));
+        let trace_id = report.links[0]
+            .uri
+            .rsplit('/')
+            .next()
+            .expect("trace id segment");
+        assert_eq!(trace_id.len(), 32);
+        assert!(trace_id.chars().all(|ch| ch.is_ascii_hexdigit()));
         assert!(report.error.is_none());
     }
 }
