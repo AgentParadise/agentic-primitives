@@ -96,12 +96,18 @@ enum ParsedLine {
     NonJson(String),
 }
 
-/// Parse a stdout blob into per-line results. Blank lines are ignored (they are
-/// not stream content); every other line must parse as an [`AgentRunEvent`].
+/// Parse a stdout blob into per-line results, ONE per line, dropping nothing.
+///
+/// In `--json` mode stdout is pure event JSONL: every line must parse as an
+/// [`AgentRunEvent`], and a blank/whitespace-only line is itself a purity
+/// violation (it is not valid event JSONL), so it is surfaced as a
+/// [`ParsedLine::NonJson`] for [`validate_event_contract`] to reject rather than
+/// silently swallowed. (`str::lines()` already omits a single trailing newline,
+/// so a normal `println!`-terminated stream does not produce a spurious blank
+/// final line.)
 fn parse_lines(stdout: &str) -> Vec<ParsedLine> {
     stdout
         .lines()
-        .filter(|line| !line.trim().is_empty())
         .map(|line| match serde_json::from_str::<AgentRunEvent>(line) {
             Ok(event) => ParsedLine::Event(Box::new(event)),
             Err(_) => ParsedLine::NonJson(line.to_string()),
@@ -152,7 +158,11 @@ enum ResultDelivery {
 /// * zero non-JSON lines on stdout (`--json` mode is pure event JSONL);
 /// * `seq` monotonic from 0 with no gaps;
 /// * `run_id` identical across every line;
-/// * exactly one `session_end`;
+/// * exactly one `session_end`, and it is the LAST lifecycle event - no
+///   `tool_start`/`tool_end`/`token_usage`/further `session_end` may follow it
+///   (in BOTH modes). In `OnStream` mode the terminal `type:"result"` line is
+///   the only event allowed after `session_end`; in `ResultFile` mode nothing
+///   may follow it;
 /// * the final result is delivered via the expected channel: exactly one
 ///   `type:"result"` line for [`ResultDelivery::OnStream`], and ZERO for
 ///   [`ResultDelivery::ResultFile`] (stdout stays pure lifecycle events).
@@ -201,6 +211,25 @@ fn validate_event_contract(parsed: &[ParsedLine], delivery: ResultDelivery) -> R
         return Err(format!(
             "expected exactly one session_end, found {session_ends}"
         ));
+    }
+
+    // session_end is the TERMINAL lifecycle event: the orchestrator emits it
+    // last, immediately before the (optional) terminal result. So nothing but a
+    // `result` line may appear after it - any lifecycle event
+    // (tool_start/tool_end/token_usage/another session_end) following
+    // session_end is a contract violation in BOTH modes. (`ResultFile` also
+    // forbids result lines entirely, below, so there it means NOTHING follows.)
+    let session_end_index = events
+        .iter()
+        .position(|event| matches!(event.payload, AgentRunEventPayload::SessionEnd { .. }))
+        .expect("exactly one session_end confirmed above");
+    for (offset, event) in events.iter().enumerate().skip(session_end_index + 1) {
+        if !matches!(event.payload, AgentRunEventPayload::Result { .. }) {
+            return Err(format!(
+                "session_end is not terminal: a non-result event (seq {}, line {offset}) follows it",
+                event.seq
+            ));
+        }
     }
 
     // Final-result delivery channel.
@@ -329,13 +358,12 @@ impl Signaler {
     }
 }
 
-/// A streamed run: every stdout line tagged with its arrival [`Instant`], plus
-/// the terminal exit status. Used by E3 (arrival spread) and E4 (signal at a
-/// stream boundary).
+/// A streamed run: every stdout line tagged with its arrival [`Instant`]. Used
+/// by E3 (arrival spread) and E4 (signal at a stream boundary). The terminal
+/// verdict is read from the parsed result, not the process exit code, so no
+/// exit status is retained here.
 struct StreamedRun {
     lines: Vec<(Instant, String)>,
-    #[allow(dead_code)]
-    exit_ok: bool,
 }
 
 impl StreamedRun {
@@ -387,11 +415,10 @@ fn stream_run(
         lines.push((at, line));
     }
     let _ = reader.join();
-    let status = child.wait()?;
-    Ok(StreamedRun {
-        lines,
-        exit_ok: status.success(),
-    })
+    // Reap the child so it does not linger as a zombie; the terminal verdict is
+    // taken from the parsed result stream, not this exit status.
+    let _ = child.wait()?;
+    Ok(StreamedRun { lines })
 }
 
 /// Is a line a `tool_end submit` or `tool_start await` event? That is the
@@ -576,6 +603,43 @@ mod plumbing_tests {
         let parsed = parse_lines(&stdout);
         let err = validate_event_contract(&parsed, ResultDelivery::OnStream).unwrap_err();
         assert!(err.contains("non-JSON"), "err: {err}");
+    }
+
+    #[test]
+    fn validator_rejects_an_embedded_blank_line() {
+        // A blank line on stdout in --json mode is a purity violation: it is
+        // not valid event JSONL and must NOT be silently dropped. Inject one
+        // between two otherwise-valid events.
+        let sample = good_sample();
+        let (head, tail) = sample.split_once('\n').expect("multi-line sample");
+        let corrupted = format!("{head}\n\n{tail}");
+        let parsed = parse_lines(&corrupted);
+        let err = validate_event_contract(&parsed, ResultDelivery::OnStream).unwrap_err();
+        assert!(err.contains("non-JSON"), "err: {err}");
+    }
+
+    #[test]
+    fn validator_rejects_a_lifecycle_event_after_session_end_on_stream() {
+        // session_end must be terminal: a tool_start AFTER it (before the
+        // result line) is rejected even though counts/seq are otherwise valid.
+        let stream = "\
+{\"run_id\":\"r\",\"seq\":0,\"ts\":\"t\",\"type\":\"session_end\",\"outcome\":{\"success\":true,\"summary\":\"ok\"}}
+{\"run_id\":\"r\",\"seq\":1,\"ts\":\"t\",\"type\":\"tool_start\",\"tool_name\":\"provision\",\"tool_input\":null}
+{\"run_id\":\"r\",\"seq\":2,\"ts\":\"t\",\"type\":\"result\",\"result\":{\"result\":{\"success\":true,\"summary\":\"ok\"},\"output_artifacts\":[],\"session_log\":\"\",\"observability\":null}}";
+        let parsed = parse_lines(stream);
+        let err = validate_event_contract(&parsed, ResultDelivery::OnStream).unwrap_err();
+        assert!(err.contains("session_end is not terminal"), "err: {err}");
+    }
+
+    #[test]
+    fn validator_rejects_a_lifecycle_event_after_session_end_with_result_file() {
+        // Same rule in --result-file mode: nothing may follow session_end.
+        let stream = "\
+{\"run_id\":\"r\",\"seq\":0,\"ts\":\"t\",\"type\":\"session_end\",\"outcome\":{\"success\":true,\"summary\":\"ok\"}}
+{\"run_id\":\"r\",\"seq\":1,\"ts\":\"t\",\"type\":\"tool_end\",\"tool_name\":\"capture\",\"success\":true,\"output_summary\":null}";
+        let parsed = parse_lines(stream);
+        let err = validate_event_contract(&parsed, ResultDelivery::ResultFile).unwrap_err();
+        assert!(err.contains("session_end is not terminal"), "err: {err}");
     }
 
     #[test]
@@ -831,6 +895,12 @@ fn e3_live_events_stream_incrementally() {
         first_tool_start_ts.expect("a tool_start"),
         session_end_ts.expect("a session_end"),
     );
+    // Lexicographic compare is sound here because the emitter
+    // (`workspace_executor::now_rfc3339`) always produces fixed-width,
+    // second-precision UTC timestamps with a literal `Z` offset
+    // (`YYYY-MM-DDThh:mm:ssZ`), so string order equals chronological order. The
+    // crate carries no datetime parser (it hand-rolls RFC3339), and adding one
+    // solely for this assertion is not worth the dependency weight.
     assert!(
         ts_start <= ts_end,
         "tool_start {ts_start} must be <= session_end {ts_end}"

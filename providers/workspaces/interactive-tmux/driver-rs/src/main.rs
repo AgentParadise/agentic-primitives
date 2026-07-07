@@ -127,10 +127,30 @@ enum Cmd {
         /// Wall-clock timeout, in seconds, for the whole run. Maps to
         /// `AgentRunSpec.limits.timeout_s`. When omitted, the orchestrator's
         /// default await bound applies (behaviour unchanged from before this
-        /// flag existed).
-        #[arg(long)]
+        /// flag existed). Must be a finite, strictly-positive number - a
+        /// non-finite or non-positive value is rejected with a clean CLI error
+        /// (never a downstream `Duration::from_secs_f64` panic).
+        #[arg(long, value_parser = parse_positive_timeout)]
         timeout: Option<f64>,
     },
+}
+
+/// Clap value parser for `--timeout`: accept only a finite, strictly-positive
+/// number of seconds. Rejects `<= 0.0` (an instant/zero timeout is meaningless)
+/// and non-finite values (`NaN`, `inf`) with a message clap renders as a clean
+/// CLI error - this is what keeps `Duration::from_secs_f64` from ever seeing a
+/// value that would panic.
+fn parse_positive_timeout(raw: &str) -> Result<f64, String> {
+    let value: f64 = raw
+        .parse()
+        .map_err(|_| format!("'{raw}' is not a number"))?;
+    if !value.is_finite() {
+        return Err(format!("timeout must be a finite number, got '{raw}'"));
+    }
+    if value <= 0.0 {
+        return Err(format!("timeout must be greater than 0, got '{raw}'"));
+    }
+    Ok(value)
 }
 
 /// Build the `AgentRunSpec` for `itmux run` from the CLI inputs. Pure so the
@@ -645,6 +665,23 @@ mod tests {
         assert_eq!(limits.timeout_s, Some(12.5));
         // Only the timeout is set; the token budget stays unset.
         assert_eq!(limits.token_budget, None);
+    }
+
+    #[test]
+    fn parse_positive_timeout_accepts_a_finite_positive_value() {
+        assert_eq!(parse_positive_timeout("2.5"), Ok(2.5));
+    }
+
+    #[test]
+    fn parse_positive_timeout_rejects_non_positive_and_non_finite() {
+        // Each of these would reach Duration::from_secs_f64 and panic if it
+        // slipped through - the parser must reject them cleanly instead.
+        for bad in ["-1", "0", "NaN", "inf", "-inf", "not-a-number"] {
+            assert!(
+                parse_positive_timeout(bad).is_err(),
+                "expected {bad:?} to be rejected"
+            );
+        }
     }
 
     #[test]
