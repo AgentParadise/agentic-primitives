@@ -296,11 +296,11 @@ The first hypothesis-first probes produced these architecture constraints:
   `plugins/observability` and the `agentic_events` wheel. The stock image run
   emitted the same 3 normalized hook events with 14/14 stdout-to-file parity.
 
-These results preserve the original three-layer architecture and validate the
-first end-to-end path: `codex_exec_json` observer -> normalized `AgentRunEvent`
--> file fanout -> `ObservabilityBundle`. The remaining `.6` risk is Claude
-hook/plugin ingestion. `.9` still waits on LangFuse OTLP connectivity, then
-run-event to span mapping.
+These results preserve the original three-layer architecture and validate two
+end-to-end paths: `codex_exec_json` observer -> normalized `AgentRunEvent` ->
+file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
+`hook_event` -> file fanout -> `ObservabilityBundle`. `.9` still waits on
+LangFuse OTLP connectivity, then run-event to span mapping.
 
 Next steps for `okrs-51p.6`:
 
