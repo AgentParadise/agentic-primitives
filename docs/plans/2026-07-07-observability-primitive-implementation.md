@@ -13,6 +13,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--langfuse-otel-export`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring`
 - `experiments/2026-07-07--observability--claude-credential-health`
+- `experiments/2026-07-07--observability--claude-env-token-passthrough`
 
 ## Current Facts
 
@@ -38,6 +39,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   the Claude 401: host Claude succeeds via `CLAUDE_CODE_OAUTH_TOKEN`, but the
   Docker workspace does not receive that env token and its staged disk
   credentials cannot refresh.
+- `experiments/2026-07-07--observability--claude-env-token-passthrough` passed:
+  recipe-driven Claude in Docker exited 0, returned `CLAUDE_ENV_TOKEN_OK`, and
+  preserved 11 stdout events / 11 exported events with exporter status `ok`.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
   present, and the current Rust exporter enum supports only `file`.
 
@@ -60,15 +64,14 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - attach run id, sequence, and timestamps to observed payloads.
    - feed resulting `AgentRunEvent`s through the existing exporter fanout.
    - add an acceptance test using captured `codex exec --json` fixtures.
-5. Fix Claude interactive credential delivery:
-   - choose a secure way to bridge `CLAUDE_CODE_OAUTH_TOKEN` or equivalent
-     fresh credential material into Docker workspaces without exposing it in
-     argv/stdout.
-   - keep disk credential staging for conventional `.claude` auth, but do not
-     rely on expired access-token-only state.
-   - rerun the Claude credential-health and hook fanout experiments after the
-     fix.
-6. Implement `claude_hooks` observer only after credential health is proven:
+5. Revalidate Claude hook fanout with credential health fixed:
+   - run the observability plugin through `ITMUX_CLAUDE_PLUGIN_DIRS` /
+     recipe plugin-dir path.
+   - verify hook output can be captured without contaminating `itmux run`
+     stdout contract JSONL.
+   - preserve the narrow `CLAUDE_CODE_OAUTH_TOKEN` Docker env passthrough and
+     do not put token values in argv/stdout.
+6. Implement `claude_hooks` observer after hook output shape is proven:
    - load `plugins/observability` through recipe/plugin-dir path.
    - parse hook JSONL/stderr output into normalized lifecycle/tool events.
    - resolve the plugin README stdout/stderr mismatch while preserving

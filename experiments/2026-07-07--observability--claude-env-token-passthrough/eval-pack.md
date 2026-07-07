@@ -21,7 +21,7 @@ Run:
 providers/workspaces/interactive-tmux/driver-rs/target/debug/itmux run \
   --recipe runs/claude-recipe \
   --task "Reply exactly: CLAUDE_ENV_TOKEN_OK" \
-  --json \
+  --json true \
   --observability-file runs/itmux-run-events.jsonl \
   --result-file runs/itmux-run-result.json
 ```

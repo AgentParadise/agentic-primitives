@@ -1,0 +1,13 @@
+{
+  "host_env_claude_code_oauth_token": "set",
+  "itmux_run_exit": "exit_code:0",
+  "itmux_run_success": true,
+  "itmux_run_summary": "agent settled to a ready state with no error markers (liveness floor; true task-completion detection is a known interactive-TUI limit)",
+  "session_contains_expected_text": true,
+  "session_contains_401": false,
+  "stdout_events": 11,
+  "exporter_events": 11,
+  "exporter_status": "ok",
+  "events_exported": 11,
+  "classification": "CLAUDE_CODE_OAUTH_TOKEN passthrough by env name fixes recipe-driven Claude 401 in Docker workspace; file exporter remains consistent"
+}
