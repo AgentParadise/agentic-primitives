@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
-use itmux::run::contract::{AgentRunEvent, AgentRunSpec};
+use itmux::run::contract::{AgentRunEvent, AgentRunLimits, AgentRunSpec};
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
@@ -124,7 +124,31 @@ enum Cmd {
         /// `type:"result"` line on stdout.
         #[arg(long)]
         result_file: Option<PathBuf>,
+        /// Wall-clock timeout, in seconds, for the whole run. Maps to
+        /// `AgentRunSpec.limits.timeout_s`. When omitted, the orchestrator's
+        /// default await bound applies (behaviour unchanged from before this
+        /// flag existed).
+        #[arg(long)]
+        timeout: Option<f64>,
     },
+}
+
+/// Build the `AgentRunSpec` for `itmux run` from the CLI inputs. Pure so the
+/// `--timeout -> limits.timeout_s` mapping is unit-testable without spawning a
+/// run. When `timeout` is `None`, `limits` stays `None` so the default await
+/// bound is unchanged (R6: additive, no behaviour change when omitted).
+fn build_run_spec(recipe: PathBuf, task: String, timeout: Option<f64>) -> AgentRunSpec {
+    AgentRunSpec {
+        recipe,
+        task,
+        input_artifacts: Vec::new(),
+        credentials: Default::default(),
+        observability: Vec::new(),
+        limits: timeout.map(|timeout_s| AgentRunLimits {
+            timeout_s: Some(timeout_s),
+            token_budget: None,
+        }),
+    }
 }
 
 fn parse_agent(s: &str) -> Result<Agent, String> {
@@ -469,15 +493,9 @@ fn handle_run(
     image: String,
     json: bool,
     result_file: Option<PathBuf>,
+    timeout: Option<f64>,
 ) -> ExitCode {
-    let spec = AgentRunSpec {
-        recipe,
-        task,
-        input_artifacts: Vec::new(),
-        credentials: Default::default(),
-        observability: Vec::new(),
-        limits: None,
-    };
+    let spec = build_run_spec(recipe, task, timeout);
     let run_id = generate_run_id();
     let cancel = CancelToken::new();
 
@@ -607,6 +625,37 @@ fn main() -> ExitCode {
             image,
             json,
             result_file,
-        } => handle_run(recipe, task, image, json, result_file),
+            timeout,
+        } => handle_run(recipe, task, image, json, result_file, timeout),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_run_spec_maps_timeout_to_limits_timeout_s() {
+        let spec = build_run_spec(
+            PathBuf::from("/recipes/hello"),
+            "do the thing".to_string(),
+            Some(12.5),
+        );
+        let limits = spec.limits.expect("timeout should populate limits");
+        assert_eq!(limits.timeout_s, Some(12.5));
+        // Only the timeout is set; the token budget stays unset.
+        assert_eq!(limits.token_budget, None);
+    }
+
+    #[test]
+    fn build_run_spec_without_timeout_leaves_limits_none() {
+        // Omitting --timeout must not change existing behaviour: no limits, so
+        // the orchestrator's default await bound applies.
+        let spec = build_run_spec(
+            PathBuf::from("/recipes/hello"),
+            "do the thing".to_string(),
+            None,
+        );
+        assert!(spec.limits.is_none());
     }
 }
