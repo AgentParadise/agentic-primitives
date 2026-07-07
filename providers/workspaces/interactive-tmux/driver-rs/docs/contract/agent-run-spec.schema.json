@@ -179,6 +179,52 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Export run events to LangFuse's OTLP HTTP traces endpoint.\n\nSecrets are intentionally referenced by environment variable names, not embedded in the run spec. `base_url` may be either the LangFuse origin (`https://cloud.langfuse.com`), the OTLP base endpoint (`.../api/public/otel`), or the signal-specific traces endpoint (`.../api/public/otel/v1/traces`).",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "base_url": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "environment_env": {
+              "default": "LANGFUSE_TRACING_ENVIRONMENT",
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "langfuse_otlp"
+              ]
+            },
+            "label": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "public_key_env": {
+              "default": "LANGFUSE_PUBLIC_KEY",
+              "type": "string"
+            },
+            "secret_key_env": {
+              "default": "LANGFUSE_SECRET_KEY",
+              "type": "string"
+            },
+            "service_name": {
+              "default": "agentic-primitives",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     }

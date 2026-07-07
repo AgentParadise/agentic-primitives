@@ -78,6 +78,48 @@ impl ExporterState {
                     error: Some(err.to_string()),
                 },
             },
+            ObservabilityExporter::LangFuseOtlp {
+                base_url,
+                public_key_env,
+                secret_key_env,
+                environment_env,
+                service_name,
+                label,
+            } => {
+                let env = SystemEnv;
+                match resolve_langfuse_otlp_config(
+                    base_url.as_deref(),
+                    public_key_env,
+                    secret_key_env,
+                    environment_env,
+                    service_name,
+                    &env,
+                ) {
+                    Ok(resolved) => Self {
+                        kind: config.kind().to_string(),
+                        target: Some(resolved.traces_endpoint),
+                        label: label
+                            .clone()
+                            .unwrap_or_else(|| "LangFuse trace".to_string()),
+                        sink: ExporterSink::Disabled,
+                        events_exported: 0,
+                        error: Some(
+                            "langfuse_otlp transport is not enabled yet; run the real LangFuse OTLP ingestion smoke before treating this exporter as complete"
+                                .to_string(),
+                        ),
+                    },
+                    Err(err) => Self {
+                        kind: config.kind().to_string(),
+                        target: None,
+                        label: label
+                            .clone()
+                            .unwrap_or_else(|| "LangFuse trace".to_string()),
+                        sink: ExporterSink::Disabled,
+                        events_exported: 0,
+                        error: Some(err),
+                    },
+                }
+            }
         }
     }
 
@@ -145,10 +187,121 @@ fn file_uri(path: &str) -> String {
     }
 }
 
+trait EnvLookup {
+    fn get(&self, key: &str) -> Option<String>;
+}
+
+struct SystemEnv;
+
+impl EnvLookup for SystemEnv {
+    fn get(&self, key: &str) -> Option<String> {
+        std::env::var(key).ok()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct LangFuseOtlpResolvedConfig {
+    traces_endpoint: String,
+    authorization_header: String,
+    environment: String,
+    service_name: String,
+}
+
+fn resolve_langfuse_otlp_config(
+    base_url: Option<&str>,
+    public_key_env: &str,
+    secret_key_env: &str,
+    environment_env: &str,
+    service_name: &str,
+    env: &impl EnvLookup,
+) -> Result<LangFuseOtlpResolvedConfig, String> {
+    let base_url = required_value("LANGFUSE_BASE_URL", base_url, env.get("LANGFUSE_BASE_URL"))?;
+    let public_key = required_env(public_key_env, env)?;
+    let secret_key = required_env(secret_key_env, env)?;
+    let environment = required_env(environment_env, env)?;
+    if service_name.trim().is_empty() {
+        return Err("langfuse_otlp service_name must not be empty".to_string());
+    }
+    Ok(LangFuseOtlpResolvedConfig {
+        traces_endpoint: langfuse_traces_endpoint(&base_url),
+        authorization_header: format!(
+            "Basic {}",
+            base64_encode(format!("{public_key}:{secret_key}").as_bytes())
+        ),
+        environment,
+        service_name: service_name.to_string(),
+    })
+}
+
+fn required_value(
+    name: &str,
+    explicit: Option<&str>,
+    env_value: Option<String>,
+) -> Result<String, String> {
+    explicit
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| env_value.map(|value| value.trim().to_string()))
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("missing required LangFuse config: {name}"))
+}
+
+fn required_env(name: &str, env: &impl EnvLookup) -> Result<String, String> {
+    env.get(name)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("missing required LangFuse env var: {name}"))
+}
+
+fn langfuse_traces_endpoint(base_url: &str) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.ends_with("/api/public/otel/v1/traces") {
+        trimmed.to_string()
+    } else if trimmed.ends_with("/api/public/otel") {
+        format!("{trimmed}/v1/traces")
+    } else {
+        format!("{trimmed}/api/public/otel/v1/traces")
+    }
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(TABLE[(((b0 & 0b0000_0011) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[(((b1 & 0b0000_1111) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(b2 & 0b0011_1111) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
     use crate::run::contract::{AgentRunEventPayload, AgentRunOutcome};
+
+    struct MapEnv(BTreeMap<String, String>);
+
+    impl EnvLookup for MapEnv {
+        fn get(&self, key: &str) -> Option<String> {
+            self.0.get(key).cloned()
+        }
+    }
 
     fn event(seq: u64) -> AgentRunEvent {
         AgentRunEvent {
@@ -179,6 +332,15 @@ mod tests {
             .as_nanos()
     }
 
+    fn map_env(values: &[(&str, &str)]) -> MapEnv {
+        MapEnv(
+            values
+                .iter()
+                .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                .collect(),
+        )
+    }
+
     #[test]
     fn file_exporter_writes_event_jsonl_and_reports_link() {
         let path = temp_file("happy");
@@ -204,5 +366,70 @@ mod tests {
         assert!(report.links[0].uri.starts_with("file://"));
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn langfuse_otlp_config_derives_traces_endpoint_and_auth() {
+        let env = map_env(&[
+            ("LANGFUSE_PUBLIC_KEY", "pk-lf-test"),
+            ("LANGFUSE_SECRET_KEY", "sk-lf-test"),
+            ("LANGFUSE_TRACING_ENVIRONMENT", "agentic-primitives-test"),
+        ]);
+
+        let resolved = resolve_langfuse_otlp_config(
+            Some("https://cloud.langfuse.com"),
+            "LANGFUSE_PUBLIC_KEY",
+            "LANGFUSE_SECRET_KEY",
+            "LANGFUSE_TRACING_ENVIRONMENT",
+            "agentic-primitives",
+            &env,
+        )
+        .expect("config resolves");
+
+        assert_eq!(
+            resolved.traces_endpoint,
+            "https://cloud.langfuse.com/api/public/otel/v1/traces"
+        );
+        assert_eq!(
+            resolved.authorization_header,
+            "Basic cGstbGYtdGVzdDpzay1sZi10ZXN0"
+        );
+        assert_eq!(resolved.environment, "agentic-primitives-test");
+        assert_eq!(resolved.service_name, "agentic-primitives");
+    }
+
+    #[test]
+    fn langfuse_otlp_config_accepts_otel_base_or_trace_endpoint() {
+        assert_eq!(
+            langfuse_traces_endpoint("http://localhost:3000/api/public/otel"),
+            "http://localhost:3000/api/public/otel/v1/traces"
+        );
+        assert_eq!(
+            langfuse_traces_endpoint("http://localhost:3000/api/public/otel/v1/traces"),
+            "http://localhost:3000/api/public/otel/v1/traces"
+        );
+    }
+
+    #[test]
+    fn langfuse_otlp_exporter_reports_missing_env_without_secrets() {
+        let fanout = ObservabilityFanout::new(&[ObservabilityExporter::LangFuseOtlp {
+            base_url: Some("https://cloud.langfuse.com".to_string()),
+            public_key_env: "MISSING_PUBLIC".to_string(),
+            secret_key_env: "MISSING_SECRET".to_string(),
+            environment_env: "MISSING_ENVIRONMENT".to_string(),
+            service_name: "agentic-primitives".to_string(),
+            label: None,
+        }]);
+        let bundle = fanout.finish().expect("configured exporter reports");
+        let report = &bundle.exporters[0];
+        assert_eq!(report.kind, "langfuse_otlp");
+        assert_eq!(report.status, ObservabilityExportStatus::Failed);
+        let error = report.error.as_deref().expect("config error");
+        assert!(error.contains("MISSING_PUBLIC"), "error: {error}");
+        assert!(
+            !error.contains("pk-lf"),
+            "error should not contain key values"
+        );
+        assert!(report.links.is_empty());
     }
 }
