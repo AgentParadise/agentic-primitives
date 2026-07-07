@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
-use itmux::run::contract::{AgentRunEvent, AgentRunLimits, AgentRunSpec};
+use itmux::run::contract::{AgentRunEvent, AgentRunLimits, AgentRunSpec, ObservabilityExporter};
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
@@ -145,6 +145,10 @@ enum Cmd {
         /// `--env-file` / `CLAUDE_CODE_OAUTH_TOKEN`.
         #[arg(long, default_value_t = false)]
         allow_host_auth_fallback: bool,
+        /// Append normalized run events to this JSONL file as an observability
+        /// artifact. Relative paths resolve in the driver process.
+        #[arg(long)]
+        observability_file: Option<PathBuf>,
     },
 }
 
@@ -530,6 +534,7 @@ fn handle_run(
     timeout: Option<f64>,
     env_file: Option<PathBuf>,
     allow_host_auth_fallback: bool,
+    observability_file: Option<PathBuf>,
 ) -> ExitCode {
     // Load run credentials from --env-file / process env (R1-R4). This is the
     // fix for the stale-file 401: the run spec now carries fresh credentials
@@ -547,6 +552,14 @@ fn handle_run(
     };
     let mut spec = build_run_spec(recipe, task, timeout);
     spec.credentials = credentials;
+    let observability = observability_file
+        .map(|path| ObservabilityExporter::File {
+            path,
+            label: Some("itmux run events".to_string()),
+        })
+        .into_iter()
+        .collect();
+    spec.observability = observability;
     let run_id = generate_run_id();
     let cancel = CancelToken::new();
 
@@ -686,6 +699,7 @@ fn main() -> ExitCode {
             timeout,
             env_file,
             allow_host_auth_fallback,
+            observability_file,
         } => handle_run(
             recipe,
             task,
@@ -695,6 +709,7 @@ fn main() -> ExitCode {
             timeout,
             env_file,
             allow_host_auth_fallback,
+            observability_file,
         ),
     }
 }

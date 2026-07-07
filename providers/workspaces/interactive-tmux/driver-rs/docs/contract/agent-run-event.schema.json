@@ -178,7 +178,7 @@
       ],
       "properties": {
         "observability": {
-          "description": "Plan 3 placeholder: aggregated observability data for the run.",
+          "description": "Aggregated status for configured observability exporters.",
           "default": null,
           "anyOf": [
             {
@@ -208,14 +208,82 @@
       "additionalProperties": false
     },
     "ObservabilityBundle": {
-      "description": "Plan 3 placeholder: aggregated observability data attached to the final `AgentRunResult`. Minimal until Plan 3 defines the real bundle shape.",
+      "description": "Aggregated observability export status attached to the final result.",
       "type": "object",
       "properties": {
-        "data": {
-          "default": null
+        "exporters": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ObservabilityExportReport"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilityExportReport": {
+      "description": "Final status for one configured observability exporter.",
+      "type": "object",
+      "required": [
+        "kind",
+        "status"
+      ],
+      "properties": {
+        "error": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "name": {
-          "default": "",
+        "events_exported": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "links": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ObservabilityLink"
+          }
+        },
+        "status": {
+          "$ref": "#/definitions/ObservabilityExportStatus"
+        },
+        "target": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilityExportStatus": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "failed"
+      ]
+    },
+    "ObservabilityLink": {
+      "description": "A consumer-facing location for an exported observability view or artifact.",
+      "type": "object",
+      "required": [
+        "label",
+        "uri"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "uri": {
           "type": "string"
         }
       },

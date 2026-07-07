@@ -16,6 +16,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::adapter::Agent;
 use crate::result::AwaitResult;
 use crate::run::contract::{AgentRunEvent, AgentRunOutcome, AgentRunResult, AgentRunSpec};
+use crate::run::observability::ObservabilityFanout;
 use crate::run::orchestrator::{run_core, CancelToken, RunExecutor};
 use crate::run::recipe_loader::{load_execution_plan, RecipeExecutionPlan};
 use crate::run::secret_env::{missing_credentials_message, resolve_agent_secrets};
@@ -465,15 +466,22 @@ pub fn run(
         .map(Duration::from_secs_f64);
     let mut executor = WorkspaceExecutor::new(spec, &plan, image, allow_host_fallback)?;
     let mut now = now_rfc3339;
-    Ok(run_core(
+    let mut fanout = ObservabilityFanout::new(&spec.observability);
+    let mut fanout_emit = |event: &AgentRunEvent| {
+        fanout.emit(event);
+        emit(event);
+    };
+    let mut result = run_core(
         run_id,
         &plan,
         timeout,
         &mut executor,
         cancel,
         &mut now,
-        emit,
-    ))
+        &mut fanout_emit,
+    );
+    result.observability = fanout.finish();
+    Ok(result)
 }
 
 #[cfg(test)]

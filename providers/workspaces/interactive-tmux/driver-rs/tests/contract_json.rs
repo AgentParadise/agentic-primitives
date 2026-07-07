@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use itmux::run::contract::{
     AgentRunCredentials, AgentRunEvent, AgentRunEventPayload, AgentRunLimits, AgentRunOutcome,
     AgentRunResult, AgentRunSpec, ClaudeCredentials, CodexCredentials, ObservabilityBundle,
-    ObservabilityExporter,
+    ObservabilityExportReport, ObservabilityExportStatus, ObservabilityExporter, ObservabilityLink,
 };
 
 fn roundtrip<T>(value: &T)
@@ -58,9 +58,9 @@ fn agent_run_spec_round_trips_full() {
                 ("OPENAI_API_KEY".to_string(), "sk-openai-xyz".to_string()),
             ]),
         },
-        observability: vec![ObservabilityExporter {
-            name: "otel".to_string(),
-            config: serde_json::json!({"endpoint": "http://collector:4318"}),
+        observability: vec![ObservabilityExporter::File {
+            path: PathBuf::from("/tmp/itmux-events.jsonl"),
+            label: Some("local events".to_string()),
         }],
         limits: Some(AgentRunLimits {
             timeout_s: Some(120.0),
@@ -175,12 +175,30 @@ fn agent_run_limits_round_trip_and_reject_unknown_field() {
 }
 
 #[test]
-fn observability_exporter_round_trips_with_opaque_config() {
-    let exporter = ObservabilityExporter {
-        name: "otel".to_string(),
-        config: serde_json::json!({"anything": [1, 2, 3]}),
+fn observability_file_exporter_round_trips_with_typed_config() {
+    let exporter = ObservabilityExporter::File {
+        path: PathBuf::from("/tmp/itmux-events.jsonl"),
+        label: Some("local events".to_string()),
     };
     roundtrip(&exporter);
+}
+
+#[test]
+fn observability_bundle_reports_exporter_status_and_links() {
+    let bundle = ObservabilityBundle {
+        exporters: vec![ObservabilityExportReport {
+            kind: "file".to_string(),
+            status: ObservabilityExportStatus::Ok,
+            target: Some("/tmp/itmux-events.jsonl".to_string()),
+            events_exported: 7,
+            links: vec![ObservabilityLink {
+                label: "local events".to_string(),
+                uri: "file:///tmp/itmux-events.jsonl".to_string(),
+            }],
+            error: None,
+        }],
+    };
+    roundtrip(&bundle);
 }
 
 #[test]
@@ -206,7 +224,16 @@ fn agent_run_result_round_trips_full_and_rejects_unknown_field() {
         },
         output_artifacts: vec![PathBuf::from("/tmp/out/report.md")],
         session_log: "pane contents here".to_string(),
-        observability: Some(ObservabilityBundle::default()),
+        observability: Some(ObservabilityBundle {
+            exporters: vec![ObservabilityExportReport {
+                kind: "file".to_string(),
+                status: ObservabilityExportStatus::Failed,
+                target: Some("/nope/events.jsonl".to_string()),
+                events_exported: 0,
+                links: vec![],
+                error: Some("permission denied".to_string()),
+            }],
+        }),
     };
     roundtrip(&result);
 

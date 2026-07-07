@@ -42,7 +42,7 @@
       ]
     },
     "observability": {
-      "description": "Plan 3 observability exporters to fan telemetry out to. Empty by default.",
+      "description": "Observability exporters to fan normalized run telemetry out to. Empty by default.",
       "default": [],
       "type": "array",
       "items": {
@@ -150,21 +150,37 @@
       "additionalProperties": false
     },
     "ObservabilityExporter": {
-      "description": "Plan 3 placeholder: an observability sink to fan run telemetry out to. The shape is intentionally minimal (`name` + opaque `config`) until Plan 3 defines concrete exporter configs (OTel, file, webhook, ...).",
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "config": {
-          "description": "Opaque, exporter-specific configuration. Untyped by design - Plan 3 will introduce a typed config per exporter kind.",
-          "default": null
-        },
-        "name": {
-          "type": "string"
+      "description": "An observability sink that receives the normalized [`AgentRunEvent`] stream. Exporters are configured per run and are deliberately filesystem/env portable: the same spec can point at a host path on a Mac/VPS or a mounted path inside a Docker workspace.",
+      "oneOf": [
+        {
+          "description": "Append one JSON-serialized [`AgentRunEvent`] per line to `path`.",
+          "type": "object",
+          "required": [
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "file"
+              ]
+            },
+            "label": {
+              "description": "Stable label surfaced in the final observability bundle for UIs.",
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
         }
-      },
-      "additionalProperties": false
+      ]
     }
   }
 }
