@@ -264,6 +264,11 @@ The first hypothesis-first probes produced these architecture constraints:
   `/api/public/otel/v1/traces`, `POST`, `application/x-protobuf`, Basic auth,
   non-empty body, required attributes, and redacted evidence. It does not prove
   real LangFuse ingestion or trace discoverability.
+- `experiments/2026-07-07--langfuse--exporter-config-failfast` validated the
+  first `.9` implementation slice: the Rust contract now accepts
+  `kind = "langfuse_otlp"`, the generated schema includes that variant, endpoint
+  and Basic auth derivation are unit-tested, and missing env is surfaced as a
+  failed exporter report without leaking key values.
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring` passed:
   `itmux codex-exec` produced normalized lifecycle events, one `token_usage`
   event, exact stdout/exporter event parity, and a successful file exporter
@@ -304,9 +309,9 @@ The first hypothesis-first probes produced these architecture constraints:
 These results preserve the original three-layer architecture and validate two
 end-to-end paths: `codex_exec_json` observer -> normalized `AgentRunEvent` ->
 file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
-`hook_event` -> file fanout -> `ObservabilityBundle`. `.9` can now implement
-config/preflight and exporter wiring against a mock receiver, but still waits
-on real LangFuse OTLP connectivity before claiming ingestion or queryability.
+`hook_event` -> file fanout -> `ObservabilityBundle`. `.9` now has typed
+LangFuse exporter config and fail-fast reporting, but still waits on real OTLP
+transport plus LangFuse connectivity before claiming ingestion or queryability.
 
 Validated gates and follow-ups for `okrs-51p.6`:
 
@@ -326,7 +331,8 @@ Validated gates and follow-ups for `okrs-51p.6`:
 
 Next steps for `okrs-51p.9`:
 
-1. Add a LangFuse/OTEL exporter on top of the fanout layer.
+1. Add real LangFuse/OTLP transport on top of the typed `langfuse_otlp`
+   exporter config.
 2. Support self-hosted Mac Mini configuration through env/keychain-backed
    secrets.
 3. Emit linkable LangFuse trace URLs in `ObservabilityBundle`.
@@ -337,7 +343,8 @@ Next steps for `okrs-51p.9`:
    reachable LangFuse deployment to validate real OTLP ingestion and trace
    visibility before richer run-event mapping work.
 7. Treat missing LangFuse env as a first-class exporter configuration failure
-   with a clear `ObservabilityExportReport.error`.
+   with a clear `ObservabilityExportReport.error` (**implemented for missing
+   env config**).
 
 ## References
 

@@ -11,6 +11,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--codex-token-cost-surface`
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke`
 - `experiments/2026-07-07--langfuse--otel-preflight-mock`
+- `experiments/2026-07-07--langfuse--exporter-config-failfast`
 - `experiments/2026-07-07--observability--langfuse-otel-export`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring`
 - `experiments/2026-07-07--observability--claude-credential-health`
@@ -67,6 +68,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--langfuse--otel-preflight-mock` passed locally:
   endpoint/auth/header/attribute construction is proven against a mock receiver,
   but real LangFuse ingestion remains unproven.
+- `experiments/2026-07-07--langfuse--exporter-config-failfast` passed:
+  `ObservabilityExporter::LangFuseOtlp` config round-trips, the schema includes
+  `langfuse_otlp`, and missing env produces a failed exporter report.
 
 ## `.6` Implementation Sequence
 
@@ -128,19 +132,20 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - `LANGFUSE_TRACING_ENVIRONMENT`
 2. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` as local
    regression coverage for endpoint/auth/header/attribute construction.
-3. Add typed exporter config:
+3. Add typed exporter config: **done for config/fail-fast slice**.
    - `ObservabilityExporter::Otlp` or `ObservabilityExporter::LangFuse`.
    - explicit config validation and redacted error reporting.
    - OTLP HTTP/protobuf, not gRPC, for first LangFuse path.
-4. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
+4. Implement real OTLP transport and semantic span encoding.
+5. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment.
-5. Map normalized run events to spans:
+6. Map normalized run events to spans:
    - one root trace per run.
    - child observations for provision, launch, submit, await, capture.
    - resource/span attributes for `session.id`, `service.name`,
      `langfuse.environment`, `langfuse.session.id`, `langfuse.trace.name`.
-6. Emit a trace link in `ObservabilityBundle`.
-7. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
+7. Emit a trace link in `ObservabilityBundle`.
+8. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
    score the verdict before closing `.9`.
 
 ## `.9` Exit Criteria
