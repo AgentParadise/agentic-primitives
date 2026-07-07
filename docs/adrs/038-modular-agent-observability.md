@@ -259,11 +259,16 @@ The first hypothesis-first probes produced these architecture constraints:
   technical blocker edge: the current `ObservabilityExporter` enum supports
   `file` only, so LangFuse trace creation and trace links require a `.6`
   exporter interface extension before `.9` implementation.
+- `experiments/2026-07-07--observability--codex-exec-observer-wiring` passed:
+  `itmux codex-exec` produced normalized lifecycle events, one `token_usage`
+  event, exact stdout/exporter event parity, and a successful file exporter
+  report from a real `codex exec --json` run.
 
-These results preserve the original three-layer architecture but sharpen the
-implementation order: finish backend-independent fanout and observer boundaries
-in `.6`, then validate LangFuse OTLP connectivity, then implement run-event to
-span mapping in `.9`.
+These results preserve the original three-layer architecture and validate the
+first end-to-end path: `codex_exec_json` observer -> normalized `AgentRunEvent`
+-> file fanout -> `ObservabilityBundle`. The remaining `.6` risk is Claude
+interactive credential/hook ingestion. `.9` still waits on LangFuse OTLP
+connectivity, then run-event to span mapping.
 
 Next steps for `okrs-51p.6`:
 

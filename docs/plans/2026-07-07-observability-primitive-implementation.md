@@ -11,6 +11,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--codex-token-cost-surface`
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke`
 - `experiments/2026-07-07--observability--langfuse-otel-export`
+- `experiments/2026-07-07--observability--codex-exec-observer-wiring`
 
 ## Current Facts
 
@@ -29,6 +30,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - Second implementation slice added the `itmux codex-exec` command, which runs
   `codex exec --json`, envelopes observed payloads with run id/sequence/time,
   and sends them through the same file fanout/report path.
+- `experiments/2026-07-07--observability--codex-exec-observer-wiring` passed:
+  six normalized stdout events, six exported events, one `token_usage` event,
+  result success true, exporter status `ok`.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
   present, and the current Rust exporter enum supports only `file`.
 
@@ -45,8 +49,8 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
      `turn.completed`, and `turn.failed`.
    - map `turn.completed.usage` to `AgentRunEventPayload::TokenUsage`.
    - preserve failure lifecycle for rejected model/account configurations.
-4. Wire `codex_exec_json` into a runnable execution path: **implemented,
-   experiment pending**.
+4. Wire `codex_exec_json` into a runnable execution path: **done and
+   experiment-passed**.
    - add a non-interactive Codex execution mode or adapter entry point.
    - attach run id, sequence, and timestamps to observed payloads.
    - feed resulting `AgentRunEvent`s through the existing exporter fanout.
@@ -69,9 +73,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 
 ## `.6` Exit Criteria
 
-- At least one harness observer produces normalized events end to end.
-- At least one backend-independent exporter succeeds and reports failures
-  cleanly.
+- At least one harness observer produces normalized events end to end:
+  **satisfied by `itmux codex-exec`**.
+- At least one backend-independent exporter succeeds and reports status cleanly:
+  **satisfied by file fanout in `itmux codex-exec`**.
 - Codex token usage parity is scoped to `codex_exec_json`; TUI parity is not
   claimed.
 - Claude hook support has an empirical pass, or the OKR explicitly scopes it as
