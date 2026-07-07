@@ -14,6 +14,9 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
+use itmux::run::contract::{AgentRunResult, AgentRunSpec};
+use itmux::run::orchestrator::CancelToken;
+use itmux::run::workspace_executor::{generate_run_id, run as run_orchestrated};
 use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
     DEFAULT_TMUX_ROWS, DEFAULT_WORKDIR,
@@ -98,6 +101,27 @@ enum Cmd {
     Stop {
         #[arg(long)]
         name: String,
+    },
+    /// Run a recipe end-to-end: provision -> submit -> await -> capture ->
+    /// stop, streaming R6 event JSONL on stdout and emitting a final result.
+    Run {
+        /// Path to a recipe directory (EXP-0005 shape).
+        #[arg(long)]
+        recipe: PathBuf,
+        /// The task text handed to the recipe's default agent.
+        #[arg(long)]
+        task: String,
+        /// Container image. Defaults to the interactive-tmux workspace image.
+        #[arg(long, default_value = DEFAULT_IMAGE)]
+        image: String,
+        /// Emit event JSONL on stdout (on by default). `--json false`
+        /// suppresses the event stream and prints only a human result summary.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        json: bool,
+        /// Write the final `AgentRunResult` JSON to this file instead of a
+        /// `type:"result"` line on stdout.
+        #[arg(long)]
+        result_file: Option<PathBuf>,
     },
 }
 
@@ -400,6 +424,98 @@ fn handle_stop(name: String) -> ExitCode {
     }
 }
 
+/// One stdout line carrying the final result, tagged `type:"result"` so a
+/// consumer can distinguish it from the event JSONL (R6). The `AgentRunResult`
+/// fields are flattened alongside the tag.
+#[derive(Serialize)]
+struct ResultLine<'a> {
+    r#type: &'static str,
+    #[serde(flatten)]
+    result: &'a AgentRunResult,
+}
+
+fn handle_run(
+    recipe: PathBuf,
+    task: String,
+    image: String,
+    json: bool,
+    result_file: Option<PathBuf>,
+) -> ExitCode {
+    let spec = AgentRunSpec {
+        recipe,
+        task,
+        input_artifacts: Vec::new(),
+        credentials: Default::default(),
+        observability: Vec::new(),
+        limits: None,
+    };
+    let run_id = generate_run_id();
+    // Task 6 wires OS signals to this token; here it simply stays uncancelled.
+    let cancel = CancelToken::new();
+
+    // Emit each event as one JSON line on stdout (R6). stderr stays human-only.
+    let mut emit = |event: &_| {
+        if json {
+            match serde_json::to_string(event) {
+                Ok(line) => println!("{line}"),
+                Err(err) => eprintln!("[itmux run] failed to serialize event: {err}"),
+            }
+        }
+    };
+
+    let result = match run_orchestrated(&spec, &image, &run_id, &cancel, &mut emit) {
+        Ok(result) => result,
+        Err(err) => {
+            // Precondition failure (e.g. the recipe failed to load) before any
+            // workspace was provisioned - nothing to tear down.
+            eprintln!("[itmux run] {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    // Deliver the final result on its distinguishable channel.
+    match result_file {
+        Some(path) => match serde_json::to_vec_pretty(&result) {
+            Ok(bytes) => {
+                if let Err(err) = std::fs::write(&path, bytes) {
+                    eprintln!(
+                        "[itmux run] failed to write result file {}: {err}",
+                        path.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("[itmux run] failed to serialize result: {err}");
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            if json {
+                let line = ResultLine {
+                    r#type: "result",
+                    result: &result,
+                };
+                match serde_json::to_string(&line) {
+                    Ok(line) => println!("{line}"),
+                    Err(err) => eprintln!("[itmux run] failed to serialize result: {err}"),
+                }
+            } else {
+                println!(
+                    "run {}: success={} - {}",
+                    run_id, result.result.success, result.result.summary
+                );
+            }
+        }
+    }
+
+    if result.result.success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(3)
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.cmd {
@@ -434,5 +550,12 @@ fn main() -> ExitCode {
         Cmd::Capture { name, agent } => handle_capture(name, agent),
         Cmd::Exec { name, argv } => handle_exec(name, argv),
         Cmd::Stop { name } => handle_stop(name),
+        Cmd::Run {
+            recipe,
+            task,
+            image,
+            json,
+            result_file,
+        } => handle_run(recipe, task, image, json, result_file),
     }
 }

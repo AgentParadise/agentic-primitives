@@ -5,4 +5,6 @@
 //! (authoritative revisions R4/R6) for the contract this module implements.
 
 pub mod contract;
+pub mod orchestrator;
 pub mod recipe_loader;
+pub mod workspace_executor;
