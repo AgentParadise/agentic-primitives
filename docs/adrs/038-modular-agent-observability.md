@@ -269,6 +269,12 @@ The first hypothesis-first probes produced these architecture constraints:
   `kind = "langfuse_otlp"`, the generated schema includes that variant, endpoint
   and Basic auth derivation are unit-tested, and missing env is surfaced as a
   failed exporter report without leaking key values.
+- `experiments/2026-07-07--langfuse--otlp-transport-mock` validated the actual
+  Rust exporter transport path against a local receiver: buffered
+  `AgentRunEvent`s are encoded into an OTLP HTTP/protobuf request, sent to
+  `/api/public/otel/v1/traces` with Basic auth and
+  `x-langfuse-ingestion-version: 4`, and a 2xx response yields an `ok`
+  exporter report.
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring` passed:
   `itmux codex-exec` produced normalized lifecycle events, one `token_usage`
   event, exact stdout/exporter event parity, and a successful file exporter
@@ -310,8 +316,9 @@ These results preserve the original three-layer architecture and validate two
 end-to-end paths: `codex_exec_json` observer -> normalized `AgentRunEvent` ->
 file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
 `hook_event` -> file fanout -> `ObservabilityBundle`. `.9` now has typed
-LangFuse exporter config and fail-fast reporting, but still waits on real OTLP
-transport plus LangFuse connectivity before claiming ingestion or queryability.
+LangFuse exporter config, fail-fast reporting, and mock-proven OTLP
+HTTP/protobuf transport, but still waits on real LangFuse connectivity before
+claiming ingestion or queryability.
 
 Validated gates and follow-ups for `okrs-51p.6`:
 
@@ -332,7 +339,7 @@ Validated gates and follow-ups for `okrs-51p.6`:
 Next steps for `okrs-51p.9`:
 
 1. Add real LangFuse/OTLP transport on top of the typed `langfuse_otlp`
-   exporter config.
+   exporter config (**mock-proven; real backend smoke pending**).
 2. Support self-hosted Mac Mini configuration through env/keychain-backed
    secrets.
 3. Emit linkable LangFuse trace URLs in `ObservabilityBundle`.

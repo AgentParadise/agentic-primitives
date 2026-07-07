@@ -12,6 +12,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke`
 - `experiments/2026-07-07--langfuse--otel-preflight-mock`
 - `experiments/2026-07-07--langfuse--exporter-config-failfast`
+- `experiments/2026-07-07--langfuse--otlp-transport-mock`
 - `experiments/2026-07-07--observability--langfuse-otel-export`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring`
 - `experiments/2026-07-07--observability--claude-credential-health`
@@ -71,6 +72,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--langfuse--exporter-config-failfast` passed:
   `ObservabilityExporter::LangFuseOtlp` config round-trips, the schema includes
   `langfuse_otlp`, and missing env produces a failed exporter report.
+- `experiments/2026-07-07--langfuse--otlp-transport-mock` passed:
+  the actual Rust exporter sends OTLP HTTP/protobuf to a mock receiver and
+  reports `ok` on a 2xx response.
 
 ## `.6` Implementation Sequence
 
@@ -136,7 +140,8 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - `ObservabilityExporter::Otlp` or `ObservabilityExporter::LangFuse`.
    - explicit config validation and redacted error reporting.
    - OTLP HTTP/protobuf, not gRPC, for first LangFuse path.
-4. Implement real OTLP transport and semantic span encoding.
+4. Implement real OTLP transport and semantic span encoding:
+   **mock-proven for transport/root span/event spans**.
 5. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment.
 6. Map normalized run events to spans:
