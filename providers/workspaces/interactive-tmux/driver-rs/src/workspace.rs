@@ -1,7 +1,7 @@
 //! Workspace lifecycle: `docker run`, tmux bootstrap, per-agent launch +
 //! readiness gating, public primitives (send/await/capture/exec/stop).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
@@ -10,9 +10,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::adapter::{self, Agent};
-use crate::auth::{self, AuthContext, PreparedAuth};
+use crate::auth::{self, AuthContext, PreparedAuth, StagedPath};
 use crate::registry::{self, WorkspaceRecord};
 use crate::result::AwaitResult;
+use crate::run::secret_env;
 use crate::tmux;
 
 pub const DEFAULT_IMAGE: &str = "agentic-workspace-interactive-tmux:latest";
@@ -53,6 +54,18 @@ pub struct StartOptions {
     /// to best-effort reap an orphan on hard-cancel, #248) set this to a
     /// pre-computed unique name. It MUST be unique per workspace.
     pub container_name: Option<String>,
+    /// Per-agent secret environment variables (R1/R2). For each agent with a
+    /// non-empty map, `start` stages a `0600` env file into the container over
+    /// the base64-over-stdin transfer and launches that agent's pane through a
+    /// wrapper that `source`s it (see `adapter::launch_command_with_env`). The
+    /// values NEVER reach argv. An agent with only `secret_env` (no `host_auth`)
+    /// still counts as enabled. Empty by default.
+    pub secret_env: HashMap<Agent, BTreeMap<String, String>>,
+    /// When `true`, the claude auth staging omits `.credentials.json` and stages
+    /// ONLY the seeded `.claude.json` (trust/onboarding). Used by the OAuth env
+    /// var path (R1/R8): the token is injected via `secret_env`
+    /// (`CLAUDE_CODE_OAUTH_TOKEN`), never synthesized into a `.credentials.json`.
+    pub claude_omit_credentials: bool,
 }
 
 impl StartOptions {
@@ -68,6 +81,8 @@ impl StartOptions {
             host_claude_dotjson: None,
             claude_plugin_dirs: Vec::new(),
             container_name: None,
+            secret_env: HashMap::new(),
+            claude_omit_credentials: false,
         }
     }
 }
@@ -87,6 +102,11 @@ pub struct Workspace {
     /// `Workspace::start` from `StartOptions::claude_plugin_dirs`;
     /// consumed by `bootstrap_tmux_and_launch`.
     pub claude_plugin_dirs: Vec<PathBuf>,
+    /// Per-agent container-side path of the staged `0600` secret env file
+    /// (R1/R6). Populated by `Workspace::start` after the file is transferred;
+    /// consumed by `bootstrap_tmux_and_launch` to launch the pane through the
+    /// source-and-exec wrapper. NEVER contains a secret value - only the path.
+    pub secret_env_files: HashMap<Agent, String>,
 }
 
 fn random_suffix() -> String {
@@ -227,10 +247,11 @@ fn run_capture(cmd: Command, what: &str) -> Result<Output> {
 impl Workspace {
     #[allow(clippy::needless_pass_by_value)]
     pub fn start(opts: StartOptions) -> Result<Self> {
-        if opts.host_auth.values().all(Option::is_none) {
+        let has_any_secret_env = opts.secret_env.values().any(|m| !m.is_empty());
+        if opts.host_auth.values().all(Option::is_none) && !has_any_secret_env {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                "start_workspace called with no enabled agents (host_auth empty)",
+                "start_workspace called with no enabled agents (no host_auth and no secret_env)",
             ));
         }
 
@@ -262,6 +283,7 @@ impl Workspace {
             workdir: opts.workdir.clone(),
             throwaway_dir: throwaway.clone(),
             host_claude_dotjson: opts.host_claude_dotjson.clone(),
+            claude_omit_credentials: opts.claude_omit_credentials,
         };
 
         // Everything between creating `throwaway` and the Workspace taking
@@ -269,25 +291,31 @@ impl Workspace {
         // must clean up the staged credential copies on failure; otherwise
         // a failed `docker run` (or a bad host auth dir) leaks auth
         // material under the temp dir.
-        let provision = (|| -> Result<Vec<Agent>> {
+        let provision = (|| -> Result<(Vec<Agent>, HashMap<Agent, String>)> {
             let mut enabled: Vec<Agent> = Vec::new();
             let mut prepared_by_agent: Vec<PreparedAuth> = Vec::new();
             for agent in adapter::AGENTS {
-                let Some(Some(src)) = opts.host_auth.get(&agent) else {
-                    continue;
+                let host_src = opts.host_auth.get(&agent).cloned().flatten();
+                let has_secret_env = opts.secret_env.get(&agent).is_some_and(|m| !m.is_empty());
+                let prepared = match host_src.as_ref() {
+                    Some(src) => auth::prepare(agent, src, &auth_ctx)?,
+                    None => PreparedAuth::default(),
                 };
-                let prepared = auth::prepare(agent, src, &auth_ctx)?;
-                if prepared.is_empty() {
+                // An agent is enabled if it has staged credential files OR a
+                // non-empty secret env (the OAuth/API-key env-var path, R1/R2).
+                if prepared.is_empty() && !has_secret_env {
                     continue;
                 }
                 enabled.push(agent);
-                prepared_by_agent.push(prepared);
+                if !prepared.is_empty() {
+                    prepared_by_agent.push(prepared);
+                }
             }
 
             if enabled.is_empty() {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
-                    "start_workspace called with no enabled agents (host_auth empty)",
+                    "start_workspace called with no enabled agents (no host_auth and no secret_env)",
                 ));
             }
 
@@ -305,10 +333,37 @@ impl Workspace {
             for prepared in &prepared_by_agent {
                 auth::stage_into_container(&container, prepared)?;
             }
-            Ok(enabled)
+
+            // Stage per-agent secret env files (R1). Each is written to a
+            // throwaway host file (0600) and transferred via the SAME
+            // base64-over-stdin path as credentials - the values never touch
+            // argv. The in-container file is re-secured to 0600 by
+            // `secure_path_plan`. Record the container path so the launch step
+            // sources it.
+            let mut secret_env_files: HashMap<Agent, String> = HashMap::new();
+            for &agent in &enabled {
+                let Some(env) = opts.secret_env.get(&agent).filter(|m| !m.is_empty()) else {
+                    continue;
+                };
+                let container_path = format!("/home/agent/.itmux-secret-env-{}", agent.as_str());
+                let host_file = throwaway.join(format!("secret-env-{}", agent.as_str()));
+                fs::write(&host_file, secret_env::render_env_file(env))?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = fs::set_permissions(&host_file, fs::Permissions::from_mode(0o600));
+                }
+                let staged = PreparedAuth(vec![StagedPath {
+                    host: host_file,
+                    container: container_path.clone(),
+                }]);
+                auth::stage_into_container(&container, &staged)?;
+                secret_env_files.insert(agent, container_path);
+            }
+            Ok((enabled, secret_env_files))
         })();
-        let enabled = match provision {
-            Ok(enabled) => enabled,
+        let (enabled, secret_env_files) = match provision {
+            Ok(result) => result,
             Err(e) => {
                 // Best-effort: `docker run -d` (or the credential transfer
                 // that follows it) can fail after the container is
@@ -333,6 +388,7 @@ impl Workspace {
             enabled_agents: enabled,
             startup_status: HashMap::new(),
             claude_plugin_dirs: opts.claude_plugin_dirs.clone(),
+            secret_env_files,
         };
         if let Err(e) = ws.bootstrap_tmux_and_launch(opts.startup_timeout_s, opts.strict_startup) {
             let _ = ws.stop();
@@ -355,7 +411,8 @@ impl Workspace {
 
         let plugin_dirs = self.claude_plugin_dirs.clone();
         for &agent in &self.enabled_agents.clone() {
-            adapter::launch_in_window(&self.container, agent, &plugin_dirs)?;
+            let secret_env_file = self.secret_env_files.get(&agent).map(String::as_str);
+            adapter::launch_in_window(&self.container, agent, &plugin_dirs, secret_env_file)?;
             let result = self.wait_for_started(agent, startup_timeout_s);
             self.startup_status.insert(agent, result);
         }
@@ -581,6 +638,9 @@ impl Workspace {
             // re-launches via load_from_registry don't accidentally drop
             // or duplicate plugin flags.
             claude_plugin_dirs: Vec::new(),
+            // Secret env files are staged at start time and not persisted in
+            // the registry (the launch already happened by the time we save).
+            secret_env_files: HashMap::new(),
         })
     }
 

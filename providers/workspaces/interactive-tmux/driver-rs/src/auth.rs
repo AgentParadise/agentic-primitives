@@ -91,6 +91,14 @@ pub struct AuthContext {
     /// at an unrelated path - see `StartOptions::host_claude_dotjson` and
     /// the DooD discussion in `_default_claude_dotjson_from_env` (Python).
     pub host_claude_dotjson: Option<PathBuf>,
+    /// When `true`, claude staging omits `.credentials.json` and stages ONLY
+    /// the seeded `.claude.json` (trust/onboarding). Used by `itmux run`'s
+    /// OAuth env-var path (R1/R8): the token is injected as the
+    /// `CLAUDE_CODE_OAUTH_TOKEN` env var via `secret_env`, so synthesizing a
+    /// `.credentials.json` (and shipping a possibly-stale one) is both
+    /// unnecessary and the 401 hazard we are removing. Default `false` keeps
+    /// the `itmux start` behaviour (stage `.credentials.json`) unchanged.
+    pub claude_omit_credentials: bool,
 }
 
 /// Best-effort chmod on the LOCAL staging copy (defense in depth only - the
@@ -199,23 +207,36 @@ pub fn prepare_claude(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth
             format!("claude auth dir not found: {}", host_src.display()),
         ));
     }
-    let creds = host_src.join(".credentials.json");
-    if !creds.is_file() {
-        return Err(Error::new(
-            ErrorKind::NotFound,
-            format!(
-                "claude .credentials.json missing under {}; cannot mount Max-plan auth",
-                host_src.display()
-            ),
-        ));
-    }
 
-    // Throwaway ~/.claude/ - copy only .credentials.json (no session history).
-    let dst_dir = ctx.throwaway_dir.join("claude.dir");
-    fs::create_dir_all(&dst_dir)?;
-    let dst_creds = dst_dir.join(".credentials.json");
-    copy_file(&creds, &dst_creds)?;
-    chmod_file(&dst_creds, 0o600);
+    // OAuth env-var mode (R1/R8): stage ONLY the seeded `.claude.json`
+    // (trust/onboarding). The token arrives as the `CLAUDE_CODE_OAUTH_TOKEN`
+    // env var via `secret_env`, so `.credentials.json` is neither required nor
+    // staged (staging a stale one is the recurring 401 we are eliminating).
+    let dotjson_only = ctx.claude_omit_credentials;
+
+    let mut mounts: Vec<StagedPath> = Vec::new();
+    if !dotjson_only {
+        let creds = host_src.join(".credentials.json");
+        if !creds.is_file() {
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                format!(
+                    "claude .credentials.json missing under {}; cannot mount Max-plan auth",
+                    host_src.display()
+                ),
+            ));
+        }
+        // Throwaway ~/.claude/ - copy only .credentials.json (no session history).
+        let dst_dir = ctx.throwaway_dir.join("claude.dir");
+        fs::create_dir_all(&dst_dir)?;
+        let dst_creds = dst_dir.join(".credentials.json");
+        copy_file(&creds, &dst_creds)?;
+        chmod_file(&dst_creds, 0o600);
+        mounts.push(StagedPath {
+            host: dst_dir,
+            container: "/home/agent/.claude".to_string(),
+        });
+    }
 
     // Throwaway ~/.claude.json - synthesised regardless of host presence.
     // Resolution order (caller > sibling > nothing): if the caller passed
@@ -233,17 +254,12 @@ pub fn prepare_claude(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth
     let seeded = build_seeded_claude_dotjson(&dotjson_src, &ctx.workdir);
     fs::write(&dotjson_dst, serde_json::to_vec_pretty(&seeded)?)?;
     chmod_file(&dotjson_dst, 0o600);
+    mounts.push(StagedPath {
+        host: dotjson_dst,
+        container: "/home/agent/.claude.json".to_string(),
+    });
 
-    Ok(PreparedAuth(vec![
-        StagedPath {
-            host: dst_dir,
-            container: "/home/agent/.claude".to_string(),
-        },
-        StagedPath {
-            host: dotjson_dst,
-            container: "/home/agent/.claude.json".to_string(),
-        },
-    ]))
+    Ok(PreparedAuth(mounts))
 }
 
 // ---------------------------------------------------------------------------
