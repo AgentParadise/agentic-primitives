@@ -1,0 +1,9 @@
+{
+  "service.name": "agentic-primitives",
+  "deployment.environment.name": "agentic-primitives-preflight",
+  "langfuse.environment": "agentic-primitives-preflight",
+  "session.id": "preflight-1783450727",
+  "langfuse.session.id": "preflight-1783450727",
+  "langfuse.trace.name": "agentic_primitives.preflight",
+  "langfuse.trace.metadata.run_id": "preflight-1783450727"
+}

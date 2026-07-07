@@ -10,6 +10,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--claude-hook-file-fanout`
 - `experiments/2026-07-07--observability--codex-token-cost-surface`
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke`
+- `experiments/2026-07-07--langfuse--otel-preflight-mock`
 - `experiments/2026-07-07--observability--langfuse-otel-export`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring`
 - `experiments/2026-07-07--observability--claude-credential-health`
@@ -25,8 +26,8 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   counts matched in Claude and Codex probes.
 - Claude plugin launch can be requested through recipe `skills`, producing
   `claude --plugin-dir /workspace/plugins/observability`.
-- Claude hook observability is not validated yet because the workspace run hits
-  Anthropic `API Error: 401`.
+- Claude hook observability is validated through explicit sink capture and stock
+  provider packaging.
 - Codex TUI does not expose token/cost in the current `itmux run` stream.
 - `codex exec --json` exposes structured lifecycle events and
   `turn.completed.usage`.
@@ -61,7 +62,11 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   the stock interactive-tmux provider image now contains the observability
   plugin/runtime and emits the same normalized hook events.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
-  present, and the current Rust exporter enum supports only `file`.
+  present, and the current `.9` implementation still needs a LangFuse/OTLP
+  exporter variant.
+- `experiments/2026-07-07--langfuse--otel-preflight-mock` passed locally:
+  endpoint/auth/header/attribute construction is proven against a mock receiver,
+  but real LangFuse ingestion remains unproven.
 
 ## `.6` Implementation Sequence
 
@@ -91,9 +96,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - preserve the narrow `CLAUDE_CODE_OAUTH_TOKEN` Docker env passthrough and
      do not put token values in argv/stdout.
 6. Implement `claude_hooks` observer after hook output shape is proven:
+   **done through explicit sink/drain normalization**.
    - load `plugins/observability` through recipe/plugin-dir path.
    - parse hook JSONL/stderr output into normalized lifecycle/tool events.
-   - resolve the plugin README stdout/stderr mismatch while preserving
+   - document stderr plus `AGENTIC_EVENTS_JSONL` sink behavior while preserving
      `itmux run` stdout purity.
 7. Add acceptance coverage:
    - file exporter success count and report status.
@@ -110,8 +116,8 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   **satisfied by file fanout in `itmux codex-exec`**.
 - Codex token usage parity is scoped to `codex_exec_json`; TUI parity is not
   claimed.
-- Claude hook support has an empirical pass, or the OKR explicitly scopes it as
-  a follow-up blocker with evidence.
+- Claude hook support has an empirical pass:
+  **satisfied by hook-sink-capture and stock-itmux-hook-sink**.
 
 ## `.9` Implementation Sequence
 
@@ -120,18 +126,21 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - `LANGFUSE_PUBLIC_KEY`
    - `LANGFUSE_SECRET_KEY`
    - `LANGFUSE_TRACING_ENVIRONMENT`
-2. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke`.
-3. Add typed exporter config after the smoke passes:
+2. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` as local
+   regression coverage for endpoint/auth/header/attribute construction.
+3. Add typed exporter config:
    - `ObservabilityExporter::Otlp` or `ObservabilityExporter::LangFuse`.
    - explicit config validation and redacted error reporting.
    - OTLP HTTP/protobuf, not gRPC, for first LangFuse path.
-4. Map normalized run events to spans:
+4. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
+   reachable LangFuse deployment.
+5. Map normalized run events to spans:
    - one root trace per run.
    - child observations for provision, launch, submit, await, capture.
    - resource/span attributes for `session.id`, `service.name`,
      `langfuse.environment`, `langfuse.session.id`, `langfuse.trace.name`.
-5. Emit a trace link in `ObservabilityBundle`.
-6. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
+6. Emit a trace link in `ObservabilityBundle`.
+7. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
    score the verdict before closing `.9`.
 
 ## `.9` Exit Criteria
