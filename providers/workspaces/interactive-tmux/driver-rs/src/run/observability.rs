@@ -752,6 +752,19 @@ mod tests {
     }
 
     #[test]
+    fn file_exporter_link_preserves_relative_paths() {
+        assert_eq!(file_uri("events/run.jsonl"), "events/run.jsonl");
+        assert_eq!(
+            file_uri("/tmp/itmux-run-events.jsonl"),
+            "file:///tmp/itmux-run-events.jsonl"
+        );
+        assert_eq!(
+            file_uri("file:///tmp/already-a-uri.jsonl"),
+            "file:///tmp/already-a-uri.jsonl"
+        );
+    }
+
+    #[test]
     fn langfuse_otlp_config_derives_traces_endpoint_and_auth() {
         let env = map_env(&[
             ("LANGFUSE_PUBLIC_KEY", "pk-lf-test"),
