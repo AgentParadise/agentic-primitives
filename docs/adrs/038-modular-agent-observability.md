@@ -358,10 +358,12 @@ Next steps for `okrs-51p.9`:
    for `itmux codex-exec --observability-langfuse` with absent env**).
 6. Prove mixed exporter isolation (**implemented for file exporter ok plus
    LangFuse failed in one `itmux codex-exec` run**).
-7. Run hypothesis-first experiments before marking the backend complete.
-8. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
+7. Rerun the original run-event LangFuse export experiment against current code
+   (**current rerun shows exporter exists, but real backend config is absent**).
+8. Run hypothesis-first experiments before marking the backend complete.
+9. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
    config/auth/header/attribute regression coverage.
-9. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
+10. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment to validate real OTLP ingestion and trace
    visibility before richer run-event mapping work.
 8. Treat missing LangFuse env as a first-class exporter configuration failure

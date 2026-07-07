@@ -21,6 +21,26 @@ Capture:
   manually from the UI
 - screenshot or textual evidence of the trace, if API query support is not yet wired
 
+## Probe C: Current CLI Rerun
+
+Until real LangFuse credentials are available, run the current CLI path with the
+deterministic fake Codex harness:
+
+```bash
+cargo run --manifest-path providers/workspaces/interactive-tmux/driver-rs/Cargo.toml -- \
+  codex-exec \
+  --codex-bin experiments/2026-07-07--langfuse--cli-runtime-failfast/fixtures/fake-codex-success.sh \
+  --prompt "synthetic current langfuse export" \
+  --observability-file experiments/2026-07-07--observability--langfuse-otel-export/runs/current/events.jsonl \
+  --observability-langfuse \
+  --result-file experiments/2026-07-07--observability--langfuse-otel-export/runs/current/result.json \
+  > experiments/2026-07-07--observability--langfuse-otel-export/runs/current/stdout.jsonl \
+  2> experiments/2026-07-07--observability--langfuse-otel-export/runs/current/stderr.txt
+```
+
+This rerun does not prove LangFuse ingestion. It only keeps this experiment's
+current-state evidence aligned with the implemented exporter path.
+
 ## Scoring
 
 Pass requires:

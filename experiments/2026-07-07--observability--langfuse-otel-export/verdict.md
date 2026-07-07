@@ -1,23 +1,27 @@
 # Verdict
 
-**No-go for `.9` implementation until `.6` adds the exporter interface and the
-LangFuse OTLP smoke passes.**
+**Go for current exporter path; no-go for claiming real LangFuse backend
+visibility until the OTLP ingestion smoke passes.**
 
-This experiment confirms the ordering: `.9` depends on `.6` not just as a board
-edge, but technically. The current primitive can export local JSONL; it cannot
-yet instantiate a LangFuse/OTEL exporter or produce trace links.
+The historical run correctly identified that `.9` needed `.6` to provide a
+typed exporter interface. That part is now implemented. The current rerun shows
+the CLI can instantiate file plus `langfuse_otlp` exporters and preserve local
+JSONL observability. It still cannot create a real LangFuse trace in this shell
+because no LangFuse env/credentials are present.
 
 ## Hypothesis scorecard
 
 | Predicted | Observed | Score | Notes |
 |---|---|---|---|
-| LangFuse/OTEL exporter creates one trace per run | No exporter exists yet; no trace created | wrong | `runs/langfuse-treatment-not-run.txt`. |
-| Trace contains child observations for run phases | Not observed | wrong | Blocked by missing exporter and missing LangFuse config. |
-| Result report includes a usable LangFuse trace link | Not observed | wrong | Current result has only file exporter reports. |
+| LangFuse/OTEL exporter creates one trace per run | Exporter exists, but real trace not created because `LANGFUSE_BASE_URL` is missing | partial | `runs/current/result.json`. |
+| Trace contains child observations for run phases | Local event stream exists; backend trace not observed | partial | `runs/current/stdout.jsonl`, `runs/current/events.jsonl`. |
+| Result report includes a usable LangFuse trace link | No link because export failed before backend ingestion | wrong | `runs/current/result.json`. |
 
 ## Design Impact
 
-- `.6` needs a typed exporter abstraction that can support `file` now and
-  `otlp`/`langfuse` next without putting backend logic in harness observers.
-- `.9` should begin with config validation and OTLP smoke evidence, then add
-  run-event to span mapping.
+- `.6` now has the typed exporter/fanout substrate this experiment originally
+  required.
+- `.9` has local config, transport, trace-link, CLI setup, and fail-fast
+  evidence.
+- `.9` still cannot close until real LangFuse ingestion, trace visibility, and
+  trace-link resolution are observed against Cloud or the Mac Mini self-host.

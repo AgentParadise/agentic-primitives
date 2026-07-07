@@ -93,6 +93,11 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   `itmux codex-exec` reported the file exporter as `ok` with all 6 events while
   reporting LangFuse as `failed`, and stdout/file event types plus seq values
   matched exactly.
+- `experiments/2026-07-07--observability--langfuse-otel-export` was rerun
+  against the current CLI/exporter path: the old "no exporter exists" result is
+  superseded. Current state is file exporter `ok`, LangFuse exporter `failed`
+  on missing `LANGFUSE_BASE_URL`, and real backend trace visibility remains
+  unproven.
 
 ## `.6` Implementation Sequence
 
@@ -182,8 +187,8 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 10. Validate mixed exporter isolation:
    **done for file exporter ok plus LangFuse failed in one `itmux codex-exec`
    run**.
-11. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
-   score the verdict before closing `.9`.
+11. Rerun `experiments/2026-07-07--observability--langfuse-otel-export`:
+   **done against current CLI/exporter path; real backend still config-blocked**.
 
 ## `.9` Exit Criteria
 
