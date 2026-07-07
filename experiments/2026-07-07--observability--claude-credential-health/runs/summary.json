@@ -1,0 +1,18 @@
+{
+  "host_claude_exit": "exit_code:0",
+  "host_claude_stdout_contains_ok": true,
+  "start_exit": "exit_code:0",
+  "container_credentials_exists": true,
+  "container_credentials_mode": "0o600",
+  "container_access_token_len": 108,
+  "container_refresh_token_len": 0,
+  "container_claude_json_exists": true,
+  "container_claude_json_has_oauthAccount": true,
+  "itmux_run_exit": "exit_code:3",
+  "itmux_run_success": false,
+  "itmux_run_summary": "harness hard-error detected (error banner \"API Error\")",
+  "itmux_run_session_contains_401": true,
+  "itmux_run_exported_events": 11,
+  "host_env_claude_code_oauth_token": "set",
+  "classification": "host auth succeeds via CLAUDE_CODE_OAUTH_TOKEN; container disk credentials have expired access token / empty refresh token; recipe-driven run fails 401"
+}

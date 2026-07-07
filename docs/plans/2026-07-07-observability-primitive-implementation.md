@@ -12,6 +12,7 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke`
 - `experiments/2026-07-07--observability--langfuse-otel-export`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring`
+- `experiments/2026-07-07--observability--claude-credential-health`
 
 ## Current Facts
 
@@ -33,6 +34,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring` passed:
   six normalized stdout events, six exported events, one `token_usage` event,
   result success true, exporter status `ok`.
+- `experiments/2026-07-07--observability--claude-credential-health` classified
+  the Claude 401: host Claude succeeds via `CLAUDE_CODE_OAUTH_TOKEN`, but the
+  Docker workspace does not receive that env token and its staged disk
+  credentials cannot refresh.
 - LangFuse OTLP export is not validated because no LangFuse env/credentials are
   present, and the current Rust exporter enum supports only `file`.
 
@@ -55,10 +60,14 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    - attach run id, sequence, and timestamps to observed payloads.
    - feed resulting `AgentRunEvent`s through the existing exporter fanout.
    - add an acceptance test using captured `codex exec --json` fixtures.
-5. Revalidate Claude interactive credentials:
-   - reproduce the 401 failure with a targeted credential-transfer probe.
-   - fix credential staging or image behavior if the failure reproduces.
-   - rerun the Claude hook fanout experiment after the fix.
+5. Fix Claude interactive credential delivery:
+   - choose a secure way to bridge `CLAUDE_CODE_OAUTH_TOKEN` or equivalent
+     fresh credential material into Docker workspaces without exposing it in
+     argv/stdout.
+   - keep disk credential staging for conventional `.claude` auth, but do not
+     rely on expired access-token-only state.
+   - rerun the Claude credential-health and hook fanout experiments after the
+     fix.
 6. Implement `claude_hooks` observer only after credential health is proven:
    - load `plugins/observability` through recipe/plugin-dir path.
    - parse hook JSONL/stderr output into normalized lifecycle/tool events.

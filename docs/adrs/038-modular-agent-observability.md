@@ -263,12 +263,19 @@ The first hypothesis-first probes produced these architecture constraints:
   `itmux codex-exec` produced normalized lifecycle events, one `token_usage`
   event, exact stdout/exporter event parity, and a successful file exporter
   report from a real `codex exec --json` run.
+- `experiments/2026-07-07--observability--claude-credential-health` classified
+  the Claude 401 blocker. Host `claude -p` succeeds because
+  `CLAUDE_CODE_OAUTH_TOKEN` is set, while the Docker workspace receives staged
+  disk credentials whose access token is expired and whose refresh token is
+  empty after Claude starts. Recipe-driven `itmux run` therefore fails on first
+  prompt submission with `API Error: 401`.
 
 These results preserve the original three-layer architecture and validate the
 first end-to-end path: `codex_exec_json` observer -> normalized `AgentRunEvent`
--> file fanout -> `ObservabilityBundle`. The remaining `.6` risk is Claude
-interactive credential/hook ingestion. `.9` still waits on LangFuse OTLP
-connectivity, then run-event to span mapping.
+-> file fanout -> `ObservabilityBundle`. The remaining `.6` risk is a secure
+Claude credential-delivery path for Docker workspaces, then Claude hook
+ingestion. `.9` still waits on LangFuse OTLP connectivity, then run-event to
+span mapping.
 
 Next steps for `okrs-51p.6`:
 
@@ -285,8 +292,10 @@ Next steps for `okrs-51p.6`:
 6. Resolve the observability plugin docs/code mismatch: the README says
    lifecycle hooks emit to stdout, while the handler currently writes through
    stderr. Stdout must remain reserved for `itmux run` contract JSONL.
-7. Fix or revalidate Claude credential transfer in the interactive-tmux image;
-   the 2026-07-07 probe reached Claude Code but received Anthropic 401.
+7. Fix Claude credential delivery in the interactive-tmux image. The
+   2026-07-07 credential-health probe showed host auth succeeds via
+   `CLAUDE_CODE_OAUTH_TOKEN`, but Docker workspaces receive expired disk
+   credentials with no usable refresh token.
 8. Wire the implemented `codex_exec_json` observer before promising Codex
    token/cost parity in the TUI path.
 9. Preserve relative path behavior in reports, but document and test that only
