@@ -5,14 +5,16 @@
 //! accumulating exporter status for the final `AgentRunResult`.
 
 use std::fs::{File, OpenOptions};
-use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::run::contract::{
-    AgentRunEvent, ObservabilityBundle, ObservabilityExportReport, ObservabilityExportStatus,
-    ObservabilityExporter, ObservabilityLink,
+    AgentRunEvent, AgentRunEventPayload, ObservabilityBundle, ObservabilityExportReport,
+    ObservabilityExportStatus, ObservabilityExporter, ObservabilityLink,
 };
+
+const LANGFUSE_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct ObservabilityFanout {
     sinks: Vec<ExporterState>,
@@ -30,6 +32,7 @@ struct ExporterState {
     label: String,
     sink: ExporterSink,
     events_exported: u64,
+    events_pending: u64,
     error: Option<String>,
 }
 
@@ -69,6 +72,7 @@ impl ExporterState {
                     label: label.clone().unwrap_or_else(|| "run events".to_string()),
                     sink: ExporterSink::File(file),
                     events_exported: 0,
+                    events_pending: 0,
                     error: None,
                 },
                 Err(err) => Self {
@@ -77,6 +81,7 @@ impl ExporterState {
                     label: label.clone().unwrap_or_else(|| "run events".to_string()),
                     sink: ExporterSink::Disabled,
                     events_exported: 0,
+                    events_pending: 0,
                     error: Some(err.to_string()),
                 },
             },
@@ -109,6 +114,7 @@ impl ExporterState {
                             .unwrap_or_else(|| "LangFuse trace".to_string()),
                         sink: ExporterSink::LangFuseOtlp(LangFuseOtlpSink::new(resolved)),
                         events_exported: 0,
+                        events_pending: 0,
                         error: None,
                     },
                     Err(err) => Self {
@@ -119,6 +125,7 @@ impl ExporterState {
                             .unwrap_or_else(|| "LangFuse trace".to_string()),
                         sink: ExporterSink::Disabled,
                         events_exported: 0,
+                        events_pending: 0,
                         error: Some(err),
                     },
                 }
@@ -144,7 +151,7 @@ impl ExporterState {
             }
             ExporterSink::LangFuseOtlp(sink) => {
                 sink.push(event);
-                self.events_exported += 1;
+                self.events_pending += 1;
             }
             ExporterSink::Disabled => {}
         }
@@ -165,7 +172,10 @@ impl ExporterState {
                 if let Err(err) = sink.export() {
                     self.error = Some(err);
                 } else if let Some(link) = sink.trace_link(&self.label) {
+                    self.events_exported = self.events_pending;
                     links.push(link);
+                } else {
+                    self.events_exported = self.events_pending;
                 }
             }
             ExporterSink::Disabled => {}
@@ -265,6 +275,7 @@ impl LangFuseOtlpSink {
             &self.config.environment,
         );
         let response = ureq::post(&self.config.traces_endpoint)
+            .timeout(LANGFUSE_HTTP_TIMEOUT)
             .set("Authorization", &self.config.authorization_header)
             .set("Content-Type", "application/x-protobuf")
             .set("x-langfuse-ingestion-version", "4")
@@ -541,8 +552,106 @@ fn encode_span(
             9,
             &encode_key_value("agentic.event.seq", &event.seq.to_string()),
         );
+        for (key, value) in event_payload_attributes(&event.payload) {
+            push_message(&mut out, 9, &encode_key_value(&key, &value));
+        }
     }
     out
+}
+
+fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<(String, String)> {
+    match payload {
+        AgentRunEventPayload::ToolStart {
+            tool_name,
+            tool_input,
+        } => vec![
+            ("agentic.tool.name".to_string(), tool_name.clone()),
+            (
+                "agentic.tool.input_json".to_string(),
+                tool_input.to_string(),
+            ),
+        ],
+        AgentRunEventPayload::ToolEnd {
+            tool_name,
+            success,
+            output_summary,
+        } => {
+            let mut attributes = vec![
+                ("agentic.tool.name".to_string(), tool_name.clone()),
+                ("agentic.tool.success".to_string(), success.to_string()),
+            ];
+            if let Some(output_summary) = output_summary {
+                attributes.push((
+                    "agentic.tool.output_summary".to_string(),
+                    output_summary.clone(),
+                ));
+            }
+            attributes
+        }
+        AgentRunEventPayload::TokenUsage {
+            input_tokens,
+            output_tokens,
+            cached_input_tokens,
+            reasoning_output_tokens,
+            cost_usd,
+        } => {
+            let mut attributes = vec![
+                (
+                    "agentic.usage.input_tokens".to_string(),
+                    input_tokens.to_string(),
+                ),
+                (
+                    "agentic.usage.output_tokens".to_string(),
+                    output_tokens.to_string(),
+                ),
+            ];
+            if let Some(cached_input_tokens) = cached_input_tokens {
+                attributes.push((
+                    "agentic.usage.cached_input_tokens".to_string(),
+                    cached_input_tokens.to_string(),
+                ));
+            }
+            if let Some(reasoning_output_tokens) = reasoning_output_tokens {
+                attributes.push((
+                    "agentic.usage.reasoning_output_tokens".to_string(),
+                    reasoning_output_tokens.to_string(),
+                ));
+            }
+            if let Some(cost_usd) = cost_usd {
+                attributes.push(("agentic.usage.cost_usd".to_string(), cost_usd.to_string()));
+            }
+            attributes
+        }
+        AgentRunEventPayload::HookEvent {
+            provider,
+            event_type,
+            event,
+        } => vec![
+            ("agentic.hook.provider".to_string(), provider.clone()),
+            ("agentic.hook.event_type".to_string(), event_type.clone()),
+            ("agentic.hook.event_json".to_string(), event.to_string()),
+        ],
+        AgentRunEventPayload::SessionEnd { outcome } => vec![
+            (
+                "agentic.outcome.success".to_string(),
+                outcome.success.to_string(),
+            ),
+            (
+                "agentic.outcome.summary".to_string(),
+                outcome.summary.clone(),
+            ),
+        ],
+        AgentRunEventPayload::Result { result } => vec![
+            (
+                "agentic.result.success".to_string(),
+                result.result.success.to_string(),
+            ),
+            (
+                "agentic.result.summary".to_string(),
+                result.result.summary.clone(),
+            ),
+        ],
+    }
 }
 
 fn encode_key_value(key: &str, value: &str) -> Vec<u8> {
@@ -555,8 +664,8 @@ fn encode_key_value(key: &str, value: &str) -> Vec<u8> {
 }
 
 fn trace_id_for_run(run_id: &str) -> [u8; 16] {
-    let first = hash64(&(run_id, 0_u8));
-    let second = hash64(&(run_id, 1_u8));
+    let first = stable_hash64("agentic-primitives.trace-id.0", run_id);
+    let second = stable_hash64("agentic-primitives.trace-id.1", run_id);
     let mut out = [0; 16];
     out[..8].copy_from_slice(&first.to_be_bytes());
     out[8..].copy_from_slice(&second.to_be_bytes());
@@ -587,15 +696,24 @@ pub fn langfuse_basic_auth_header(public_key: &str, secret_key: &str) -> String 
 }
 
 fn span_id_for(run_id: &str, seq: u64) -> [u8; 8] {
-    let value = hash64(&(run_id, seq));
+    let value = stable_hash64("agentic-primitives.span-id", &format!("{run_id}:{seq}"));
     let value = if value == 0 { 1 } else { value };
     value.to_be_bytes()
 }
 
-fn hash64(value: &impl Hash) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
+fn stable_hash64(domain: &str, value: &str) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in domain
+        .as_bytes()
+        .iter()
+        .copied()
+        .chain([0])
+        .chain(value.as_bytes().iter().copied())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 fn unix_nanos_from_rfc3339_seconds(ts: &str) -> u64 {
@@ -706,7 +824,7 @@ mod tests {
         }
     }
 
-    fn event(seq: u64) -> AgentRunEvent {
+    fn session_end_event(seq: u64) -> AgentRunEvent {
         AgentRunEvent {
             run_id: "run-test".to_string(),
             seq,
@@ -716,6 +834,19 @@ mod tests {
                     success: true,
                     summary: "done".to_string(),
                 },
+            },
+        }
+    }
+
+    fn tool_end_event(seq: u64) -> AgentRunEvent {
+        AgentRunEvent {
+            run_id: "run-test".to_string(),
+            seq,
+            ts: format!("2026-07-07T00:00:0{seq}Z"),
+            payload: AgentRunEventPayload::ToolEnd {
+                tool_name: "codex.exec".to_string(),
+                success: true,
+                output_summary: Some("created trace artifact".to_string()),
             },
         }
     }
@@ -752,8 +883,8 @@ mod tests {
             label: Some("local events".to_string()),
         }]);
 
-        fanout.emit(&event(0));
-        fanout.emit(&event(1));
+        fanout.emit(&session_end_event(0));
+        fanout.emit(&session_end_event(1));
         let bundle = fanout.finish().expect("configured exporter reports");
 
         let contents = std::fs::read_to_string(&path).expect("jsonl file exists");
@@ -864,9 +995,9 @@ mod tests {
     }
 
     #[test]
-    fn langfuse_otlp_exporter_posts_protobuf_to_mock_receiver() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock receiver");
-        let addr = listener.local_addr().expect("mock receiver address");
+    fn langfuse_otlp_exporter_posts_protobuf_to_local_receiver() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local receiver");
+        let addr = listener.local_addr().expect("local receiver address");
         let (tx, rx) = mpsc::channel();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept request");
@@ -920,9 +1051,9 @@ mod tests {
             project_id: None,
             project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
             service_name: "agentic-primitives".to_string(),
-            label: Some("mock LangFuse".to_string()),
+            label: Some("local receiver LangFuse".to_string()),
         }]);
-        fanout.emit(&event(0));
+        fanout.emit(&tool_end_event(0));
         let bundle = fanout.finish().expect("configured exporter reports");
 
         std::env::remove_var("LANGFUSE_PUBLIC_KEY");
@@ -948,6 +1079,18 @@ mod tests {
         assert!(body
             .windows("agentic_primitives.run".len())
             .any(|window| window == b"agentic_primitives.run"));
+        assert!(body
+            .windows("agentic.tool.name".len())
+            .any(|window| window == b"agentic.tool.name"));
+        assert!(body
+            .windows("codex.exec".len())
+            .any(|window| window == b"codex.exec"));
+        assert!(body
+            .windows("agentic.tool.success".len())
+            .any(|window| window == b"agentic.tool.success"));
+        assert!(body
+            .windows("created trace artifact".len())
+            .any(|window| window == b"created trace artifact"));
 
         let report = &bundle.exporters[0];
         assert_eq!(report.status, ObservabilityExportStatus::Ok);
@@ -955,7 +1098,7 @@ mod tests {
         let expected_target = format!("http://{addr}/api/public/otel/v1/traces");
         assert_eq!(report.target.as_deref(), Some(expected_target.as_str()));
         assert_eq!(report.links.len(), 1);
-        assert_eq!(report.links[0].label, "mock LangFuse");
+        assert_eq!(report.links[0].label, "local receiver LangFuse");
         assert!(report.links[0]
             .uri
             .starts_with(&format!("http://{addr}/project/project-123/traces/")));
@@ -967,5 +1110,13 @@ mod tests {
         assert_eq!(trace_id.len(), 32);
         assert!(trace_id.chars().all(|ch| ch.is_ascii_hexdigit()));
         assert!(report.error.is_none());
+    }
+
+    #[test]
+    fn langfuse_trace_id_for_run_is_stable() {
+        assert_eq!(
+            langfuse_trace_id_for_run("run-test"),
+            "56e46cb6e46dc6d0ef3a439f691881dd"
+        );
     }
 }

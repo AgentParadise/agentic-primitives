@@ -21,7 +21,7 @@ without leaking credentials or corrupting stdout JSONL?
 
 - Branch: `feat/observability-exporter-primitive`.
 - Prerequisite evidence:
-  `experiments/2026-07-07--langfuse--otel-preflight-mock`.
+  `experiments/2026-07-07--langfuse--otel-preflight-local-receiver`.
 - This experiment does not enable real OTLP transport; it validates the config
   and fail-fast slice before the real ingestion smoke.
 

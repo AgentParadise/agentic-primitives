@@ -5,7 +5,7 @@
 The synthetic trace shape is ready for an OTLP exporter, but the actual LangFuse
 ingestion question remains unanswered until a reachable LangFuse deployment and
 credentials are provided. The current `itmux` exporter path is implemented and
-mock-proven elsewhere; this experiment is now the real-backend close gate for
+local-receiver-proven elsewhere; this experiment is now the real-backend close gate for
 `.9`, not a prerequisite for local exporter implementation.
 
 `run-smoke.sh` is now the repeatable close-gate runner for the current exporter
@@ -28,7 +28,7 @@ redacted missing-env/keychain evidence under `runs/real-backend-smoke/`.
   this smoke passes against either LangFuse Cloud or the planned Mac Mini
   self-host.
 - The reusable exporter architecture remains valid for local/file export and
-  mock-proven LangFuse transport, but backend-dependent trace discoverability is
+  local-receiver-proven LangFuse transport, but backend-dependent trace discoverability is
   still unverified.
 - The exporter should continue to fail fast with a clear config error when
   required LangFuse env vars are missing.

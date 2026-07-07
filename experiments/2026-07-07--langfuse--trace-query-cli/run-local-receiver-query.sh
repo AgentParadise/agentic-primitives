@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EXP="$ROOT/experiments/2026-07-07--langfuse--trace-query-cli"
-RUNS="$EXP/runs/mock-query"
+RUNS="$EXP/runs/local-receiver-query"
 ITMUX_BIN="${ITMUX_BIN:-$ROOT/providers/workspaces/interactive-tmux/driver-rs/target/debug/itmux}"
 
 rm -rf "$RUNS"
@@ -72,7 +72,7 @@ for _ in {1..100}; do
 done
 
 if [[ ! -s "$RUNS/port.txt" ]]; then
-  echo "mock server did not publish a port" >"$RUNS/summary.txt"
+  echo "local receiver did not publish a port" >"$RUNS/summary.txt"
   exit 1
 fi
 
@@ -95,8 +95,8 @@ trap - EXIT
 
 {
   echo "exit_code=$exit_code"
-  echo "captured_request=runs/mock-query/captured-request.redacted.json"
-  echo "query_response=runs/mock-query/query-response.json"
+  echo "captured_request=runs/local-receiver-query/captured-request.redacted.json"
+  echo "query_response=runs/local-receiver-query/query-response.json"
 } >"$RUNS/summary.txt"
 
 rm -f "$RUNS/port.txt"

@@ -228,6 +228,35 @@ ci:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# OBSERVABILITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Clone LangFuse's official Docker Compose setup into .agentic/langfuse/
+[group('observability')]
+langfuse-init:
+    scripts/langfuse-local.sh init
+
+# Start local LangFuse via the official Docker Compose setup
+[group('observability')]
+langfuse-start:
+    scripts/langfuse-local.sh start
+
+# Show local LangFuse compose status
+[group('observability')]
+langfuse-status:
+    scripts/langfuse-local.sh status
+
+# Stop local LangFuse
+[group('observability')]
+langfuse-stop:
+    scripts/langfuse-local.sh stop
+
+# Run the LangFuse exporter smoke against LANGFUSE_BASE_URL
+[group('observability')]
+langfuse-smoke:
+    scripts/langfuse-local.sh smoke
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DOCKER / WORKSPACE IMAGES
 # ═══════════════════════════════════════════════════════════════════════════════
 

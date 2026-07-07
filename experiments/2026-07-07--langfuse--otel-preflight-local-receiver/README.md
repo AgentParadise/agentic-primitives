@@ -1,4 +1,4 @@
-# Experiment: LangFuse OTLP Preflight Mock
+# Experiment: LangFuse OTLP Preflight Local Receiver
 
 ## Question
 
@@ -28,19 +28,19 @@ attributes?
 - Branch: `feat/observability-exporter-primitive`.
 - Beads: `.6` fanout substrate is ready; `.9` owns LangFuse backend/exporter
   work.
-- Backend: local mock HTTP server only. This experiment does not prove
+- Backend: local receiver HTTP server only. This experiment does not prove
   LangFuse ingestion or UI/API trace discoverability.
 
 ## Conditions
 
 - **Baseline:** inspect existing LangFuse env and confirm whether real export
   can run.
-- **Treatment:** set synthetic LangFuse env against a local mock endpoint and
+- **Treatment:** set synthetic LangFuse env against a local local receiver endpoint and
   send one preflight OTLP-shaped trace request.
 
 ## Expected Signals
 
-- mock request capture with method/path/content-type/auth status
+- local receiver request capture with method/path/content-type/auth status
 - redacted env/config summary
 - required attribute preservation table
 - preflight summary classifying what is proven and what still requires real

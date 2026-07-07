@@ -3,14 +3,14 @@
 | Probe | Evidence | Result |
 |---|---|---|
 | Existing environment | `runs/existing-env.redacted.txt` | Real LangFuse export cannot run in this shell: all required LangFuse/OTEL env vars are missing. |
-| Mock OTLP receiver | `runs/mock-request.json`, `runs/mock-response.txt`, `runs/preflight-summary.json` | Passed: local receiver saw one `POST` to `/api/public/otel/v1/traces`, `Content-Type: application/x-protobuf`, valid Basic auth, and non-empty body. |
+| Local OTLP receiver | `runs/local-receiver-request.json`, `runs/local-receiver-response.txt`, `runs/preflight-summary.json` | Passed: local receiver saw one `POST` to `/api/public/otel/v1/traces`, `Content-Type: application/x-protobuf`, valid Basic auth, and non-empty body. |
 | Attribute contract | `runs/attribute-contract.json`, `runs/field-preservation-table.md` | Passed: all required local attributes were present. |
 
 ## Key Data
 
 | Field | Value |
 |---|---|
-| Mock response status | 200 |
+| Local receiver response status | 200 |
 | Method | `POST` |
 | Path | `/api/public/otel/v1/traces` |
 | Content type | `application/x-protobuf` |

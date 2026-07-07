@@ -25,7 +25,7 @@
 - `ObservabilityExporter::LangFuseOtlp` now accepts optional `project_id` and
   `project_id_env`, defaulting the env lookup name to `LANGFUSE_PROJECT_ID`.
 - Missing project id does not fail configuration; it only suppresses a UI link.
-- The mock transport test asserts that a successful export with
+- The local receiver transport test asserts that a successful export with
   `LANGFUSE_PROJECT_ID=project-123` reports a link shaped like
   `/project/project-123/traces/<32_hex_trace_id>`.
 - `target` remains the OTLP traces endpoint. `links` now represents

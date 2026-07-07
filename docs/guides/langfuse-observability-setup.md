@@ -126,6 +126,31 @@ docker run --rm \
 When an orchestrator launches the workspace, the same rule applies: the contract
 is the environment variable names, not a committed secret file.
 
+## Local LangFuse Bootstrap
+
+For local integration work, use the repo wrapper around LangFuse's official
+Docker Compose deployment:
+
+```bash
+scripts/langfuse-local.sh init
+scripts/langfuse-local.sh start
+scripts/langfuse-local.sh status
+```
+
+The wrapper clones the official LangFuse repository into `.agentic/langfuse/`,
+which is ignored by git. It does not vendor LangFuse's compose file into this
+repository and does not commit secrets. After startup, open
+`http://localhost:3000`, create a project and API keys, load those keys into the
+environment or macOS Keychain, then run:
+
+```bash
+scripts/langfuse-local.sh smoke
+```
+
+This local bootstrap is for development and smoke testing. For production or
+durable Mac Mini hosting, review LangFuse's current self-hosting guidance and
+set persistent secrets, storage, backups, and upgrade policy explicitly.
+
 ## Real Backend Smoke
 
 After the environment is loaded, run a smoke against the current exporter path:

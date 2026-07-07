@@ -1,4 +1,4 @@
-# Experiment: LangFuse OTLP Transport Mock
+# Experiment: LangFuse OTLP Transport Local Receiver
 
 ## Question
 
@@ -14,20 +14,20 @@ same fanout/reporting path that `itmux run` uses?
    `x-langfuse-ingestion-version: 4`.
 3. The protobuf body is non-empty and includes the root span name
    `agentic_primitives.run`.
-4. A 2xx mock response yields an `ObservabilityExportReport` with
+4. A 2xx local receiver response yields an `ObservabilityExportReport` with
    `status = ok`, event count equal to buffered events, and no error.
 
 ## Setup
 
 - Branch: `feat/observability-exporter-primitive`.
 - Builds on:
-  `experiments/2026-07-07--langfuse--otel-preflight-mock` and
+  `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` and
   `experiments/2026-07-07--langfuse--exporter-config-failfast`.
-- Backend: local mock HTTP server in a Rust test.
+- Backend: local receiver HTTP server in a Rust test.
 
 ## Expected Signals
 
-- `langfuse_otlp_exporter_posts_protobuf_to_mock_receiver` passes
+- `langfuse_otlp_exporter_posts_protobuf_to_local_receiver` passes
 - all `langfuse_otlp` tests pass
 - full driver tests, fmt, and clippy pass
 - no real LangFuse credentials are required

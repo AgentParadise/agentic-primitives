@@ -33,7 +33,7 @@ test run::workspace_executor::tests::sanitize_name_replaces_unsafe_chars ... ok
 test run::harness_observer::tests::codex_exec_json_maps_successful_turn_usage ... ok
 test tmux::tests::redact_args_hides_literal_payload_after_dash_l ... ok
 test tmux::tests::redact_args_leaves_non_literal_commands_intact ... ok
-test run::observability::tests::langfuse_otlp_exporter_posts_protobuf_to_mock_receiver ... ok
+test run::observability::tests::langfuse_otlp_exporter_posts_protobuf_to_local_receiver ... ok
 test run::observability::tests::file_exporter_writes_event_jsonl_and_reports_link ... ok
 
 test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

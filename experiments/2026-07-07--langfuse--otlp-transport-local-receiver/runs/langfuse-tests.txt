@@ -28,7 +28,7 @@ running 4 tests
 test run::observability::tests::langfuse_otlp_config_accepts_otel_base_or_trace_endpoint ... ok
 test run::observability::tests::langfuse_otlp_exporter_reports_missing_env_without_secrets ... ok
 test run::observability::tests::langfuse_otlp_config_derives_traces_endpoint_and_auth ... ok
-test run::observability::tests::langfuse_otlp_exporter_posts_protobuf_to_mock_receiver ... ok
+test run::observability::tests::langfuse_otlp_exporter_posts_protobuf_to_local_receiver ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
 

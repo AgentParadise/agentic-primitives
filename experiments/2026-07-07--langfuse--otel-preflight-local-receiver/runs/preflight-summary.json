@@ -13,7 +13,7 @@
     "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
   ],
   "method_ok": true,
-  "mock_response_status": 200,
+  "local_receiver_response_status": 200,
   "path_ok": true,
   "redaction_ok": true,
   "required_attributes": [

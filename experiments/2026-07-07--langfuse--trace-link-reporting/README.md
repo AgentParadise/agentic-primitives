@@ -10,7 +10,7 @@ after a successful export without requiring the project id for ingestion?
 1. `langfuse_otlp` config accepts an optional `project_id` or
    `LANGFUSE_PROJECT_ID` reference.
 2. Missing project id does not fail exporter configuration or OTLP transport.
-3. When project id is present and the mock export succeeds, the final
+3. When project id is present and the local receiver export succeeds, the final
    `ObservabilityExportReport.links` contains a LangFuse UI URL shaped as
    `/project/<project_id>/traces/<32_hex_trace_id>`.
 4. The report `target` remains the OTLP traces endpoint, while `links` are
@@ -19,8 +19,8 @@ after a successful export without requiring the project id for ingestion?
 ## Setup
 
 - Branch: `feat/observability-exporter-primitive`.
-- Builds on `experiments/2026-07-07--langfuse--otlp-transport-mock`.
-- Backend: local mock HTTP server in Rust tests; no real LangFuse credentials.
+- Builds on `experiments/2026-07-07--langfuse--otlp-transport-local-receiver`.
+- Backend: local receiver HTTP server in Rust tests; no real LangFuse credentials.
 
 ## Expected Signals
 

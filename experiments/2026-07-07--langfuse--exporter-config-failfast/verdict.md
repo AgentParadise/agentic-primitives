@@ -2,7 +2,7 @@
 
 **Go for config/fail-fast slice; no-go for claiming LangFuse export.**
 
-This validates the next `.9` implementation layer after the mock OTLP preflight:
+This validates the next `.9` implementation layer after the local receiver OTLP preflight:
 the Rust contract can carry LangFuse exporter config safely, the schema exposes
 it, and missing credentials are surfaced through `ObservabilityBundle` instead
 of silent success or stdout pollution.
@@ -22,4 +22,4 @@ of silent success or stdout pollution.
 - Secrets stay as environment-variable references in the spec; values are read
   at runtime and are not included in config errors.
 - The next implementation step is real OTLP transport and semantic span
-  encoding, validated first against a mock receiver and then against LangFuse.
+  encoding, validated first against a local receiver and then against LangFuse.

@@ -197,7 +197,7 @@ observability system.
 - **Portable setup**: File JSONL works immediately on Macs, VPS hosts, and
   Docker-mounted paths.
 - **Backend flexibility**: LangFuse, local replay, and Syntropic137 can coexist.
-- **Testability**: File exporter and mock exporters make acceptance tests cheap.
+- **Testability**: File exporter and local receivers make acceptance tests cheap.
 - **Clear failure reporting**: Exporter failures can be surfaced in
   `AgentRunResult.observability` without corrupting stdout JSONL.
 
@@ -267,7 +267,7 @@ The first hypothesis-first probes produced these architecture constraints:
   `langfuse_otlp` exporter exists and fails safely when real LangFuse config is
   absent. The remaining gap is backend acceptance and trace discoverability,
   not local exporter construction.
-- `experiments/2026-07-07--langfuse--otel-preflight-mock` validated the
+- `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` validated the
   locally testable LangFuse exporter contract without a backend: derived
   `/api/public/otel/v1/traces`, `POST`, `application/x-protobuf`, Basic auth,
   non-empty body, required attributes, and redacted evidence. It does not prove
@@ -277,7 +277,7 @@ The first hypothesis-first probes produced these architecture constraints:
   `kind = "langfuse_otlp"`, the generated schema includes that variant, endpoint
   and Basic auth derivation are unit-tested, and missing env is surfaced as a
   failed exporter report without leaking key values.
-- `experiments/2026-07-07--langfuse--otlp-transport-mock` validated the actual
+- `experiments/2026-07-07--langfuse--otlp-transport-local-receiver` validated the actual
   Rust exporter transport path against a local receiver: buffered
   `AgentRunEvent`s are encoded into an OTLP HTTP/protobuf request, sent to
   `/api/public/otel/v1/traces` with Basic auth and
@@ -324,7 +324,7 @@ These results preserve the original three-layer architecture and validate two
 end-to-end paths: `codex_exec_json` observer -> normalized `AgentRunEvent` ->
 file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
 `hook_event` -> file fanout -> `ObservabilityBundle`. `.9` now has typed
-LangFuse exporter config, fail-fast reporting, mock-proven OTLP HTTP/protobuf
+LangFuse exporter config, fail-fast reporting, local-receiver-proven OTLP HTTP/protobuf
 transport, project-aware trace link reporting, and CLI setup flags for
 `itmux run` / `itmux codex-exec`. Runtime fail-fast through
 `itmux codex-exec --observability-langfuse` is also proven: missing LangFuse
@@ -356,9 +356,9 @@ Current status for `okrs-51p.9`:
 1. Typed `langfuse_otlp` exporter config, schema round-trip, endpoint
    derivation, Basic auth derivation, and missing-env fail-fast are implemented
    and locally tested.
-2. The Rust OTLP HTTP/protobuf transport is implemented and mock-proven with
+2. The Rust OTLP HTTP/protobuf transport is implemented and local-receiver-proven with
    `x-langfuse-ingestion-version: 4`.
-3. Link reporting is mock-proven when a `LANGFUSE_PROJECT_ID` or explicit
+3. Link reporting is local-receiver-proven when a `LANGFUSE_PROJECT_ID` or explicit
    project id is available.
 4. CLI setup is implemented for `itmux run --observability-langfuse` and
    `itmux codex-exec --observability-langfuse`.
@@ -371,7 +371,7 @@ Current status for `okrs-51p.9`:
    `itmux langfuse-trace`. It can derive the deterministic trace id from an
    `itmux` run id, queries bounded LangFuse observation rows, supports a
    legacy trace endpoint for self-host compatibility, fails safely with
-   redacted missing-config JSON, and is mock-proven through the actual CLI
+   redacted missing-config JSON, and is local-receiver-proven through the actual CLI
    GET/auth/JSON response path.
 
 Remaining gate for `okrs-51p.9`:

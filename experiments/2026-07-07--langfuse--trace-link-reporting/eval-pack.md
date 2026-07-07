@@ -9,7 +9,7 @@ cargo test --manifest-path providers/workspaces/interactive-tmux/driver-rs/Cargo
   langfuse_otlp
 ```
 
-Pass requires the mock exporter test to report one link shaped like a LangFuse
+Pass requires the local receiver exporter test to report one link shaped like a LangFuse
 trace view when `LANGFUSE_PROJECT_ID` is present.
 
 ## Probe B: Contract Round Trip

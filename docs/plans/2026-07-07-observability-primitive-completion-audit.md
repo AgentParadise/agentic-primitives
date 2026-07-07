@@ -21,7 +21,7 @@ normalized harness events can be observed, fanned out to backend-independent
 file JSONL, reported in `ObservabilityBundle`, and kept isolated from backend
 exporter failures.
 
-`.9` is locally implemented and mock-proven, but not complete. It remains gated
+`.9` is locally implemented and local-receiver-proven, but not complete. It remains gated
 on a reachable LangFuse deployment plus real `LANGFUSE_*` setup. The close gate
 is the refreshed ingestion smoke proving backend acceptance, trace
 discoverability/queryability, and trace-link resolution through the current
@@ -59,14 +59,14 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
 | LangFuse is represented as a backend exporter, not a per-harness plugin | Proven locally | ADR-038; `ObservabilityExporter::LangFuseOtlp`; `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md` | Preserves harness/backend separation. |
-| Endpoint derivation and Basic auth construction work | Mock-proven | `experiments/2026-07-07--langfuse--otel-preflight-mock/results.md`; Rust unit tests in `observability.rs` | Supports origin, `/api/public/otel`, and `/api/public/otel/v1/traces` inputs. |
+| Endpoint derivation and Basic auth construction work | Local-receiver-proven | `experiments/2026-07-07--langfuse--otel-preflight-local-receiver/results.md`; Rust unit tests in `observability.rs` | Supports origin, `/api/public/otel`, and `/api/public/otel/v1/traces` inputs. |
 | Missing config fails safely without leaking secrets | Proven | `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md`; `experiments/2026-07-07--langfuse--cli-runtime-failfast/results.md` | Failure is reported in `ObservabilityExportReport`, not stdout corruption. |
-| OTLP HTTP/protobuf transport works against a receiver | Mock-proven | `experiments/2026-07-07--langfuse--otlp-transport-mock/results.md` | Sends protobuf body with Basic auth and `x-langfuse-ingestion-version: 4`; mock 2xx reports `ok`. |
-| Trace links can be reported when project id is known | Mock-proven | `experiments/2026-07-07--langfuse--trace-link-reporting/results.md` | Real URL resolution is still pending real backend ingestion. |
+| OTLP HTTP/protobuf transport works against a receiver | Local-receiver-proven | `experiments/2026-07-07--langfuse--otlp-transport-local-receiver/results.md` | Sends protobuf body with Basic auth and `x-langfuse-ingestion-version: 4`; local receiver 2xx reports `ok`. |
+| Trace links can be reported when project id is known | Local-receiver-proven | `experiments/2026-07-07--langfuse--trace-link-reporting/results.md` | Real URL resolution is still pending real backend ingestion. |
 | CLI setup exists for `itmux run` and `itmux codex-exec` | Proven locally | `experiments/2026-07-07--langfuse--cli-setup-path/results.md`; driver README | Public/secret keys remain env refs. |
 | Mixed local+LangFuse export is safe during setup | Proven | `experiments/2026-07-07--observability--mixed-exporter-isolation/results.md` | Local file JSONL remains complete when LangFuse is absent. |
 | Repeatable real-backend smoke runner exists | Proven locally | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `runs/real-backend-smoke/summary.txt` | Runner exits `78` without attempting export when required config is missing and records only redacted env/keychain state. |
-| Agent trace-query integration exists | Proven locally/mock-proven | `itmux langfuse-trace`; `experiments/2026-07-07--langfuse--trace-query-cli/results.md` | The command derives trace id from run id, queries bounded Observations API v2 rows or a legacy trace endpoint for self-host compatibility, fails safely when query config is absent, and the actual CLI GET/auth/JSON path is proven against a mock receiver. |
+| Agent trace-query integration exists | Proven locally/local-receiver-proven | `itmux langfuse-trace`; `experiments/2026-07-07--langfuse--trace-query-cli/results.md` | The command derives trace id from run id, queries bounded Observations API v2 rows or a legacy trace endpoint for self-host compatibility, fails safely when query config is absent, and the actual CLI GET/auth/JSON path is proven against a local receiver. |
 | Real LangFuse backend accepts traces | Missing | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/keychain-check.redacted.txt` | Current environment has no `LANGFUSE_*` env and no documented Keychain entries. |
 | Trace is discoverable/queryable in LangFuse | Missing | Same ingestion smoke plus `itmux langfuse-trace` against real backend | This is the primary `.9` close gate. |
 | Trace link resolves in real LangFuse UI | Missing | Same ingestion smoke | Requires optional `LANGFUSE_PROJECT_ID` or equivalent project metadata. |

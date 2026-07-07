@@ -12,9 +12,9 @@ Completion audit:
 - `experiments/2026-07-07--observability--claude-hook-file-fanout`
 - `experiments/2026-07-07--observability--codex-token-cost-surface`
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke`
-- `experiments/2026-07-07--langfuse--otel-preflight-mock`
+- `experiments/2026-07-07--langfuse--otel-preflight-local-receiver`
 - `experiments/2026-07-07--langfuse--exporter-config-failfast`
-- `experiments/2026-07-07--langfuse--otlp-transport-mock`
+- `experiments/2026-07-07--langfuse--otlp-transport-local-receiver`
 - `experiments/2026-07-07--observability--langfuse-otel-export`
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring`
 - `experiments/2026-07-07--observability--claude-credential-health`
@@ -67,7 +67,7 @@ Completion audit:
   plugin/runtime and emits the same normalized hook events.
 - Real LangFuse backend export is not validated because no LangFuse
   env/credentials are present. The local `.9` implementation now has the typed
-  `langfuse_otlp` exporter, fail-fast config validation, mock-proven
+  `langfuse_otlp` exporter, fail-fast config validation, local-receiver-proven
   HTTP/protobuf transport, trace-link reporting, and CLI setup flags.
 - The refreshed
   `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
@@ -78,19 +78,19 @@ Completion audit:
 - `docs/guides/langfuse-observability-setup.md` documents the secret-safe setup
   path for MacBooks, Mac Minis, VPS hosts, and Docker workspaces, plus the real
   backend smoke criteria for `.9`.
-- `experiments/2026-07-07--langfuse--otel-preflight-mock` passed locally:
-  endpoint/auth/header/attribute construction is proven against a mock receiver,
+- `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` passed locally:
+  endpoint/auth/header/attribute construction is proven against a local receiver,
   but real LangFuse ingestion remains unproven.
 - `experiments/2026-07-07--langfuse--exporter-config-failfast` passed:
   `ObservabilityExporter::LangFuseOtlp` config round-trips, the schema includes
   `langfuse_otlp`, and missing env produces a failed exporter report.
-- `experiments/2026-07-07--langfuse--otlp-transport-mock` passed:
-  the actual Rust exporter sends OTLP HTTP/protobuf to a mock receiver and
+- `experiments/2026-07-07--langfuse--otlp-transport-local-receiver` passed:
+  the actual Rust exporter sends OTLP HTTP/protobuf to a local receiver and
   reports `ok` on a 2xx response.
 - `experiments/2026-07-07--langfuse--trace-link-reporting` passed:
   the LangFuse exporter accepts optional project id metadata and reports a
   human-facing `/project/<project_id>/traces/<32_hex_trace_id>` link after a
-  successful mock export.
+  successful local receiver export.
 - `experiments/2026-07-07--langfuse--cli-setup-path` passed:
   `itmux run` and `itmux codex-exec` both expose `--observability-langfuse`
   plus base-url, project-id, and label flags, and the shared CLI builder maps
@@ -175,14 +175,14 @@ Completion audit:
    - optional `LANGFUSE_PROJECT_ID` for trace links
    - setup/smoke protocol:
      `docs/guides/langfuse-observability-setup.md`
-2. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` as local
+2. Use `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` as local
    regression coverage for endpoint/auth/header/attribute construction.
 3. Add typed exporter config: **done for config/fail-fast slice**.
    - `ObservabilityExporter::LangFuseOtlp`.
    - explicit config validation and redacted error reporting.
    - OTLP HTTP/protobuf, not gRPC, for first LangFuse path.
 4. Implement OTLP HTTP/protobuf transport and semantic span encoding:
-   **mock-proven for transport/root span/event spans; real backend pending**.
+   **local-receiver-proven for transport/root span/event spans; real backend pending**.
 5. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment.
 6. Map normalized run events to spans:
@@ -191,7 +191,7 @@ Completion audit:
    - resource/span attributes for `session.id`, `service.name`,
      `langfuse.environment`, `langfuse.session.id`, `langfuse.trace.name`.
 7. Emit a trace link in `ObservabilityBundle`:
-   **mock-proven with optional `LANGFUSE_PROJECT_ID`; real URL resolution
+   **local-receiver-proven with optional `LANGFUSE_PROJECT_ID`; real URL resolution
    pending**.
 8. Expose setup through CLI flags:
    **done for `itmux run --observability-langfuse` and

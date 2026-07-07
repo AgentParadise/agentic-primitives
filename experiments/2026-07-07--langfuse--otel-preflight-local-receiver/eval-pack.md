@@ -13,7 +13,7 @@ Inspect the current shell for LangFuse/OTEL variables:
 
 Capture a redacted summary in `runs/existing-env.redacted.txt`.
 
-## Probe B: Mock OTLP Receiver
+## Probe B: Local OTLP Receiver
 
 Start a localhost HTTP server that records a single request and validates:
 
@@ -25,8 +25,8 @@ Start a localhost HTTP server that records a single request and validates:
 
 Capture:
 
-- `runs/mock-request.json`
-- `runs/mock-response.txt`
+- `runs/local-receiver-request.json`
+- `runs/local-receiver-response.txt`
 - `runs/preflight-summary.json`
 
 ## Probe C: Attribute Contract
@@ -51,7 +51,7 @@ Capture:
 Pass requires:
 
 - existing env capture redacts secrets
-- mock receiver observes one valid OTLP-shaped request
+- local receiver observes one valid OTLP-shaped request
 - auth is correct without writing secret values to artifacts
 - all required attributes are present in the local contract
 

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
+use std::time::Duration;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
@@ -31,6 +32,8 @@ use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
     DEFAULT_TMUX_ROWS, DEFAULT_WORKDIR,
 };
+
+const LANGFUSE_TRACE_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Parser, Debug)]
 #[command(
@@ -1081,6 +1084,7 @@ fn handle_langfuse_trace(
     };
 
     let response = ureq::get(&endpoint)
+        .timeout(LANGFUSE_TRACE_QUERY_TIMEOUT)
         .set(
             "Authorization",
             &langfuse_basic_auth_header(&public_key, &secret_key),
