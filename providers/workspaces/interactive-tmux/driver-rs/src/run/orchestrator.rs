@@ -81,6 +81,17 @@ pub trait RunExecutor {
         await_result: &AwaitResult,
     ) -> AgentRunOutcome;
 
+    /// Optional harness-specific observed events collected outside the driver
+    /// lifecycle itself, already normalized to the shared event payload
+    /// vocabulary. Called after capture/outcome detection and before the final
+    /// `session_end`, so the terminal event remains last.
+    fn drain_observed_events(
+        &mut self,
+        _handle: &mut Self::Handle,
+    ) -> io::Result<Vec<AgentRunEventPayload>> {
+        Ok(Vec::new())
+    }
+
     /// Terminalizing: tear the workspace down. Called EXACTLY once, consuming
     /// the handle. May fail - the orchestrator logs and swallows the error
     /// without letting it mask the run's terminal outcome.
@@ -273,6 +284,12 @@ impl EventStream<'_> {
 
     fn session_end(&mut self, outcome: AgentRunOutcome) {
         self.push(AgentRunEventPayload::SessionEnd { outcome });
+    }
+
+    fn observed_events(&mut self, payloads: Vec<AgentRunEventPayload>) {
+        for payload in payloads {
+            self.push(payload);
+        }
     }
 }
 
@@ -496,6 +513,20 @@ pub fn run_core<E: RunExecutor>(
         {
             let h = handle.as_ref().expect("handle set by provisioning");
             detected = Some(executor.detect_outcome(h, &session_log, &await_result));
+        }
+
+        // Harness-specific observers may collect events that are not visible
+        // through the pane transcript (for example hook sidecar JSONL). Emit
+        // them before terminalization so `session_end` stays the last lifecycle
+        // event.
+        {
+            let h = handle.as_mut().expect("handle set by provisioning");
+            match executor.drain_observed_events(h) {
+                Ok(payloads) => events.observed_events(payloads),
+                Err(err) => {
+                    eprintln!("[itmux run] failed to drain observed events: {err}");
+                }
+            }
         }
 
         // Route the terminal reason through the SAME arbitration helper the Err

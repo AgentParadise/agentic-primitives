@@ -37,6 +37,7 @@ fn docker_run_argv_carries_no_v_flags() {
         "interactive-tmux-foo-abcd1234",
         "/workspace",
         "my-image:latest",
+        &[],
     );
     assert!(
         !argv.iter().any(|a| a == "-v"),

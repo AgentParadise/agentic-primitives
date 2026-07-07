@@ -63,6 +63,7 @@ struct FakeExecutor {
     /// Request a hard cancel BEFORE the run starts (simulates a hard cancel
     /// landing during a blocking provision, before any handle exists).
     pre_cancel_hard: bool,
+    observed_events: Vec<AgentRunEventPayload>,
 }
 
 impl FakeExecutor {
@@ -78,6 +79,7 @@ impl FakeExecutor {
             escalate_at: None,
             escalator: RefCell::new(CancelEscalator::new()),
             pre_cancel_hard: false,
+            observed_events: Vec::new(),
         }
     }
 
@@ -167,6 +169,13 @@ impl RunExecutor for FakeExecutor {
                 summary: "fake outcome".to_string(),
             }
         }
+    }
+
+    fn drain_observed_events(
+        &mut self,
+        _h: &mut Self::Handle,
+    ) -> io::Result<Vec<AgentRunEventPayload>> {
+        Ok(std::mem::take(&mut self.observed_events))
     }
 
     fn teardown(&mut self, _h: Self::Handle) -> io::Result<()> {
@@ -299,6 +308,29 @@ fn happy_path_runs_phases_in_order_and_emits_terminal_session_end() {
     assert!(run.result.result.success);
     assert_eq!(run.result.session_log, "session pane");
     assert!(terminal_outcome(&run.events).success);
+}
+
+#[test]
+fn observed_events_are_emitted_before_terminal_session_end() {
+    let run = drive(|executor| {
+        executor
+            .observed_events
+            .push(AgentRunEventPayload::HookEvent {
+                provider: "fake".to_string(),
+                event_type: "session_started".to_string(),
+                event: serde_json::json!({"event_type": "session_started"}),
+            });
+    });
+
+    assert_seq_monotonic_from_zero(&run.events);
+    assert!(matches!(
+        run.events[run.events.len() - 2].payload,
+        AgentRunEventPayload::HookEvent { .. }
+    ));
+    assert!(matches!(
+        run.events[run.events.len() - 1].payload,
+        AgentRunEventPayload::SessionEnd { .. }
+    ));
 }
 
 #[test]

@@ -275,6 +275,12 @@ pub enum AgentRunEventPayload {
         #[serde(default)]
         cost_usd: Option<f64>,
     },
+    #[serde(rename = "hook_event")]
+    HookEvent {
+        provider: String,
+        event_type: String,
+        event: serde_json::Value,
+    },
     /// Terminal LIFECYCLE event - the last lifecycle event of a run, carrying
     /// the terminal outcome (mirrors `AgentRunResult.result`).
     #[serde(rename = "session_end")]

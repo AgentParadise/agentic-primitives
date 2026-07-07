@@ -110,6 +110,31 @@
       "additionalProperties": false
     },
     {
+      "type": "object",
+      "required": [
+        "event",
+        "event_type",
+        "provider",
+        "type"
+      ],
+      "properties": {
+        "event": true,
+        "event_type": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "hook_event"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "Terminal LIFECYCLE event - the last lifecycle event of a run, carrying the terminal outcome (mirrors `AgentRunResult.result`).",
       "type": "object",
       "required": [

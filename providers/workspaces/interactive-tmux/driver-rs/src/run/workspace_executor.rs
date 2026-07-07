@@ -15,7 +15,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::adapter::Agent;
 use crate::result::AwaitResult;
-use crate::run::contract::{AgentRunEvent, AgentRunOutcome, AgentRunResult, AgentRunSpec};
+use crate::run::contract::{
+    AgentRunEvent, AgentRunEventPayload, AgentRunOutcome, AgentRunResult, AgentRunSpec,
+};
 use crate::run::observability::ObservabilityFanout;
 use crate::run::orchestrator::{run_core, CancelToken, RunExecutor};
 use crate::run::recipe_loader::{load_execution_plan, RecipeExecutionPlan};
@@ -25,6 +27,8 @@ use crate::workspace::{StartOptions, Workspace, DEFAULT_STARTUP_TIMEOUT_S};
 
 /// Default await bound (seconds) when the spec sets no `limits.timeout_s`.
 const DEFAULT_AWAIT_TIMEOUT_S: f64 = 300.0;
+const AGENTIC_EVENTS_JSONL_ENV: &str = "AGENTIC_EVENTS_JSONL";
+const AGENTIC_EVENTS_JSONL_PATH: &str = "/tmp/agentic-observability/hooks.jsonl";
 
 /// Live workspace handle owned by the orchestrator between Provisioning and
 /// Terminalizing.
@@ -53,6 +57,8 @@ pub struct WorkspaceExecutor {
     /// Claude OAuth env-var mode: stage `.claude.json` only, no
     /// `.credentials.json` (R1/R8).
     claude_omit_credentials: bool,
+    env_vars: Vec<(String, String)>,
+    hook_events_path: Option<String>,
     startup_timeout_s: f64,
     /// Temp dirs holding credentials materialised from the spec; removed on
     /// teardown so inline credential material never lingers on disk.
@@ -102,6 +108,8 @@ impl WorkspaceExecutor {
             host_claude_dotjson: resolve_host_claude_dotjson(),
             secret_env,
             claude_omit_credentials: wiring.claude_omit_credentials,
+            env_vars: hook_sink_env(agent),
+            hook_events_path: hook_events_path(agent),
             startup_timeout_s: DEFAULT_STARTUP_TIMEOUT_S,
             cred_tmp_dirs,
         })
@@ -135,6 +143,7 @@ impl RunExecutor for WorkspaceExecutor {
         opts.claude_plugin_dirs = self.plan.claude_plugin_dirs.clone();
         opts.secret_env = self.secret_env.clone();
         opts.claude_omit_credentials = self.claude_omit_credentials;
+        opts.env_vars = self.env_vars.clone();
         opts.strict_startup = true;
         opts.startup_timeout_s = self.startup_timeout_s;
 
@@ -197,6 +206,27 @@ impl RunExecutor for WorkspaceExecutor {
             success: signal.success,
             summary: signal.reason,
         }
+    }
+
+    fn drain_observed_events(
+        &mut self,
+        handle: &mut Self::Handle,
+    ) -> io::Result<Vec<AgentRunEventPayload>> {
+        let Some(path) = self.hook_events_path.as_deref() else {
+            return Ok(Vec::new());
+        };
+        let output = handle.workspace.exec(&[
+            "sh",
+            "-lc",
+            &format!("if [ -f {path} ]; then cat {path}; fi"),
+        ])?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "read hook events failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(parse_hook_events(&String::from_utf8_lossy(&output.stdout)))
     }
 
     fn teardown(&mut self, handle: Self::Handle) -> io::Result<()> {
@@ -356,6 +386,35 @@ fn env_host_auth(override_env: &str, home_subdir: &str) -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from)?;
     let candidate = home.join(home_subdir);
     candidate.is_dir().then_some(candidate)
+}
+
+fn hook_events_path(agent: Agent) -> Option<String> {
+    (agent == Agent::Claude).then(|| AGENTIC_EVENTS_JSONL_PATH.to_string())
+}
+
+fn hook_sink_env(agent: Agent) -> Vec<(String, String)> {
+    hook_events_path(agent)
+        .map(|path| vec![(AGENTIC_EVENTS_JSONL_ENV.to_string(), path)])
+        .unwrap_or_default()
+}
+
+fn parse_hook_events(raw: &str) -> Vec<AgentRunEventPayload> {
+    raw.lines()
+        .filter_map(|line| {
+            let event: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+            let event_type = event.get("event_type")?.as_str()?.to_string();
+            let provider = event
+                .get("provider")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            Some(AgentRunEventPayload::HookEvent {
+                provider,
+                event_type,
+                event,
+            })
+        })
+        .collect()
 }
 
 /// Create a fresh temp dir under the system temp dir for credential

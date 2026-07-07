@@ -386,6 +386,38 @@ fn agent_run_event_token_usage_defaults_codex_specific_fields() {
 }
 
 #[test]
+fn agent_run_event_hook_event_round_trips() {
+    let json = serde_json::json!({
+        "run_id": "r1",
+        "seq": 2,
+        "ts": "2026-07-07T00:00:02Z",
+        "type": "hook_event",
+        "provider": "claude",
+        "event_type": "session_started",
+        "event": {
+            "event_type": "session_started",
+            "session_id": "s1",
+            "provider": "claude",
+            "context": {"source": "startup"}
+        }
+    });
+    let event: AgentRunEvent = serde_json::from_value(json.clone()).unwrap();
+    match &event.payload {
+        AgentRunEventPayload::HookEvent {
+            provider,
+            event_type,
+            event,
+        } => {
+            assert_eq!(provider, "claude");
+            assert_eq!(event_type, "session_started");
+            assert_eq!(event["context"]["source"], "startup");
+        }
+        other => panic!("expected HookEvent, got {other:?}"),
+    }
+    assert_eq!(serde_json::to_value(&event).unwrap(), json);
+}
+
+#[test]
 fn agent_run_event_session_end_carries_terminal_outcome() {
     let json = r#"{
         "run_id": "run-1",
