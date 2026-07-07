@@ -88,6 +88,11 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   still completed a synthetic successful run, kept stdout as valid
   `AgentRunEvent` JSONL, and reported `langfuse_otlp` as a failed exporter in
   the final result with a clear missing `LANGFUSE_BASE_URL` error.
+- `experiments/2026-07-07--observability--mixed-exporter-isolation` passed:
+  with both file and LangFuse exporters enabled and real LangFuse env absent,
+  `itmux codex-exec` reported the file exporter as `ok` with all 6 events while
+  reporting LangFuse as `failed`, and stdout/file event types plus seq values
+  matched exactly.
 
 ## `.6` Implementation Sequence
 
@@ -135,6 +140,9 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
   **satisfied by `itmux codex-exec`**.
 - At least one backend-independent exporter succeeds and reports status cleanly:
   **satisfied by file fanout in `itmux codex-exec`**.
+- Exporter failures are isolated:
+  **satisfied by mixed file+LangFuse fanout where file stayed `ok` while
+  LangFuse failed on missing env**.
 - Codex token usage parity is scoped to `codex_exec_json`; TUI parity is not
   claimed.
 - Claude hook support has an empirical pass:
@@ -171,7 +179,10 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
    `itmux codex-exec --observability-langfuse`**.
 9. Validate CLI runtime fail-fast for missing LangFuse setup:
    **done for `itmux codex-exec --observability-langfuse` with absent env**.
-10. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
+10. Validate mixed exporter isolation:
+   **done for file exporter ok plus LangFuse failed in one `itmux codex-exec`
+   run**.
+11. Rerun `experiments/2026-07-07--observability--langfuse-otel-export` and
    score the verdict before closing `.9`.
 
 ## `.9` Exit Criteria

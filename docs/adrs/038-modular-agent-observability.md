@@ -321,7 +321,9 @@ transport, project-aware trace link reporting, and CLI setup flags for
 `itmux run` / `itmux codex-exec`. Runtime fail-fast through
 `itmux codex-exec --observability-langfuse` is also proven: missing LangFuse
 env produces a failed exporter report while the run and stdout event stream
-remain usable. The design still waits on real LangFuse connectivity before
+remain usable. Mixed exporter isolation is proven too: a missing LangFuse
+configuration does not stop the file exporter from reporting the complete
+event stream. The design still waits on real LangFuse connectivity before
 claiming ingestion or queryability.
 
 Validated gates and follow-ups for `okrs-51p.6`:
@@ -329,7 +331,8 @@ Validated gates and follow-ups for `okrs-51p.6`:
 1. Harness observer boundary and runnable `codex_exec_json` path are proven by
    `itmux codex-exec`.
 2. Backend-independent file exporter fanout and `ObservabilityBundle` reporting
-   are proven end to end.
+   are proven end to end, including mixed-exporter isolation when LangFuse is
+   misconfigured.
 3. Claude plugin launch, credential passthrough, explicit hook sink/drain, and
    stock provider packaging are empirically proven.
 4. The observability plugin README now documents stderr plus
@@ -353,10 +356,12 @@ Next steps for `okrs-51p.9`:
    `itmux codex-exec --observability-langfuse`**).
 5. Prove missing setup fails safely through an actual CLI path (**implemented
    for `itmux codex-exec --observability-langfuse` with absent env**).
-6. Run hypothesis-first experiments before marking the backend complete.
-7. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
+6. Prove mixed exporter isolation (**implemented for file exporter ok plus
+   LangFuse failed in one `itmux codex-exec` run**).
+7. Run hypothesis-first experiments before marking the backend complete.
+8. Use `experiments/2026-07-07--langfuse--otel-preflight-mock` for local
    config/auth/header/attribute regression coverage.
-8. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
+9. Then run `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment to validate real OTLP ingestion and trace
    visibility before richer run-event mapping work.
 8. Treat missing LangFuse env as a first-class exporter configuration failure
