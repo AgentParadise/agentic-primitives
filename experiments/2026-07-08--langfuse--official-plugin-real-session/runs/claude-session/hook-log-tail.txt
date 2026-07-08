@@ -1,0 +1,10 @@
+2026-07-08 11:27:26 [INFO] subagent transcript line skipped (/private/var/folders/y4/mzxmrxrd5m7cfnk720vb0bqw0000gn/T/pytest-of-neural/pytest-115/test_subagent_observations_ski0/agent-bad-line.jsonl:2): JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+2026-07-08 11:27:44 [INFO] subagent transcript line skipped (/private/var/folders/y4/mzxmrxrd5m7cfnk720vb0bqw0000gn/T/pytest-of-neural/pytest-116/test_subagent_observations_ski0/agent-bad-line.jsonl:2): JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+2026-07-08 12:10:23 [DEBUG] Hook started
+2026-07-08 12:10:23 [DEBUG] stdin received 588 chars
+2026-07-08 12:10:23 [DEBUG] payload top-level keys: ['background_tasks', 'cwd', 'effort', 'hook_event_name', 'last_assistant_message', 'permission_mode', 'prompt_id', 'session_crons', 'session_id', 'stop_hook_active', 'transcript_path']
+2026-07-08 12:10:23 [INFO] Processed 1 turns in 0.11s (session=dfec301e-8152-4566-9253-cc211739b80b)
+2026-07-08 12:10:24 [DEBUG] Hook started
+2026-07-08 12:10:24 [DEBUG] stdin received 415 chars
+2026-07-08 12:10:24 [DEBUG] payload top-level keys: ['cwd', 'hook_event_name', 'prompt_id', 'reason', 'session_id', 'transcript_path']
+2026-07-08 12:10:24 [INFO] Processed 0 turns in 0.03s (session=dfec301e-8152-4566-9253-cc211739b80b)

@@ -95,6 +95,14 @@ Completion audit:
   `Codex Turn` agent observation, two generation observations with usage, an
   `exec_command` tool observation, total cost, and sidecar dedup state. No Rust
   OTLP writer path ran during the experiment.
+- The official-plugin real-session experiment passed against the local
+  LangFuse stack with marketplace-installed plugins. Claude trace
+  `0e553fc833c71639acd03be9807eb616` and Codex trace
+  `b3d2561d7c0557c12fd427c02a16e2f3` were created by real harness sessions,
+  had root input/output, generation observations, tool observations, usage/cost,
+  and `local-macbook` environment, without the Rust OTLP writer. Caveat:
+  Claude install-time `--config` reported values unset, so that run used the
+  official hook's env fallback.
 - The single-rich-exporter guard experiment passed. `itmux` now suppresses the
   Rust `langfuse_otlp` writer when `TRACE_TO_LANGFUSE=true` indicates an
   official LangFuse plugin is already tracing, preserves file JSONL, and
@@ -264,22 +272,24 @@ Completion audit:
    **done through `plugins/observability/mcp/langfuse_server.py`; local
    LangFuse proof captured in `runs/langfuse-mcp-trace-query`**.
 14. Run the official-plugin E2E experiment:
-   **done through direct official hook invocation against local LangFuse**.
-   Follow-up is production setup, not proof of trace shape:
-   - configure official Claude marketplace plugin for real Claude sessions;
-   - configure official Codex marketplace plugin for real Codex sessions;
+   **done through direct official hook invocation and through real marketplace
+   installed Claude/Codex sessions against local LangFuse**. Follow-up is
+   durability and agent-query polish, not proof of trace shape:
+   - resolve/re-test the Claude stored-config caveat;
+   - make setup repeatable across MacBook, VPS, and Docker workspace paths;
    - keep Rust OTLP off by default when those official plugins are enabled.
 
 ## `.9` Exit Criteria
 
 - Official Claude and Codex LangFuse plugins create discoverable rich traces
   against a reachable LangFuse deployment:
-  **satisfied for local direct-hook fixture validation**.
+  **satisfied for local direct-hook fixture validation and real local
+  marketplace-installed sessions**.
 - Rich traces include root input/output, generation observations,
   tool observations, usage/cost, real timings, environment, and session
   grouping:
-  **satisfied for local direct-hook fixture validation, except the Claude
-  fixture has zero usage/cost because it carries no nonzero usage fields**.
+  **satisfied for local real-session validation; direct Claude fixture has zero
+  usage/cost because it carries no nonzero usage fields**.
 - Final result includes a human-usable trace link.
 - Missing or invalid credentials produce a failed exporter report, not silent
   success and not stdout corruption.

@@ -64,6 +64,7 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
 | Official LangFuse plugins are canonical for rich Claude/Codex traces | Proven locally | ADR-038; `experiments/2026-07-08--langfuse--official-plugin-trace-shape`; `experiments/2026-07-08--langfuse--official-plugin-e2e-local` | Claude and Codex official plugins emitted LangFuse-native turns, generations, tools, input/output, and Codex cost/usage against local Docker Compose. |
+| Official marketplace plugins trace real local sessions | Proven locally with caveat | `experiments/2026-07-08--langfuse--official-plugin-real-session` | Marketplace-installed official plugins produced real local LangFuse traces without fallback Rust OTLP: Claude `0e553fc833c71639acd03be9807eb616`, Codex `b3d2561d7c0557c12fd427c02a16e2f3`. Caveat: Claude install-time `--config` reported values unset; successful run used env fallback. |
 | Single-active-rich-exporter guard exists in `itmux` CLI | Proven locally | `experiments/2026-07-08--langfuse--single-rich-exporter-guard` | `TRACE_TO_LANGFUSE=true` suppresses Rust `langfuse_otlp`, preserves file JSONL, and `--observability-langfuse-force` restores fallback OTLP for deliberate collector/Syntropic137 use. |
 | Syntropic137 local projection exporter exists | Proven locally | `experiments/2026-07-08--syntropic137--jsonl-fanout-compat`; `ObservabilityExporter::SyntropicJsonl` | Current `AgentRunEvent` JSONL is not direct-compatible with Syntropic137 HookWatcher. `syntropic_jsonl` emits hook-style session/tool rows without changing canonical file JSONL or requiring fallback LangFuse OTLP. |
 | Rust OTLP remains available as fallback/collector exporter | Proven locally | ADR-038; `ObservabilityExporter::LangFuseOtlp`; `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md` | Preserves backend-independent fanout for local smoke, Syntropic137/collector use, and unsupported harnesses. |
@@ -76,7 +77,7 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | Repeatable fallback backend smoke runner exists | Proven | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `scripts/langfuse-local.sh`; `runs/real-backend-smoke/summary.txt` | Wrapper starts the local LangFuse Docker Compose stack, seeds ignored local env, exports the Rust OTLP fallback path, polls queryability, and checks trace URL resolution. |
 | Agent trace-query integration exists | Proven locally/local-receiver-proven | `itmux langfuse-trace`; `experiments/2026-07-07--langfuse--trace-query-cli/results.md` | The command derives trace id from run id, queries bounded Observations API v2 rows or a legacy trace endpoint for self-host compatibility, fails safely when query config is absent, and the actual CLI GET/auth/JSON path is proven against a local receiver. |
 | Real LangFuse backend accepts fallback OTLP traces | Proven on local Docker Compose | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/real-backend-smoke/result.json` | Local LangFuse v3 Docker Compose accepted OTLP HTTP/protobuf export and reported `status=ok`, `events_exported=6`. |
-| Real LangFuse backend accepts official-plugin rich traces | Proven on local Docker Compose | `experiments/2026-07-08--langfuse--official-plugin-e2e-local/results.md` | Claude trace `76a54f7c977ae138c22ebae34b05e047` and Codex trace `6905cfb7d1b969a0214e613383748ce7` were discoverable with root input/output, generation observations, tool observations, and Codex native cost/usage. |
+| Real LangFuse backend accepts official-plugin rich traces | Proven on local Docker Compose | `experiments/2026-07-08--langfuse--official-plugin-e2e-local/results.md`; `experiments/2026-07-08--langfuse--official-plugin-real-session/results.md` | Direct-hook traces `76a54f7c977ae138c22ebae34b05e047` / `6905cfb7d1b969a0214e613383748ce7` and real-session traces `0e553fc833c71639acd03be9807eb616` / `b3d2561d7c0557c12fd427c02a16e2f3` were discoverable with root input/output, generation observations, tool observations, and usage/cost where available. |
 | Trace is discoverable/queryable in LangFuse | Proven on local Docker Compose | `runs/real-backend-smoke/langfuse-trace-query-legacy.json` | `itmux langfuse-trace --api legacy-trace` returned the trace with 7 observations. Observations API v2 returned the expected v3/v4-mode 404. |
 | Trace link resolves in real LangFuse UI | Proven on local Docker Compose | `runs/real-backend-smoke/trace-ui-response.txt` | Emitted trace URL returned HTTP 200. |
 
@@ -84,10 +85,11 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 
 1. Load a real LangFuse configuration using
    `docs/guides/langfuse-observability-setup.md`.
-2. Configure LangFuse's official Claude Code marketplace plugin for a real
-   Claude session.
-3. Configure LangFuse's official Codex marketplace plugin for a real Codex
-   session.
+2. Make the official Claude/Codex plugin setup durable across MacBook, VPS, and
+   Docker workspace paths, including the Claude stored-config caveat from
+   `experiments/2026-07-08--langfuse--official-plugin-real-session`.
+3. Teach the agent-facing summary path to count official-plugin `TOOL`
+   observations, not only agentic-primitives metadata-shaped tool events.
 4. Keep JSONL enabled for local evidence where useful, but leave the Rust
    `--observability-langfuse` writer off for those same real sessions unless
    explicitly testing fallback OTLP.

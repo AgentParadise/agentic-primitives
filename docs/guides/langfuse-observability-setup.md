@@ -318,6 +318,26 @@ Known-good local traces from that experiment:
 - Codex official plugin:
   `6905cfb7d1b969a0214e613383748ce7`
 
+The follow-up real-session experiment that proves marketplace-installed
+plugins against local LangFuse is:
+
+```text
+experiments/2026-07-08--langfuse--official-plugin-real-session
+```
+
+Known-good local real-session traces from that experiment:
+
+- Claude official plugin:
+  `0e553fc833c71639acd03be9807eb616`
+- Codex official plugin:
+  `b3d2561d7c0557c12fd427c02a16e2f3`
+
+One setup caveat remains: in that run, Claude local plugin installation
+succeeded, but install-time `--config` reported the userConfig values still
+unset. The successful trace used the official hook's plain environment
+fallback. For durable setup, prefer `/plugin configure` or re-test install-time
+config on the target machine before relying on stored plugin config alone.
+
 This local bootstrap is for development and smoke testing. For production or
 durable Mac Mini hosting, review LangFuse's current self-hosting guidance and
 set persistent secrets, storage, backups, and upgrade policy explicitly.

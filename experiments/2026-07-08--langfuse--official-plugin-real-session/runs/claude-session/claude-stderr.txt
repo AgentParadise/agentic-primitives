@@ -1,0 +1,1 @@
+Ignoring 50 permissions.allow entries from .claude/settings.local.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["/Users/neural/Code/Syntropic137/syntropic137/.git/modules/lib/agentic-primitives"].hasTrustDialogAccepted: true in /Users/neural/.claude.json.

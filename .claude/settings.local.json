@@ -52,5 +52,16 @@
       "Bash(gh issue list:*)",
       "Bash(gh issue create:*)"
     ]
+  },
+  "extraKnownMarketplaces": {
+    "langfuse-observability": {
+      "source": {
+        "source": "github",
+        "repo": "langfuse/Claude-Observability-Plugin"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "langfuse-observability@langfuse-observability": true
   }
 }
