@@ -2,6 +2,36 @@
 
 Full-spectrum agent observability — hooks every Claude Code lifecycle event and all git operations, emitting structured JSONL events via `agentic_events`.
 
+## Agent LangFuse MCP server
+
+The plugin also exposes an MCP server named `agentic-langfuse` for learning-loop
+trace access. Claude gets this automatically through the plugin manifest; Codex
+or any other MCP client can launch the same stdio server directly. The server is
+a thin wrapper around the proven `itmux langfuse-*` CLI commands, so it uses the
+same `LANGFUSE_*` environment variables, self-host compatibility path, compact
+summaries, score APIs, and secret handling.
+
+Available MCP tools:
+
+| Tool | Purpose |
+|---|---|
+| `agentic_langfuse_trace_summary` | Return `itmux langfuse-trace --output summary` for one run/trace, optionally including scores |
+| `agentic_langfuse_trace_discovery` | List recent traces with harness/provider/model/environment filters |
+| `agentic_langfuse_scores` | Read trace-scoped feedback scores |
+| `agentic_langfuse_score_feedback` | Write durable trace-scoped feedback for evaluator loops |
+
+Set `ITMUX_BIN` if `itmux` is not on `PATH`. The MCP server never talks to
+LangFuse directly; all backend access goes through `itmux`.
+
+Codex MCP config example:
+
+```toml
+[mcp_servers.agentic-langfuse]
+command = "python3"
+args = ["/path/to/agentic-primitives/plugins/observability/mcp/langfuse_server.py"]
+env = { ITMUX_BIN = "/path/to/agentic-primitives/providers/workspaces/interactive-tmux/driver-rs/target/release/itmux" }
+```
+
 ## Event sources and ownership
 
 Two independent sources, with **strict, non-overlapping ownership** of event types:

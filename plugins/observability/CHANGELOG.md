@@ -1,5 +1,10 @@
 # Changelog — observability plugin
 
+## 0.3.0
+- Added the `agentic-langfuse` MCP server, which exposes agent-facing LangFuse
+  trace discovery, trace summaries, score reads, and score write-back by
+  delegating to the proven `itmux langfuse-*` CLI commands
+
 ## 0.2.3
 - Claude hook handler now supports the `AGENTIC_EVENTS_JSONL` sink so workspace
   drivers can capture hook JSONL without using hook stdout

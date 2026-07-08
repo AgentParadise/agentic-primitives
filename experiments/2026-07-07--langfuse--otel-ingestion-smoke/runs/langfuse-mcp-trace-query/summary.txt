@@ -1,0 +1,13 @@
+Command: MCP tools/call agentic_langfuse_trace_summary
+Server: plugins/observability/mcp/langfuse_server.py
+Backend: local LangFuse Docker Compose via .agentic/langfuse/langfuse/.env
+Run id: run-88868068
+Trace id: 37f5920448612df0be0a2228a671a055
+MCP result isError: false
+Summary ok: true
+Harness: codex
+Provider: openai
+Model: gpt-5.5
+Total tokens: 15943
+Calculated total cost: 0.080015
+Verdict: agents can pull the compact learning-loop trace summary through MCP, using the same itmux LangFuse query path as the CLI.

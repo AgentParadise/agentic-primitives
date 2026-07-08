@@ -73,6 +73,10 @@ Completion audit:
   `langfuse_otlp` exporter, fail-fast config validation, local-receiver-proven
   HTTP/protobuf transport, real-backend trace-query evidence, trace-link
   reporting, and CLI setup flags.
+- Agent-facing trace query is now available through both CLI and MCP. The
+  `observability` plugin's `agentic-langfuse` MCP server delegates to the
+  proven `itmux langfuse-*` commands and has local-backend proof for compact
+  trace summaries.
 - The refreshed
   `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
   both minimal OTLP ingestion and the current
@@ -209,6 +213,9 @@ Completion audit:
 11. Rerun `experiments/2026-07-07--observability--langfuse-otel-export`:
    **done against current CLI/exporter path; real backend proof captured in the
    LangFuse ingestion smoke**.
+12. Expose MCP trace tools for agent learning loops:
+   **done through `plugins/observability/mcp/langfuse_server.py`; local
+   LangFuse proof captured in `runs/langfuse-mcp-trace-query`**.
 
 ## `.9` Exit Criteria
 
@@ -220,3 +227,5 @@ Completion audit:
   success and not stdout corruption.
 - Mixed file+LangFuse export preserves local JSONL observability when LangFuse
   is absent or misconfigured.
+- Agents can pull compact trace summaries through both CLI and MCP, using the
+  same LangFuse query implementation.

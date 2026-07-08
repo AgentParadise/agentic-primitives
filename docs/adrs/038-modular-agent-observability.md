@@ -106,7 +106,11 @@ feedback write/read paths through the public scores API. Scores are not part of
 the exporter fanout; they are deliberate post-run annotations by evaluators,
 operators, or later agents. `itmux langfuse-trace --include-scores` can fold
 those trace-scoped scores into the same compact trace summary when an agent
-needs a single retrospective payload. The compact trace summary also exposes a
+needs a single retrospective payload. The observability plugin also exposes an
+`agentic-langfuse` MCP server that delegates to these same CLI commands, so
+Claude, Codex, and later MCP-capable agents can query trace summaries and
+write/read scores through tools without duplicating LangFuse API logic. The
+compact trace summary also exposes a
 `generations` section with `by_model` totals and an ordered per-generation
 sequence so agents can attribute model usage and cost by harness, provider,
 model id, cached-token fields, pricing tier, and split input/output/total cost
@@ -413,6 +417,11 @@ Current status for `okrs-51p.9`:
    `openai`, model `gpt-5.5`, one generation, 15943 total tokens, 4992 cached
    input tokens, calculated total cost `0.080015`, and split
    `agent_tools`/`harness_tools`.
+10. The observability plugin now registers an `agentic-langfuse` MCP server for
+    agent tool access to trace discovery, compact trace summaries, score reads,
+    and score write-back. The server is intentionally a wrapper around
+    `itmux langfuse-*` so there is one implementation of LangFuse auth,
+    endpoint compatibility, and summary shaping.
 
 Remaining gate for production deployment:
 

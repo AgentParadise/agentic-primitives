@@ -303,6 +303,33 @@ itmux langfuse-scores \
   --data-type boolean
 ```
 
+## MCP Trace Tools
+
+The `observability` Claude plugin registers an `agentic-langfuse` MCP server for
+agents that should query traces as tools instead of shelling out. Codex and
+other MCP clients can launch the same stdio server directly. It delegates to
+the same `itmux langfuse-*` commands documented above, so setup is the same:
+load `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY`, and
+set `ITMUX_BIN` if the `itmux` binary is not on `PATH`.
+
+MCP tools:
+
+- `agentic_langfuse_trace_discovery`: list recent traces with
+  harness/provider/model/environment filters.
+- `agentic_langfuse_trace_summary`: fetch the compact summary for one run or
+  trace, optionally with scores.
+- `agentic_langfuse_scores`: read trace-scoped feedback.
+- `agentic_langfuse_score_feedback`: write idempotent evaluator feedback.
+
+Codex MCP config example:
+
+```toml
+[mcp_servers.agentic-langfuse]
+command = "python3"
+args = ["/path/to/agentic-primitives/plugins/observability/mcp/langfuse_server.py"]
+env = { ITMUX_BIN = "/path/to/agentic-primitives/providers/workspaces/interactive-tmux/driver-rs/target/release/itmux" }
+```
+
 Passing backend criteria:
 
 - LangFuse accepts the OTLP payload;
