@@ -1,0 +1,1 @@
+TRACE_TO_LANGFUSE=true LANGFUSE_BASE_URL=http://localhost:3000 LANGFUSE_PUBLIC_KEY=<redacted> LANGFUSE_SECRET_KEY=<redacted> LANGFUSE_TRACING_ENVIRONMENT=local-macbook codex exec --json --sandbox read-only -C "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run" <prompt containing marker>
