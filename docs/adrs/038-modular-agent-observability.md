@@ -97,6 +97,10 @@ The `itmux` Rust driver owns the first reusable fanout primitive:
   links for UI/navigation.
 - The first exporter is `file`, which appends event JSONL to a configured path
   that can live on a Mac, VPS, or Docker-mounted filesystem.
+- `syntropic_jsonl` is a projection exporter for Syntropic137's existing
+  HookWatcher shape. It does not replace the canonical `file` artifact; it
+  emits top-level `event_type`/`session_id`/`timestamp` JSONL for session/tool
+  timeline ingestion.
 
 LangFuse support has two tiers:
 

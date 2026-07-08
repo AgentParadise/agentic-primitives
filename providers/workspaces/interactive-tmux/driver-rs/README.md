@@ -75,6 +75,23 @@ final `AgentRunResult.observability.exporters[]` report includes status,
 event count, target, and a link URI. This works the same on a Mac, a VPS, or
 inside Docker when the path is mounted into the executing environment.
 
+For Syntropic137, keep the canonical file and add a HookWatcher-compatible
+projection:
+
+```bash
+itmux run \
+  --recipe /path/to/recipe \
+  --task "Implement the change" \
+  --observability-file /tmp/itmux-run-events.jsonl \
+  --observability-syntropic-file /tmp/syntropic-events.jsonl \
+  --result-file /tmp/itmux-run-result.json
+```
+
+`--observability-syntropic-file` emits top-level `event_type`, `session_id`,
+and `timestamp` JSONL records for Syntropic137's existing hook-file watcher.
+The canonical `--observability-file` remains the complete `AgentRunEvent`
+artifact.
+
 LangFuse fallback/collector export plugs into the same fanout layer through
 OTLP HTTP/protobuf:
 

@@ -100,6 +100,14 @@ Completion audit:
   official LangFuse plugin is already tracing, preserves file JSONL, and
   exposes `--observability-langfuse-force` for deliberate fallback/collector or
   Syntropic137 routing.
+- The Syntropic137 JSONL compatibility experiment proved current
+  `AgentRunEvent` file JSONL is not directly consumed by Syntropic137's
+  HookWatcher. `syntropic_jsonl` now provides a separate projection exporter
+  and `--observability-syntropic-file` CLI flag that emits top-level
+  `event_type`/`session_id`/`timestamp` records for Syntropic137 session/tool
+  ingestion while preserving the canonical `file` exporter. Current
+  Syntropic137 HookWatcher still skips `token_usage`; token/cost remains on its
+  transcript/OTLP lane until that map is extended.
 - The refreshed
   `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
   both minimal OTLP ingestion and the current
@@ -223,6 +231,10 @@ Completion audit:
    **local-receiver-proven and real-backend-proven against local Docker
    Compose**, but no longer the default rich LangFuse path for Claude/Codex
    while official plugins exist.
+5a. Keep Syntropic137 support on a separate local projection path:
+   **done for `syntropic_jsonl` and `--observability-syntropic-file`**.
+   This avoids using noisy LangFuse fallback traces as the Syntropic137
+   integration point and avoids changing the canonical `AgentRunEvent` file.
 6. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
    reachable LangFuse deployment: **done against local Docker Compose**.
 7. Map normalized run events to fallback spans only when Rust OTLP is explicitly
@@ -279,3 +291,7 @@ Completion audit:
   for Claude/Codex official-plugin runs:
   **satisfied for `itmux` CLI exporter construction by
   `experiments/2026-07-08--langfuse--single-rich-exporter-guard`**.
+- Syntropic137 can consume local session/tool observability without enabling
+  fallback LangFuse OTLP:
+  **satisfied for `syntropic_jsonl` exporter shape by
+  `experiments/2026-07-08--syntropic137--jsonl-fanout-compat`**.

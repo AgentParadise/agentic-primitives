@@ -13,6 +13,7 @@ use crate::run::contract::{
     AgentRunEvent, AgentRunEventPayload, ObservabilityBundle, ObservabilityExportReport,
     ObservabilityExportStatus, ObservabilityExporter, ObservabilityLink,
 };
+use serde_json::json;
 
 const LANGFUSE_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -22,6 +23,7 @@ pub struct ObservabilityFanout {
 
 enum ExporterSink {
     File(File),
+    SyntropicJsonl(File),
     LangFuseOtlp(LangFuseOtlpSink),
     Disabled,
 }
@@ -79,6 +81,30 @@ impl ExporterState {
                     kind: config.kind().to_string(),
                     target: Some(path.display().to_string()),
                     label: label.clone().unwrap_or_else(|| "run events".to_string()),
+                    sink: ExporterSink::Disabled,
+                    events_exported: 0,
+                    events_pending: 0,
+                    error: Some(err.to_string()),
+                },
+            },
+            ObservabilityExporter::SyntropicJsonl { path, label } => match open_jsonl(path) {
+                Ok(file) => Self {
+                    kind: config.kind().to_string(),
+                    target: Some(path.display().to_string()),
+                    label: label
+                        .clone()
+                        .unwrap_or_else(|| "syntropic events".to_string()),
+                    sink: ExporterSink::SyntropicJsonl(file),
+                    events_exported: 0,
+                    events_pending: 0,
+                    error: None,
+                },
+                Err(err) => Self {
+                    kind: config.kind().to_string(),
+                    target: Some(path.display().to_string()),
+                    label: label
+                        .clone()
+                        .unwrap_or_else(|| "syntropic events".to_string()),
                     sink: ExporterSink::Disabled,
                     events_exported: 0,
                     events_pending: 0,
@@ -149,6 +175,22 @@ impl ExporterState {
                     }
                 }
             }
+            ExporterSink::SyntropicJsonl(file) => {
+                if let Some(syntropic_event) = syntropic_jsonl_event(event) {
+                    let result = serde_json::to_writer(&mut *file, &syntropic_event)
+                        .and_then(|()| file.write_all(b"\n").map_err(serde_json::Error::io))
+                        .and_then(|()| file.flush().map_err(serde_json::Error::io));
+                    match result {
+                        Ok(()) => {
+                            self.events_exported += 1;
+                        }
+                        Err(err) => {
+                            self.error = Some(err.to_string());
+                            self.sink = ExporterSink::Disabled;
+                        }
+                    }
+                }
+            }
             ExporterSink::LangFuseOtlp(sink) => {
                 sink.push(event);
                 self.events_pending += 1;
@@ -160,7 +202,7 @@ impl ExporterState {
     fn report(mut self) -> ObservabilityExportReport {
         let mut links = Vec::new();
         match &mut self.sink {
-            ExporterSink::File(_) => {
+            ExporterSink::File(_) | ExporterSink::SyntropicJsonl(_) => {
                 if let Some(target) = self.target.as_deref() {
                     links.push(ObservabilityLink {
                         label: self.label.clone(),
@@ -193,6 +235,106 @@ impl ExporterState {
             links,
             error: self.error,
         }
+    }
+}
+
+fn syntropic_jsonl_event(event: &AgentRunEvent) -> Option<serde_json::Value> {
+    let base = |event_type: &str| {
+        json!({
+            "event_type": event_type,
+            "session_id": event.run_id,
+            "timestamp": event.ts,
+            "agentic_run_id": event.run_id,
+            "agentic_event_seq": event.seq,
+        })
+    };
+
+    match &event.payload {
+        AgentRunEventPayload::ToolStart {
+            tool_name,
+            tool_input,
+        } => {
+            let mut value = base("tool_execution_started");
+            value["tool_name"] = json!(tool_name);
+            value["tool_input"] = tool_input.clone();
+            Some(value)
+        }
+        AgentRunEventPayload::ToolEnd {
+            tool_name,
+            success,
+            output_summary,
+        } => {
+            let mut value = base("tool_execution_completed");
+            value["tool_name"] = json!(tool_name);
+            value["success"] = json!(success);
+            if let Some(summary) = output_summary {
+                value["output_summary"] = json!(summary);
+            }
+            Some(value)
+        }
+        AgentRunEventPayload::TokenUsage {
+            input_tokens,
+            output_tokens,
+            cached_input_tokens,
+            reasoning_output_tokens,
+            cost_usd,
+            harness,
+            provider,
+            model,
+        } => {
+            let mut value = base("token_usage");
+            value["input_tokens"] = json!(input_tokens);
+            value["output_tokens"] = json!(output_tokens);
+            if let Some(tokens) = cached_input_tokens {
+                value["cached_input_tokens"] = json!(tokens);
+            }
+            if let Some(tokens) = reasoning_output_tokens {
+                value["reasoning_output_tokens"] = json!(tokens);
+            }
+            if let Some(cost) = cost_usd {
+                value["cost_usd"] = json!(cost);
+            }
+            if let Some(harness) = harness {
+                value["harness"] = json!(harness);
+            }
+            if let Some(provider) = provider {
+                value["provider"] = json!(provider);
+            }
+            if let Some(model) = model {
+                value["model"] = json!(model);
+            }
+            Some(value)
+        }
+        AgentRunEventPayload::HookEvent {
+            provider,
+            event_type,
+            event: hook_event,
+        } => {
+            let mut value = base(event_type);
+            value["provider"] = json!(provider);
+            if let Some(obj) = hook_event.as_object() {
+                for (key, item) in obj {
+                    if key == "event_type" || key == "timestamp" {
+                        continue;
+                    }
+                    if key == "session_id" {
+                        value["source_session_id"] = item.clone();
+                    } else {
+                        value[key] = item.clone();
+                    }
+                }
+            } else {
+                value["event"] = hook_event.clone();
+            }
+            Some(value)
+        }
+        AgentRunEventPayload::SessionEnd { outcome } => {
+            let mut value = base("session_ended");
+            value["success"] = json!(outcome.success);
+            value["summary"] = json!(outcome.summary);
+            Some(value)
+        }
+        AgentRunEventPayload::Result { .. } => None,
     }
 }
 
@@ -1084,6 +1226,47 @@ mod tests {
         assert_eq!(report.events_exported, 2);
         assert_eq!(report.links[0].label, "local events");
         assert!(report.links[0].uri.starts_with("file://"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn syntropic_jsonl_exporter_writes_hook_style_events() {
+        let path = temp_file("syntropic");
+        let mut fanout = ObservabilityFanout::new(&[ObservabilityExporter::SyntropicJsonl {
+            path: path.clone(),
+            label: Some("Syntropic137 events".to_string()),
+        }]);
+
+        fanout.emit(&tool_end_event(0));
+        fanout.emit(&token_usage_event(1, "codex", "openai", "gpt-5.5"));
+        fanout.emit(&session_end_event(2));
+        let bundle = fanout.finish().expect("configured exporter reports");
+
+        let contents = std::fs::read_to_string(&path).expect("jsonl file exists");
+        let lines: Vec<_> = contents.lines().collect();
+        assert_eq!(lines.len(), 3);
+
+        let tool: serde_json::Value = serde_json::from_str(lines[0]).expect("tool json");
+        assert_eq!(tool["event_type"], "tool_execution_completed");
+        assert_eq!(tool["session_id"], "run-test");
+        assert_eq!(tool["tool_name"], "codex.exec");
+        assert_eq!(tool["agentic_event_seq"], 0);
+
+        let usage: serde_json::Value = serde_json::from_str(lines[1]).expect("usage json");
+        assert_eq!(usage["event_type"], "token_usage");
+        assert_eq!(usage["input_tokens"], 100);
+        assert_eq!(usage["harness"], "codex");
+
+        let end: serde_json::Value = serde_json::from_str(lines[2]).expect("end json");
+        assert_eq!(end["event_type"], "session_ended");
+        assert_eq!(end["success"], true);
+
+        let report = &bundle.exporters[0];
+        assert_eq!(report.kind, "syntropic_jsonl");
+        assert_eq!(report.status, ObservabilityExportStatus::Ok);
+        assert_eq!(report.events_exported, 3);
+        assert_eq!(report.links[0].label, "Syntropic137 events");
 
         let _ = std::fs::remove_file(path);
     }

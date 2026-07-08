@@ -1,0 +1,3 @@
+{"agentic_event_seq": 0, "agentic_run_id": "run-test", "event_type": "tool_execution_completed", "output_summary": "created trace artifact", "session_id": "run-test", "success": true, "timestamp": "2026-07-07T00:00:00Z", "tool_name": "codex.exec"}
+{"agentic_event_seq": 1, "agentic_run_id": "run-test", "event_type": "token_usage", "harness": "codex", "input_tokens": 100, "output_tokens": 25, "session_id": "run-test", "timestamp": "2026-07-07T00:00:01Z"}
+{"agentic_event_seq": 2, "agentic_run_id": "run-test", "event_type": "session_ended", "session_id": "run-test", "success": true, "summary": "done", "timestamp": "2026-07-07T00:00:02Z"}

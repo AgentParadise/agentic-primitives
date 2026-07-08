@@ -183,6 +183,9 @@ enum Cmd {
         /// artifact. Relative paths resolve in the driver process.
         #[arg(long)]
         observability_file: Option<PathBuf>,
+        /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
+        #[arg(long)]
+        observability_syntropic_file: Option<PathBuf>,
         /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
         /// credentials. Prefer official LangFuse Claude/Codex plugins for
         /// rich Claude/Codex trace UX.
@@ -231,6 +234,9 @@ enum Cmd {
         /// Append normalized observer events to this JSONL file.
         #[arg(long)]
         observability_file: Option<PathBuf>,
+        /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
+        #[arg(long)]
+        observability_syntropic_file: Option<PathBuf>,
         /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
         /// credentials. Prefer official LangFuse Claude/Codex plugins for
         /// rich Claude/Codex trace UX.
@@ -272,6 +278,9 @@ enum Cmd {
         /// Append normalized observer events to this JSONL file.
         #[arg(long)]
         observability_file: Option<PathBuf>,
+        /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
+        #[arg(long)]
+        observability_syntropic_file: Option<PathBuf>,
         /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
         /// credentials. Prefer official LangFuse Claude/Codex plugins for
         /// rich Claude/Codex trace UX.
@@ -841,6 +850,7 @@ struct LangFuseCliOptions {
 
 fn build_observability_exporters(
     observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
     file_label: &str,
     langfuse: LangFuseCliOptions,
 ) -> Vec<ObservabilityExporter> {
@@ -851,6 +861,13 @@ fn build_observability_exporters(
         })
         .into_iter()
         .collect();
+
+    if let Some(path) = observability_syntropic_file {
+        exporters.push(ObservabilityExporter::SyntropicJsonl {
+            path,
+            label: Some("Syntropic137 events".to_string()),
+        });
+    }
 
     if langfuse.enabled && (!langfuse.official_plugin_tracing_active || langfuse.force) {
         exporters.push(ObservabilityExporter::LangFuseOtlp {
@@ -978,6 +995,7 @@ fn handle_run(
     env_file: Option<PathBuf>,
     allow_host_auth_fallback: bool,
     observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
     langfuse: LangFuseCliOptions,
 ) -> ExitCode {
     let credentials = match itmux::run::secret_env::load_credentials(env_file.as_deref()) {
@@ -987,8 +1005,12 @@ fn handle_run(
             return ExitCode::from(2);
         }
     };
-    let observability =
-        build_observability_exporters(observability_file, "itmux run events", langfuse);
+    let observability = build_observability_exporters(
+        observability_file,
+        observability_syntropic_file,
+        "itmux run events",
+        langfuse,
+    );
     let spec_recipe = recipe.clone();
     let mut spec = build_run_spec(recipe, task, timeout);
     spec.credentials = credentials;
@@ -1146,10 +1168,15 @@ fn handle_codex_exec(
     json: bool,
     result_file: Option<PathBuf>,
     observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
     langfuse: LangFuseCliOptions,
 ) -> ExitCode {
-    let exporters =
-        build_observability_exporters(observability_file, "codex exec events", langfuse);
+    let exporters = build_observability_exporters(
+        observability_file,
+        observability_syntropic_file,
+        "codex exec events",
+        langfuse,
+    );
     handle_codex_exec_with_exporters(CodexExecRunOptions {
         prompt,
         codex_bin,
@@ -1369,10 +1396,15 @@ fn handle_claude_transcript(
     json: bool,
     result_file: Option<PathBuf>,
     observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
     langfuse: LangFuseCliOptions,
 ) -> ExitCode {
-    let exporters =
-        build_observability_exporters(observability_file, "claude transcript events", langfuse);
+    let exporters = build_observability_exporters(
+        observability_file,
+        observability_syntropic_file,
+        "claude transcript events",
+        langfuse,
+    );
     let mut fanout = ObservabilityFanout::new(&exporters);
     let mut observer = ClaudeTranscriptObserver::new();
     let run_id = run_id.unwrap_or_else(generate_run_id);
@@ -3533,6 +3565,7 @@ fn main() -> ExitCode {
             env_file,
             allow_host_auth_fallback,
             observability_file,
+            observability_syntropic_file,
             observability_langfuse,
             observability_langfuse_force,
             langfuse_base_url,
@@ -3551,6 +3584,7 @@ fn main() -> ExitCode {
             env_file,
             allow_host_auth_fallback,
             observability_file,
+            observability_syntropic_file,
             LangFuseCliOptions {
                 enabled: observability_langfuse,
                 force: observability_langfuse_force,
@@ -3568,6 +3602,7 @@ fn main() -> ExitCode {
             json,
             result_file,
             observability_file,
+            observability_syntropic_file,
             observability_langfuse,
             observability_langfuse_force,
             langfuse_base_url,
@@ -3581,6 +3616,7 @@ fn main() -> ExitCode {
             json,
             result_file,
             observability_file,
+            observability_syntropic_file,
             LangFuseCliOptions {
                 enabled: observability_langfuse,
                 force: observability_langfuse_force,
@@ -3596,6 +3632,7 @@ fn main() -> ExitCode {
             json,
             result_file,
             observability_file,
+            observability_syntropic_file,
             observability_langfuse,
             observability_langfuse_force,
             langfuse_base_url,
@@ -3607,6 +3644,7 @@ fn main() -> ExitCode {
             json,
             result_file,
             observability_file,
+            observability_syntropic_file,
             LangFuseCliOptions {
                 enabled: observability_langfuse,
                 force: observability_langfuse_force,
@@ -3733,6 +3771,7 @@ mod cli_tests {
     fn cli_exporters_include_file_and_langfuse_when_enabled() {
         let exporters = build_observability_exporters(
             Some(PathBuf::from("/tmp/events.jsonl")),
+            None,
             "local events",
             LangFuseCliOptions {
                 enabled: true,
@@ -3766,13 +3805,16 @@ mod cli_tests {
                 assert_eq!(service_name, "agentic-primitives");
                 assert_eq!(label.as_deref(), Some("trace view"));
             }
-            ObservabilityExporter::File { .. } => panic!("expected LangFuse exporter"),
+            ObservabilityExporter::File { .. } | ObservabilityExporter::SyntropicJsonl { .. } => {
+                panic!("expected LangFuse exporter")
+            }
         }
     }
 
     #[test]
     fn cli_exporters_do_not_require_langfuse_project_id() {
         let exporters = build_observability_exporters(
+            None,
             None,
             "local events",
             LangFuseCliOptions {
@@ -3799,7 +3841,9 @@ mod cli_tests {
                 assert_eq!(project_id_env, "LANGFUSE_PROJECT_ID");
                 assert_eq!(label.as_deref(), Some("LangFuse trace"));
             }
-            ObservabilityExporter::File { .. } => panic!("expected LangFuse exporter"),
+            ObservabilityExporter::File { .. } | ObservabilityExporter::SyntropicJsonl { .. } => {
+                panic!("expected LangFuse exporter")
+            }
         }
     }
 
@@ -3807,6 +3851,7 @@ mod cli_tests {
     fn cli_exporters_suppress_langfuse_when_official_plugin_tracing_is_active() {
         let exporters = build_observability_exporters(
             Some(PathBuf::from("/tmp/events.jsonl")),
+            None,
             "local events",
             LangFuseCliOptions {
                 enabled: true,
@@ -3826,6 +3871,7 @@ mod cli_tests {
     fn cli_exporters_can_force_langfuse_when_official_plugin_tracing_is_active() {
         let exporters = build_observability_exporters(
             Some(PathBuf::from("/tmp/events.jsonl")),
+            None,
             "local events",
             LangFuseCliOptions {
                 enabled: true,
@@ -3843,6 +3889,28 @@ mod cli_tests {
             exporters[1],
             ObservabilityExporter::LangFuseOtlp { .. }
         ));
+    }
+
+    #[test]
+    fn cli_exporters_include_syntropic_jsonl_when_configured() {
+        let exporters = build_observability_exporters(
+            Some(PathBuf::from("/tmp/events.jsonl")),
+            Some(PathBuf::from("/tmp/syntropic-events.jsonl")),
+            "local events",
+            LangFuseCliOptions::default(),
+        );
+
+        assert_eq!(exporters.len(), 2);
+        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
+        match &exporters[1] {
+            ObservabilityExporter::SyntropicJsonl { path, label } => {
+                assert_eq!(path, &PathBuf::from("/tmp/syntropic-events.jsonl"));
+                assert_eq!(label.as_deref(), Some("Syntropic137 events"));
+            }
+            ObservabilityExporter::File { .. } | ObservabilityExporter::LangFuseOtlp { .. } => {
+                panic!("expected Syntropic137 exporter")
+            }
+        }
     }
 
     #[test]

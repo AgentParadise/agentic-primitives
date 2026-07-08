@@ -1,0 +1,5 @@
+{"event_type": "session_started", "provider": "codex", "session_id": "sess-syn137-compat", "timestamp": "2026-07-08T18:55:00Z"}
+{"event_type": "tool_execution_started", "session_id": "sess-syn137-compat", "timestamp": "2026-07-08T18:55:01Z", "tool_name": "exec_command", "tool_use_id": "tool-1"}
+{"event_type": "tool_execution_completed", "session_id": "sess-syn137-compat", "success": true, "timestamp": "2026-07-08T18:55:02Z", "tool_name": "exec_command", "tool_use_id": "tool-1"}
+{"event_type": "token_usage", "input_tokens": 100, "output_tokens": 25, "session_id": "sess-syn137-compat", "timestamp": "2026-07-08T18:55:03Z"}
+{"event_type": "session_ended", "session_id": "sess-syn137-compat", "success": true, "timestamp": "2026-07-08T18:55:04Z"}

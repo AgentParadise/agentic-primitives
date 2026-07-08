@@ -135,6 +135,17 @@ pub enum ObservabilityExporter {
         #[serde(default)]
         label: Option<String>,
     },
+    /// Append Syntropic137 HookWatcher-compatible JSONL to `path`.
+    ///
+    /// This preserves the canonical `file` exporter while providing the
+    /// top-level `event_type`/`session_id`/`timestamp` shape consumed by
+    /// Syntropic137's existing hook-file watcher.
+    SyntropicJsonl {
+        path: PathBuf,
+        /// Stable label surfaced in the final observability bundle for UIs.
+        #[serde(default)]
+        label: Option<String>,
+    },
     /// Export run events to LangFuse's OTLP HTTP traces endpoint.
     ///
     /// Secrets are intentionally referenced by environment variable names, not
@@ -171,6 +182,7 @@ impl ObservabilityExporter {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::File { .. } => "file",
+            Self::SyntropicJsonl { .. } => "syntropic_jsonl",
             Self::LangFuseOtlp { .. } => "langfuse_otlp",
         }
     }

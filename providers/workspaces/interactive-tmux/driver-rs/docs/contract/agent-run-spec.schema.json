@@ -181,6 +181,34 @@
           "additionalProperties": false
         },
         {
+          "description": "Append Syntropic137 HookWatcher-compatible JSONL to `path`.\n\nThis preserves the canonical `file` exporter while providing the top-level `event_type`/`session_id`/`timestamp` shape consumed by Syntropic137's existing hook-file watcher.",
+          "type": "object",
+          "required": [
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "syntropic_jsonl"
+              ]
+            },
+            "label": {
+              "description": "Stable label surfaced in the final observability bundle for UIs.",
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
           "description": "Export run events to LangFuse's OTLP HTTP traces endpoint.\n\nSecrets are intentionally referenced by environment variable names, not embedded in the run spec. `base_url` may be either the LangFuse origin (`https://cloud.langfuse.com`), the OTLP base endpoint (`.../api/public/otel`), or the signal-specific traces endpoint (`.../api/public/otel/v1/traces`).",
           "type": "object",
           "required": [

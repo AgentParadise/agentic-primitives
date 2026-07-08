@@ -81,15 +81,36 @@
           ],
           "format": "double"
         },
+        "harness": {
+          "description": "Harness that produced this usage record, e.g. `codex` or `claude`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "input_tokens": {
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
+        "model": {
+          "description": "Model name when the harness exposes or is launched with one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "output_tokens": {
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
+        },
+        "provider": {
+          "description": "Model provider when known, e.g. `openai` or `anthropic`.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "reasoning_output_tokens": {
           "default": null,

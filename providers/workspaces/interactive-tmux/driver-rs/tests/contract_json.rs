@@ -184,6 +184,16 @@ fn observability_file_exporter_round_trips_with_typed_config() {
 }
 
 #[test]
+fn observability_syntropic_jsonl_exporter_round_trips_with_typed_config() {
+    let exporter = ObservabilityExporter::SyntropicJsonl {
+        path: PathBuf::from("/tmp/syntropic-events.jsonl"),
+        label: Some("Syntropic137 events".to_string()),
+    };
+    roundtrip(&exporter);
+    assert_eq!(exporter.kind(), "syntropic_jsonl");
+}
+
+#[test]
 fn observability_langfuse_otlp_exporter_round_trips_with_env_refs() {
     let exporter = ObservabilityExporter::LangFuseOtlp {
         base_url: Some("https://cloud.langfuse.com".to_string()),

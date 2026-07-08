@@ -1,0 +1,41 @@
+{
+  "events": [
+    {
+      "data": {
+        "provider": "codex"
+      },
+      "event_type": "session_started",
+      "session_id": "sess-syn137-compat",
+      "timestamp": "2026-07-08T18:55:00+00:00"
+    },
+    {
+      "data": {
+        "tool_name": "exec_command",
+        "tool_use_id": "tool-1"
+      },
+      "event_type": "tool_execution_started",
+      "session_id": "sess-syn137-compat",
+      "timestamp": "2026-07-08T18:55:01+00:00"
+    },
+    {
+      "data": {
+        "success": true,
+        "tool_name": "exec_command",
+        "tool_use_id": "tool-1"
+      },
+      "event_type": "tool_execution_completed",
+      "session_id": "sess-syn137-compat",
+      "timestamp": "2026-07-08T18:55:02+00:00"
+    },
+    {
+      "data": {
+        "success": true
+      },
+      "event_type": "session_ended",
+      "session_id": "sess-syn137-compat",
+      "timestamp": "2026-07-08T18:55:04+00:00"
+    }
+  ],
+  "input_file": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--syntropic137--jsonl-fanout-compat/runs/control-hook-events.jsonl",
+  "parsed_count": 4
+}

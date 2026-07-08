@@ -17,6 +17,11 @@ fallback OTLP behavior. The `itmux` CLI suppresses the fallback writer when
 `TRACE_TO_LANGFUSE=true`; use `--observability-langfuse-force` only for an
 intentional collector/Syntropic137/fallback smoke path.
 
+When Syntropic137 needs to consume `itmux` runs through its existing
+HookWatcher, use `--observability-syntropic-file` in addition to
+`--observability-file`. The former emits hook-style session/tool JSONL; the
+latter remains the canonical normalized run artifact.
+
 ## Agent LangFuse MCP server
 
 The plugin also exposes an MCP server named `agentic-langfuse` for learning-loop

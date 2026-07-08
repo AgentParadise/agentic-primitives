@@ -119,6 +119,7 @@ Use only one rich LangFuse writer per run by default:
 | Official Claude plugin | Canonical rich LangFuse traces for Claude Code |
 | Official Codex plugin | Canonical rich LangFuse traces for Codex |
 | `--observability-file` JSONL | Durable local evidence and Syntropic137/source-of-truth fanout |
+| `--observability-syntropic-file` JSONL | Syntropic137 HookWatcher-compatible session/tool JSONL |
 | `--observability-langfuse` Rust OTLP | Explicit fallback, collector, backend smoke, or unsupported harness path |
 
 It is safe to keep JSONL fanout enabled alongside an official plugin. It is not
@@ -132,6 +133,16 @@ The `itmux` CLI enforces that default for human-facing runs: when
 `--observability-file` JSONL fanout. Use `--observability-langfuse-force` only
 when deliberately testing fallback OTLP or sending the same normalized events
 to a collector/Syntropic137 path.
+
+For Syntropic137, prefer `--observability-syntropic-file` alongside the
+canonical `--observability-file`. The canonical file remains the full
+`AgentRunEvent` artifact for replay and debugging. The Syntropic file emits
+top-level `event_type`, `session_id`, and `timestamp` records compatible with
+Syntropic137's existing HookWatcher for session and tool timeline ingestion.
+It also emits `token_usage` rows for forward compatibility, but the current
+Syntropic137 HookWatcher does not parse those rows until its hook event map
+adds `token_usage`; Syntropic137's transcript/OTLP lanes remain the token/cost
+source meanwhile.
 
 ## macOS Keychain Setup
 
@@ -300,6 +311,7 @@ mkdir -p /tmp/agentic-langfuse-smoke
 itmux codex-exec \
   --prompt "Reply exactly: LANGFUSE_SMOKE_OK" \
   --observability-file /tmp/agentic-langfuse-smoke/events.jsonl \
+  --observability-syntropic-file /tmp/agentic-langfuse-smoke/syntropic-events.jsonl \
   --observability-langfuse \
   --result-file /tmp/agentic-langfuse-smoke/result.json
 ```
