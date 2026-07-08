@@ -470,6 +470,8 @@ fn encode_otlp_trace_request(
             ("langfuse.session.id", run_id),
             ("langfuse.trace.name", "agentic_primitives.run"),
             ("langfuse.trace.metadata.run_id", run_id),
+            ("langfuse.trace.metadata.observer", "itmux"),
+            ("langfuse.trace.tags", "agentic-primitives,itmux"),
         ],
         start_nanos: root_nanos,
     }));
@@ -559,24 +561,61 @@ fn encode_span(input: SpanEncodeInput<'_>) -> Vec<u8> {
             9,
             &encode_key_value("agentic.event.seq", &event.seq.to_string()),
         );
-        for (key, value) in event_payload_attributes(&event.payload) {
-            push_message(&mut out, 9, &encode_key_value(&key, &value));
+        for attribute in event_payload_attributes(&event.payload) {
+            push_message(&mut out, 9, &attribute.encode());
         }
     }
     out
 }
 
-fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<(String, String)> {
+#[derive(Debug, Clone, PartialEq)]
+enum OtlpAttributeValue {
+    String(String),
+    I64(i64),
+    F64(f64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct OtlpAttribute {
+    key: String,
+    value: OtlpAttributeValue,
+}
+
+impl OtlpAttribute {
+    fn string(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: OtlpAttributeValue::String(value.into()),
+        }
+    }
+
+    fn i64(key: impl Into<String>, value: u64) -> Self {
+        Self {
+            key: key.into(),
+            value: OtlpAttributeValue::I64(value.min(i64::MAX as u64) as i64),
+        }
+    }
+
+    fn f64(key: impl Into<String>, value: f64) -> Self {
+        Self {
+            key: key.into(),
+            value: OtlpAttributeValue::F64(value),
+        }
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        encode_key_value_attribute(&self.key, &self.value)
+    }
+}
+
+fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<OtlpAttribute> {
     match payload {
         AgentRunEventPayload::ToolStart {
             tool_name,
             tool_input,
         } => vec![
-            ("agentic.tool.name".to_string(), tool_name.clone()),
-            (
-                "agentic.tool.input_json".to_string(),
-                tool_input.to_string(),
-            ),
+            OtlpAttribute::string("agentic.tool.name", tool_name),
+            OtlpAttribute::string("agentic.tool.input_json", tool_input.to_string()),
         ],
         AgentRunEventPayload::ToolEnd {
             tool_name,
@@ -584,13 +623,13 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<(String, Stri
             output_summary,
         } => {
             let mut attributes = vec![
-                ("agentic.tool.name".to_string(), tool_name.clone()),
-                ("agentic.tool.success".to_string(), success.to_string()),
+                OtlpAttribute::string("agentic.tool.name", tool_name),
+                OtlpAttribute::string("agentic.tool.success", success.to_string()),
             ];
             if let Some(output_summary) = output_summary {
-                attributes.push((
-                    "agentic.tool.output_summary".to_string(),
-                    output_summary.clone(),
+                attributes.push(OtlpAttribute::string(
+                    "agentic.tool.output_summary",
+                    output_summary,
                 ));
             }
             attributes
@@ -601,31 +640,78 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<(String, Stri
             cached_input_tokens,
             reasoning_output_tokens,
             cost_usd,
+            harness,
+            provider,
+            model,
         } => {
+            let total_tokens = input_tokens
+                .saturating_add(*output_tokens)
+                .saturating_add(cached_input_tokens.unwrap_or(0))
+                .saturating_add(reasoning_output_tokens.unwrap_or(0));
             let mut attributes = vec![
-                (
-                    "agentic.usage.input_tokens".to_string(),
-                    input_tokens.to_string(),
-                ),
-                (
-                    "agentic.usage.output_tokens".to_string(),
-                    output_tokens.to_string(),
-                ),
+                OtlpAttribute::string("langfuse.trace.metadata.event_type", "token_usage"),
+                OtlpAttribute::i64("gen_ai.usage.prompt_tokens", *input_tokens),
+                OtlpAttribute::i64("gen_ai.usage.completion_tokens", *output_tokens),
+                OtlpAttribute::i64("gen_ai.usage.total_tokens", total_tokens),
+                OtlpAttribute::i64("llm.usage.prompt_tokens", *input_tokens),
+                OtlpAttribute::i64("llm.usage.completion_tokens", *output_tokens),
+                OtlpAttribute::i64("llm.usage.total_tokens", total_tokens),
+                OtlpAttribute::i64("agentic.usage.input_tokens", *input_tokens),
+                OtlpAttribute::i64("agentic.usage.output_tokens", *output_tokens),
             ];
             if let Some(cached_input_tokens) = cached_input_tokens {
-                attributes.push((
-                    "agentic.usage.cached_input_tokens".to_string(),
-                    cached_input_tokens.to_string(),
+                attributes.push(OtlpAttribute::i64(
+                    "gen_ai.usage.cached_prompt_tokens",
+                    *cached_input_tokens,
+                ));
+                attributes.push(OtlpAttribute::i64(
+                    "agentic.usage.cached_input_tokens",
+                    *cached_input_tokens,
                 ));
             }
             if let Some(reasoning_output_tokens) = reasoning_output_tokens {
-                attributes.push((
-                    "agentic.usage.reasoning_output_tokens".to_string(),
-                    reasoning_output_tokens.to_string(),
+                attributes.push(OtlpAttribute::i64(
+                    "gen_ai.usage.reasoning_completion_tokens",
+                    *reasoning_output_tokens,
+                ));
+                attributes.push(OtlpAttribute::i64(
+                    "agentic.usage.reasoning_output_tokens",
+                    *reasoning_output_tokens,
                 ));
             }
             if let Some(cost_usd) = cost_usd {
-                attributes.push(("agentic.usage.cost_usd".to_string(), cost_usd.to_string()));
+                attributes.push(OtlpAttribute::f64("agentic.usage.cost_usd", *cost_usd));
+                attributes.push(OtlpAttribute::f64("gen_ai.usage.cost", *cost_usd));
+                attributes.push(OtlpAttribute::string("gen_ai.usage.cost.currency", "USD"));
+            }
+            if let Some(harness) = harness {
+                attributes.push(OtlpAttribute::string("agentic.harness", harness));
+                attributes.push(OtlpAttribute::string(
+                    "langfuse.trace.metadata.harness",
+                    harness,
+                ));
+                attributes.push(OtlpAttribute::string(
+                    "langfuse.trace.tags",
+                    format!("agentic-primitives,itmux,harness:{harness}"),
+                ));
+            }
+            if let Some(provider) = provider {
+                attributes.push(OtlpAttribute::string("gen_ai.system", provider));
+                attributes.push(OtlpAttribute::string("agentic.provider", provider));
+                attributes.push(OtlpAttribute::string(
+                    "langfuse.trace.metadata.provider",
+                    provider,
+                ));
+            }
+            if let Some(model) = model {
+                attributes.push(OtlpAttribute::string("gen_ai.request.model", model));
+                attributes.push(OtlpAttribute::string("gen_ai.response.model", model));
+                attributes.push(OtlpAttribute::string("llm.request.model", model));
+                attributes.push(OtlpAttribute::string("agentic.model", model));
+                attributes.push(OtlpAttribute::string(
+                    "langfuse.trace.metadata.model",
+                    model,
+                ));
             }
             attributes
         }
@@ -634,38 +720,34 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<(String, Stri
             event_type,
             event,
         } => vec![
-            ("agentic.hook.provider".to_string(), provider.clone()),
-            ("agentic.hook.event_type".to_string(), event_type.clone()),
-            ("agentic.hook.event_json".to_string(), event.to_string()),
+            OtlpAttribute::string("agentic.hook.provider", provider),
+            OtlpAttribute::string("agentic.hook.event_type", event_type),
+            OtlpAttribute::string("agentic.hook.event_json", event.to_string()),
         ],
         AgentRunEventPayload::SessionEnd { outcome } => vec![
-            (
-                "agentic.outcome.success".to_string(),
-                outcome.success.to_string(),
-            ),
-            (
-                "agentic.outcome.summary".to_string(),
-                outcome.summary.clone(),
-            ),
+            OtlpAttribute::string("agentic.outcome.success", outcome.success.to_string()),
+            OtlpAttribute::string("agentic.outcome.summary", &outcome.summary),
         ],
         AgentRunEventPayload::Result { result } => vec![
-            (
-                "agentic.result.success".to_string(),
-                result.result.success.to_string(),
-            ),
-            (
-                "agentic.result.summary".to_string(),
-                result.result.summary.clone(),
-            ),
+            OtlpAttribute::string("agentic.result.success", result.result.success.to_string()),
+            OtlpAttribute::string("agentic.result.summary", &result.result.summary),
         ],
     }
 }
 
 fn encode_key_value(key: &str, value: &str) -> Vec<u8> {
+    encode_key_value_attribute(key, &OtlpAttributeValue::String(value.to_string()))
+}
+
+fn encode_key_value_attribute(key: &str, value: &OtlpAttributeValue) -> Vec<u8> {
     let mut out = Vec::new();
     push_string(&mut out, 1, key);
     let mut any_value = Vec::new();
-    push_string(&mut any_value, 1, value);
+    match value {
+        OtlpAttributeValue::String(value) => push_string(&mut any_value, 1, value),
+        OtlpAttributeValue::I64(value) => push_varint_field(&mut any_value, 3, *value as u64),
+        OtlpAttributeValue::F64(value) => push_fixed64(&mut any_value, 4, value.to_bits()),
+    }
     push_message(&mut out, 2, &any_value);
     out
 }
@@ -858,6 +940,24 @@ mod tests {
         }
     }
 
+    fn token_usage_event(seq: u64, harness: &str, provider: &str, model: &str) -> AgentRunEvent {
+        AgentRunEvent {
+            run_id: "run-test".to_string(),
+            seq,
+            ts: format!("2026-07-07T00:00:0{seq}Z"),
+            payload: AgentRunEventPayload::TokenUsage {
+                input_tokens: 100,
+                output_tokens: 25,
+                cached_input_tokens: Some(10),
+                reasoning_output_tokens: Some(5),
+                cost_usd: Some(0.0012),
+                harness: Some(harness.to_string()),
+                provider: Some(provider.to_string()),
+                model: Some(model.to_string()),
+            },
+        }
+    }
+
     fn temp_file(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "itmux-observability-{name}-{}-{}.jsonl",
@@ -974,6 +1074,39 @@ mod tests {
             langfuse_ui_base_url("http://localhost:3000/api/public/otel/v1/traces"),
             "http://localhost:3000"
         );
+    }
+
+    #[test]
+    fn langfuse_otlp_payload_includes_genai_usage_and_harness_metadata() {
+        let events = [
+            token_usage_event(1, "codex", "openai", "gpt-4o-mini"),
+            token_usage_event(2, "claude", "anthropic", "claude-sonnet-4-5-20250929"),
+        ];
+        let body = encode_otlp_trace_request(&events, "agentic-primitives", "local-test");
+
+        for expected in [
+            "gen_ai.usage.prompt_tokens",
+            "gen_ai.usage.completion_tokens",
+            "gen_ai.usage.total_tokens",
+            "gen_ai.request.model",
+            "gen_ai.response.model",
+            "gen_ai.system",
+            "agentic.harness",
+            "agentic.provider",
+            "agentic.model",
+            "langfuse.trace.metadata.harness",
+            "langfuse.trace.tags",
+            "gpt-4o-mini",
+            "claude-sonnet-4-5-20250929",
+            "codex",
+            "claude",
+        ] {
+            assert!(
+                body.windows(expected.len())
+                    .any(|window| window == expected.as_bytes()),
+                "missing {expected} in OTLP payload"
+            );
+        }
     }
 
     #[test]

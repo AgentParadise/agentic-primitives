@@ -378,12 +378,18 @@ fn agent_run_event_token_usage_round_trips() {
             cached_input_tokens,
             reasoning_output_tokens,
             cost_usd,
+            harness,
+            provider,
+            model,
         } => {
             assert_eq!(*input_tokens, 1000);
             assert_eq!(*output_tokens, 250);
             assert_eq!(*cached_input_tokens, Some(700));
             assert_eq!(*reasoning_output_tokens, Some(50));
             assert_eq!(*cost_usd, Some(0.015));
+            assert_eq!(harness, &None);
+            assert_eq!(provider, &None);
+            assert_eq!(model, &None);
         }
         other => panic!("expected TokenUsage, got {other:?}"),
     }
@@ -391,7 +397,7 @@ fn agent_run_event_token_usage_round_trips() {
 }
 
 #[test]
-fn agent_run_event_token_usage_defaults_codex_specific_fields() {
+fn agent_run_event_token_usage_defaults_harness_metadata() {
     let json = r#"{
         "run_id": "run-1",
         "seq": 2,
@@ -406,14 +412,62 @@ fn agent_run_event_token_usage_defaults_codex_specific_fields() {
             cached_input_tokens,
             reasoning_output_tokens,
             cost_usd,
+            harness,
+            provider,
+            model,
             ..
         } => {
             assert_eq!(*cached_input_tokens, None);
             assert_eq!(*reasoning_output_tokens, None);
             assert_eq!(*cost_usd, None);
+            assert_eq!(harness, &None);
+            assert_eq!(provider, &None);
+            assert_eq!(model, &None);
         }
         other => panic!("expected TokenUsage, got {other:?}"),
     }
+}
+
+#[test]
+fn agent_run_event_token_usage_accepts_claude_harness_metadata() {
+    let json = serde_json::json!({
+        "run_id": "run-claude",
+        "seq": 2,
+        "ts": "2026-07-07T12:00:02Z",
+        "type": "token_usage",
+        "input_tokens": 2000,
+        "output_tokens": 300,
+        "cached_input_tokens": 1200,
+        "reasoning_output_tokens": 0,
+        "cost_usd": 0.0123,
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5-20250929"
+    });
+    let event: AgentRunEvent = serde_json::from_value(json.clone()).expect("deserialize");
+    match &event.payload {
+        AgentRunEventPayload::TokenUsage {
+            input_tokens,
+            output_tokens,
+            cached_input_tokens,
+            reasoning_output_tokens,
+            cost_usd,
+            harness,
+            provider,
+            model,
+        } => {
+            assert_eq!(*input_tokens, 2000);
+            assert_eq!(*output_tokens, 300);
+            assert_eq!(*cached_input_tokens, Some(1200));
+            assert_eq!(*reasoning_output_tokens, Some(0));
+            assert_eq!(*cost_usd, Some(0.0123));
+            assert_eq!(harness.as_deref(), Some("claude"));
+            assert_eq!(provider.as_deref(), Some("anthropic"));
+            assert_eq!(model.as_deref(), Some("claude-sonnet-4-5-20250929"));
+        }
+        other => panic!("expected TokenUsage, got {other:?}"),
+    }
+    assert_eq!(serde_json::to_value(&event).unwrap(), json);
 }
 
 #[test]

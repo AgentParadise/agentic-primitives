@@ -2,9 +2,9 @@
   "ok": false,
   "request": {
     "api": "observations_v2",
-    "endpoint": "http://localhost:3000/api/public/v2/observations?traceId=e8ec439f180e38c5bcb34c1baad4f978&fromStartTime=2020-01-01T00%3A00%3A00Z&toStartTime=2100-01-01T00%3A00%3A00Z&fields=core%2Cbasic%2Cusage%2Ctrace_context&limit=20",
-    "trace_id": "e8ec439f180e38c5bcb34c1baad4f978",
-    "run_id": "run-223bc2a0",
+    "endpoint": "http://localhost:3000/api/public/v2/observations?traceId=a7d70dbd4b8024793804ebf8a7b35050&fromStartTime=2020-01-01T00%3A00%3A00Z&toStartTime=2100-01-01T00%3A00%3A00Z&fields=core%2Cbasic%2Cusage%2Ctrace_context&limit=20",
+    "trace_id": "a7d70dbd4b8024793804ebf8a7b35050",
+    "run_id": "run-08ac78b8",
     "fields": "core,basic,usage,trace_context",
     "limit": 20,
     "from_start_time": "2020-01-01T00:00:00Z",

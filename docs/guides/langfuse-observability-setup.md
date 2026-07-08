@@ -189,6 +189,10 @@ Passing local criteria:
 - `itmux langfuse-trace` can query the trace. For LangFuse v3 Docker Compose,
   use `--api legacy-trace`; Observations API v2 requires LangFuse v4 write mode.
 - the emitted trace link resolves in the LangFuse UI.
+- token usage appears as native LangFuse generation data when the harness
+  provides model/usage metadata: model name, prompt/completion/total tokens,
+  calculated cost, environment, and harness tags should be visible in the trace
+  API and dashboard.
 
 Passing backend criteria:
 
@@ -198,6 +202,9 @@ Passing backend criteria:
   returns observation rows for the exported trace after the expected ingestion
   delay;
 - the trace has at least three child observations;
+- the trace has at least one `GENERATION` observation for usage-bearing model
+  calls, with nonzero native token fields and calculated cost when the model is
+  known to LangFuse;
 - the reported trace link resolves when project id metadata is available.
 
 `okrs-51p.9` remains open until both the local and backend criteria pass against
@@ -219,6 +226,9 @@ queries `/api/public/v2/observations` with bounded `fromStartTime` and
 `toStartTime`. You can also pass `--trace-id <32-hex-trace-id>` directly.
 For self-hosted LangFuse deployments that do not expose the v2 observations
 endpoint, pass `--api legacy-trace` to query `/api/public/traces/{traceId}`.
+Successful responses include a `summary` object intended for agents:
+observation names/types, environment, harnesses, providers, model names,
+model ids, token totals, and calculated total cost.
 
 LangFuse documentation says newly ingested data is typically queryable after
 about 15-30 seconds, so backend smoke runs should wait before checking

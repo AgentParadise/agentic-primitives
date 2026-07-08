@@ -1,11 +1,13 @@
 # Verdict
 
-**Go on local LangFuse backend export, queryability, and trace-link resolution.**
+**Go on local LangFuse backend export, queryability, trace-link resolution, and
+native Codex usage/cost/model telemetry.**
 
 The current `itmux` exporter path was run against a real local LangFuse Docker
 Compose backend on this MacBook. LangFuse accepted the OTLP HTTP/protobuf
 export, the trace became discoverable through the self-host-compatible legacy
-trace API, and the emitted UI trace link resolved with HTTP 200.
+trace API, the emitted UI trace link resolved with HTTP 200, and the latest
+run populated native LangFuse generation usage/cost/model fields.
 
 `run-smoke.sh` is now the repeatable close-gate runner for the current exporter
 path. `scripts/langfuse-local.sh smoke` seeds local LangFuse env from the
@@ -21,6 +23,8 @@ evidence under `runs/real-backend-smoke/`.
 | Trace appears in LangFuse within 60 seconds and is findable by run id | Legacy trace query succeeded after 2 attempts | correct | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`; `observation_count=7`. |
 | Required attributes survive for filtering/identification | Tool, usage, session, resource, and environment attributes are present in backend response | correct | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`. |
 | Current `itmux` exporter reports `langfuse_otlp` success against the backend | Observed `status=ok`, `events_exported=6`, one trace link | correct | `runs/real-backend-smoke/summary.txt`. |
+| Token usage becomes native LangFuse usage/cost/model data, not only metadata | Observed `token_usage` as `GENERATION`, model `gpt-4o-mini`, 13 tokens, calculated total cost `0.000003299999` | correct for Codex | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`; `/tmp/langfuse-playwright/dashboard-rich.har`. |
+| Agents can query useful learning-loop summaries | `itmux langfuse-trace --api legacy-trace --run-id run-08ac78b8 ...` reports harness `codex`, provider `openai`, model `gpt-4o-mini`, token totals, and cost | correct for local self-host | `/tmp/langfuse-playwright/trace-rich-summary.json`. |
 | Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; local ignored env is not committed | correct | `run-smoke.sh`; `scripts/langfuse-local.sh`; `.agentic/` ignored. |
 
 ## Design Impact
@@ -33,6 +37,13 @@ evidence under `runs/real-backend-smoke/`.
 - The real backend revealed and validated a root-span timestamp fix: root spans
   must inherit the first run event timestamp instead of defaulting to Unix
   epoch.
+- The real backend also validated the OTEL mapping needed for useful cost
+  dashboards: `token_usage` must carry GenAI usage/model attributes so LangFuse
+  stores it as a `GENERATION` with native token and cost fields.
+- The normalized `token_usage` event contract now has optional
+  `harness`/`provider`/`model` metadata and is explicitly tested for a
+  Claude-compatible shape. Runtime Claude transcript watching is still the next
+  implementation gap before claiming Claude parity.
 - Mac Mini/VPS setup should use the same official Compose stack plus the
   agentic local override pattern: expose LangFuse web, keep backing stores
   internal unless explicitly needed.

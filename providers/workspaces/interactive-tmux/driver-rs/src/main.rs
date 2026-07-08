@@ -3,7 +3,7 @@
 //! stdout in the exact shape the Python equivalent emits, so `smoke-rs.sh`
 //! can mirror `smoke.sh` line-for-line.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
@@ -795,7 +795,7 @@ fn handle_codex_exec(
     let exporters =
         build_observability_exporters(observability_file, "codex exec events", langfuse);
     let mut fanout = ObservabilityFanout::new(&exporters);
-    let mut observer = CodexExecJsonObserver::new();
+    let mut observer = CodexExecJsonObserver::with_model(model.clone());
     let run_id = generate_run_id();
     let mut seq = 0u64;
     let mut session_log = String::new();
@@ -1105,6 +1105,7 @@ fn handle_langfuse_trace(
                 serde_json::to_string_pretty(&json!({
                     "ok": true,
                     "request": request,
+                    "summary": summarize_langfuse_trace_response(&parsed),
                     "response": parsed,
                 }))
                 .unwrap()
@@ -1164,6 +1165,127 @@ fn non_empty_env(key: &str) -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn summarize_langfuse_trace_response(response: &Value) -> Value {
+    let trace = response
+        .get("response")
+        .and_then(Value::as_object)
+        .map(|_| response.get("response").unwrap())
+        .unwrap_or(response);
+    let observations = trace
+        .get("observations")
+        .and_then(Value::as_array)
+        .cloned()
+        .or_else(|| trace.get("data").and_then(Value::as_array).cloned())
+        .unwrap_or_default();
+
+    let mut names = BTreeSet::new();
+    let mut types = BTreeSet::new();
+    let mut environments = BTreeSet::new();
+    let mut models = BTreeSet::new();
+    let mut model_ids = BTreeSet::new();
+    let mut harnesses = BTreeSet::new();
+    let mut providers = BTreeSet::new();
+    let mut total_tokens = 0_u64;
+    let mut input_tokens = 0_u64;
+    let mut output_tokens = 0_u64;
+    let mut calculated_total_cost = 0.0_f64;
+    let mut has_cost = false;
+
+    for observation in &observations {
+        insert_string(&mut names, observation.get("name"));
+        insert_string(&mut types, observation.get("type"));
+        insert_string(&mut environments, observation.get("environment"));
+        insert_string(&mut models, observation.get("model"));
+        insert_string(&mut model_ids, observation.get("modelId"));
+
+        if let Some(usage) = observation.get("usage").filter(|usage| {
+            number_u64(usage.get("input"))
+                .saturating_add(number_u64(usage.get("output")))
+                .saturating_add(number_u64(usage.get("total")))
+                > 0
+        }) {
+            input_tokens = input_tokens.saturating_add(number_u64(usage.get("input")));
+            output_tokens = output_tokens.saturating_add(number_u64(usage.get("output")));
+            total_tokens = total_tokens.saturating_add(number_u64(usage.get("total")));
+        } else {
+            input_tokens = input_tokens.saturating_add(number_u64(observation.get("promptTokens")));
+            output_tokens =
+                output_tokens.saturating_add(number_u64(observation.get("completionTokens")));
+            total_tokens = total_tokens.saturating_add(number_u64(observation.get("totalTokens")));
+        }
+
+        if let Some(cost) = number_f64(observation.get("calculatedTotalCost")) {
+            calculated_total_cost += cost;
+            has_cost = true;
+        }
+        if let Some(cost) = number_f64(observation.get("totalCost")) {
+            calculated_total_cost += cost;
+            has_cost = true;
+        }
+
+        let attrs = observation
+            .get("metadata")
+            .and_then(|metadata| metadata.get("attributes"));
+        insert_string(
+            &mut harnesses,
+            attrs.and_then(|attrs| attrs.get("agentic.harness")),
+        );
+        insert_string(
+            &mut providers,
+            attrs.and_then(|attrs| attrs.get("agentic.provider")),
+        );
+        insert_string(
+            &mut models,
+            attrs.and_then(|attrs| attrs.get("agentic.model")),
+        );
+    }
+
+    json!({
+        "trace_id": trace.get("id").and_then(Value::as_str),
+        "trace_name": trace.get("name").and_then(Value::as_str),
+        "session_id": trace.get("sessionId").and_then(Value::as_str),
+        "environment": trace.get("environment").and_then(Value::as_str),
+        "observation_count": observations.len(),
+        "observation_names": names.into_iter().collect::<Vec<_>>(),
+        "observation_types": types.into_iter().collect::<Vec<_>>(),
+        "environments": environments.into_iter().collect::<Vec<_>>(),
+        "harnesses": harnesses.into_iter().collect::<Vec<_>>(),
+        "providers": providers.into_iter().collect::<Vec<_>>(),
+        "models": models.into_iter().collect::<Vec<_>>(),
+        "model_ids": model_ids.into_iter().collect::<Vec<_>>(),
+        "usage": {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+        },
+        "cost": {
+            "calculated_total_usd": if has_cost { Some(calculated_total_cost) } else { None },
+        },
+    })
+}
+
+fn insert_string(out: &mut BTreeSet<String>, value: Option<&Value>) {
+    if let Some(value) = value.and_then(Value::as_str) {
+        if !value.trim().is_empty() {
+            out.insert(value.to_string());
+        }
+    }
+}
+
+fn number_u64(value: Option<&Value>) -> u64 {
+    value
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_f64().map(|v| v.max(0.0) as u64))
+        })
+        .unwrap_or(0)
+}
+
+fn number_f64(value: Option<&Value>) -> Option<f64> {
+    value.and_then(|value| value.as_f64().or_else(|| value.as_u64().map(|v| v as f64)))
 }
 
 fn build_langfuse_observations_v2_url(
@@ -1469,6 +1591,50 @@ mod cli_tests {
             url,
             "https://langfuse.example.com/api/public/traces/trace%20id%2Fwith%20spaces"
         );
+    }
+
+    #[test]
+    fn langfuse_trace_summary_extracts_learning_loop_fields() {
+        let response = json!({
+            "id": "trace-1",
+            "name": "agentic_primitives.run",
+            "sessionId": "run-1",
+            "environment": "local-test",
+            "observations": [
+                {
+                    "name": "token_usage",
+                    "type": "GENERATION",
+                    "environment": "local-test",
+                    "model": "gpt-4o-mini",
+                    "modelId": "model-row-id",
+                    "promptTokens": 10,
+                    "completionTokens": 3,
+                    "totalTokens": 13,
+                    "usage": {"input": 10, "output": 3, "total": 13},
+                    "calculatedTotalCost": 0.0000033,
+                    "metadata": {
+                        "attributes": {
+                            "agentic.harness": "codex",
+                            "agentic.provider": "openai",
+                            "agentic.model": "gpt-4o-mini"
+                        }
+                    }
+                }
+            ]
+        });
+
+        let summary = summarize_langfuse_trace_response(&response);
+
+        assert_eq!(summary["trace_id"], "trace-1");
+        assert_eq!(summary["observation_count"], 1);
+        assert_eq!(summary["harnesses"], json!(["codex"]));
+        assert_eq!(summary["providers"], json!(["openai"]));
+        assert_eq!(summary["models"], json!(["gpt-4o-mini"]));
+        assert_eq!(summary["model_ids"], json!(["model-row-id"]));
+        assert_eq!(summary["usage"]["input_tokens"], 10);
+        assert_eq!(summary["usage"]["output_tokens"], 3);
+        assert_eq!(summary["usage"]["total_tokens"], 13);
+        assert_eq!(summary["cost"]["calculated_total_usd"], 0.0000033);
     }
 
     #[test]

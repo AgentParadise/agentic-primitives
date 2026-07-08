@@ -101,6 +101,7 @@ rm -f \
 set +e
 "$ITMUX_BIN" codex-exec \
   --codex-bin "$FAKE_CODEX_BIN" \
+  --model gpt-4o-mini \
   --prompt "Reply exactly: LANGFUSE_SMOKE_OK" \
   --observability-file "$events_jsonl" \
   --observability-langfuse \
@@ -169,9 +170,17 @@ if [ "$exit_code" -eq 0 ] && [ -f "$result_json" ] && [ -s "$events_jsonl" ] && 
   printf '%s\n' "$trace_ui_status" >"$trace_ui_response"
   observation_count="<unknown>"
   root_start_time="<unknown>"
+  model_names="<unknown>"
+  total_tokens="<unknown>"
+  calculated_total_cost="<unknown>"
+  harness_values="<unknown>"
   if [ "$trace_query_legacy_exit" -eq 0 ]; then
     observation_count="$(jq -r '(.response.observations // []) | length' "$trace_query_legacy")"
     root_start_time="$(jq -r '.response.observations[] | select(.name == "agentic_primitives.run") | .startTime' "$trace_query_legacy" | head -n 1)"
+    model_names="$(jq -r '[.response.observations[] | (.model // .modelId // empty)] | unique | join(",")' "$trace_query_legacy")"
+    total_tokens="$(jq -r '[.response.observations[] | (.totalTokens // 0)] | add // 0' "$trace_query_legacy")"
+    calculated_total_cost="$(jq -r '[.response.observations[] | (.calculatedTotalCost // 0)] | add // 0' "$trace_query_legacy")"
+    harness_values="$(jq -r '[.response.observations[].metadata.attributes."agentic.harness" // empty] | unique | join(",")' "$trace_query_legacy")"
   fi
 
   {
@@ -180,6 +189,10 @@ if [ "$exit_code" -eq 0 ] && [ -f "$result_json" ] && [ -s "$events_jsonl" ] && 
     printf 'langfuse_trace_query_legacy_attempts=%s\n' "$trace_query_legacy_attempts"
     printf 'langfuse_observation_count=%s\n' "$observation_count"
     printf 'langfuse_root_start_time=%s\n' "$root_start_time"
+    printf 'langfuse_model_names=%s\n' "$model_names"
+    printf 'langfuse_total_tokens=%s\n' "$total_tokens"
+    printf 'langfuse_calculated_total_cost=%s\n' "$calculated_total_cost"
+    printf 'langfuse_harness_values=%s\n' "$harness_values"
     printf 'langfuse_trace_ui_exit=%s\n' "$trace_ui_exit"
     printf 'langfuse_trace_ui_status=%s\n' "$trace_ui_status"
   } >>"$summary"

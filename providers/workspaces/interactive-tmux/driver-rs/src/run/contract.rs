@@ -325,6 +325,15 @@ pub enum AgentRunEventPayload {
         reasoning_output_tokens: Option<u64>,
         #[serde(default)]
         cost_usd: Option<f64>,
+        /// Harness that produced this usage record, e.g. `codex` or `claude`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        harness: Option<String>,
+        /// Model provider when known, e.g. `openai` or `anthropic`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+        /// Model name when the harness exposes or is launched with one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
     },
     #[serde(rename = "hook_event")]
     HookEvent {

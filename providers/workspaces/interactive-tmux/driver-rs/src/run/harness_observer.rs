@@ -48,14 +48,27 @@ impl fmt::Display for ObserverError {
 
 impl Error for ObserverError {}
 
-#[derive(Debug, Default)]
 pub struct CodexExecJsonObserver {
     turn_open: bool,
+    model: Option<String>,
+}
+
+impl Default for CodexExecJsonObserver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CodexExecJsonObserver {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_model(None)
+    }
+
+    pub fn with_model(model: Option<String>) -> Self {
+        Self {
+            turn_open: false,
+            model,
+        }
     }
 
     fn event(payload: AgentRunEventPayload) -> ObservedAgentEvent {
@@ -112,6 +125,9 @@ impl HarnessObserver for CodexExecJsonObserver {
                     cached_input_tokens: usage.cached_input_tokens,
                     reasoning_output_tokens: usage.reasoning_output_tokens,
                     cost_usd: None,
+                    harness: Some("codex".to_string()),
+                    provider: Some("openai".to_string()),
+                    model: self.model.clone(),
                 }));
             }
             CodexExecJsonEvent::TurnFailed { error } => {
@@ -243,12 +259,18 @@ mod tests {
                 cached_input_tokens,
                 reasoning_output_tokens,
                 cost_usd,
+                harness,
+                provider,
+                model,
             } => {
                 assert_eq!(*input_tokens, 15919);
                 assert_eq!(*output_tokens, 11);
                 assert_eq!(*cached_input_tokens, Some(9600));
                 assert_eq!(*reasoning_output_tokens, Some(0));
                 assert_eq!(*cost_usd, None);
+                assert_eq!(harness.as_deref(), Some("codex"));
+                assert_eq!(provider.as_deref(), Some("openai"));
+                assert_eq!(model, &None);
             }
             other => panic!("expected token usage, got {other:?}"),
         }
