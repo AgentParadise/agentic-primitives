@@ -232,8 +232,8 @@ Passing backend criteria:
 
 - LangFuse accepts the OTLP payload;
 - the trace is visible and queryable in the LangFuse UI;
-- `itmux langfuse-trace --run-id <run_id> --from-start-time <start> --to-start-time <end>`
-  returns observation rows for the exported trace after the expected ingestion
+- `itmux langfuse-trace --output summary --run-id <run_id>` returns the
+  learning-loop summary for the exported trace after the expected ingestion
   delay;
 - the trace has at least three child observations;
 - the trace has at least one `GENERATION` observation for usage-bearing model
@@ -251,18 +251,23 @@ Use the same secret injection model as export:
 ```bash
 itmux langfuse-trace \
   --run-id <itmux-run-id> \
-  --from-start-time 2026-07-07T20:00:00Z \
-  --to-start-time 2026-07-07T21:00:00Z
+  --api legacy-trace \
+  --output summary
 ```
 
 The command derives the deterministic LangFuse trace id from the run id and
-queries `/api/public/v2/observations` with bounded `fromStartTime` and
-`toStartTime`. You can also pass `--trace-id <32-hex-trace-id>` directly.
-For self-hosted LangFuse deployments that do not expose the v2 observations
-endpoint, pass `--api legacy-trace` to query `/api/public/traces/{traceId}`.
-Successful responses include a `summary` object intended for agents:
-observation names/types, environment, harnesses, providers, model names,
-model ids, token totals, and calculated total cost.
+queries LangFuse with default bounded `fromStartTime` and `toStartTime` values.
+You can also pass `--trace-id <32-hex-trace-id>` directly. For self-hosted
+LangFuse deployments that do not expose the v2 observations endpoint, pass
+`--api legacy-trace` to query `/api/public/traces/{traceId}`.
+
+`--output summary` returns only `{ok, request, summary}`. That is the preferred
+shape for agents because it avoids pulling the raw backend response into the
+prompt context. The summary includes observation names/types, environment,
+harnesses, providers, model names, model ids, token totals, calculated total
+cost, operation/tool counts, agent-visible tool calls, harness plumbing, and a
+compact event sequence ordered by `agentic.event.seq` when available. Use
+`--output full` when debugging backend payload shape.
 
 LangFuse documentation says newly ingested data is typically queryable after
 about 15-30 seconds, so backend smoke runs should wait before checking

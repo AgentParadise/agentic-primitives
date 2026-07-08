@@ -372,7 +372,9 @@ Current status for `okrs-51p.9`:
    `itmux` run id, queries bounded LangFuse observation rows, supports a
    legacy trace endpoint for self-host compatibility, fails safely with
    redacted missing-config JSON, and is local-receiver-proven through the actual CLI
-   GET/auth/JSON response path.
+   GET/auth/JSON response path. It now supports `--output summary`, which
+   returns only the agent-facing `{ok, request, summary}` shape and avoids
+   pulling the raw LangFuse backend response into learning-loop context.
 8. The local real-backend smoke is proven against LangFuse v3 Docker Compose on
    this MacBook: `scripts/langfuse-local.sh smoke` exports the current
    `itmux codex-exec --observability-langfuse` path, LangFuse accepts six

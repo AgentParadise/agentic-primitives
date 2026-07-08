@@ -1,0 +1,16 @@
+codex_exit=0
+claude_exit=0
+codex_has_response=false
+claude_has_response=false
+codex_request_from=2020-01-01T00:00:00Z
+codex_request_to=2100-01-01T00:00:00Z
+codex_harnesses=codex
+codex_total_tokens=15932
+codex_cost=0.07996
+codex_agent_tools=codex_exec.item.agent_message
+claude_request_from=2020-01-01T00:00:00Z
+claude_request_to=2100-01-01T00:00:00Z
+claude_harnesses=claude
+claude_total_tokens=31789
+claude_cost=0.001767
+claude_agent_tools=Bash

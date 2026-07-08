@@ -9,6 +9,7 @@
 | Native usage/cost/model fields | `runs/real-backend-smoke/summary.txt`, `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/dashboard-rich.har` | Passed: LangFuse classified `token_usage` as a `GENERATION`, set `model=gpt-4o-mini`, recorded 13 tokens, calculated `$0.000003299999`, and dashboard cost/model queries returned non-null values. |
 | Live Codex exec export | `runs/codex-live-real-langfuse-token-total-fixed/summary.txt`, `runs/codex-live-real-langfuse-token-total-fixed/events.jsonl`, `runs/codex-live-real-langfuse-token-total-fixed/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose with the real Codex CLI: model `gpt-5.5`, harness `codex`, provider `openai`, 15932 total tokens, calculated cost `0.07996`, OpenAI cache tokens preserved as metadata but not double-counted, event/tool sequences ordered by `agentic.event.seq`, and `agent_tool` vs `harness_tool` grouping. |
 | Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`, `runs/claude-transcript-langfuse/learning-loop-summary.txt`, `runs/codex-live-real-langfuse-token-total-fixed/langfuse-trace-query-legacy.json`, `runs/claude-live-agent-tool-itmux-run/langfuse-trace-query-legacy.json` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields, a redacted tool-call summary, a compact full event sequence, and separate `operations`, `agent_tools`, and `harness_tools` groups for learning loops. |
+| Compact agent query mode | `runs/langfuse-trace-compact-summary/summary.txt`, `runs/langfuse-trace-compact-summary/codex-summary.json`, `runs/langfuse-trace-compact-summary/claude-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-trace --api legacy-trace --output summary --run-id ...` works without explicit time bounds, omits the raw backend `response`, and returns the learning-loop summary for both Codex and Claude traces. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
 | Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
 | Live Claude poll-time streaming | `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`, `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`, `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: hook and transcript-derived token usage events streamed before `await` ended, message-level usage was deduplicated to one event, and LangFuse classified usage as `GENERATION` with model, token totals, and calculated cost. |
@@ -119,6 +120,22 @@ the legacy `tools` view into `operations` for driver lifecycle phases,
 `agent_tools` for harness-observed agent work, and `harness_tools` for harness
 plumbing such as Codex thread/turn events. Tool inputs and outputs remain
 redacted in the underlying observations.
+
+For agent learning loops that do not need the raw LangFuse trace payload,
+`itmux langfuse-trace --output summary` returns only `{ok, request, summary}`.
+The command now defaults its bounded query window to
+`2020-01-01T00:00:00Z..2100-01-01T00:00:00Z`, so agents can query by run id
+without carrying time-window arguments. Current evidence from
+`runs/langfuse-trace-compact-summary/summary.txt`:
+
+- Codex command:
+  `itmux langfuse-trace --api legacy-trace --output summary --run-id run-f7ae62c8`
+- Codex result: no raw `response`, harness `codex`, total tokens `15932`,
+  calculated cost `0.07996`, agent tool `codex_exec.item.agent_message`
+- Claude command:
+  `itmux langfuse-trace --api legacy-trace --output summary --run-id run-f07cba88`
+- Claude result: no raw `response`, harness `claude`, total tokens `31789`,
+  calculated cost `0.001767`, agent tool `Bash`
 
 ## Live Codex Exec Smoke
 

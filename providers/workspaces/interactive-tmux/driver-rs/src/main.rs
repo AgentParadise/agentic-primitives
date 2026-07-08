@@ -36,6 +36,8 @@ use itmux::workspace::{
 };
 
 const LANGFUSE_TRACE_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_LANGFUSE_QUERY_FROM_START_TIME: &str = "2020-01-01T00:00:00Z";
+const DEFAULT_LANGFUSE_QUERY_TO_START_TIME: &str = "2100-01-01T00:00:00Z";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -270,10 +272,10 @@ enum Cmd {
         #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
         secret_key_env: String,
         /// Lower bound for observation start time. Keep this bounded.
-        #[arg(long)]
+        #[arg(long, default_value = DEFAULT_LANGFUSE_QUERY_FROM_START_TIME)]
         from_start_time: String,
         /// Upper bound for observation start time. Keep this bounded.
-        #[arg(long)]
+        #[arg(long, default_value = DEFAULT_LANGFUSE_QUERY_TO_START_TIME)]
         to_start_time: String,
         /// LangFuse observation field groups to request.
         #[arg(long, default_value = "core,basic,usage,trace_context")]
@@ -284,6 +286,9 @@ enum Cmd {
         /// LangFuse read API to use.
         #[arg(long, value_enum, default_value = "observations-v2")]
         api: LangFuseTraceApi,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "full")]
+        output: LangFuseTraceOutput,
     },
 }
 
@@ -1242,6 +1247,14 @@ impl LangFuseTraceApi {
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LangFuseTraceOutput {
+    /// Emit only the agent-facing learning-loop summary.
+    Summary,
+    /// Emit the summary plus the raw LangFuse response.
+    Full,
+}
+
 #[derive(Serialize)]
 struct LangFuseTraceQueryRequest {
     api: &'static str,
@@ -1267,6 +1280,7 @@ fn handle_langfuse_trace(
     fields: String,
     limit: u32,
     api: LangFuseTraceApi,
+    output: LangFuseTraceOutput,
 ) -> ExitCode {
     let Some(trace_id) = trace_id.or_else(|| run_id.as_deref().map(langfuse_trace_id_for_run))
     else {
@@ -1347,16 +1361,21 @@ fn handle_langfuse_trace(
                     "body": body,
                 })
             });
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&json!({
+            let summary = summarize_langfuse_trace_response(&parsed);
+            let output = match output {
+                LangFuseTraceOutput::Summary => json!({
                     "ok": true,
                     "request": request,
-                    "summary": summarize_langfuse_trace_response(&parsed),
+                    "summary": summary,
+                }),
+                LangFuseTraceOutput::Full => json!({
+                    "ok": true,
+                    "request": request,
+                    "summary": summary,
                     "response": parsed,
-                }))
-                .unwrap()
-            );
+                }),
+            };
+            println!("{}", serde_json::to_string_pretty(&output).unwrap());
             ExitCode::SUCCESS
         }
         Ok(response) => {
@@ -2067,6 +2086,7 @@ fn main() -> ExitCode {
             fields,
             limit,
             api,
+            output,
         } => handle_langfuse_trace(
             trace_id,
             run_id,
@@ -2078,6 +2098,7 @@ fn main() -> ExitCode {
             fields,
             limit,
             api,
+            output,
         ),
     }
 }
@@ -2221,6 +2242,37 @@ mod cli_tests {
             url,
             "https://langfuse.example.com/api/public/traces/trace%20id%2Fwith%20spaces"
         );
+    }
+
+    #[test]
+    fn langfuse_trace_cli_defaults_are_agent_friendly() {
+        let cli = Cli::try_parse_from([
+            "itmux",
+            "langfuse-trace",
+            "--run-id",
+            "run-query",
+            "--api",
+            "legacy-trace",
+            "--output",
+            "summary",
+        ])
+        .unwrap();
+
+        let Cmd::LangFuseTrace {
+            run_id,
+            from_start_time,
+            to_start_time,
+            output,
+            ..
+        } = cli.cmd
+        else {
+            panic!("expected langfuse-trace command");
+        };
+
+        assert_eq!(run_id.as_deref(), Some("run-query"));
+        assert_eq!(from_start_time, DEFAULT_LANGFUSE_QUERY_FROM_START_TIME);
+        assert_eq!(to_start_time, DEFAULT_LANGFUSE_QUERY_TO_START_TIME);
+        assert!(matches!(output, LangFuseTraceOutput::Summary));
     }
 
     #[test]
