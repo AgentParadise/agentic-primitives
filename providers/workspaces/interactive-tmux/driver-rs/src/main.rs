@@ -3,7 +3,7 @@
 //! stdout in the exact shape the Python equivalent emits, so `smoke-rs.sh`
 //! can mirror `smoke.sh` line-for-line.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
@@ -1376,6 +1376,8 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
     let mut output_tokens = 0_u64;
     let mut calculated_total_cost = 0.0_f64;
     let mut has_cost = false;
+    let mut tool_stats: BTreeMap<String, ToolTraceStats> = BTreeMap::new();
+    let mut tool_events = Vec::new();
 
     for observation in &observations {
         insert_string(&mut names, observation.get("name"));
@@ -1424,7 +1426,84 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
             &mut models,
             attrs.and_then(|attrs| attrs.get("agentic.model")),
         );
+
+        let event_type = attr_string(attrs, "agentic.event.type").or_else(|| {
+            observation
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+        if matches!(event_type.as_deref(), Some("tool_start" | "tool_end")) {
+            let tool_name =
+                attr_string(attrs, "agentic.tool.name").unwrap_or_else(|| "unknown".to_string());
+            let stats = tool_stats.entry(tool_name.clone()).or_default();
+            match event_type.as_deref() {
+                Some("tool_start") => stats.starts = stats.starts.saturating_add(1),
+                Some("tool_end") => {
+                    stats.ends = stats.ends.saturating_add(1);
+                    match attr_bool(attrs, "agentic.tool.success") {
+                        Some(true) => stats.successes = stats.successes.saturating_add(1),
+                        Some(false) => stats.failures = stats.failures.saturating_add(1),
+                        None => {}
+                    }
+                }
+                _ => {}
+            }
+            tool_events.push(ToolTraceEvent {
+                sort_time: observation
+                    .get("startTime")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                sort_id: observation
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                event: event_type.unwrap_or_else(|| "unknown".to_string()),
+                tool_name,
+                success: attr_bool(attrs, "agentic.tool.success"),
+            });
+        }
     }
+
+    let tool_start_count = tool_stats.values().map(|stats| stats.starts).sum::<u64>();
+    let tool_end_count = tool_stats.values().map(|stats| stats.ends).sum::<u64>();
+    let tool_success_count = tool_stats
+        .values()
+        .map(|stats| stats.successes)
+        .sum::<u64>();
+    let tool_failure_count = tool_stats.values().map(|stats| stats.failures).sum::<u64>();
+    let tool_names = tool_stats.keys().cloned().collect::<Vec<_>>();
+    let tools_by_name = tool_stats
+        .into_iter()
+        .map(|(name, stats)| {
+            json!({
+                "name": name,
+                "starts": stats.starts,
+                "ends": stats.ends,
+                "successes": stats.successes,
+                "failures": stats.failures,
+            })
+        })
+        .collect::<Vec<_>>();
+    tool_events.sort_by(|a, b| {
+        a.sort_time
+            .cmp(&b.sort_time)
+            .then_with(|| a.sort_id.cmp(&b.sort_id))
+    });
+    let tool_sequence_truncated = tool_events.len() > 100;
+    let tool_sequence = tool_events
+        .into_iter()
+        .take(100)
+        .map(|event| {
+            json!({
+                "event": event.event,
+                "tool_name": event.tool_name,
+                "success": event.success,
+            })
+        })
+        .collect::<Vec<_>>();
 
     json!({
         "trace_id": trace.get("id").and_then(Value::as_str),
@@ -1447,7 +1526,34 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         "cost": {
             "calculated_total_usd": if has_cost { Some(calculated_total_cost) } else { None },
         },
+        "tools": {
+            "start_count": tool_start_count,
+            "end_count": tool_end_count,
+            "success_count": tool_success_count,
+            "failure_count": tool_failure_count,
+            "names": tool_names,
+            "by_name": tools_by_name,
+            "sequence": tool_sequence,
+            "sequence_truncated": tool_sequence_truncated,
+        },
     })
+}
+
+#[derive(Debug, Default)]
+struct ToolTraceStats {
+    starts: u64,
+    ends: u64,
+    successes: u64,
+    failures: u64,
+}
+
+#[derive(Debug)]
+struct ToolTraceEvent {
+    sort_time: String,
+    sort_id: String,
+    event: String,
+    tool_name: String,
+    success: Option<bool>,
 }
 
 fn insert_string(out: &mut BTreeSet<String>, value: Option<&Value>) {
@@ -1456,6 +1562,25 @@ fn insert_string(out: &mut BTreeSet<String>, value: Option<&Value>) {
             out.insert(value.to_string());
         }
     }
+}
+
+fn attr_string(attrs: Option<&Value>, key: &str) -> Option<String> {
+    attrs
+        .and_then(|attrs| attrs.get(key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn attr_bool(attrs: Option<&Value>, key: &str) -> Option<bool> {
+    attrs.and_then(|attrs| attrs.get(key)).and_then(|value| {
+        value.as_bool().or_else(|| match value.as_str()?.trim() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        })
+    })
 }
 
 fn number_u64(value: Option<&Value>) -> u64 {
@@ -1826,6 +1951,39 @@ mod cli_tests {
                             "agentic.model": "gpt-4o-mini"
                         }
                     }
+                },
+                {
+                    "name": "tool_start",
+                    "type": "SPAN",
+                    "metadata": {
+                        "attributes": {
+                            "agentic.event.type": "tool_start",
+                            "agentic.tool.name": "Bash",
+                            "agentic.tool.input_redacted": "true"
+                        }
+                    }
+                },
+                {
+                    "name": "tool_end",
+                    "type": "SPAN",
+                    "metadata": {
+                        "attributes": {
+                            "agentic.event.type": "tool_end",
+                            "agentic.tool.name": "Bash",
+                            "agentic.tool.success": "true"
+                        }
+                    }
+                },
+                {
+                    "name": "tool_end",
+                    "type": "SPAN",
+                    "metadata": {
+                        "attributes": {
+                            "agentic.event.type": "tool_end",
+                            "agentic.tool.name": "TodoWrite",
+                            "agentic.tool.success": "false"
+                        }
+                    }
                 }
             ]
         });
@@ -1833,7 +1991,7 @@ mod cli_tests {
         let summary = summarize_langfuse_trace_response(&response);
 
         assert_eq!(summary["trace_id"], "trace-1");
-        assert_eq!(summary["observation_count"], 1);
+        assert_eq!(summary["observation_count"], 4);
         assert_eq!(summary["harnesses"], json!(["codex"]));
         assert_eq!(summary["providers"], json!(["openai"]));
         assert_eq!(summary["models"], json!(["gpt-4o-mini"]));
@@ -1842,6 +2000,22 @@ mod cli_tests {
         assert_eq!(summary["usage"]["output_tokens"], 3);
         assert_eq!(summary["usage"]["total_tokens"], 13);
         assert_eq!(summary["cost"]["calculated_total_usd"], 0.0000033);
+        assert_eq!(summary["tools"]["start_count"], 1);
+        assert_eq!(summary["tools"]["end_count"], 2);
+        assert_eq!(summary["tools"]["success_count"], 1);
+        assert_eq!(summary["tools"]["failure_count"], 1);
+        assert_eq!(summary["tools"]["names"], json!(["Bash", "TodoWrite"]));
+        assert_eq!(
+            summary["tools"]["by_name"],
+            json!([
+                {"name": "Bash", "starts": 1, "ends": 1, "successes": 1, "failures": 0},
+                {"name": "TodoWrite", "starts": 0, "ends": 1, "successes": 0, "failures": 1}
+            ])
+        );
+        assert_eq!(summary["tools"]["sequence"][0]["tool_name"], "Bash");
+        assert_eq!(summary["tools"]["sequence"][1]["success"], true);
+        assert_eq!(summary["tools"]["sequence"][2]["success"], false);
+        assert_eq!(summary["tools"]["sequence_truncated"], false);
     }
 
     #[test]

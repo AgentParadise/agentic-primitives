@@ -7,7 +7,7 @@
 | Trace queryability | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `runs/real-backend-smoke/langfuse-trace-query-v2.json` | Passed through `itmux langfuse-trace --api legacy-trace`: trace returned with 7 observations. Observations v2 returns 404 on LangFuse v3 Docker Compose because it requires v4 write mode. |
 | Trace UI link | `runs/real-backend-smoke/trace-ui-response.txt`, `runs/real-backend-smoke/trace-ui.html` | Passed: trace URL returned HTTP 200. |
 | Native usage/cost/model fields | `runs/real-backend-smoke/summary.txt`, `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/dashboard-rich.har` | Passed: LangFuse classified `token_usage` as a `GENERATION`, set `model=gpt-4o-mini`, recorded 13 tokens, calculated `$0.000003299999`, and dashboard cost/model queries returned non-null values. |
-| Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields for learning loops. |
+| Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`, `runs/claude-transcript-langfuse/learning-loop-summary.txt` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields and a redacted tool-call summary for learning loops. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
 | Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
 | Repeatable real-backend runner | `run-smoke.sh`, `runs/real-backend-smoke/summary.txt`, `scripts/langfuse-local.sh` | Passed through `scripts/langfuse-local.sh smoke` using the ignored local Compose override/env generated under `.agentic/langfuse/`. |
@@ -90,6 +90,30 @@ Unit evidence now covers hook-path extraction, redacted transcript
 normalization, and `result.modelUsage` availability through the workspace-run
 path. This is terminalization-time collection for completed interactive Claude
 workspace runs; continuous mid-run transcript streaming remains unproven.
+
+## Learning-Loop Query Shape
+
+The agent-facing `itmux langfuse-trace` summary now includes a deterministic,
+redacted tool-call summary derived from LangFuse observation metadata. Current
+evidence from `runs/claude-transcript-langfuse/learning-loop-summary.txt`:
+
+- Trace id: `78568acaeec8a7753be1d3228546d9a6`
+- Harness/provider: `claude` / `anthropic`
+- Models: `claude-haiku-4-5-20251001`,
+  `claude-sonnet-4-5-20250929`
+- Total tokens: `122272`
+- Calculated total cost: `0.09459785`
+- Tool starts: `5`
+- Tool ends: `5`
+- Tool successes: `5`
+- Tool failures: `0`
+- Tool names: `Bash`, `TodoWrite`, `Write`
+
+The full JSON summary in
+`runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`
+includes `tools.by_name` counts and a compact `tools.sequence` sorted by
+observation timestamp/id. Tool inputs and outputs remain redacted in the
+underlying observations.
 
 ## Live Claude Workspace Smoke
 
