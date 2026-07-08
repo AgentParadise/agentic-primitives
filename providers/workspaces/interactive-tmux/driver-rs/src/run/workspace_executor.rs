@@ -713,12 +713,37 @@ pub fn run(
     emit: &mut dyn FnMut(&AgentRunEvent),
 ) -> io::Result<AgentRunResult> {
     let plan = load_execution_plan(spec).map_err(|e| io::Error::other(e.to_string()))?;
+    run_with_plan(
+        spec,
+        &plan,
+        image,
+        run_id,
+        cancel,
+        allow_host_fallback,
+        emit,
+    )
+}
+
+/// Drive a run with a plan the caller has already loaded.
+///
+/// This keeps the public [`run`] entry point convenient while allowing CLI
+/// code that must inspect the plan for dispatch decisions to avoid loading the
+/// same recipe twice.
+pub fn run_with_plan(
+    spec: &AgentRunSpec,
+    plan: &RecipeExecutionPlan,
+    image: &str,
+    run_id: &str,
+    cancel: &CancelToken,
+    allow_host_fallback: bool,
+    emit: &mut dyn FnMut(&AgentRunEvent),
+) -> io::Result<AgentRunResult> {
     let timeout = spec
         .limits
         .as_ref()
         .and_then(|l| l.timeout_s)
         .map(Duration::from_secs_f64);
-    let mut executor = WorkspaceExecutor::new(spec, &plan, image, allow_host_fallback)?;
+    let mut executor = WorkspaceExecutor::new(spec, plan, image, allow_host_fallback)?;
     let mut now = now_rfc3339;
     let mut fanout = ObservabilityFanout::new(&spec.observability);
     let mut fanout_emit = |event: &AgentRunEvent| {
@@ -727,7 +752,7 @@ pub fn run(
     };
     let mut result = run_core(
         run_id,
-        &plan,
+        plan,
         timeout,
         &mut executor,
         cancel,

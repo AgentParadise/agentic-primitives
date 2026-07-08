@@ -29,7 +29,7 @@ use itmux::run::observability::{
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
-use itmux::run::workspace_executor::{generate_run_id, now_rfc3339, run as run_orchestrated};
+use itmux::run::workspace_executor::{generate_run_id, now_rfc3339};
 use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
     DEFAULT_TMUX_ROWS, DEFAULT_WORKDIR,
@@ -56,6 +56,13 @@ enum CodexRunMode {
     Tui,
     /// Run `codex exec --json` and normalize its structured event stream.
     Exec,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunDispatch {
+    WorkspaceTui,
+    CodexExec,
+    AgentMismatch,
 }
 
 #[derive(Subcommand, Debug)]
@@ -915,6 +922,15 @@ fn codex_model_for_exec(recipe_model: &str) -> Option<String> {
     non_empty_string(Some(model.to_string()))
 }
 
+fn select_run_dispatch(agent: Agent, codex_mode: CodexRunMode) -> RunDispatch {
+    match (agent, codex_mode) {
+        (Agent::Codex, CodexRunMode::Exec) => RunDispatch::CodexExec,
+        (Agent::Codex, CodexRunMode::Tui) => RunDispatch::WorkspaceTui,
+        (_, CodexRunMode::Exec) => RunDispatch::AgentMismatch,
+        (_, CodexRunMode::Tui) => RunDispatch::WorkspaceTui,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_run(
     recipe: PathBuf,
@@ -952,29 +968,32 @@ fn handle_run(
             return ExitCode::from(1);
         }
     };
-    if plan.agent == Agent::Codex && codex_mode == CodexRunMode::Exec {
-        let model =
-            codex_model_for_exec(&plan.model_name).or_else(|| resolve_codex_exec_model(None));
-        return handle_codex_exec_with_exporters(CodexExecRunOptions {
-            prompt: plan.submit_text,
-            codex_bin,
-            model,
-            sandbox: codex_sandbox,
-            json,
-            result_file,
-            exporters: spec.observability,
-            run_id,
-            log_prefix: "itmux run codex-exec",
-            human_label: "run codex-exec",
-        });
-    }
-    if plan.agent != Agent::Codex && codex_mode == CodexRunMode::Exec {
-        eprintln!(
-            "[itmux run] --codex-mode exec was requested, but recipe {} default agent is {}",
-            spec_recipe.display(),
-            plan.agent.as_str()
-        );
-        return ExitCode::from(64);
+    match select_run_dispatch(plan.agent, codex_mode) {
+        RunDispatch::CodexExec => {
+            let model =
+                codex_model_for_exec(&plan.model_name).or_else(|| resolve_codex_exec_model(None));
+            return handle_codex_exec_with_exporters(CodexExecRunOptions {
+                prompt: plan.submit_text,
+                codex_bin,
+                model,
+                sandbox: codex_sandbox,
+                json,
+                result_file,
+                exporters: spec.observability,
+                run_id,
+                log_prefix: "itmux run codex-exec",
+                human_label: "run codex-exec",
+            });
+        }
+        RunDispatch::AgentMismatch => {
+            eprintln!(
+                "[itmux run] --codex-mode exec was requested, but recipe {} default agent is {}",
+                spec_recipe.display(),
+                plan.agent.as_str()
+            );
+            return ExitCode::from(64);
+        }
+        RunDispatch::WorkspaceTui => {}
     }
     let cancel = CancelToken::new();
 
@@ -1000,8 +1019,9 @@ fn handle_run(
         }
     };
 
-    let run_result = run_orchestrated(
+    let run_result = itmux::run::workspace_executor::run_with_plan(
         &spec,
+        &plan,
         &image,
         &run_id,
         &cancel,
@@ -3745,6 +3765,26 @@ mod cli_tests {
             }
             other => panic!("expected run command, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn run_dispatch_only_uses_exec_for_codex_recipes() {
+        assert_eq!(
+            select_run_dispatch(Agent::Codex, CodexRunMode::Exec),
+            RunDispatch::CodexExec
+        );
+        assert_eq!(
+            select_run_dispatch(Agent::Codex, CodexRunMode::Tui),
+            RunDispatch::WorkspaceTui
+        );
+        assert_eq!(
+            select_run_dispatch(Agent::Claude, CodexRunMode::Exec),
+            RunDispatch::AgentMismatch
+        );
+        assert_eq!(
+            select_run_dispatch(Agent::Claude, CodexRunMode::Tui),
+            RunDispatch::WorkspaceTui
+        );
     }
 
     #[test]
