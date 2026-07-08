@@ -40,6 +40,21 @@
 # See ClaudeToolName in agentic_events.types.
 ARG CLAUDE_CLI_VERSION=2.1.126
 
+FROM rust:1.88-slim AS itmux-builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    pkg-config \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+WORKDIR /src
+COPY driver-rs/ /src/
+RUN cargo build --release --locked
+
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
 # =============================================================================
@@ -186,6 +201,7 @@ COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 # Each plugin is a self-contained directory with .claude-plugin/plugin.json
 # and hooks/hooks.json using ${CLAUDE_PLUGIN_ROOT} for path resolution.
 COPY plugins/ /opt/agentic/plugins/
+COPY --from=itmux-builder /src/target/release/itmux /usr/local/bin/itmux
 
 # Copy memory primitive adapters (ADR-036)
 # The /opt/agentic/memory/ tree holds:
@@ -202,6 +218,7 @@ RUN mkdir -p /var/agentic/memory-doctor \
 
 # Set permissions on plugins, entrypoint, memory adapters, and workspace-shipped hooks
 RUN chmod -R 755 /opt/agentic/plugins /opt/agentic/git-hooks \
+    && chmod 755 /usr/local/bin/itmux \
     && find /opt/agentic/plugins -name "*.py" -exec chmod 755 {} \; \
     && chmod 755 /opt/agentic/entrypoint.sh \
     && chmod 755 /opt/agentic/memory/doctor \

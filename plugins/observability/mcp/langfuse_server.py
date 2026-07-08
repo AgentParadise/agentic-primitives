@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,13 @@ from typing import Any
 
 PROTOCOL_VERSION = "2024-11-05"
 DEFAULT_TIMEOUT_S = 60
+REDACTION = "[REDACTED]"
+SECRET_PATTERNS = [
+    re.compile(r"sk-lf-[A-Za-z0-9._-]+"),
+    re.compile(r"pk-lf-[A-Za-z0-9._-]+"),
+    re.compile(r"(?i)(authorization:\s*(?:basic|bearer)\s+)[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)((?:LANGFUSE_SECRET_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)=)[^\s]+"),
+]
 
 
 def _text_schema(description: str) -> dict[str, Any]:
@@ -163,7 +171,7 @@ TOOLS: list[dict[str, Any]] = [
                 "langfuse_base_url": _text_schema("Optional LangFuse origin or OTLP endpoint override."),
             },
             "required": ["name", "value"],
-            "anyOf": [{"required": ["run_id"]}, {"required": ["trace_id"]}],
+            "oneOf": [{"required": ["run_id"]}, {"required": ["trace_id"]}],
             "additionalProperties": False,
         },
     },
@@ -298,6 +306,8 @@ class McpServer:
     def _langfuse_score(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = [self.itmux_bin, "langfuse-score"]
         self._add_trace_selector(cmd, args)
+        args = {**args}
+        args.setdefault("data_type", "boolean")
         for flag in ("score_id", "name", "data_type", "comment"):
             self._add_option(cmd, f"--{flag.replace('_', '-')}", args.get(flag))
         self._add_option(cmd, "--value", args.get("value"))
@@ -330,12 +340,12 @@ class McpServer:
                 "payload": {
                     "ok": False,
                     "error": f"itmux command timed out after {self.timeout_s}s",
-                    "stdout": exc.stdout,
-                    "stderr": exc.stderr,
+                    "stdout": _redact(exc.stdout),
+                    "stderr": _redact(exc.stderr),
                 },
             }
-        stdout = completed.stdout.strip()
-        stderr = completed.stderr.strip()
+        stdout = _redact(completed.stdout.strip())
+        stderr = _redact(completed.stderr.strip())
         try:
             payload: Any = json.loads(stdout) if stdout else {}
         except json.JSONDecodeError:
@@ -396,6 +406,15 @@ def _frame(payload: dict[str, Any]) -> bytes:
     return f"Content-Length: {len(data)}\r\n\r\n".encode("ascii") + data
 
 
+def _redact(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    redacted = value
+    for pattern in SECRET_PATTERNS:
+        redacted = pattern.sub(lambda match: f"{match.group(1)}{REDACTION}" if match.lastindex else REDACTION, redacted)
+    return redacted
+
+
 def _read_framed_payloads(data: bytes) -> list[dict[str, Any]]:
     payloads = []
     offset = 0
@@ -421,7 +440,13 @@ def self_test() -> int:
         fake.write_text(
             "#!/usr/bin/env python3\n"
             "import json, sys\n"
-            "print(json.dumps({'ok': True, 'argv': sys.argv[1:]}))\n",
+            "argv = sys.argv[1:]\n"
+            "if '--fail-with-secret' in argv:\n"
+            "    secret = 'sk' + '-lf-test-secret'\n"
+            "    print(secret)\n"
+            "    print('Author' + 'ization: ' + 'Basic ' + 'abc123secret', file=sys.stderr)\n"
+            "    raise SystemExit(7)\n"
+            "print(json.dumps({'ok': True, 'argv': argv}))\n",
             encoding="utf-8",
         )
         fake.chmod(0o755)
@@ -438,6 +463,50 @@ def self_test() -> int:
                         "params": {
                             "name": "agentic_langfuse_trace_summary",
                             "arguments": {"run_id": "run-test", "include_scores": True},
+                        },
+                    }
+                )
+                + _frame(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 4,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "agentic_langfuse_trace_discovery",
+                            "arguments": {"harness": "codex", "limit": 3},
+                        },
+                    }
+                )
+                + _frame(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 5,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "agentic_langfuse_scores",
+                            "arguments": {"trace_id": "0" * 32, "name": "agentic.test"},
+                        },
+                    }
+                )
+                + _frame(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 6,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "agentic_langfuse_score_feedback",
+                            "arguments": {"run_id": "run-test", "name": "agentic.test", "value": True},
+                        },
+                    }
+                )
+                + _frame(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 7,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "agentic_langfuse_trace_discovery",
+                            "arguments": {"harness": "--fail-with-secret"},
                         },
                     }
                 )
@@ -458,6 +527,20 @@ def self_test() -> int:
         assert called[:3] == ["langfuse-trace", "--output", "summary"]
         assert "--run-id" in called and "run-test" in called
         assert "--include-scores" in called
+        discovery = json.loads(payloads[3]["result"]["content"][0]["text"])["argv"]
+        assert discovery[:1] == ["langfuse-traces"]
+        assert "--harness" in discovery and "codex" in discovery
+        scores = json.loads(payloads[4]["result"]["content"][0]["text"])["argv"]
+        assert scores[:1] == ["langfuse-scores"]
+        assert "--trace-id" in scores and "0" * 32 in scores
+        score = json.loads(payloads[5]["result"]["content"][0]["text"])["argv"]
+        assert score[:1] == ["langfuse-score"]
+        assert "--data-type" in score and "boolean" in score
+        failed = json.loads(payloads[6]["result"]["content"][0]["text"])
+        assert payloads[6]["result"]["isError"] is True
+        assert REDACTION in failed["raw_stdout"]
+        assert "Author" + "ization: Basic [REDACTED]" in failed["stderr"]
+        assert "sk" + "-lf-test-secret" not in failed["raw_stdout"]
         return 0
 
 

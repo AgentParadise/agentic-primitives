@@ -33,6 +33,21 @@ ARG CODEX_CLI_VERSION=0.139.0
 # Latest at hypothesis commit time; LSB-class CLI, no per-version probe yet.
 ARG GEMINI_CLI_VERSION=latest
 
+FROM rust:1.88-slim AS itmux-builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    pkg-config \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+WORKDIR /src
+COPY driver-rs/ /src/
+RUN cargo build --release --locked
+
 FROM node:22-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -83,7 +98,9 @@ RUN usermod -l agent -d /home/agent -m node \
 # orchestrates tmux), so we do not pre-populate ~/.claude/settings.json
 # (which would clobber mounted user prefs — EXP-01 FRICTION F-2).
 COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
+COPY --from=itmux-builder /src/target/release/itmux /usr/local/bin/itmux
 RUN chmod 755 /opt/agentic/entrypoint.sh \
+    && chmod 755 /usr/local/bin/itmux \
     && mkdir -p /opt/agentic \
     && chown -R agent:agent /opt/agentic
 

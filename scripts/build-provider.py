@@ -135,6 +135,30 @@ def stage_memory(provider: str, build_context: Path) -> None:
             print(f"  ✓ Memory: {path.relative_to(memory_dst)}")
 
 
+def stage_itmux_driver(manifest: dict, build_context: Path) -> None:
+    """Stage the Rust itmux driver when a provider bakes observability.
+
+    The observability plugin's LangFuse MCP server delegates to `itmux
+    langfuse-*`. Providers that include the plugin need the same binary inside
+    their image so Claude plugin usage and Codex MCP usage share one query path.
+    """
+    plugin_names = manifest.get("plugins", {}).get("include", [])
+    if "observability" not in plugin_names:
+        print("  ⊘ No itmux driver needed")
+        return
+
+    src = PROVIDERS_DIR / "interactive-tmux" / "driver-rs"
+    if not src.exists():
+        print(f"  ⚠ itmux driver not found: {src}")
+        return
+
+    dst = build_context / "driver-rs"
+    if dst.exists():
+        shutil.rmtree(dst)
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("target"))
+    print("  ✓ itmux driver source")
+
+
 def build_wheels(build_context: Path) -> None:
     """Build wheels for agentic packages."""
     packages_dir = build_context / "packages"
@@ -265,6 +289,7 @@ def main():
     stage_scripts(provider, build_context)
     stage_plugins(manifest, build_context)
     stage_memory(provider, build_context)
+    stage_itmux_driver(manifest, build_context)
     build_wheels(build_context)
 
     if args.stage_only:
