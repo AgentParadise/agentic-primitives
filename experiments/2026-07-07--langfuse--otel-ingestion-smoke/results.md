@@ -10,6 +10,7 @@
 | Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`, `runs/claude-transcript-langfuse/learning-loop-summary.txt` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields and a redacted tool-call summary for learning loops. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
 | Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
+| Live Claude poll-time streaming | `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`, `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`, `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: hook and transcript-derived token usage events streamed before `await` ended, message-level usage was deduplicated to one event, and LangFuse classified usage as `GENERATION` with model, token totals, and calculated cost. |
 | Repeatable real-backend runner | `run-smoke.sh`, `runs/real-backend-smoke/summary.txt`, `scripts/langfuse-local.sh` | Passed through `scripts/langfuse-local.sh smoke` using the ignored local Compose override/env generated under `.agentic/langfuse/`. |
 
 ## Local Synthetic Trace
@@ -85,11 +86,9 @@ tool result content is summarized by length, and `result.json` omits the raw
 transcript from `session_log`.
 
 After this backend smoke, `itmux run` was wired to drain Claude transcript files
-at terminalization when the Claude hook stream reports a `transcript_path`.
-Unit evidence now covers hook-path extraction, redacted transcript
-normalization, and `result.modelUsage` availability through the workspace-run
-path. This is terminalization-time collection for completed interactive Claude
-workspace runs; continuous mid-run transcript streaming remains unproven.
+when the Claude hook stream reports a `transcript_path`. Unit evidence now
+covers hook-path extraction, redacted transcript normalization, and
+`result.modelUsage` availability through the workspace-run path.
 
 ## Learning-Loop Query Shape
 
@@ -145,3 +144,34 @@ non-observable content, redacts parse-error summaries, and enables
 assistant-message usage only for the workspace-run drain path. The committed
 live evidence has its pane `session_log` redacted and scans clean for the prompt
 text, hook preview fields, auth headers, and secret-like test strings.
+
+## Live Claude Poll-Time Streaming Smoke
+
+The local Docker Compose LangFuse backend also accepted a real Claude run with
+poll-time hook/transcript delta draining enabled.
+
+Current key evidence from
+`runs/claude-live-streaming-dedupe-itmux-run/summary.txt`:
+
+- Run id: `run-ab55ce30`
+- Trace id: `93268b3ab949a092fc5131ab224367ef`
+- Events exported: `15`
+- Backend observation count: `16`
+- Observed events before `await` ended: `4`
+- Token usage events: `1`
+- Observation types: `GENERATION`, `SPAN`
+- Model names: `claude-sonnet-4-6`
+- Native input tokens: `3`
+- Native output tokens: `14`
+- Native total tokens: `15735`
+- Calculated total cost: `0.000219`
+- Harness values: `claude`
+- Provider values: `anthropic`
+
+The event-order evidence shows `session_started`, `user_prompt_submitted`,
+`agent_stopped`, and one transcript-derived `token_usage` event emitted before
+the `await` phase ended. A longer exploratory run exposed duplicate
+message-level usage during live transcript polling; the observer now
+deduplicates assistant message usage by message id, with a conservative usage
+fingerprint fallback. The short smoke confirms one token usage event for the
+live run.

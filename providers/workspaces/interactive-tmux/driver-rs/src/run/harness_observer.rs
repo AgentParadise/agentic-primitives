@@ -5,7 +5,7 @@
 //! or future harness surfaces; fanout exporters only receive normalized run
 //! events.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 
@@ -157,6 +157,7 @@ impl HarnessObserver for CodexExecJsonObserver {
 #[derive(Debug, Default)]
 pub struct ClaudeTranscriptObserver {
     tool_names: HashMap<String, String>,
+    seen_message_usage: HashSet<String>,
     emit_message_usage: bool,
 }
 
@@ -198,20 +199,23 @@ impl HarnessObserver for ClaudeTranscriptObserver {
                     if let (Some(model), Some(usage)) =
                         (message.model.as_deref(), message.usage.as_ref())
                     {
-                        out.push(Self::event(AgentRunEventPayload::TokenUsage {
-                            input_tokens: usage.input_tokens,
-                            output_tokens: usage.output_tokens,
-                            cached_input_tokens: Some(
-                                usage
-                                    .cache_read_input_tokens
-                                    .saturating_add(usage.cache_creation_input_tokens),
-                            ),
-                            reasoning_output_tokens: None,
-                            cost_usd: None,
-                            harness: Some("claude".to_string()),
-                            provider: Some("anthropic".to_string()),
-                            model: Some(model.to_string()),
-                        }));
+                        let usage_key = message_usage_key(&message, model, usage);
+                        if self.seen_message_usage.insert(usage_key) {
+                            out.push(Self::event(AgentRunEventPayload::TokenUsage {
+                                input_tokens: usage.input_tokens,
+                                output_tokens: usage.output_tokens,
+                                cached_input_tokens: Some(
+                                    usage
+                                        .cache_read_input_tokens
+                                        .saturating_add(usage.cache_creation_input_tokens),
+                                ),
+                                reasoning_output_tokens: None,
+                                cost_usd: None,
+                                harness: Some("claude".to_string()),
+                                provider: Some("anthropic".to_string()),
+                                model: Some(model.to_string()),
+                            }));
+                        }
                     }
                 }
                 for item in message.content_items() {
@@ -311,11 +315,26 @@ enum ClaudeTranscriptJsonEvent {
 #[derive(Debug, Deserialize)]
 struct ClaudeMessage {
     #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
     model: Option<String>,
     #[serde(default)]
     usage: Option<ClaudeAssistantUsage>,
     #[serde(default)]
     content: serde_json::Value,
+}
+
+fn message_usage_key(message: &ClaudeMessage, model: &str, usage: &ClaudeAssistantUsage) -> String {
+    if let Some(id) = message.id.as_deref().filter(|id| !id.trim().is_empty()) {
+        return format!("id:{id}");
+    }
+    format!(
+        "usage:{model}:{}:{}:{}:{}",
+        usage.input_tokens,
+        usage.output_tokens,
+        usage.cache_read_input_tokens,
+        usage.cache_creation_input_tokens
+    )
 }
 
 impl ClaudeMessage {
@@ -709,5 +728,39 @@ mod tests {
                 && provider.as_deref() == Some("anthropic")
                 && model.as_deref() == Some("claude-sonnet-4-5-20250929")
         ));
+    }
+
+    #[test]
+    fn claude_transcript_deduplicates_replayed_assistant_message_usage() {
+        let mut observer = ClaudeTranscriptObserver::new().with_message_usage(true);
+        let line = r#"{"type":"assistant","message":{"id":"msg_1","model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":6,"cache_creation_input_tokens":2,"cache_read_input_tokens":11,"output_tokens":3}}}"#;
+
+        let first = observer
+            .observe_jsonl_line(line)
+            .expect("first message usage parses");
+        let second = observer
+            .observe_jsonl_line(line)
+            .expect("replayed message usage parses");
+
+        assert_eq!(first.len(), 1);
+        assert!(second.is_empty());
+    }
+
+    #[test]
+    fn claude_transcript_keeps_distinct_assistant_message_usage_ids() {
+        let mut observer = ClaudeTranscriptObserver::new().with_message_usage(true);
+        let first = observer
+            .observe_jsonl_line(
+                r#"{"type":"assistant","message":{"id":"msg_1","model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"one"}],"usage":{"input_tokens":6,"cache_creation_input_tokens":2,"cache_read_input_tokens":11,"output_tokens":3}}}"#,
+            )
+            .expect("first usage parses");
+        let second = observer
+            .observe_jsonl_line(
+                r#"{"type":"assistant","message":{"id":"msg_2","model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"two"}],"usage":{"input_tokens":6,"cache_creation_input_tokens":2,"cache_read_input_tokens":11,"output_tokens":3}}}"#,
+            )
+            .expect("second usage parses");
+
+        assert_eq!(first.len(), 1);
+        assert_eq!(second.len(), 1);
     }
 }

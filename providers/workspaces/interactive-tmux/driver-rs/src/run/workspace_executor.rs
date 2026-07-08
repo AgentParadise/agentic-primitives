@@ -60,6 +60,10 @@ pub struct WorkspaceExecutor {
     claude_omit_credentials: bool,
     env_vars: Vec<(String, String)>,
     hook_events_path: Option<String>,
+    hook_events_bytes_read: usize,
+    transcript_paths: BTreeSet<String>,
+    transcript_bytes_read: HashMap<String, usize>,
+    transcript_observers: HashMap<String, ClaudeTranscriptObserver>,
     startup_timeout_s: f64,
     /// Temp dirs holding credentials materialised from the spec; removed on
     /// teardown so inline credential material never lingers on disk.
@@ -111,6 +115,10 @@ impl WorkspaceExecutor {
             claude_omit_credentials: wiring.claude_omit_credentials,
             env_vars: hook_sink_env(agent),
             hook_events_path: hook_events_path(agent),
+            hook_events_bytes_read: 0,
+            transcript_paths: BTreeSet::new(),
+            transcript_bytes_read: HashMap::new(),
+            transcript_observers: HashMap::new(),
             startup_timeout_s: DEFAULT_STARTUP_TIMEOUT_S,
             cred_tmp_dirs,
         })
@@ -175,6 +183,7 @@ impl RunExecutor for WorkspaceExecutor {
         &mut self,
         handle: &mut Self::Handle,
         timeout: Option<Duration>,
+        emit_observed: &mut dyn FnMut(Vec<AgentRunEventPayload>),
     ) -> io::Result<AwaitResult> {
         // TODO(#248): like `provision`, `await_completion` is a BLOCKING bounded
         // poll loop that does not observe the `CancelToken` mid-poll. A hard
@@ -182,9 +191,18 @@ impl RunExecutor for WorkspaceExecutor {
         // orchestrator then tears down the handle. Making the poll loop
         // cancel-aware (so a hard cancel returns promptly) is part of #248.
         let secs = timeout.map_or(DEFAULT_AWAIT_TIMEOUT_S, |d| d.as_secs_f64());
-        handle
-            .workspace
-            .await_completion(handle.agent, secs, 4, 0.5, 2.0)
+        handle.workspace.await_completion_with_poll_callback(
+            handle.agent,
+            secs,
+            4,
+            0.5,
+            2.0,
+            &mut |workspace| match self.drain_observed_event_deltas(workspace) {
+                Ok(payloads) if !payloads.is_empty() => emit_observed(payloads),
+                Ok(_) => {}
+                Err(err) => eprintln!("[itmux run] failed to drain observed events: {err}"),
+            },
+        )
     }
 
     fn capture(&mut self, handle: &mut Self::Handle) -> io::Result<String> {
@@ -213,28 +231,7 @@ impl RunExecutor for WorkspaceExecutor {
         &mut self,
         handle: &mut Self::Handle,
     ) -> io::Result<Vec<AgentRunEventPayload>> {
-        let Some(path) = self.hook_events_path.as_deref() else {
-            return Ok(Vec::new());
-        };
-        let output = handle.workspace.exec(&[
-            "sh",
-            "-lc",
-            &format!("if [ -f {path} ]; then cat {path}; fi"),
-        ])?;
-        if !output.status.success() {
-            return Err(io::Error::other(format!(
-                "read hook events failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed = parse_hook_events(&stdout);
-        let mut payloads = parsed.payloads;
-        for transcript_path in parsed.transcript_paths {
-            let transcript = read_workspace_file_if_present(&handle.workspace, &transcript_path)?;
-            payloads.extend(parse_claude_transcript_events(&transcript));
-        }
-        Ok(payloads)
+        self.drain_observed_event_deltas(&handle.workspace)
     }
 
     fn teardown(&mut self, handle: Self::Handle) -> io::Result<()> {
@@ -278,13 +275,60 @@ struct CredentialWiring {
     claude_omit_credentials: bool,
 }
 
+impl WorkspaceExecutor {
+    fn drain_observed_event_deltas(
+        &mut self,
+        workspace: &Workspace,
+    ) -> io::Result<Vec<AgentRunEventPayload>> {
+        let Some(path) = self.hook_events_path.clone() else {
+            return Ok(Vec::new());
+        };
+        let (stdout, bytes_read) =
+            read_workspace_file_delta_if_present(workspace, &path, self.hook_events_bytes_read)?;
+        self.hook_events_bytes_read = bytes_read;
+        let parsed = parse_hook_events(&stdout);
+        let mut payloads = parsed.payloads;
+        for transcript_path in parsed.transcript_paths {
+            self.transcript_paths.insert(transcript_path);
+        }
+        let transcript_paths = self.transcript_paths.iter().cloned().collect::<Vec<_>>();
+        for transcript_path in transcript_paths {
+            let offset = self
+                .transcript_bytes_read
+                .get(&transcript_path)
+                .copied()
+                .unwrap_or_default();
+            let (transcript_delta, bytes_read) =
+                read_workspace_file_delta_if_present(workspace, &transcript_path, offset)?;
+            self.transcript_bytes_read
+                .insert(transcript_path.clone(), bytes_read);
+            payloads.extend(
+                self.parse_claude_transcript_event_deltas(&transcript_path, &transcript_delta),
+            );
+        }
+        Ok(payloads)
+    }
+
+    fn parse_claude_transcript_event_deltas(
+        &mut self,
+        transcript_path: &str,
+        raw: &str,
+    ) -> Vec<AgentRunEventPayload> {
+        let observer = self
+            .transcript_observers
+            .entry(transcript_path.to_string())
+            .or_insert_with(|| ClaudeTranscriptObserver::new().with_message_usage(true));
+        parse_claude_transcript_events_with_observer(observer, raw)
+    }
+}
+
 /// Resolve credentials for `agent` from `spec` (R1-R3).
 ///
 /// Precedence (per user + R8): env-var/file secrets from `spec.credentials`
 /// (populated by the `.env`/process-env loader) are preferred. When the agent
 /// has NO credentials: with `allow_host_fallback` we fall back to the host
 /// `$HOME/.<agent>` dir (warned to stderr - PATH only, never token contents);
-/// without it we FAIL FAST with an actionable error naming the missing var.
+/// without it we fail fast with an actionable error naming the missing var.
 fn resolve_launch_credentials(
     spec: &AgentRunSpec,
     agent: Agent,
@@ -500,8 +544,28 @@ fn read_workspace_file_if_present(workspace: &Workspace, path: &str) -> io::Resu
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+fn read_workspace_file_delta_if_present(
+    workspace: &Workspace,
+    path: &str,
+    offset: usize,
+) -> io::Result<(String, usize)> {
+    let raw = read_workspace_file_if_present(workspace, path)?;
+    if raw.len() <= offset {
+        return Ok((String::new(), raw.len()));
+    }
+    Ok((raw[offset..].to_string(), raw.len()))
+}
+
+#[cfg(test)]
 fn parse_claude_transcript_events(raw: &str) -> Vec<AgentRunEventPayload> {
     let mut observer = ClaudeTranscriptObserver::new().with_message_usage(true);
+    parse_claude_transcript_events_with_observer(&mut observer, raw)
+}
+
+fn parse_claude_transcript_events_with_observer(
+    observer: &mut ClaudeTranscriptObserver,
+    raw: &str,
+) -> Vec<AgentRunEventPayload> {
     let mut payloads = Vec::new();
     for line in raw.lines() {
         match observer.observe_jsonl_line(line) {

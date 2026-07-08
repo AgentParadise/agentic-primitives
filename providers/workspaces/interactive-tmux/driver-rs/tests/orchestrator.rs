@@ -135,8 +135,12 @@ impl RunExecutor for FakeExecutor {
         &mut self,
         _h: &mut Self::Handle,
         _timeout: Option<Duration>,
+        emit_observed: &mut dyn FnMut(Vec<AgentRunEventPayload>),
     ) -> io::Result<AwaitResult> {
         self.step(FakePhase::Await)?;
+        if !self.observed_events.is_empty() {
+            emit_observed(std::mem::take(&mut self.observed_events));
+        }
         Ok(if self.await_timed_out {
             AwaitResult::timeout_never_ready(10.0, self.pane.clone())
         } else {
@@ -323,10 +327,39 @@ fn observed_events_are_emitted_before_terminal_session_end() {
     });
 
     assert_seq_monotonic_from_zero(&run.events);
-    assert!(matches!(
-        run.events[run.events.len() - 2].payload,
-        AgentRunEventPayload::HookEvent { .. }
-    ));
+    assert!(run
+        .events
+        .iter()
+        .any(|event| matches!(event.payload, AgentRunEventPayload::HookEvent { .. })));
+    let await_start = run
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.payload,
+                AgentRunEventPayload::ToolStart { ref tool_name, .. } if tool_name == "await"
+            )
+        })
+        .expect("await starts");
+    let await_end = run
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.payload,
+                AgentRunEventPayload::ToolEnd { ref tool_name, .. } if tool_name == "await"
+            )
+        })
+        .expect("await ends");
+    let observed = run
+        .events
+        .iter()
+        .position(|event| matches!(event.payload, AgentRunEventPayload::HookEvent { .. }))
+        .expect("observed event emitted");
+    assert!(
+        await_start < observed && observed < await_end,
+        "observed event should stream during await, not wait for terminal drain"
+    );
     assert!(matches!(
         run.events[run.events.len() - 1].payload,
         AgentRunEventPayload::SessionEnd { .. }

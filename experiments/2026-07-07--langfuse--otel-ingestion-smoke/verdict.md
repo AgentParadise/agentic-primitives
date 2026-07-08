@@ -28,6 +28,7 @@ evidence under `runs/real-backend-smoke/`.
 | Token usage becomes native LangFuse usage/cost/model data, not only metadata | Observed `token_usage` as `GENERATION`, model `gpt-4o-mini`, 13 tokens, calculated total cost `0.000003299999` | correct for Codex | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`; `/tmp/langfuse-playwright/dashboard-rich.har`. |
 | Claude transcript usage maps into the same backend contract | Observed two Claude `token_usage` generations, five tool-start spans, five tool-end spans, harness `claude`, provider `anthropic`, both Claude model names, 122272 total tokens, and calculated cost `0.09459785`; transcript-derived tool values are redacted in the committed evidence | correct for transcript export | `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json`; `runs/claude-transcript-langfuse/summary.txt`. |
 | Completed Claude workspace runs can export useful LangFuse traces | Live `itmux run` exported 15 events; LangFuse returned 16 observations with hook spans, tool spans, one `token_usage` generation, harness `claude`, provider `anthropic`, model `claude-sonnet-4-6`, 15737 total tokens, and calculated cost `0.000234` | correct for terminalization-time collection | `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json`; `runs/claude-live-itmux-run/summary.txt`. |
+| Claude workspace runs can stream observed events before await ends | Live `itmux run` exported hook events and one transcript-derived `token_usage` event before the `await` phase ended; LangFuse returned 16 observations, native `GENERATION` usage, model `claude-sonnet-4-6`, 15735 total tokens, and calculated cost `0.000219` | correct for poll-time hook/transcript delta collection | `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`; `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json`; `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`. |
 | Agents can query useful learning-loop summaries | `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness, provider, model, token totals, cost, tool counts by name, tool success/failure counts, and a compact redacted tool sequence | correct for local self-host | `/tmp/langfuse-playwright/trace-rich-summary.json`; `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`; `runs/claude-transcript-langfuse/learning-loop-summary.txt`. |
 | Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; local ignored env is not committed | correct | `run-smoke.sh`; `scripts/langfuse-local.sh`; `.agentic/` ignored. |
 
@@ -47,10 +48,11 @@ evidence under `runs/real-backend-smoke/`.
 - The normalized `token_usage` event contract now has optional
   `harness`/`provider`/`model` metadata and now has both Codex and Claude
   transcript evidence against the same LangFuse backend. `itmux run` now drains
-  Claude transcripts at terminalization when the hook stream reports a
-  `transcript_path`, and that path is now proven with a live Claude workspace
-  run against LangFuse. Continuous mid-run Claude transcript streaming is still
-  the next implementation gap before claiming full live Claude parity.
+  Claude hook/transcript deltas during the await poll loop when the hook stream
+  reports a `transcript_path`, with terminalization as a final safety drain.
+  That path is now proven with a live Claude workspace run against LangFuse.
+  Broader long-running stress coverage is still needed before treating all
+  possible live Claude transcript shapes as exhausted.
 - External OTLP tool spans intentionally carry redacted tool-input summaries
   instead of raw JSON. The Claude transcript path also redacts transcript-derived
   tool input/output values and omits raw transcript content from `session_log`.

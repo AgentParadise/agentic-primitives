@@ -66,6 +66,7 @@ pub trait RunExecutor {
         &mut self,
         handle: &mut Self::Handle,
         timeout: Option<Duration>,
+        emit_observed: &mut dyn FnMut(Vec<AgentRunEventPayload>),
     ) -> io::Result<AwaitResult>;
 
     /// Capturing: return the session log / pane transcript.
@@ -477,7 +478,8 @@ pub fn run_core<E: RunExecutor>(
         events.phase_start(Phase::Await);
         let await_result = {
             let h = handle.as_mut().expect("handle set by provisioning");
-            match executor.await_completion(h, timeout) {
+            let mut emit_observed = |payloads| events.observed_events(payloads);
+            match executor.await_completion(h, timeout, &mut emit_observed) {
                 Ok(ar) => ar,
                 Err(err) => {
                     let msg = err.to_string();

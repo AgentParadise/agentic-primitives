@@ -570,6 +570,25 @@ impl Workspace {
         poll_interval: f64,
         warmup: f64,
     ) -> Result<AwaitResult> {
+        self.await_completion_with_poll_callback(
+            agent,
+            timeout,
+            stable_polls,
+            poll_interval,
+            warmup,
+            &mut |_| {},
+        )
+    }
+
+    pub fn await_completion_with_poll_callback(
+        &self,
+        agent: Agent,
+        timeout: f64,
+        stable_polls: u32,
+        poll_interval: f64,
+        warmup: f64,
+        on_poll: &mut dyn FnMut(&Workspace),
+    ) -> Result<AwaitResult> {
         self.check_agent(agent)?;
         let start = Instant::now();
         let deadline = start + Duration::from_secs_f64(timeout);
@@ -595,6 +614,7 @@ impl Workspace {
                         if last_tail.as_deref() == Some(&tail) {
                             consecutive_stable_ready += 1;
                             if consecutive_stable_ready >= stable_polls {
+                                on_poll(self);
                                 let elapsed = start.elapsed().as_secs_f64() * 1000.0;
                                 return Ok(AwaitResult::ready(
                                     elapsed,
@@ -611,6 +631,7 @@ impl Workspace {
                     last_tail = Some(tail);
                 }
                 PollStep::Dead(reason) => {
+                    on_poll(self);
                     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
                     return Ok(AwaitResult::container_dead(
                         elapsed,
@@ -628,6 +649,7 @@ impl Workspace {
                     last_tail = None;
                 }
             }
+            on_poll(self);
             thread::sleep(Duration::from_secs_f64(poll_interval));
         }
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
