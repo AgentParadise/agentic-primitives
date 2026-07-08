@@ -158,6 +158,7 @@ impl HarnessObserver for CodexExecJsonObserver {
 pub struct ClaudeTranscriptObserver {
     tool_names: HashMap<String, String>,
     seen_message_usage: HashSet<String>,
+    message_usage_models: HashSet<String>,
     emit_message_usage: bool,
 }
 
@@ -201,6 +202,7 @@ impl HarnessObserver for ClaudeTranscriptObserver {
                     {
                         let usage_key = message_usage_key(&message, model, usage);
                         if self.seen_message_usage.insert(usage_key) {
+                            self.message_usage_models.insert(model.to_string());
                             out.push(Self::event(AgentRunEventPayload::TokenUsage {
                                 input_tokens: usage.input_tokens,
                                 output_tokens: usage.output_tokens,
@@ -255,6 +257,9 @@ impl HarnessObserver for ClaudeTranscriptObserver {
             ClaudeTranscriptJsonEvent::Result { model_usage } => {
                 let mut out = Vec::new();
                 for (model, usage) in model_usage {
+                    if self.emit_message_usage && self.message_usage_models.contains(&model) {
+                        continue;
+                    }
                     out.push(Self::event(AgentRunEventPayload::TokenUsage {
                         input_tokens: usage.input_tokens,
                         output_tokens: usage.output_tokens,
@@ -744,6 +749,34 @@ mod tests {
 
         assert_eq!(first.len(), 1);
         assert!(second.is_empty());
+    }
+
+    #[test]
+    fn claude_transcript_live_usage_skips_seen_result_rollup() {
+        let mut observer = ClaudeTranscriptObserver::new().with_message_usage(true);
+        let assistant = observer
+            .observe_jsonl_line(
+                r#"{"type":"assistant","message":{"id":"msg_1","model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":6,"cache_creation_input_tokens":2,"cache_read_input_tokens":11,"output_tokens":3}}}"#,
+            )
+            .expect("assistant usage parses");
+        let result = observer
+            .observe_jsonl_line(
+                r#"{"type":"result","subtype":"success","modelUsage":{"claude-sonnet-4-5-20250929":{"inputTokens":6,"outputTokens":3,"cacheReadInputTokens":11,"cacheCreationInputTokens":2,"webSearchRequests":0,"costUSD":0.001},"claude-haiku-4-5-20251001":{"inputTokens":1,"outputTokens":2,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.002}}}"#,
+            )
+            .expect("result usage parses");
+
+        assert_eq!(assistant.len(), 1);
+        assert_eq!(result.len(), 1);
+        assert!(matches!(
+            result[0].payload,
+            AgentRunEventPayload::TokenUsage {
+                input_tokens: 1,
+                output_tokens: 2,
+                cost_usd: Some(0.002),
+                ref model,
+                ..
+            } if model.as_deref() == Some("claude-haiku-4-5-20251001")
+        ));
     }
 
     #[test]

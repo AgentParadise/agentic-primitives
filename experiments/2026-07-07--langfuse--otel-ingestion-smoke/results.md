@@ -13,6 +13,8 @@
 | Trace discovery mode | `runs/langfuse-traces-discovery/summary.txt`, `runs/langfuse-traces-discovery/recent-summary.json`, `runs/langfuse-traces-discovery/codex-summary.json`, `runs/langfuse-traces-discovery/claude-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-traces` lists recent traces without raw backend `response`, reports run ids, harness/provider/model, cost, observation counts, and supports harness filtering for Codex vs Claude. |
 | Feedback write-back | `runs/langfuse-score-feedback/create-score.json`, `runs/langfuse-score-feedback/itmux-langfuse-scores-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-score` created a boolean score on the live Codex trace, and `itmux langfuse-scores` read it back by run id, score id, name, and data type with trace environment/tags. |
 | Trace summary with feedback | `runs/langfuse-trace-with-scores/codex-trace-with-scores-summary.json`, `runs/langfuse-trace-with-scores/summary.txt` | Passed against local LangFuse Docker Compose: `itmux langfuse-trace --include-scores --output summary --run-id run-f7ae62c8` returned the Codex trace cost/tool/event summary plus the attached feedback score in one compact payload without raw backend `response`. |
+| Generation cost breakdown | `runs/langfuse-generation-breakdown/codex-generation-summary.json`, `runs/langfuse-generation-breakdown/claude-generation-summary.json`, `runs/langfuse-generation-breakdown/summary.json`, `runs/langfuse-generation-breakdown/summary.txt` | Passed against local LangFuse Docker Compose: compact trace summaries now include `generations.by_model` and ordered `generations.sequence` entries with model ids, harness/provider, input/output/total tokens, cached input tokens, split input/output costs, total costs, pricing tier, and unit for both Codex and Claude traces. |
+| Live Claude generation dedupe | `runs/claude-live-generation-dedupe-fixed/events.jsonl`, `runs/claude-live-generation-dedupe-fixed/result.json`, `runs/claude-live-generation-dedupe-fixed/langfuse-trace-summary.json`, `runs/claude-live-generation-dedupe-fixed/summary.txt` | Passed against local LangFuse Docker Compose: after the reviewer-found cumulative result rollup fix, a fresh live Claude `itmux run` exported one usage generation, not a duplicate message-plus-result pair, with model `claude-sonnet-4-6`, 15737 total tokens, cached input tokens, and split input/output/total cost fields. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
 | Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
 | Live Claude poll-time streaming | `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`, `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`, `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: hook and transcript-derived token usage events streamed before `await` ended, message-level usage was deduplicated to one event, and LangFuse classified usage as `GENERATION` with model, token totals, and calculated cost. |
@@ -174,6 +176,32 @@ folds trace-scoped scores into the compact trace summary. Current evidence from
   calculated cost `0.07996`, one score returned,
   score id `agentic-learning-loop-probe-run-f7ae62c8`, score name
   `agentic.learning_loop_probe`
+
+The same compact summary now exposes generation-level usage and cost details
+for learning-loop cost attribution. Current evidence from
+`runs/langfuse-generation-breakdown/summary.txt`:
+
+- Codex command: `itmux langfuse-trace --api legacy-trace --output summary --include-scores --score-limit 10 --run-id run-f7ae62c8`
+- Codex result: one `gpt-5.5` generation, harness `codex`, provider `openai`,
+  15920 input tokens, 12 output tokens, 15932 total tokens, 9600 cached input
+  tokens, input cost `0.0796`, output cost `0.00036`, and total cost `0.07996`
+- Claude command: `itmux langfuse-trace --api legacy-trace --output summary --run-id run-f07cba88`
+- Claude result: two `claude-sonnet-4-6` generations, harness `claude`,
+  provider `anthropic`, 31789 total tokens, sequence costs `0.001524` and
+  `0.000243`, and total cost `0.001767`
+
+Reviewer follow-up found a live-only overcount risk when Claude message-level
+usage and terminal cumulative result usage both appear in the same transcript.
+The observer now suppresses result rollups for models that already emitted
+message-level usage during live streaming. Fresh evidence from
+`runs/claude-live-generation-dedupe-fixed/summary.txt`:
+
+- Run id: `run-3f9dfb58`
+- Trace id: `0cea86b285c18bb156f31a00472ffe60`
+- Export: 15 file events and 15 LangFuse OTLP events, both status `ok`
+- Query result: one `claude-sonnet-4-6` generation, 15737 total tokens, 15719
+  cached input tokens, input cost `0.000009`, output cost `0.000225`, total
+  cost `0.000234`
 
 ## Live Codex Exec Smoke
 

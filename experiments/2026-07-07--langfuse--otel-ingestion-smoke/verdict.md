@@ -39,6 +39,8 @@ evidence under `runs/real-backend-smoke/`.
 | Agents can discover recent traces | `itmux langfuse-traces` listed recent traces with run ids, harness/provider/model, costs, observation counts, environment, pagination metadata, and no raw backend `response`; `--harness codex` and `--harness claude` produced filtered discovery views | correct for local self-host | `runs/langfuse-traces-discovery/recent-summary.json`; `runs/langfuse-traces-discovery/codex-summary.json`; `runs/langfuse-traces-discovery/claude-summary.json`; `runs/langfuse-traces-discovery/summary.txt`. |
 | Agents can write and read feedback scores | `itmux langfuse-score` created a boolean `agentic.learning_loop_probe` score on live Codex run `run-f7ae62c8`; `itmux langfuse-scores` read the same score back by run id, score id, name, and data type, including trace tags and environment | correct for local self-host | `runs/langfuse-score-feedback/create-score.json`; `runs/langfuse-score-feedback/itmux-langfuse-scores-summary.json`. |
 | Agents can inspect trace telemetry and feedback together | `itmux langfuse-trace --include-scores --output summary --run-id run-f7ae62c8` returned the Codex trace summary and its attached `agentic.learning_loop_probe` score in one compact payload with no raw backend `response` | correct for local self-host | `runs/langfuse-trace-with-scores/codex-trace-with-scores-summary.json`; `runs/langfuse-trace-with-scores/summary.txt`. |
+| Agents can attribute cost at the generation level | `itmux langfuse-trace --output summary` returned `generations.by_model` and ordered `generations.sequence` entries with split input/output costs, total costs, cached input tokens, pricing tier, model id, harness, and provider for both live Codex and Claude traces | correct for local self-host | `runs/langfuse-generation-breakdown/codex-generation-summary.json`; `runs/langfuse-generation-breakdown/claude-generation-summary.json`; `runs/langfuse-generation-breakdown/summary.txt`. |
+| Live Claude message usage is not double-counted with terminal result rollups | A fresh Claude `itmux run` after the review fix exported 15 events and queried back as exactly one `claude-sonnet-4-6` generation with 15737 total tokens and total cost `0.000234` | correct for local self-host | `runs/claude-live-generation-dedupe-fixed/events.jsonl`; `runs/claude-live-generation-dedupe-fixed/langfuse-trace-summary.json`; `runs/claude-live-generation-dedupe-fixed/summary.txt`. |
 | Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; local ignored env is not committed | correct | `run-smoke.sh`; `scripts/langfuse-local.sh`; `.agentic/` ignored. |
 
 ## Design Impact
@@ -95,7 +97,15 @@ evidence under `runs/real-backend-smoke/`.
   it with `itmux langfuse-scores`, allowing post-run evaluators to attach
   durable API scores to the same traces they inspect. `itmux langfuse-trace
   --include-scores` combines the trace summary and trace-scoped feedback scores
-  in one compact query payload for retrospectives.
+  in one compact query payload for retrospectives. Compact trace summaries also
+  include a `generations` section with model-grouped and ordered per-call
+  usage/cost records, which lets agents distinguish aggregate trace spend from
+  per-model/per-call input, output, cached-token, and total costs for both
+  Codex and Claude. Reviewer follow-up tightened that contract by avoiding
+  duplicate Claude live usage when message-level usage and terminal cumulative
+  result usage are both present, ignoring non-generation spans that merely
+  mirror token totals, and failing `itmux langfuse-trace` on malformed backend
+  JSON instead of returning a successful empty trace.
 - Mac Mini/VPS setup should use the same official Compose stack plus the
   agentic local override pattern: expose LangFuse web, keep backing stores
   internal unless explicitly needed.

@@ -295,6 +295,10 @@ Passing backend criteria:
 - the trace has at least one `GENERATION` observation for usage-bearing model
   calls, with nonzero native token fields and calculated cost when the model is
   known to LangFuse;
+- `summary.generations.by_model` and `summary.generations.sequence` expose
+  model ids, harness/provider, input/output/total tokens, cached-token details,
+  split input/output costs, total costs, pricing tier, and unit for Codex and
+  Claude traces;
 - the reported trace link resolves when project id metadata is available.
 
 `okrs-51p.9` remains open until both the local and backend criteria pass against

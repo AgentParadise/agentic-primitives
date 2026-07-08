@@ -1,0 +1,189 @@
+{
+  "codex": {
+    "ok": "experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/langfuse-generation-breakdown/codex-generation-summary.json",
+    "run_id": null,
+    "harnesses": [
+      "codex"
+    ],
+    "models": [
+      "gpt-5.5"
+    ],
+    "usage": {
+      "input_tokens": 15920,
+      "output_tokens": 12,
+      "total_tokens": 15932
+    },
+    "cost": {
+      "calculated_total_usd": 0.07996
+    },
+    "generations": {
+      "count": 1,
+      "input_tokens": 15920,
+      "output_tokens": 12,
+      "total_tokens": 15932,
+      "calculated_total_usd": 0.07996,
+      "by_model": [
+        {
+          "model": "gpt-5.5",
+          "model_ids": [
+            "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+          ],
+          "providers": [
+            "openai"
+          ],
+          "harnesses": [
+            "codex"
+          ],
+          "count": 1,
+          "input_tokens": 15920,
+          "output_tokens": 12,
+          "total_tokens": 15932,
+          "calculated_total_usd": 0.07996
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 4,
+          "observation_id": "5cc12ec16863600d",
+          "name": "token_usage",
+          "model": "gpt-5.5",
+          "model_id": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+          "harness": "codex",
+          "provider": "openai",
+          "input_tokens": 15920,
+          "output_tokens": 12,
+          "total_tokens": 15932,
+          "cached_input_tokens": 9600,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.0796,
+          "calculated_output_cost_usd": 0.00036,
+          "calculated_total_cost_usd": 0.07996,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "scores": {
+      "requested_trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+      "requested_run_id": "run-f7ae62c8",
+      "requested_name": null,
+      "requested_score_ids": null,
+      "returned_count": 1,
+      "total_items": 1,
+      "scores": [
+        {
+          "score_id": "agentic-learning-loop-probe-run-f7ae62c8",
+          "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+          "observation_id": null,
+          "name": "agentic.learning_loop_probe",
+          "data_type": "BOOLEAN",
+          "value": 1,
+          "string_value": "True",
+          "source": "API",
+          "environment": "local",
+          "comment": "Local verification that agentic-primitives agents can write learning-loop feedback to LangFuse.",
+          "metadata": {
+            "experiment": "2026-07-07--langfuse--otel-ingestion-smoke",
+            "harness": "codex",
+            "purpose": "learning_loop_writeback"
+          },
+          "created_at": "2026-07-08T04:09:42.075Z",
+          "updated_at": "2026-07-08T04:09:47.111Z",
+          "trace_environment": "local-macbook",
+          "trace_tags": [
+            "agentic-primitives",
+            "harness:codex",
+            "itmux"
+          ]
+        }
+      ]
+    }
+  },
+  "claude": {
+    "run_id": null,
+    "harnesses": [
+      "claude"
+    ],
+    "models": [
+      "claude-sonnet-4-6"
+    ],
+    "usage": {
+      "input_tokens": 4,
+      "output_tokens": 117,
+      "total_tokens": 31789
+    },
+    "cost": {
+      "calculated_total_usd": 0.001767
+    },
+    "generations": {
+      "count": 2,
+      "input_tokens": 4,
+      "output_tokens": 117,
+      "total_tokens": 31789,
+      "calculated_total_usd": 0.001767,
+      "by_model": [
+        {
+          "model": "claude-sonnet-4-6",
+          "model_ids": [
+            "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "harnesses": [
+            "claude"
+          ],
+          "count": 2,
+          "input_tokens": 4,
+          "output_tokens": 117,
+          "total_tokens": 31789,
+          "calculated_total_usd": 0.001767
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 11,
+          "observation_id": "7cf06ed7cfd44dfc",
+          "name": "token_usage",
+          "model": "claude-sonnet-4-6",
+          "model_id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed",
+          "harness": "claude",
+          "provider": "anthropic",
+          "input_tokens": 3,
+          "output_tokens": 101,
+          "total_tokens": 15874,
+          "cached_input_tokens": 15770,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.000009,
+          "calculated_output_cost_usd": 0.001515,
+          "calculated_total_cost_usd": 0.001524,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": 15,
+          "observation_id": "7cf06ad7cfd44730",
+          "name": "token_usage",
+          "model": "claude-sonnet-4-6",
+          "model_id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed",
+          "harness": "claude",
+          "provider": "anthropic",
+          "input_tokens": 1,
+          "output_tokens": 16,
+          "total_tokens": 15915,
+          "cached_input_tokens": 15898,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.000003,
+          "calculated_output_cost_usd": 0.00024,
+          "calculated_total_cost_usd": 0.000243,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        }
+      ],
+      "sequence_truncated": false
+    }
+  }
+}

@@ -1576,12 +1576,23 @@ fn handle_langfuse_trace(
     match response {
         Ok(response) if (200..300).contains(&response.status()) => {
             let body = response.into_string().unwrap_or_default();
-            let parsed = serde_json::from_str::<Value>(&body).unwrap_or_else(|err| {
-                json!({
-                    "parse_error": err.to_string(),
-                    "body": body,
-                })
-            });
+            let parsed = match serde_json::from_str::<Value>(&body) {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json!({
+                            "ok": false,
+                            "request": request,
+                            "error": "invalid LangFuse trace JSON response",
+                            "parse_error": err.to_string(),
+                            "body": body,
+                        }))
+                        .unwrap()
+                    );
+                    return ExitCode::from(1);
+                }
+            };
             let mut summary = summarize_langfuse_trace_response(&parsed);
             let mut scores_response = None;
             if let Some(scores_endpoint) = scores_endpoint {
@@ -2263,6 +2274,8 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
     let mut harness_tool_events = Vec::new();
     let mut category_counts: BTreeMap<String, u64> = BTreeMap::new();
     let mut trace_events = Vec::new();
+    let mut generation_stats: BTreeMap<String, GenerationTraceStats> = BTreeMap::new();
+    let mut generation_events = Vec::new();
 
     for observation in &observations {
         insert_string(&mut names, observation.get("name"));
@@ -2271,34 +2284,33 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         insert_string(&mut models, observation.get("model"));
         insert_string(&mut model_ids, observation.get("modelId"));
 
-        if let Some(usage) = observation.get("usage").filter(|usage| {
-            number_u64(usage.get("input"))
-                .saturating_add(number_u64(usage.get("output")))
-                .saturating_add(number_u64(usage.get("total")))
-                > 0
-        }) {
-            input_tokens = input_tokens.saturating_add(number_u64(usage.get("input")));
-            output_tokens = output_tokens.saturating_add(number_u64(usage.get("output")));
-            total_tokens = total_tokens.saturating_add(number_u64(usage.get("total")));
-        } else {
-            input_tokens = input_tokens.saturating_add(number_u64(observation.get("promptTokens")));
-            output_tokens =
-                output_tokens.saturating_add(number_u64(observation.get("completionTokens")));
-            total_tokens = total_tokens.saturating_add(number_u64(observation.get("totalTokens")));
+        let observation_input_tokens = usage_number(observation, "input")
+            .or_else(|| Some(number_u64(observation.get("promptTokens"))))
+            .unwrap_or(0);
+        let observation_output_tokens = usage_number(observation, "output")
+            .or_else(|| Some(number_u64(observation.get("completionTokens"))))
+            .unwrap_or(0);
+        let observation_total_tokens = usage_number(observation, "total")
+            .or_else(|| Some(number_u64(observation.get("totalTokens"))))
+            .unwrap_or(0);
+        let is_generation = is_generation_observation(observation, observation_total_tokens);
+        if is_generation {
+            input_tokens = input_tokens.saturating_add(observation_input_tokens);
+            output_tokens = output_tokens.saturating_add(observation_output_tokens);
+            total_tokens = total_tokens.saturating_add(observation_total_tokens);
         }
 
-        if let Some(cost) = number_f64(observation.get("calculatedTotalCost")) {
-            calculated_total_cost += cost;
-            has_cost = true;
-        }
-        if let Some(cost) = number_f64(observation.get("totalCost")) {
-            calculated_total_cost += cost;
-            has_cost = true;
+        if is_generation {
+            if let Some(cost) = total_cost_number(observation) {
+                calculated_total_cost += cost;
+                has_cost = true;
+            }
         }
 
         let attrs = observation
             .get("metadata")
             .and_then(|metadata| metadata.get("attributes"));
+        let event_seq = attr_u64(attrs, "agentic.event.seq");
         insert_string(
             &mut harnesses,
             attrs.and_then(|attrs| attrs.get("agentic.harness")),
@@ -2323,7 +2335,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         *category_counts.entry(category.to_string()).or_default() += 1;
         if let Some(event_type) = event_type.clone() {
             trace_events.push(TraceEvent {
-                seq: attr_u64(attrs, "agentic.event.seq"),
+                seq: event_seq,
                 sort_time: observation
                     .get("startTime")
                     .and_then(Value::as_str)
@@ -2356,6 +2368,92 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                 calculated_total_cost: number_f64(observation.get("calculatedTotalCost")),
             });
         }
+        if is_generation {
+            let model = observation
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| attr_string(attrs, "agentic.model"))
+                .unwrap_or_else(|| "unknown".to_string());
+            let model_id = observation
+                .get("modelId")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let harness = attr_string(attrs, "agentic.harness");
+            let provider = attr_string(attrs, "agentic.provider");
+            let input_cost = cost_number(observation, "input")
+                .or_else(|| number_f64(observation.get("calculatedInputCost")));
+            let output_cost = cost_number(observation, "output")
+                .or_else(|| number_f64(observation.get("calculatedOutputCost")));
+            let total_cost =
+                cost_number(observation, "total").or_else(|| total_cost_number(observation));
+            let stats = generation_stats.entry(model.clone()).or_default();
+            stats.count = stats.count.saturating_add(1);
+            stats.input_tokens = stats.input_tokens.saturating_add(observation_input_tokens);
+            stats.output_tokens = stats
+                .output_tokens
+                .saturating_add(observation_output_tokens);
+            stats.total_tokens = stats.total_tokens.saturating_add(observation_total_tokens);
+            if let Some(cost) = total_cost {
+                stats.calculated_total_usd += cost;
+                stats.has_cost = true;
+            }
+            if let Some(provider) = provider.as_ref() {
+                stats.providers.insert(provider.clone());
+            }
+            if let Some(harness) = harness.as_ref() {
+                stats.harnesses.insert(harness.clone());
+            }
+            if let Some(model_id) = model_id.as_ref() {
+                stats.model_ids.insert(model_id.clone());
+            }
+            generation_events.push(GenerationTraceEvent {
+                seq: event_seq,
+                sort_time: observation
+                    .get("startTime")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                sort_id: observation
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                observation_id: observation
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                name: observation
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                model,
+                model_id,
+                harness,
+                provider,
+                input_tokens: observation_input_tokens,
+                output_tokens: observation_output_tokens,
+                total_tokens: observation_total_tokens,
+                cached_input_tokens: usage_number(observation, "cached_prompt_tokens")
+                    .or_else(|| usage_number(observation, "cachedInput"))
+                    .or_else(|| usage_number(observation, "cached_input_tokens")),
+                reasoning_output_tokens: usage_number(observation, "reasoning_completion_tokens")
+                    .or_else(|| usage_number(observation, "reasoningOutput"))
+                    .or_else(|| usage_number(observation, "reasoning_output_tokens")),
+                calculated_input_cost_usd: input_cost,
+                calculated_output_cost_usd: output_cost,
+                calculated_total_cost_usd: total_cost,
+                pricing_tier: observation
+                    .get("usagePricingTierName")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                unit: observation
+                    .get("unit")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            });
+        }
         if matches!(event_type.as_deref(), Some("tool_start" | "tool_end")) {
             let event_type_value = event_type.clone().unwrap_or_else(|| "unknown".to_string());
             let tool_name = tool_name.unwrap_or_else(|| "unknown".to_string());
@@ -2363,7 +2461,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
             let stats = tool_stats.entry(tool_name.clone()).or_default();
             update_tool_trace_stats(stats, event_type.as_deref(), success);
             tool_events.push(ToolTraceEvent {
-                seq: attr_u64(attrs, "agentic.event.seq"),
+                seq: event_seq,
                 sort_time: observation
                     .get("startTime")
                     .and_then(Value::as_str)
@@ -2388,7 +2486,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                 let stats = stats_by_name.entry(tool_name.clone()).or_default();
                 update_tool_trace_stats(stats, event_type.as_deref(), success);
                 events.push(ToolTraceEvent {
-                    seq: attr_u64(attrs, "agentic.event.seq"),
+                    seq: event_seq,
                     sort_time: observation
                         .get("startTime")
                         .and_then(Value::as_str)
@@ -2452,6 +2550,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
     let operations = summarize_tool_trace_group(operation_stats, operation_events, 100);
     let agent_tools = summarize_tool_trace_group(agent_tool_stats, agent_tool_events, 100);
     let harness_tools = summarize_tool_trace_group(harness_tool_stats, harness_tool_events, 100);
+    let generations = summarize_generation_trace_group(generation_stats, generation_events, 100);
 
     json!({
         "trace_id": trace.get("id").and_then(Value::as_str),
@@ -2484,6 +2583,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         "operations": operations,
         "agent_tools": agent_tools,
         "harness_tools": harness_tools,
+        "generations": generations,
     })
 }
 
@@ -2670,6 +2770,19 @@ struct ToolTraceStats {
     failures: u64,
 }
 
+#[derive(Debug, Default)]
+struct GenerationTraceStats {
+    count: u64,
+    input_tokens: u64,
+    output_tokens: u64,
+    total_tokens: u64,
+    calculated_total_usd: f64,
+    has_cost: bool,
+    providers: BTreeSet<String>,
+    harnesses: BTreeSet<String>,
+    model_ids: BTreeSet<String>,
+}
+
 #[derive(Debug)]
 struct ToolTraceEvent {
     seq: Option<u64>,
@@ -2678,6 +2791,29 @@ struct ToolTraceEvent {
     event: String,
     tool_name: String,
     success: Option<bool>,
+}
+
+#[derive(Debug)]
+struct GenerationTraceEvent {
+    seq: Option<u64>,
+    sort_time: String,
+    sort_id: String,
+    observation_id: Option<String>,
+    name: String,
+    model: String,
+    model_id: Option<String>,
+    harness: Option<String>,
+    provider: Option<String>,
+    input_tokens: u64,
+    output_tokens: u64,
+    total_tokens: u64,
+    cached_input_tokens: Option<u64>,
+    reasoning_output_tokens: Option<u64>,
+    calculated_input_cost_usd: Option<f64>,
+    calculated_output_cost_usd: Option<f64>,
+    calculated_total_cost_usd: Option<f64>,
+    pricing_tier: Option<String>,
+    unit: Option<String>,
 }
 
 #[derive(Debug)]
@@ -2777,6 +2913,102 @@ fn summarize_tool_trace_group(
     })
 }
 
+fn summarize_generation_trace_group(
+    stats: BTreeMap<String, GenerationTraceStats>,
+    mut events: Vec<GenerationTraceEvent>,
+    max_sequence: usize,
+) -> Value {
+    let mut total_count = 0_u64;
+    let mut input_tokens = 0_u64;
+    let mut output_tokens = 0_u64;
+    let mut total_tokens = 0_u64;
+    let mut calculated_total_usd = 0.0_f64;
+    let mut has_cost = false;
+    let by_model = stats
+        .into_iter()
+        .map(|(model, stats)| {
+            total_count = total_count.saturating_add(stats.count);
+            input_tokens = input_tokens.saturating_add(stats.input_tokens);
+            output_tokens = output_tokens.saturating_add(stats.output_tokens);
+            total_tokens = total_tokens.saturating_add(stats.total_tokens);
+            if stats.has_cost {
+                calculated_total_usd += stats.calculated_total_usd;
+                has_cost = true;
+            }
+            json!({
+                "model": model,
+                "model_ids": stats.model_ids.into_iter().collect::<Vec<_>>(),
+                "providers": stats.providers.into_iter().collect::<Vec<_>>(),
+                "harnesses": stats.harnesses.into_iter().collect::<Vec<_>>(),
+                "count": stats.count,
+                "input_tokens": stats.input_tokens,
+                "output_tokens": stats.output_tokens,
+                "total_tokens": stats.total_tokens,
+                "calculated_total_usd": if stats.has_cost {
+                    Some(stats.calculated_total_usd)
+                } else {
+                    None
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let sequence_source = if events.iter().any(|event| event.seq.is_some()) {
+        Some("agentic.event.seq")
+    } else {
+        None
+    };
+    events.sort_by(|a, b| {
+        a.seq
+            .unwrap_or(u64::MAX)
+            .cmp(&b.seq.unwrap_or(u64::MAX))
+            .then_with(|| a.sort_time.cmp(&b.sort_time))
+            .then_with(|| a.sort_id.cmp(&b.sort_id))
+    });
+    let sequence_truncated = events.len() > max_sequence;
+    let sequence = events
+        .into_iter()
+        .take(max_sequence)
+        .map(|event| {
+            json!({
+                "seq": event.seq,
+                "observation_id": event.observation_id,
+                "name": event.name,
+                "model": event.model,
+                "model_id": event.model_id,
+                "harness": event.harness,
+                "provider": event.provider,
+                "input_tokens": event.input_tokens,
+                "output_tokens": event.output_tokens,
+                "total_tokens": event.total_tokens,
+                "cached_input_tokens": event.cached_input_tokens,
+                "reasoning_output_tokens": event.reasoning_output_tokens,
+                "calculated_input_cost_usd": event.calculated_input_cost_usd,
+                "calculated_output_cost_usd": event.calculated_output_cost_usd,
+                "calculated_total_cost_usd": event.calculated_total_cost_usd,
+                "pricing_tier": event.pricing_tier,
+                "unit": event.unit,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "count": total_count,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "calculated_total_usd": if has_cost {
+            Some(calculated_total_usd)
+        } else {
+            None
+        },
+        "by_model": by_model,
+        "sequence_source": sequence_source,
+        "sequence": sequence,
+        "sequence_truncated": sequence_truncated,
+    })
+}
+
 fn classify_trace_event(event_type: Option<&str>, tool_name: Option<&str>) -> &'static str {
     match event_type {
         Some("tool_start" | "tool_end") => classify_tool_event(tool_name),
@@ -2869,6 +3101,44 @@ fn number_u64(value: Option<&Value>) -> u64 {
 
 fn number_f64(value: Option<&Value>) -> Option<f64> {
     value.and_then(|value| value.as_f64().or_else(|| value.as_u64().map(|v| v as f64)))
+}
+
+fn usage_number(observation: &Value, key: &str) -> Option<u64> {
+    observation
+        .get("usageDetails")
+        .and_then(|details| details.get(key))
+        .map(Some)
+        .map(number_u64)
+        .filter(|value| *value > 0)
+        .or_else(|| {
+            observation
+                .get("usage")
+                .and_then(|usage| usage.get(key))
+                .map(Some)
+                .map(number_u64)
+                .filter(|value| *value > 0)
+        })
+}
+
+fn cost_number(observation: &Value, key: &str) -> Option<f64> {
+    observation
+        .get("costDetails")
+        .and_then(|details| details.get(key))
+        .and_then(|value| number_f64(Some(value)))
+}
+
+fn total_cost_number(observation: &Value) -> Option<f64> {
+    cost_number(observation, "total")
+        .or_else(|| number_f64(observation.get("calculatedTotalCost")))
+        .or_else(|| number_f64(observation.get("totalCost")))
+}
+
+fn is_generation_observation(observation: &Value, total_tokens: u64) -> bool {
+    match observation.get("type").and_then(Value::as_str) {
+        Some("GENERATION") => true,
+        Some(_) => false,
+        None => total_tokens > 0,
+    }
 }
 
 fn build_langfuse_observations_v2_url(
@@ -3672,15 +3942,24 @@ mod cli_tests {
                     "promptTokens": 10,
                     "completionTokens": 3,
                     "totalTokens": 13,
-                    "usage": {"input": 10, "output": 3, "total": 13},
+                    "usage": {"input": 10, "output": 3, "total": 13, "cached_prompt_tokens": 4},
+                    "costDetails": {"input": 0.000002, "output": 0.0000013, "total": 0.0000033},
                     "calculatedTotalCost": 0.0000033,
+                    "totalCost": 99.0,
                     "metadata": {
                         "attributes": {
+                            "agentic.event.seq": "2",
                             "agentic.harness": "codex",
                             "agentic.provider": "openai",
                             "agentic.model": "gpt-4o-mini"
                         }
                     }
+                },
+                {
+                    "name": "aggregate_span",
+                    "type": "SPAN",
+                    "totalTokens": 999,
+                    "calculatedTotalCost": 99.0
                 },
                 {
                     "name": "tool_start",
@@ -3757,7 +4036,7 @@ mod cli_tests {
         let summary = summarize_langfuse_trace_response(&response);
 
         assert_eq!(summary["trace_id"], "trace-1");
-        assert_eq!(summary["observation_count"], 6);
+        assert_eq!(summary["observation_count"], 7);
         assert_eq!(summary["harnesses"], json!(["codex"]));
         assert_eq!(summary["providers"], json!(["openai"]));
         assert_eq!(summary["models"], json!(["gpt-4o-mini"]));
@@ -3766,23 +4045,78 @@ mod cli_tests {
         assert_eq!(summary["usage"]["output_tokens"], 3);
         assert_eq!(summary["usage"]["total_tokens"], 13);
         assert_eq!(summary["cost"]["calculated_total_usd"], 0.0000033);
+        assert_eq!(summary["generations"]["count"], 1);
+        assert_eq!(summary["generations"]["input_tokens"], 10);
+        assert_eq!(summary["generations"]["output_tokens"], 3);
+        assert_eq!(summary["generations"]["total_tokens"], 13);
+        assert_eq!(
+            summary["generations"]["calculated_total_usd"],
+            json!(0.0000033)
+        );
+        assert_eq!(
+            summary["generations"]["by_model"],
+            json!([
+                {
+                    "model": "gpt-4o-mini",
+                    "model_ids": ["model-row-id"],
+                    "providers": ["openai"],
+                    "harnesses": ["codex"],
+                    "count": 1,
+                    "input_tokens": 10,
+                    "output_tokens": 3,
+                    "total_tokens": 13,
+                    "calculated_total_usd": 0.0000033
+                }
+            ])
+        );
+        assert_eq!(
+            summary["generations"]["sequence_source"],
+            "agentic.event.seq"
+        );
+        assert_eq!(summary["generations"]["sequence"][0]["seq"], 2);
+        assert_eq!(
+            summary["generations"]["sequence"][0]["observation_id"],
+            json!(null)
+        );
+        assert_eq!(
+            summary["generations"]["sequence"][0]["model"],
+            "gpt-4o-mini"
+        );
+        assert_eq!(
+            summary["generations"]["sequence"][0]["cached_input_tokens"],
+            4
+        );
+        assert_eq!(
+            summary["generations"]["sequence"][0]["calculated_input_cost_usd"],
+            0.000002
+        );
+        assert_eq!(
+            summary["generations"]["sequence"][0]["calculated_output_cost_usd"],
+            0.0000013
+        );
+        assert_eq!(
+            summary["generations"]["sequence"][0]["calculated_total_cost_usd"],
+            0.0000033
+        );
+        assert_eq!(summary["generations"]["sequence_truncated"], false);
         assert_eq!(summary["events"]["sequence_source"], "agentic.event.seq");
         assert_eq!(summary["events"]["sequence"][0]["seq"], 0);
         assert_eq!(summary["events"]["sequence"][0]["category"], "operation");
-        assert_eq!(summary["events"]["sequence"][2]["seq"], 3);
-        assert_eq!(summary["events"]["sequence"][2]["category"], "agent_tool");
-        assert_eq!(summary["events"]["sequence"][5]["event"], "token_usage");
-        assert_eq!(summary["events"]["sequence"][5]["category"], "usage");
-        assert_eq!(summary["events"]["sequence"][5]["total_tokens"], json!(13));
+        assert_eq!(summary["events"]["sequence"][2]["event"], "token_usage");
+        assert_eq!(summary["events"]["sequence"][2]["category"], "usage");
+        assert_eq!(summary["events"]["sequence"][2]["total_tokens"], json!(13));
         assert_eq!(
-            summary["events"]["sequence"][5]["calculated_total_cost"],
+            summary["events"]["sequence"][2]["calculated_total_cost"],
             json!(0.0000033)
         );
+        assert_eq!(summary["events"]["sequence"][3]["seq"], 3);
+        assert_eq!(summary["events"]["sequence"][3]["category"], "agent_tool");
         assert_eq!(
             summary["events"]["category_counts"],
             json!([
                 {"category": "agent_tool", "count": 3},
                 {"category": "operation", "count": 2},
+                {"category": "other", "count": 1},
                 {"category": "usage", "count": 1}
             ])
         );

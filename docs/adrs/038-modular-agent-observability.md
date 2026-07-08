@@ -106,7 +106,11 @@ feedback write/read paths through the public scores API. Scores are not part of
 the exporter fanout; they are deliberate post-run annotations by evaluators,
 operators, or later agents. `itmux langfuse-trace --include-scores` can fold
 those trace-scoped scores into the same compact trace summary when an agent
-needs a single retrospective payload.
+needs a single retrospective payload. The compact trace summary also exposes a
+`generations` section with `by_model` totals and an ordered per-generation
+sequence so agents can attribute model usage and cost by harness, provider,
+model id, cached-token fields, pricing tier, and split input/output/total cost
+for both Codex and Claude traces.
 
 LangFuse's native OTEL integration accepts OTLP over HTTP/protobuf at
 `/api/public/otel`; gRPC should not be assumed for the first implementation.
