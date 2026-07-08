@@ -193,7 +193,7 @@ impl HarnessObserver for ClaudeTranscriptObserver {
                         self.tool_names.insert(id, name.clone());
                         out.push(Self::event(AgentRunEventPayload::ToolStart {
                             tool_name: name,
-                            tool_input: input,
+                            tool_input: redacted_tool_input(&input),
                         }));
                     }
                 }
@@ -216,7 +216,7 @@ impl HarnessObserver for ClaudeTranscriptObserver {
                         out.push(Self::event(AgentRunEventPayload::ToolEnd {
                             tool_name,
                             success: !is_error.unwrap_or(false),
-                            output_summary: content.map(trim_summary),
+                            output_summary: content.as_deref().map(redacted_tool_result_summary),
                         }));
                     }
                 }
@@ -364,6 +364,49 @@ fn trim_summary(text: String) -> String {
     } else {
         summary
     }
+}
+
+fn redacted_tool_input(input: &serde_json::Value) -> serde_json::Value {
+    match input {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<_> = map.keys().cloned().collect();
+            keys.sort();
+            serde_json::json!({
+                "redacted": true,
+                "kind": "object",
+                "keys": keys,
+            })
+        }
+        serde_json::Value::Array(items) => serde_json::json!({
+            "redacted": true,
+            "kind": "array",
+            "len": items.len(),
+        }),
+        serde_json::Value::String(value) => serde_json::json!({
+            "redacted": true,
+            "kind": "string",
+            "chars": value.chars().count(),
+        }),
+        serde_json::Value::Null => serde_json::json!({
+            "redacted": true,
+            "kind": "null",
+        }),
+        serde_json::Value::Bool(_) => serde_json::json!({
+            "redacted": true,
+            "kind": "bool",
+        }),
+        serde_json::Value::Number(_) => serde_json::json!({
+            "redacted": true,
+            "kind": "number",
+        }),
+    }
+}
+
+fn redacted_tool_result_summary(content: &str) -> String {
+    format!(
+        "<redacted claude tool result: {} chars>",
+        content.chars().count()
+    )
 }
 
 #[cfg(test)]
@@ -529,7 +572,10 @@ mod tests {
             AgentRunEventPayload::ToolStart {
                 ref tool_name,
                 ref tool_input,
-            } if tool_name == "Bash" && tool_input["command"] == "git status"
+            } if tool_name == "Bash"
+                && tool_input["redacted"] == true
+                && tool_input["kind"] == "object"
+                && tool_input["keys"][0] == "command"
         ));
         assert!(matches!(
             end[0].payload,
@@ -537,7 +583,38 @@ mod tests {
                 ref tool_name,
                 success: true,
                 ref output_summary,
-            } if tool_name == "Bash" && output_summary.as_deref() == Some("On branch main")
+            } if tool_name == "Bash"
+                && output_summary.as_deref() == Some("<redacted claude tool result: 14 chars>")
         ));
+    }
+
+    #[test]
+    fn claude_transcript_redacts_tool_payload_values() {
+        let mut observer = ClaudeTranscriptObserver::new();
+        let start = observer
+            .observe_jsonl_line(
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_secret","name":"Bash","input":{"command":"echo sk-ant-secret","env":{"OPENAI_API_KEY":"sk-test"}}}]}}"#,
+            )
+            .expect("parse secret-bearing tool use");
+        let end = observer
+            .observe_jsonl_line(
+                r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_secret","content":"token=sk-ant-secret","is_error":false}]}}"#,
+            )
+            .expect("parse secret-bearing tool result");
+
+        let serialized = start
+            .into_iter()
+            .chain(end)
+            .map(|event| serde_json::to_string(&event.payload).expect("serialize payload"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!serialized.contains("sk-ant-secret"), "{serialized}");
+        assert!(!serialized.contains("OPENAI_API_KEY"), "{serialized}");
+        assert!(!serialized.contains("echo "), "{serialized}");
+        assert!(serialized.contains("\"redacted\":true"), "{serialized}");
+        assert!(
+            serialized.contains("redacted claude tool result"),
+            "{serialized}"
+        );
     }
 }

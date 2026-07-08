@@ -59,8 +59,8 @@ transcript telemetry through `itmux claude-transcript`.
 
 Current key evidence from `runs/claude-transcript-langfuse/summary.txt`:
 
-- Run id: `run-claude-fixture-rich`
-- Trace id: `41eedb37a10d825b0522048e8ea119a0`
+- Run id: `run-claude-fixture-redacted`
+- Trace id: `78568acaeec8a7753be1d3228546d9a6`
 - Exporter status: `ok`
 - Events exported: `13`
 - Backend observation count: `14`
@@ -78,5 +78,8 @@ The Claude transcript path maps assistant `tool_use` items to `tool_start`,
 user `tool_result` items to `tool_end`, and transcript `result.modelUsage`
 entries to the shared `token_usage` contract. LangFuse classifies the usage
 observations as native generations with model, token, and cost fields. This
-proves the reusable exporter contract for Claude-shaped transcript data; it does
-not yet prove live transcript tailing from an interactive Claude workspace.
+proves the reusable exporter contract for Claude-shaped transcript data. The
+committed evidence is redacted: tool input values preserve only shape metadata,
+tool result content is summarized by length, and `result.json` omits the raw
+transcript from `session_log`. This does not yet prove live transcript tailing
+from an interactive Claude workspace.

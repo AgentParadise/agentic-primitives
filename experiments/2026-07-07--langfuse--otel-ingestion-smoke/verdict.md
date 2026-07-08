@@ -26,7 +26,7 @@ evidence under `runs/real-backend-smoke/`.
 | Required attributes survive for filtering/identification | Tool, usage, session, resource, and environment attributes are present in backend response | correct | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`. |
 | Current `itmux` exporter reports `langfuse_otlp` success against the backend | Observed `status=ok`, `events_exported=6`, one trace link | correct | `runs/real-backend-smoke/summary.txt`. |
 | Token usage becomes native LangFuse usage/cost/model data, not only metadata | Observed `token_usage` as `GENERATION`, model `gpt-4o-mini`, 13 tokens, calculated total cost `0.000003299999` | correct for Codex | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`; `/tmp/langfuse-playwright/dashboard-rich.har`. |
-| Claude transcript usage maps into the same backend contract | Observed two Claude `token_usage` generations, five tool-start spans, five tool-end spans, harness `claude`, provider `anthropic`, both Claude model names, 122272 total tokens, and calculated cost `0.09459785` | correct for transcript export | `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json`; `runs/claude-transcript-langfuse/summary.txt`. |
+| Claude transcript usage maps into the same backend contract | Observed two Claude `token_usage` generations, five tool-start spans, five tool-end spans, harness `claude`, provider `anthropic`, both Claude model names, 122272 total tokens, and calculated cost `0.09459785`; transcript-derived tool values are redacted in the committed evidence | correct for transcript export | `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json`; `runs/claude-transcript-langfuse/summary.txt`. |
 | Agents can query useful learning-loop summaries | `itmux langfuse-trace --api legacy-trace --run-id run-08ac78b8 ...` reports harness `codex`, provider `openai`, model `gpt-4o-mini`, token totals, and cost | correct for local self-host | `/tmp/langfuse-playwright/trace-rich-summary.json`. |
 | Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; local ignored env is not committed | correct | `run-smoke.sh`; `scripts/langfuse-local.sh`; `.agentic/` ignored. |
 
@@ -48,6 +48,9 @@ evidence under `runs/real-backend-smoke/`.
   transcript evidence against the same LangFuse backend. Runtime Claude
   transcript watching is still the next implementation gap before claiming full
   live Claude parity.
+- External OTLP tool spans intentionally carry redacted tool-input summaries
+  instead of raw JSON. The Claude transcript path also redacts transcript-derived
+  tool input/output values and omits raw transcript content from `session_log`.
 - Mac Mini/VPS setup should use the same official Compose stack plus the
   agentic local override pattern: expose LangFuse web, keep backing stores
   internal unless explicitly needed.

@@ -1,5 +1,5 @@
-Run id: run-claude-fixture-rich
-Trace id: 41eedb37a10d825b0522048e8ea119a0
+Run id: run-claude-fixture-redacted
+Trace id: 78568acaeec8a7753be1d3228546d9a6
 Observation count: 14
 Observation types: GENERATION,SPAN
 Harness values: claude
@@ -9,3 +9,4 @@ Input tokens: 1348
 Output tokens: 2218
 Total tokens: 122272
 Calculated total cost: 0.09459785
+Redaction: tool inputs preserve key names only; raw transcript omitted from result session_log

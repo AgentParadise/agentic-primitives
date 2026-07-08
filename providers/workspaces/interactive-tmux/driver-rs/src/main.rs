@@ -1031,8 +1031,9 @@ fn handle_claude_transcript(
     let mut observer = ClaudeTranscriptObserver::new();
     let run_id = run_id.unwrap_or_else(generate_run_id);
     let mut seq = 0u64;
-    let mut session_log = String::new();
     let mut parse_error: Option<String> = None;
+    let mut input_lines = 0usize;
+    let mut observed_payloads = 0usize;
 
     let input = if transcript.as_os_str() == "-" {
         let mut input = String::new();
@@ -1074,11 +1075,11 @@ fn handle_claude_transcript(
     };
 
     for line in input.lines() {
-        session_log.push_str(line);
-        session_log.push('\n');
+        input_lines += 1;
         match observer.observe_jsonl_line(line) {
             Ok(events) => {
                 for observed in events {
+                    observed_payloads += 1;
                     emit_payload(observed.payload, &mut fanout);
                 }
             }
@@ -1112,7 +1113,9 @@ fn handle_claude_transcript(
     let result = AgentRunResult {
         result: outcome,
         output_artifacts: Vec::new(),
-        session_log,
+        session_log: format!(
+            "claude transcript omitted from result; normalized {observed_payloads} events from {input_lines} input lines"
+        ),
         observability: fanout.finish(),
     };
 

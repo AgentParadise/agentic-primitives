@@ -189,7 +189,10 @@ itmux claude-transcript \
 This path maps Claude `tool_use`/`tool_result` transcript items to normalized
 tool spans and `result.modelUsage` entries to shared `token_usage` events with
 `harness=claude`, `provider=anthropic`, model names, token counts, cached-token
-counts, and cost data. It is the current reusable export path for Claude-shaped
+counts, and cost data. Transcript-derived tool input values and result content
+are redacted before export; tool input spans preserve only shape metadata such
+as object key names. The result `session_log` records a summary, not the raw
+transcript. This is the current reusable export path for Claude-shaped
 telemetry; live transcript tailing from interactive Claude sessions is tracked
 as the next integration layer.
 

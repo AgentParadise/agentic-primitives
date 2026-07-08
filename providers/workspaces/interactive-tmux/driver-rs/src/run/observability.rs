@@ -615,7 +615,8 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<OtlpAttribute
             tool_input,
         } => vec![
             OtlpAttribute::string("agentic.tool.name", tool_name),
-            OtlpAttribute::string("agentic.tool.input_json", tool_input.to_string()),
+            OtlpAttribute::string("agentic.tool.input_redacted", "true"),
+            OtlpAttribute::string("agentic.tool.input_summary", tool_input_summary(tool_input)),
         ],
         AgentRunEventPayload::ToolEnd {
             tool_name,
@@ -732,6 +733,21 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<OtlpAttribute
             OtlpAttribute::string("agentic.result.success", result.result.success.to_string()),
             OtlpAttribute::string("agentic.result.summary", &result.result.summary),
         ],
+    }
+}
+
+fn tool_input_summary(input: &serde_json::Value) -> String {
+    match input {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<_> = map.keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            format!("object keys: {}", keys.join(","))
+        }
+        serde_json::Value::Array(items) => format!("array len: {}", items.len()),
+        serde_json::Value::String(value) => format!("string chars: {}", value.chars().count()),
+        serde_json::Value::Number(_) => "number".to_string(),
+        serde_json::Value::Bool(_) => "bool".to_string(),
+        serde_json::Value::Null => "null".to_string(),
     }
 }
 
@@ -1105,6 +1121,43 @@ mod tests {
                 body.windows(expected.len())
                     .any(|window| window == expected.as_bytes()),
                 "missing {expected} in OTLP payload"
+            );
+        }
+    }
+
+    #[test]
+    fn langfuse_otlp_payload_redacts_tool_input_values() {
+        let events = [AgentRunEvent {
+            run_id: "run-test".to_string(),
+            seq: 1,
+            ts: "2026-07-07T00:00:01Z".to_string(),
+            payload: AgentRunEventPayload::ToolStart {
+                tool_name: "Bash".to_string(),
+                tool_input: serde_json::json!({
+                    "command": "echo sk-ant-secret",
+                    "env": {"OPENAI_API_KEY": "sk-test"}
+                }),
+            },
+        }];
+        let body = encode_otlp_trace_request(&events, "agentic-primitives", "local-test");
+
+        for expected in [
+            "agentic.tool.input_redacted",
+            "agentic.tool.input_summary",
+            "object keys: command,env",
+        ] {
+            assert!(
+                body.windows(expected.len())
+                    .any(|window| window == expected.as_bytes()),
+                "missing {expected} in OTLP payload"
+            );
+        }
+        for forbidden in ["sk-ant-secret", "OPENAI_API_KEY", "echo sk"] {
+            assert!(
+                !body
+                    .windows(forbidden.len())
+                    .any(|window| window == forbidden.as_bytes()),
+                "leaked {forbidden} in OTLP payload"
             );
         }
     }
