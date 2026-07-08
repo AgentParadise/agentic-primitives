@@ -1,0 +1,12 @@
+45:enabled = true
+46:
+47:[plugins."tracing@codex-observability-plugin"]
+48:enabled = true
+49:
+50:[features]
+51:js_repl = false
+52:plugin_hooks = true
+53:
+54:[tui]
+55:notifications = ["agent-turn-complete", "approval-requested"]
+56:notification_condition = "always"
