@@ -1,0 +1,28 @@
+LangFuse observability doctor
+generated_at: 2026-07-08T19:50:08Z
+repo: /Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run
+
+Official rich trace path:
+  Claude command: present
+  Claude runtime: ok
+  Codex command: present
+  Codex Node 22+: ok
+  Codex plugin_hooks: false
+  Codex tracing plugin configured: true
+
+Runtime LangFuse env:
+  LANGFUSE_BASE_URL=missing
+  LANGFUSE_PUBLIC_KEY=missing
+  LANGFUSE_SECRET_KEY=missing
+  LANGFUSE_TRACING_ENVIRONMENT=missing
+  LANGFUSE_PROJECT_ID=missing
+  TRACE_TO_LANGFUSE=missing
+
+Fanout:
+  file JSONL supported: true
+  Syntropic137 JSONL supported: true
+  MCP server present: true
+
+OTLP noise guard:
+  fallback suppression/force flag supported: true
+  focused cli_exporters test: pass (cli_exporters tests passed)

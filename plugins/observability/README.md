@@ -28,6 +28,18 @@ HookWatcher, use `--observability-syntropic-file` in addition to
 `--observability-file`. The former emits hook-style session/tool JSONL; the
 latter remains the canonical normalized run artifact.
 
+Run the setup doctor on a fresh MacBook, VPS, or Docker workspace before
+claiming LangFuse readiness:
+
+```bash
+scripts/langfuse-observability-doctor.sh
+```
+
+It is read-only and secret-safe: it reports official Claude/Codex plugin
+prerequisites, `LANGFUSE_*` set/missing state, JSONL/Syntropic137 fanout
+support, and the focused runtime guard that keeps fallback Rust OTLP quiet when
+official plugin tracing is active.
+
 ## Agent LangFuse MCP server
 
 The plugin also exposes an MCP server named `agentic-langfuse` for learning-loop

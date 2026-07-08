@@ -1,0 +1,66 @@
+{
+  "tools": {
+    "claude": {
+      "present": true,
+      "path": "/Users/neural/.local/bin/claude"
+    },
+    "codex": {
+      "present": true,
+      "path": "/opt/homebrew/bin/codex"
+    },
+    "node": {
+      "present": true,
+      "path": "/Users/neural/.nvm/versions/node/v22.17.1/bin/node",
+      "major": 22,
+      "node22_plus": true
+    },
+    "uv": {
+      "present": true,
+      "path": "/Users/neural/.local/bin/uv"
+    },
+    "python3": {
+      "present": true,
+      "path": "/Users/neural/.pyenv/shims/python3"
+    },
+    "cargo": {
+      "present": true,
+      "path": "/Users/neural/.cargo/bin/cargo"
+    }
+  },
+  "official_plugins": {
+    "claude": {
+      "command_present": true,
+      "runtime_ok": true,
+      "expected_plugin": "langfuse/Claude-Observability-Plugin",
+      "config_note": "use claude plugin install/configure; secrets are not inspected by this doctor"
+    },
+    "codex": {
+      "command_present": true,
+      "node22_plus": true,
+      "plugin_hooks_enabled": false,
+      "tracing_plugin_configured": true,
+      "expected_plugin": "langfuse/codex-observability-plugin"
+    }
+  },
+  "runtime_env": {
+    "LANGFUSE_BASE_URL": "missing",
+    "LANGFUSE_PUBLIC_KEY": "missing",
+    "LANGFUSE_SECRET_KEY": "missing",
+    "LANGFUSE_TRACING_ENVIRONMENT": "missing",
+    "LANGFUSE_PROJECT_ID": "missing",
+    "TRACE_TO_LANGFUSE": "missing",
+    "required_ready": false,
+    "official_plugin_active": false
+  },
+  "fanout": {
+    "file_jsonl_supported": true,
+    "syntropic_jsonl_supported": true,
+    "mcp_server_present": true
+  },
+  "otlp_noise_guard": {
+    "trace_to_langfuse_suppression_supported": true,
+    "force_flag_supported": true,
+    "focused_test_status": "pass",
+    "focused_test_detail": "cli_exporters tests passed"
+  }
+}

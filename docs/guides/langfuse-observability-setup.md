@@ -18,6 +18,20 @@ Claude/Codex run that is already traced by an official LangFuse plugin.
 Do not put LangFuse credentials in recipes, specs, Docker images, committed
 files, or experiment artifacts.
 
+Run the setup doctor first on any new MacBook, Mac Mini, VPS, or Docker
+workspace:
+
+```bash
+scripts/langfuse-observability-doctor.sh
+scripts/langfuse-observability-doctor.sh --json
+```
+
+The doctor is read-only. It does not install plugins, mutate config, call
+LangFuse, or print credential values. It reports command/runtime prerequisites,
+official plugin config hints, `LANGFUSE_*` set/missing state, JSONL and
+Syntropic137 fanout support, and the focused runtime guard test that keeps the
+Rust OTLP fallback quiet when `TRACE_TO_LANGFUSE=true`.
+
 There are two credential paths:
 
 1. **Official Claude/Codex plugin config**, used for canonical rich traces.
