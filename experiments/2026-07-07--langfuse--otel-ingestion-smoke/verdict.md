@@ -45,12 +45,17 @@ evidence under `runs/real-backend-smoke/`.
   stores it as a `GENERATION` with native token and cost fields.
 - The normalized `token_usage` event contract now has optional
   `harness`/`provider`/`model` metadata and now has both Codex and Claude
-  transcript evidence against the same LangFuse backend. Runtime Claude
-  transcript watching is still the next implementation gap before claiming full
-  live Claude parity.
+  transcript evidence against the same LangFuse backend. `itmux run` now drains
+  Claude transcripts at terminalization when the hook stream reports a
+  `transcript_path`, so completed interactive Claude workspace runs can fan out
+  transcript-derived token/cost/tool events. Continuous mid-run Claude
+  transcript streaming is still the next implementation gap before claiming
+  full live Claude parity.
 - External OTLP tool spans intentionally carry redacted tool-input summaries
   instead of raw JSON. The Claude transcript path also redacts transcript-derived
   tool input/output values and omits raw transcript content from `session_log`.
+  Hook event previews are also removed before fanout and OTLP hook spans carry
+  selected scalar metadata instead of raw hook event JSON.
 - Mac Mini/VPS setup should use the same official Compose stack plus the
   agentic local override pattern: expose LangFuse web, keep backing stores
   internal unless explicitly needed.

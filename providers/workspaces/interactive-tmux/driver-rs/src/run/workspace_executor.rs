@@ -6,7 +6,7 @@
 //! here: mapping the recipe's default agent onto `StartOptions`, materialising
 //! per-harness credentials, and the (placeholder) outcome detection.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -18,6 +18,7 @@ use crate::result::AwaitResult;
 use crate::run::contract::{
     AgentRunEvent, AgentRunEventPayload, AgentRunOutcome, AgentRunResult, AgentRunSpec,
 };
+use crate::run::harness_observer::{ClaudeTranscriptObserver, HarnessObserver};
 use crate::run::observability::ObservabilityFanout;
 use crate::run::orchestrator::{run_core, CancelToken, RunExecutor};
 use crate::run::recipe_loader::{load_execution_plan, RecipeExecutionPlan};
@@ -226,7 +227,14 @@ impl RunExecutor for WorkspaceExecutor {
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
-        Ok(parse_hook_events(&String::from_utf8_lossy(&output.stdout)))
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parsed = parse_hook_events(&stdout);
+        let mut payloads = parsed.payloads;
+        for transcript_path in parsed.transcript_paths {
+            let transcript = read_workspace_file_if_present(&handle.workspace, &transcript_path)?;
+            payloads.extend(parse_claude_transcript_events(&transcript));
+        }
+        Ok(payloads)
     }
 
     fn teardown(&mut self, handle: Self::Handle) -> io::Result<()> {
@@ -398,23 +406,118 @@ fn hook_sink_env(agent: Agent) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-fn parse_hook_events(raw: &str) -> Vec<AgentRunEventPayload> {
-    raw.lines()
-        .filter_map(|line| {
-            let event: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
-            let event_type = event.get("event_type")?.as_str()?.to_string();
-            let provider = event
-                .get("provider")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("unknown")
-                .to_string();
-            Some(AgentRunEventPayload::HookEvent {
-                provider,
-                event_type,
-                event,
-            })
-        })
-        .collect()
+#[derive(Debug, Default)]
+struct ParsedHookEvents {
+    payloads: Vec<AgentRunEventPayload>,
+    transcript_paths: BTreeSet<String>,
+}
+
+fn parse_hook_events(raw: &str) -> ParsedHookEvents {
+    let mut parsed = ParsedHookEvents::default();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        if let Some(path) = transcript_path_from_hook_event(&event) {
+            parsed.transcript_paths.insert(path.to_string());
+        }
+        let Some(event_type) = event.get("event_type").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let provider = event
+            .get("provider")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        parsed.payloads.push(AgentRunEventPayload::HookEvent {
+            provider,
+            event_type: event_type.to_string(),
+            event: sanitize_hook_event(event),
+        });
+    }
+    parsed
+}
+
+fn sanitize_hook_event(mut event: serde_json::Value) -> serde_json::Value {
+    let mut redacted = false;
+    if let Some(context) = event
+        .get_mut("context")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "input_preview",
+            "output_preview",
+            "prompt_preview",
+            "message",
+            "error",
+        ] {
+            if context.remove(key).is_some() {
+                redacted = true;
+            }
+        }
+    }
+    if let Some(metadata) = event
+        .get_mut("metadata")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in ["prompt", "tool_input", "tool_result"] {
+            if metadata.remove(key).is_some() {
+                redacted = true;
+            }
+        }
+    }
+    if redacted {
+        event["redacted"] = serde_json::Value::Bool(true);
+    }
+    event
+}
+
+fn transcript_path_from_hook_event(event: &serde_json::Value) -> Option<&str> {
+    event
+        .pointer("/metadata/transcript_path")
+        .or_else(|| event.get("transcript_path"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|path| !path.trim().is_empty())
+}
+
+fn read_workspace_file_if_present(workspace: &Workspace, path: &str) -> io::Result<String> {
+    let quoted = sh_single_quote(path);
+    let output = workspace.exec(&[
+        "sh",
+        "-lc",
+        &format!("if [ -f {quoted} ]; then cat {quoted}; fi"),
+    ])?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "read observed transcript failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn parse_claude_transcript_events(raw: &str) -> Vec<AgentRunEventPayload> {
+    let mut observer = ClaudeTranscriptObserver::new();
+    let mut payloads = Vec::new();
+    for line in raw.lines() {
+        match observer.observe_jsonl_line(line) {
+            Ok(events) => payloads.extend(events.into_iter().map(|event| event.payload)),
+            Err(err) => payloads.push(AgentRunEventPayload::ToolEnd {
+                tool_name: "claude_transcript.parse".to_string(),
+                success: false,
+                output_summary: Some(err.to_string()),
+            }),
+        }
+    }
+    payloads
+}
+
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 /// Create a fresh temp dir under the system temp dir for credential
@@ -564,5 +667,78 @@ mod tests {
         assert_eq!(sanitize_name("pr-reviewer"), "pr-reviewer");
         assert_eq!(sanitize_name("my recipe!"), "my-recipe");
         assert_eq!(sanitize_name("///"), "recipe");
+    }
+
+    #[test]
+    fn hook_events_include_payloads_and_transcript_paths() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"session_started","provider":"claude","metadata":{"transcript_path":"/tmp/claude/session.jsonl"}}"#,
+        );
+
+        assert_eq!(parsed.payloads.len(), 1);
+        assert!(parsed
+            .transcript_paths
+            .contains("/tmp/claude/session.jsonl"));
+        assert!(matches!(
+            parsed.payloads[0],
+            AgentRunEventPayload::HookEvent {
+                ref provider,
+                ref event_type,
+                ..
+            } if provider == "claude" && event_type == "session_started"
+        ));
+    }
+
+    #[test]
+    fn hook_events_redact_preview_fields() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"tool_execution_started","provider":"claude","context":{"tool_name":"Bash","tool_use_id":"toolu_1","input_preview":"echo sk-ant-secret"}}"#,
+        );
+
+        assert_eq!(parsed.payloads.len(), 1);
+        let serialized = serde_json::to_string(&parsed.payloads[0]).expect("payload json");
+        assert!(serialized.contains("\"redacted\":true"), "{serialized}");
+        assert!(
+            serialized.contains("\"tool_name\":\"Bash\""),
+            "{serialized}"
+        );
+        assert!(!serialized.contains("sk-ant-secret"), "{serialized}");
+        assert!(!serialized.contains("input_preview"), "{serialized}");
+    }
+
+    #[test]
+    fn claude_transcript_events_are_normalized_for_workspace_run() {
+        let payloads = parse_claude_transcript_events(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"echo sk-ant-secret"}}]}}"#,
+        );
+
+        assert_eq!(payloads.len(), 1);
+        let serialized = serde_json::to_string(&payloads[0]).expect("payload json");
+        assert!(serialized.contains("\"redacted\":true"), "{serialized}");
+        assert!(!serialized.contains("sk-ant-secret"), "{serialized}");
+    }
+
+    #[test]
+    fn claude_transcript_usage_is_available_to_workspace_run() {
+        let payloads = parse_claude_transcript_events(
+            r#"{"type":"result","modelUsage":{"claude-sonnet-4-5-20250929":{"inputTokens":3,"outputTokens":5,"cacheReadInputTokens":7,"cacheCreationInputTokens":11,"costUSD":0.02}}}"#,
+        );
+
+        assert_eq!(payloads.len(), 1);
+        assert!(matches!(
+            payloads[0],
+            AgentRunEventPayload::TokenUsage {
+                input_tokens: 3,
+                output_tokens: 5,
+                cached_input_tokens: Some(18),
+                cost_usd: Some(0.02),
+                ref harness,
+                ref provider,
+                ref model,
+                ..
+            } if harness.as_deref() == Some("claude")
+                && provider.as_deref() == Some("anthropic")
+                && model.as_deref() == Some("claude-sonnet-4-5-20250929")
+        ));
     }
 }

@@ -720,11 +720,7 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<OtlpAttribute
             provider,
             event_type,
             event,
-        } => vec![
-            OtlpAttribute::string("agentic.hook.provider", provider),
-            OtlpAttribute::string("agentic.hook.event_type", event_type),
-            OtlpAttribute::string("agentic.hook.event_json", event.to_string()),
-        ],
+        } => hook_event_attributes(provider, event_type, event),
         AgentRunEventPayload::SessionEnd { outcome } => vec![
             OtlpAttribute::string("agentic.outcome.success", outcome.success.to_string()),
             OtlpAttribute::string("agentic.outcome.summary", &outcome.summary),
@@ -748,6 +744,54 @@ fn tool_input_summary(input: &serde_json::Value) -> String {
         serde_json::Value::Number(_) => "number".to_string(),
         serde_json::Value::Bool(_) => "bool".to_string(),
         serde_json::Value::Null => "null".to_string(),
+    }
+}
+
+fn hook_event_attributes(
+    provider: &str,
+    event_type: &str,
+    event: &serde_json::Value,
+) -> Vec<OtlpAttribute> {
+    let mut attributes = vec![
+        OtlpAttribute::string("agentic.hook.provider", provider),
+        OtlpAttribute::string("agentic.hook.event_type", event_type),
+        OtlpAttribute::string("agentic.hook.redacted", "true"),
+    ];
+    if let Some(session_id) = event.get("session_id").and_then(serde_json::Value::as_str) {
+        attributes.push(OtlpAttribute::string("agentic.hook.session_id", session_id));
+    }
+    if let Some(context) = event.get("context").and_then(serde_json::Value::as_object) {
+        for key in [
+            "tool_name",
+            "tool_use_id",
+            "success",
+            "duration_ms",
+            "reason",
+            "source",
+        ] {
+            if let Some(value) = context.get(key) {
+                attributes.push(OtlpAttribute::string(
+                    format!("agentic.hook.context.{key}"),
+                    scalar_summary(value),
+                ));
+            }
+        }
+    }
+    attributes
+}
+
+fn scalar_summary(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Array(items) => format!("array len: {}", items.len()),
+        serde_json::Value::Object(map) => format!("object keys: {}", {
+            let mut keys: Vec<_> = map.keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            keys.join(",")
+        }),
     }
 }
 
@@ -1153,6 +1197,51 @@ mod tests {
             );
         }
         for forbidden in ["sk-ant-secret", "OPENAI_API_KEY", "echo sk"] {
+            assert!(
+                !body
+                    .windows(forbidden.len())
+                    .any(|window| window == forbidden.as_bytes()),
+                "leaked {forbidden} in OTLP payload"
+            );
+        }
+    }
+
+    #[test]
+    fn langfuse_otlp_payload_redacts_hook_event_values() {
+        let events = [AgentRunEvent {
+            run_id: "run-test".to_string(),
+            seq: 1,
+            ts: "2026-07-07T00:00:01Z".to_string(),
+            payload: AgentRunEventPayload::HookEvent {
+                provider: "claude".to_string(),
+                event_type: "tool_execution_started".to_string(),
+                event: serde_json::json!({
+                    "event_type": "tool_execution_started",
+                    "provider": "claude",
+                    "session_id": "session-123",
+                    "context": {
+                        "tool_name": "Bash",
+                        "tool_use_id": "toolu_1",
+                        "input_preview": "echo sk-ant-secret"
+                    }
+                }),
+            },
+        }];
+        let body = encode_otlp_trace_request(&events, "agentic-primitives", "local-test");
+
+        for expected in [
+            "agentic.hook.redacted",
+            "agentic.hook.context.tool_name",
+            "Bash",
+            "tool_execution_started",
+        ] {
+            assert!(
+                body.windows(expected.len())
+                    .any(|window| window == expected.as_bytes()),
+                "missing {expected} in OTLP payload"
+            );
+        }
+        for forbidden in ["sk-ant-secret", "input_preview", "event_json", "echo sk"] {
             assert!(
                 !body
                     .windows(forbidden.len())

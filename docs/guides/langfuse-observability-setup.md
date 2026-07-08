@@ -193,8 +193,15 @@ counts, and cost data. Transcript-derived tool input values and result content
 are redacted before export; tool input spans preserve only shape metadata such
 as object key names. The result `session_log` records a summary, not the raw
 transcript. This is the current reusable export path for Claude-shaped
-telemetry; live transcript tailing from interactive Claude sessions is tracked
-as the next integration layer.
+telemetry.
+
+For `itmux run` with Claude, the workspace executor also drains the Claude
+observability hook sink at terminalization. When the hook stream includes a
+Claude `transcript_path`, `itmux run` reads that transcript from the workspace
+and normalizes it through the same redacted Claude transcript observer before
+fanout. This gives completed interactive Claude workspace runs token, cost,
+tool, and hook telemetry in the same file/LangFuse exporters. Continuous
+mid-run transcript streaming remains a follow-up.
 
 Also follow the dedicated ingestion experiment at
 `experiments/2026-07-07--langfuse--otel-ingestion-smoke/eval-pack.md` against

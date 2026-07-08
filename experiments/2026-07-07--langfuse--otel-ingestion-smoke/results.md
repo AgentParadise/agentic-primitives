@@ -81,5 +81,11 @@ observations as native generations with model, token, and cost fields. This
 proves the reusable exporter contract for Claude-shaped transcript data. The
 committed evidence is redacted: tool input values preserve only shape metadata,
 tool result content is summarized by length, and `result.json` omits the raw
-transcript from `session_log`. This does not yet prove live transcript tailing
-from an interactive Claude workspace.
+transcript from `session_log`.
+
+After this backend smoke, `itmux run` was wired to drain Claude transcript files
+at terminalization when the Claude hook stream reports a `transcript_path`.
+Unit evidence now covers hook-path extraction, redacted transcript
+normalization, and `result.modelUsage` availability through the workspace-run
+path. This is terminalization-time collection for completed interactive Claude
+workspace runs; continuous mid-run transcript streaming remains unproven.
