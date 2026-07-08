@@ -290,6 +290,40 @@ enum Cmd {
         #[arg(long, value_enum, default_value = "full")]
         output: LangFuseTraceOutput,
     },
+    /// List recent LangFuse traces so agents can discover runs to inspect.
+    #[command(name = "langfuse-traces")]
+    LangFuseTraces {
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Maximum trace rows to request.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+        /// 1-based LangFuse page number.
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Keep only traces for this harness, for example codex or claude.
+        #[arg(long)]
+        harness: Option<String>,
+        /// Keep only traces for this provider, for example openai or anthropic.
+        #[arg(long)]
+        provider: Option<String>,
+        /// Keep only traces for this model.
+        #[arg(long)]
+        model: Option<String>,
+        /// Keep only traces for this LangFuse environment.
+        #[arg(long)]
+        environment: Option<String>,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
+    },
 }
 
 /// Clap value parser for `--timeout`: accept only a finite, strictly-positive
@@ -1268,6 +1302,21 @@ struct LangFuseTraceQueryRequest {
     to_start_time: String,
 }
 
+#[derive(Serialize)]
+struct LangFuseTracesListRequest {
+    endpoint: String,
+    limit: u32,
+    page: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    environment: Option<String>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_langfuse_trace(
     trace_id: Option<String>,
@@ -1362,6 +1411,142 @@ fn handle_langfuse_trace(
                 })
             });
             let summary = summarize_langfuse_trace_response(&parsed);
+            let output = match output {
+                LangFuseTraceOutput::Summary => json!({
+                    "ok": true,
+                    "request": request,
+                    "summary": summary,
+                }),
+                LangFuseTraceOutput::Full => json!({
+                    "ok": true,
+                    "request": request,
+                    "summary": summary,
+                    "response": parsed,
+                }),
+            };
+            println!("{}", serde_json::to_string_pretty(&output).unwrap());
+            ExitCode::SUCCESS
+        }
+        Ok(response) => {
+            let status = response.status();
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(ureq::Error::Status(status, response)) => {
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "error": err.to_string(),
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_langfuse_traces(
+    base_url: Option<String>,
+    public_key_env: String,
+    secret_key_env: String,
+    limit: u32,
+    page: u32,
+    harness: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    environment: Option<String>,
+    output: LangFuseTraceOutput,
+) -> ExitCode {
+    let mut missing = Vec::new();
+    let base_url = base_url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| non_empty_env("LANGFUSE_BASE_URL"))
+        .unwrap_or_else(|| {
+            missing.push("LANGFUSE_BASE_URL".to_string());
+            String::new()
+        });
+    let public_key = non_empty_env(&public_key_env).unwrap_or_else(|| {
+        missing.push(public_key_env.clone());
+        String::new()
+    });
+    let secret_key = non_empty_env(&secret_key_env).unwrap_or_else(|| {
+        missing.push(secret_key_env.clone());
+        String::new()
+    });
+
+    if !missing.is_empty() {
+        println!(
+            "{}",
+            json!({
+                "ok": false,
+                "error": "missing required LangFuse query configuration",
+                "missing": missing,
+            })
+        );
+        return ExitCode::from(78);
+    }
+
+    let endpoint = build_langfuse_traces_list_url(&base_url, limit, page);
+    let request = LangFuseTracesListRequest {
+        endpoint: endpoint.clone(),
+        limit,
+        page,
+        harness: non_empty_string(harness),
+        provider: non_empty_string(provider),
+        model: non_empty_string(model),
+        environment: non_empty_string(environment),
+    };
+
+    let response = ureq::get(&endpoint)
+        .timeout(LANGFUSE_TRACE_QUERY_TIMEOUT)
+        .set(
+            "Authorization",
+            &langfuse_basic_auth_header(&public_key, &secret_key),
+        )
+        .call();
+
+    match response {
+        Ok(response) if (200..300).contains(&response.status()) => {
+            let body = response.into_string().unwrap_or_default();
+            let parsed = serde_json::from_str::<Value>(&body).unwrap_or_else(|err| {
+                json!({
+                    "parse_error": err.to_string(),
+                    "body": body,
+                })
+            });
+            let summary = summarize_langfuse_traces_response(&parsed, &request);
             let output = match output {
                 LangFuseTraceOutput::Summary => json!({
                     "ok": true,
@@ -1692,6 +1877,116 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
     })
 }
 
+fn summarize_langfuse_traces_response(
+    response: &Value,
+    request: &LangFuseTracesListRequest,
+) -> Value {
+    let rows = response
+        .get("data")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut traces = Vec::new();
+    let mut harnesses = BTreeSet::new();
+    let mut providers = BTreeSet::new();
+    let mut models = BTreeSet::new();
+    let mut environments = BTreeSet::new();
+    let mut total_cost = 0.0_f64;
+    let mut has_cost = false;
+
+    for trace in rows {
+        let metadata = trace.get("metadata");
+        let harness = metadata_string(metadata, "harness").or_else(|| {
+            trace
+                .get("tags")
+                .and_then(Value::as_array)
+                .and_then(|tags| {
+                    tags.iter().find_map(|tag| {
+                        tag.as_str()
+                            .and_then(|tag| tag.strip_prefix("harness:"))
+                            .map(ToOwned::to_owned)
+                    })
+                })
+        });
+        let provider = metadata_string(metadata, "provider");
+        let model = metadata_string(metadata, "model");
+        let environment = trace
+            .get("environment")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .or_else(|| metadata_string(metadata, "langfuse.environment"));
+
+        if !filter_matches(&harness, request.harness.as_deref())
+            || !filter_matches(&provider, request.provider.as_deref())
+            || !filter_matches(&model, request.model.as_deref())
+            || !filter_matches(&environment, request.environment.as_deref())
+        {
+            continue;
+        }
+
+        if let Some(value) = harness.as_ref() {
+            harnesses.insert(value.clone());
+        }
+        if let Some(value) = provider.as_ref() {
+            providers.insert(value.clone());
+        }
+        if let Some(value) = model.as_ref() {
+            models.insert(value.clone());
+        }
+        if let Some(value) = environment.as_ref() {
+            environments.insert(value.clone());
+        }
+        if let Some(cost) = number_f64(trace.get("totalCost")) {
+            total_cost += cost;
+            has_cost = true;
+        }
+
+        let observation_count = trace
+            .get("observations")
+            .and_then(Value::as_array)
+            .map(|observations| observations.len())
+            .unwrap_or(0);
+        traces.push(json!({
+            "trace_id": trace.get("id").and_then(Value::as_str),
+            "run_id": metadata_string(metadata, "run_id")
+                .or_else(|| trace.get("sessionId").and_then(Value::as_str).map(ToOwned::to_owned)),
+            "session_id": trace.get("sessionId").and_then(Value::as_str),
+            "name": trace.get("name").and_then(Value::as_str),
+            "timestamp": trace.get("timestamp").and_then(Value::as_str),
+            "created_at": trace.get("createdAt").and_then(Value::as_str),
+            "updated_at": trace.get("updatedAt").and_then(Value::as_str),
+            "environment": environment,
+            "harness": harness,
+            "provider": provider,
+            "model": model,
+            "total_cost": number_f64(trace.get("totalCost")),
+            "latency_s": number_f64(trace.get("latency")),
+            "observation_count": observation_count,
+            "html_path": trace.get("htmlPath").and_then(Value::as_str),
+        }));
+    }
+
+    json!({
+        "page": request.page,
+        "limit": request.limit,
+        "returned_count": traces.len(),
+        "backend_total_items": response.pointer("/meta/totalItems").and_then(Value::as_u64),
+        "backend_total_pages": response.pointer("/meta/totalPages").and_then(Value::as_u64),
+        "filters": {
+            "harness": request.harness,
+            "provider": request.provider,
+            "model": request.model,
+            "environment": request.environment,
+        },
+        "harnesses": harnesses.into_iter().collect::<Vec<_>>(),
+        "providers": providers.into_iter().collect::<Vec<_>>(),
+        "models": models.into_iter().collect::<Vec<_>>(),
+        "environments": environments.into_iter().collect::<Vec<_>>(),
+        "total_cost": if has_cost { Some(total_cost) } else { None },
+        "traces": traces,
+    })
+}
+
 #[derive(Debug, Default)]
 struct ToolTraceStats {
     starts: u64,
@@ -1869,6 +2164,24 @@ fn attr_u64(attrs: Option<&Value>, key: &str) -> Option<u64> {
     })
 }
 
+fn metadata_string(metadata: Option<&Value>, key: &str) -> Option<String> {
+    metadata
+        .and_then(|metadata| metadata.get(key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn filter_matches(value: &Option<String>, expected: Option<&str>) -> bool {
+    let Some(expected) = expected.map(str::trim).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    value
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case(expected))
+}
+
 fn number_u64(value: Option<&Value>) -> u64 {
     value
         .and_then(|value| {
@@ -1930,6 +2243,16 @@ fn build_langfuse_trace_query_url(
             )
         }
     }
+}
+
+fn build_langfuse_traces_list_url(base_url: &str, limit: u32, page: u32) -> String {
+    let base = langfuse_api_base_url(base_url);
+    format!(
+        "{}/api/public/traces?limit={}&page={}",
+        base.trim_end_matches('/'),
+        limit,
+        page
+    )
 }
 
 fn url_path_encode(value: &str) -> String {
@@ -2098,6 +2421,29 @@ fn main() -> ExitCode {
             fields,
             limit,
             api,
+            output,
+        ),
+        Cmd::LangFuseTraces {
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
+            output,
+        } => handle_langfuse_traces(
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
             output,
         ),
     }
@@ -2273,6 +2619,124 @@ mod cli_tests {
         assert_eq!(from_start_time, DEFAULT_LANGFUSE_QUERY_FROM_START_TIME);
         assert_eq!(to_start_time, DEFAULT_LANGFUSE_QUERY_TO_START_TIME);
         assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_traces_list_url_uses_public_traces_endpoint() {
+        let url = build_langfuse_traces_list_url(
+            "https://langfuse.example.com/api/public/otel/v1/traces",
+            25,
+            2,
+        );
+
+        assert_eq!(
+            url,
+            "https://langfuse.example.com/api/public/traces?limit=25&page=2"
+        );
+    }
+
+    #[test]
+    fn langfuse_traces_cli_defaults_to_summary_output() {
+        let cli = Cli::try_parse_from([
+            "itmux",
+            "langfuse-traces",
+            "--limit",
+            "5",
+            "--harness",
+            "claude",
+        ])
+        .unwrap();
+
+        let Cmd::LangFuseTraces {
+            limit,
+            page,
+            harness,
+            output,
+            ..
+        } = cli.cmd
+        else {
+            panic!("expected langfuse-traces command");
+        };
+
+        assert_eq!(limit, 5);
+        assert_eq!(page, 1);
+        assert_eq!(harness.as_deref(), Some("claude"));
+        assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_traces_summary_filters_and_extracts_learning_loop_fields() {
+        let response = json!({
+            "data": [
+                {
+                    "id": "trace-codex",
+                    "name": "agentic_primitives.run",
+                    "timestamp": "2026-07-08T03:26:12.000Z",
+                    "createdAt": "2026-07-08T03:26:14.571Z",
+                    "updatedAt": "2026-07-08T03:26:14.584Z",
+                    "environment": "local-macbook",
+                    "sessionId": "run-codex",
+                    "metadata": {
+                        "run_id": "run-codex",
+                        "harness": "codex",
+                        "provider": "openai",
+                        "model": "gpt-5.5"
+                    },
+                    "observations": ["obs-1", "obs-2"],
+                    "totalCost": 0.25,
+                    "latency": 2.0,
+                    "htmlPath": "/project/p/traces/trace-codex"
+                },
+                {
+                    "id": "trace-claude",
+                    "name": "agentic_primitives.run",
+                    "timestamp": "2026-07-08T03:15:34.000Z",
+                    "environment": "local-macbook",
+                    "sessionId": "run-claude",
+                    "metadata": {
+                        "run_id": "run-claude",
+                        "harness": "claude",
+                        "provider": "anthropic",
+                        "model": "claude-sonnet-4-6"
+                    },
+                    "observations": ["obs-1"],
+                    "totalCost": 0.5,
+                    "latency": 6.0,
+                    "htmlPath": "/project/p/traces/trace-claude"
+                }
+            ],
+            "meta": {
+                "page": 1,
+                "limit": 2,
+                "totalItems": 2,
+                "totalPages": 1
+            }
+        });
+        let request = LangFuseTracesListRequest {
+            endpoint: "https://langfuse.example.com/api/public/traces?limit=2&page=1".to_string(),
+            limit: 2,
+            page: 1,
+            harness: Some("claude".to_string()),
+            provider: None,
+            model: None,
+            environment: None,
+        };
+
+        let summary = summarize_langfuse_traces_response(&response, &request);
+
+        assert_eq!(summary["returned_count"], 1);
+        assert_eq!(summary["backend_total_items"], 2);
+        assert_eq!(summary["harnesses"], json!(["claude"]));
+        assert_eq!(summary["providers"], json!(["anthropic"]));
+        assert_eq!(summary["models"], json!(["claude-sonnet-4-6"]));
+        assert_eq!(summary["total_cost"], json!(0.5));
+        assert_eq!(summary["traces"][0]["trace_id"], "trace-claude");
+        assert_eq!(summary["traces"][0]["run_id"], "run-claude");
+        assert_eq!(summary["traces"][0]["observation_count"], 1);
+        assert_eq!(
+            summary["traces"][0]["html_path"],
+            "/project/p/traces/trace-claude"
+        );
     }
 
     #[test]

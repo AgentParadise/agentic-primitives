@@ -249,6 +249,18 @@ LangFuse Cloud or the planned self-hosted Mac Mini deployment.
 Use the same secret injection model as export:
 
 ```bash
+itmux langfuse-traces --limit 10 --harness claude
+```
+
+`itmux langfuse-traces` lists recent traces from `/api/public/traces` and
+returns a compact summary by default. Each row includes the trace id, run id,
+session id, timestamp, environment, harness, provider, model, total cost,
+latency, observation count, and LangFuse UI path. Use `--harness codex` or
+`--harness claude` to split Codex and Claude traces before selecting a run for
+deeper inspection. Additional filters are available for provider, model, and
+environment.
+
+```bash
 itmux langfuse-trace \
   --run-id <itmux-run-id> \
   --api legacy-trace \

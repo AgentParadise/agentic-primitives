@@ -10,6 +10,7 @@
 | Live Codex exec export | `runs/codex-live-real-langfuse-token-total-fixed/summary.txt`, `runs/codex-live-real-langfuse-token-total-fixed/events.jsonl`, `runs/codex-live-real-langfuse-token-total-fixed/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose with the real Codex CLI: model `gpt-5.5`, harness `codex`, provider `openai`, 15932 total tokens, calculated cost `0.07996`, OpenAI cache tokens preserved as metadata but not double-counted, event/tool sequences ordered by `agentic.event.seq`, and `agent_tool` vs `harness_tool` grouping. |
 | Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`, `runs/claude-transcript-langfuse/learning-loop-summary.txt`, `runs/codex-live-real-langfuse-token-total-fixed/langfuse-trace-query-legacy.json`, `runs/claude-live-agent-tool-itmux-run/langfuse-trace-query-legacy.json` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields, a redacted tool-call summary, a compact full event sequence, and separate `operations`, `agent_tools`, and `harness_tools` groups for learning loops. |
 | Compact agent query mode | `runs/langfuse-trace-compact-summary/summary.txt`, `runs/langfuse-trace-compact-summary/codex-summary.json`, `runs/langfuse-trace-compact-summary/claude-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-trace --api legacy-trace --output summary --run-id ...` works without explicit time bounds, omits the raw backend `response`, and returns the learning-loop summary for both Codex and Claude traces. |
+| Trace discovery mode | `runs/langfuse-traces-discovery/summary.txt`, `runs/langfuse-traces-discovery/recent-summary.json`, `runs/langfuse-traces-discovery/codex-summary.json`, `runs/langfuse-traces-discovery/claude-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-traces` lists recent traces without raw backend `response`, reports run ids, harness/provider/model, cost, observation counts, and supports harness filtering for Codex vs Claude. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
 | Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
 | Live Claude poll-time streaming | `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`, `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`, `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: hook and transcript-derived token usage events streamed before `await` ended, message-level usage was deduplicated to one event, and LangFuse classified usage as `GENERATION` with model, token totals, and calculated cost. |
@@ -136,6 +137,19 @@ without carrying time-window arguments. Current evidence from
   `itmux langfuse-trace --api legacy-trace --output summary --run-id run-f07cba88`
 - Claude result: no raw `response`, harness `claude`, total tokens `31789`,
   calculated cost `0.001767`, agent tool `Bash`
+
+Agents can discover candidate runs before drilling into a single trace with
+`itmux langfuse-traces`. Current evidence from
+`runs/langfuse-traces-discovery/summary.txt`:
+
+- Recent command: `itmux langfuse-traces --limit 5`
+- Recent result: no raw `response`, 5 traces returned out of 17 backend traces,
+  harnesses `claude,codex`, aggregate listed cost `0.16830399999900003`, run ids
+  `run-f7ae62c8,run-f07cba88,run-2e3c7c48,run-40ceea48,run-00411d68`
+- Codex filter: `itmux langfuse-traces --limit 10 --harness codex` returned 3
+  Codex traces; first run `run-f7ae62c8`, cost `0.07996`
+- Claude filter: `itmux langfuse-traces --limit 10 --harness claude` returned
+  6 Claude traces; first run `run-f07cba88`, cost `0.001767`
 
 ## Live Codex Exec Smoke
 
