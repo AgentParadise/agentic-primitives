@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
@@ -698,6 +698,67 @@ fn build_observability_exporters(
     exporters
 }
 
+fn resolve_codex_exec_model(explicit_model: Option<String>) -> Option<String> {
+    if let Some(model) = non_empty_string(explicit_model) {
+        return Some(model);
+    }
+    if let Some(model) = non_empty_env("CODEX_MODEL") {
+        return Some(model);
+    }
+    codex_config_path().and_then(|path| read_codex_config_model(&path))
+}
+
+fn codex_config_path() -> Option<PathBuf> {
+    if let Some(codex_home) = std::env::var_os("CODEX_HOME") {
+        return Some(PathBuf::from(codex_home).join("config.toml"));
+    }
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join(".codex/config.toml"))
+}
+
+fn read_codex_config_model(path: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    parse_codex_config_model(&raw)
+}
+
+fn parse_codex_config_model(raw: &str) -> Option<String> {
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            break;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "model" {
+            continue;
+        }
+        return parse_toml_string_literal(value.trim())
+            .and_then(|value| non_empty_string(Some(value)));
+    }
+    None
+}
+
+fn parse_toml_string_literal(value: &str) -> Option<String> {
+    let value = value.split('#').next().unwrap_or(value).trim();
+    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
+        return Some(value[1..value.len() - 1].to_string());
+    }
+    if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
+        return Some(value[1..value.len() - 1].to_string());
+    }
+    None
+}
+
+fn non_empty_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_run(
     recipe: PathBuf,
@@ -833,7 +894,9 @@ fn handle_codex_exec(
     let exporters =
         build_observability_exporters(observability_file, "codex exec events", langfuse);
     let mut fanout = ObservabilityFanout::new(&exporters);
-    let mut observer = CodexExecJsonObserver::with_model(model.clone());
+    let requested_model = non_empty_string(model.clone());
+    let telemetry_model = resolve_codex_exec_model(model.clone());
+    let mut observer = CodexExecJsonObserver::with_model(telemetry_model);
     let run_id = generate_run_id();
     let mut seq = 0u64;
     let mut session_log = String::new();
@@ -864,7 +927,7 @@ fn handle_codex_exec(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(model) = model {
+    if let Some(model) = requested_model {
         cmd.arg("--model").arg(model);
     }
     cmd.arg(prompt);
@@ -1378,6 +1441,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
     let mut has_cost = false;
     let mut tool_stats: BTreeMap<String, ToolTraceStats> = BTreeMap::new();
     let mut tool_events = Vec::new();
+    let mut trace_events = Vec::new();
 
     for observation in &observations {
         insert_string(&mut names, observation.get("name"));
@@ -1433,6 +1497,40 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                 .and_then(Value::as_str)
                 .map(str::to_string)
         });
+        if let Some(event_type) = event_type.clone() {
+            trace_events.push(TraceEvent {
+                seq: attr_u64(attrs, "agentic.event.seq"),
+                sort_time: observation
+                    .get("startTime")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                sort_id: observation
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                event: event_type,
+                name: observation
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                tool_name: attr_string(attrs, "agentic.tool.name"),
+                harness: attr_string(attrs, "agentic.harness"),
+                provider: attr_string(attrs, "agentic.provider"),
+                model: attr_string(attrs, "agentic.model").or_else(|| {
+                    observation
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                }),
+                success: attr_bool(attrs, "agentic.tool.success")
+                    .or_else(|| attr_bool(attrs, "agentic.outcome.success")),
+                total_tokens: number_u64(observation.get("totalTokens")),
+                calculated_total_cost: number_f64(observation.get("calculatedTotalCost")),
+            });
+        }
         if matches!(event_type.as_deref(), Some("tool_start" | "tool_end")) {
             let tool_name =
                 attr_string(attrs, "agentic.tool.name").unwrap_or_else(|| "unknown".to_string());
@@ -1488,6 +1586,42 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
             })
         })
         .collect::<Vec<_>>();
+    let event_sequence_source = if trace_events.iter().any(|event| event.seq.is_some()) {
+        Some("agentic.event.seq")
+    } else {
+        None
+    };
+    trace_events.sort_by(|a, b| {
+        a.seq
+            .unwrap_or(u64::MAX)
+            .cmp(&b.seq.unwrap_or(u64::MAX))
+            .then_with(|| a.sort_time.cmp(&b.sort_time))
+            .then_with(|| a.sort_id.cmp(&b.sort_id))
+    });
+    let event_sequence_truncated = trace_events.len() > 200;
+    let event_sequence = trace_events
+        .into_iter()
+        .take(200)
+        .map(|event| {
+            json!({
+                "seq": event.seq,
+                "event": event.event,
+                "name": event.name,
+                "tool_name": event.tool_name,
+                "harness": event.harness,
+                "provider": event.provider,
+                "model": event.model,
+                "success": event.success,
+                "total_tokens": event.total_tokens,
+                "calculated_total_cost": event.calculated_total_cost,
+            })
+        })
+        .collect::<Vec<_>>();
+    let tool_sequence_source = if tool_events.iter().any(|event| event.seq.is_some()) {
+        Some("agentic.event.seq")
+    } else {
+        None
+    };
     tool_events.sort_by(|a, b| {
         a.seq
             .unwrap_or(u64::MAX)
@@ -1530,6 +1664,11 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         "cost": {
             "calculated_total_usd": if has_cost { Some(calculated_total_cost) } else { None },
         },
+        "events": {
+            "sequence_source": event_sequence_source,
+            "sequence": event_sequence,
+            "sequence_truncated": event_sequence_truncated,
+        },
         "tools": {
             "start_count": tool_start_count,
             "end_count": tool_end_count,
@@ -1537,6 +1676,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
             "failure_count": tool_failure_count,
             "names": tool_names,
             "by_name": tools_by_name,
+            "sequence_source": tool_sequence_source,
             "sequence": tool_sequence,
             "sequence_truncated": tool_sequence_truncated,
         },
@@ -1559,6 +1699,22 @@ struct ToolTraceEvent {
     event: String,
     tool_name: String,
     success: Option<bool>,
+}
+
+#[derive(Debug)]
+struct TraceEvent {
+    seq: Option<u64>,
+    sort_time: String,
+    sort_id: String,
+    event: String,
+    name: String,
+    tool_name: Option<String>,
+    harness: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    success: Option<bool>,
+    total_tokens: u64,
+    calculated_total_cost: Option<f64>,
 }
 
 fn insert_string(out: &mut BTreeSet<String>, value: Option<&Value>) {
@@ -1903,6 +2059,37 @@ mod cli_tests {
     }
 
     #[test]
+    fn codex_exec_model_prefers_explicit_model() {
+        assert_eq!(
+            resolve_codex_exec_model(Some(" gpt-explicit ".to_string())).as_deref(),
+            Some("gpt-explicit")
+        );
+    }
+
+    #[test]
+    fn codex_config_model_reads_top_level_model_only() {
+        let raw = r#"
+            # Codex account default
+            model = "gpt-5.5"
+
+            [profiles.fast]
+            model = "gpt-4.1"
+        "#;
+
+        assert_eq!(parse_codex_config_model(raw).as_deref(), Some("gpt-5.5"));
+    }
+
+    #[test]
+    fn codex_config_model_ignores_profile_only_model() {
+        let raw = r#"
+            [profiles.fast]
+            model = "gpt-4.1"
+        "#;
+
+        assert_eq!(parse_codex_config_model(raw), None);
+    }
+
+    #[test]
     fn langfuse_trace_query_url_is_bounded_and_encoded() {
         let url = build_langfuse_trace_query_url(
             LangFuseTraceApi::ObservationsV2,
@@ -2022,6 +2209,17 @@ mod cli_tests {
         assert_eq!(summary["usage"]["output_tokens"], 3);
         assert_eq!(summary["usage"]["total_tokens"], 13);
         assert_eq!(summary["cost"]["calculated_total_usd"], 0.0000033);
+        assert_eq!(summary["events"]["sequence_source"], "agentic.event.seq");
+        assert_eq!(summary["events"]["sequence"][0]["seq"], 3);
+        assert_eq!(summary["events"]["sequence"][1]["seq"], 4);
+        assert_eq!(summary["events"]["sequence"][2]["seq"], 5);
+        assert_eq!(summary["events"]["sequence"][3]["event"], "token_usage");
+        assert_eq!(summary["events"]["sequence"][3]["total_tokens"], json!(13));
+        assert_eq!(
+            summary["events"]["sequence"][3]["calculated_total_cost"],
+            json!(0.0000033)
+        );
+        assert_eq!(summary["events"]["sequence_truncated"], false);
         assert_eq!(summary["tools"]["start_count"], 1);
         assert_eq!(summary["tools"]["end_count"], 2);
         assert_eq!(summary["tools"]["success_count"], 1);
@@ -2034,6 +2232,7 @@ mod cli_tests {
                 {"name": "TodoWrite", "starts": 0, "ends": 1, "successes": 0, "failures": 1}
             ])
         );
+        assert_eq!(summary["tools"]["sequence_source"], "agentic.event.seq");
         assert_eq!(summary["tools"]["sequence"][0]["seq"], 3);
         assert_eq!(summary["tools"]["sequence"][1]["seq"], 4);
         assert_eq!(summary["tools"]["sequence"][2]["seq"], 5);
