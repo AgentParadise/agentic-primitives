@@ -1,0 +1,10 @@
+name: main
+agent: claude
+model:
+  name: anthropic/claude-sonnet-4-5
+  effort: low
+skills:
+  - /opt/agentic/plugins/observability
+system_instructions:
+  mode: append
+  content: ""

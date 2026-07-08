@@ -645,10 +645,13 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<OtlpAttribute
             provider,
             model,
         } => {
-            let total_tokens = input_tokens
-                .saturating_add(*output_tokens)
-                .saturating_add(cached_input_tokens.unwrap_or(0))
-                .saturating_add(reasoning_output_tokens.unwrap_or(0));
+            let total_tokens = total_usage_tokens(
+                *input_tokens,
+                *output_tokens,
+                *cached_input_tokens,
+                *reasoning_output_tokens,
+                provider.as_deref(),
+            );
             let mut attributes = vec![
                 OtlpAttribute::string("langfuse.trace.metadata.event_type", "token_usage"),
                 OtlpAttribute::i64("gen_ai.usage.prompt_tokens", *input_tokens),
@@ -729,6 +732,22 @@ fn event_payload_attributes(payload: &AgentRunEventPayload) -> Vec<OtlpAttribute
             OtlpAttribute::string("agentic.result.success", result.result.success.to_string()),
             OtlpAttribute::string("agentic.result.summary", &result.result.summary),
         ],
+    }
+}
+
+fn total_usage_tokens(
+    input_tokens: u64,
+    output_tokens: u64,
+    cached_input_tokens: Option<u64>,
+    reasoning_output_tokens: Option<u64>,
+    provider: Option<&str>,
+) -> u64 {
+    let base_total = input_tokens.saturating_add(output_tokens);
+    match provider {
+        Some(provider) if provider.eq_ignore_ascii_case("anthropic") => base_total
+            .saturating_add(cached_input_tokens.unwrap_or(0))
+            .saturating_add(reasoning_output_tokens.unwrap_or(0)),
+        _ => base_total,
     }
 }
 
@@ -1167,6 +1186,22 @@ mod tests {
                 "missing {expected} in OTLP payload"
             );
         }
+    }
+
+    #[test]
+    fn openai_usage_total_treats_cached_and_reasoning_as_breakdowns() {
+        assert_eq!(
+            total_usage_tokens(16_839, 11, Some(9_600), Some(0), Some("openai")),
+            16_850
+        );
+    }
+
+    #[test]
+    fn anthropic_usage_total_treats_cache_fields_as_additive() {
+        assert_eq!(
+            total_usage_tokens(1_348, 2_218, Some(118_706), None, Some("anthropic")),
+            122_272
+        );
     }
 
     #[test]

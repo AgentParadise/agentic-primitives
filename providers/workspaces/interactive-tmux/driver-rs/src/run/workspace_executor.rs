@@ -64,6 +64,7 @@ pub struct WorkspaceExecutor {
     transcript_paths: BTreeSet<String>,
     transcript_bytes_read: HashMap<String, usize>,
     transcript_observers: HashMap<String, ClaudeTranscriptObserver>,
+    agent_stopped_normal: bool,
     startup_timeout_s: f64,
     /// Temp dirs holding credentials materialised from the spec; removed on
     /// teardown so inline credential material never lingers on disk.
@@ -119,6 +120,7 @@ impl WorkspaceExecutor {
             transcript_paths: BTreeSet::new(),
             transcript_bytes_read: HashMap::new(),
             transcript_observers: HashMap::new(),
+            agent_stopped_normal: false,
             startup_timeout_s: DEFAULT_STARTUP_TIMEOUT_S,
             cred_tmp_dirs,
         })
@@ -197,10 +199,20 @@ impl RunExecutor for WorkspaceExecutor {
             4,
             0.5,
             2.0,
-            &mut |workspace| match self.drain_observed_event_deltas(workspace) {
-                Ok(payloads) if !payloads.is_empty() => emit_observed(payloads),
-                Ok(_) => {}
-                Err(err) => eprintln!("[itmux run] failed to drain observed events: {err}"),
+            &mut |workspace, pane, elapsed_ms, stable_polls_observed| {
+                match self.drain_observed_event_deltas(workspace) {
+                    Ok(payloads) if !payloads.is_empty() => emit_observed(payloads),
+                    Ok(_) => {}
+                    Err(err) => eprintln!("[itmux run] failed to drain observed events: {err}"),
+                }
+                if self.agent_stopped_normal {
+                    return Some(AwaitResult::ready(
+                        elapsed_ms,
+                        stable_polls_observed,
+                        pane.to_string(),
+                    ));
+                }
+                None
             },
         )
     }
@@ -287,6 +299,7 @@ impl WorkspaceExecutor {
             read_workspace_file_delta_if_present(workspace, &path, self.hook_events_bytes_read)?;
         self.hook_events_bytes_read = bytes_read;
         let parsed = parse_hook_events(&stdout);
+        self.agent_stopped_normal |= parsed.agent_stopped_normal;
         let mut payloads = parsed.payloads;
         for transcript_path in parsed.transcript_paths {
             self.transcript_paths.insert(transcript_path);
@@ -454,6 +467,7 @@ fn hook_sink_env(agent: Agent) -> Vec<(String, String)> {
 struct ParsedHookEvents {
     payloads: Vec<AgentRunEventPayload>,
     transcript_paths: BTreeSet<String>,
+    agent_stopped_normal: bool,
 }
 
 fn parse_hook_events(raw: &str) -> ParsedHookEvents {
@@ -468,6 +482,9 @@ fn parse_hook_events(raw: &str) -> ParsedHookEvents {
         };
         if let Some(path) = transcript_path_from_hook_event(&event) {
             parsed.transcript_paths.insert(path.to_string());
+        }
+        if is_normal_agent_stopped_hook_event(&event) {
+            parsed.agent_stopped_normal = true;
         }
         let Some(event_type) = event.get("event_type").and_then(serde_json::Value::as_str) else {
             continue;
@@ -484,6 +501,17 @@ fn parse_hook_events(raw: &str) -> ParsedHookEvents {
         });
     }
     parsed
+}
+
+fn is_normal_agent_stopped_hook_event(event: &serde_json::Value) -> bool {
+    event
+        .get("event_type")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|event_type| event_type == "agent_stopped")
+        && event
+            .pointer("/context/reason")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|reason| reason == "normal")
 }
 
 fn sanitize_hook_event(mut event: serde_json::Value) -> serde_json::Value {
@@ -768,6 +796,26 @@ mod tests {
         );
         assert!(!serialized.contains("sk-ant-secret"), "{serialized}");
         assert!(!serialized.contains("input_preview"), "{serialized}");
+    }
+
+    #[test]
+    fn hook_events_detect_normal_agent_stop() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"agent_stopped","provider":"claude","context":{"reason":"normal"}}"#,
+        );
+
+        assert!(parsed.agent_stopped_normal);
+        assert_eq!(parsed.payloads.len(), 1);
+    }
+
+    #[test]
+    fn hook_events_ignore_non_normal_agent_stop_for_completion() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"agent_stopped","provider":"claude","context":{"reason":"error"}}"#,
+        );
+
+        assert!(!parsed.agent_stopped_normal);
+        assert_eq!(parsed.payloads.len(), 1);
     }
 
     #[test]

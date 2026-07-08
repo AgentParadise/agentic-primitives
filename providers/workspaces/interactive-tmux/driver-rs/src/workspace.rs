@@ -576,7 +576,7 @@ impl Workspace {
             stable_polls,
             poll_interval,
             warmup,
-            &mut |_| {},
+            &mut |_, _, _, _| None,
         )
     }
 
@@ -587,7 +587,7 @@ impl Workspace {
         stable_polls: u32,
         poll_interval: f64,
         warmup: f64,
-        on_poll: &mut dyn FnMut(&Workspace),
+        on_poll: &mut dyn FnMut(&Workspace, &str, f64, u32) -> Option<AwaitResult>,
     ) -> Result<AwaitResult> {
         self.check_agent(agent)?;
         let start = Instant::now();
@@ -614,8 +614,12 @@ impl Workspace {
                         if last_tail.as_deref() == Some(&tail) {
                             consecutive_stable_ready += 1;
                             if consecutive_stable_ready >= stable_polls {
-                                on_poll(self);
                                 let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                                if let Some(result) =
+                                    on_poll(self, &pane, elapsed, consecutive_stable_ready)
+                                {
+                                    return Ok(result);
+                                }
                                 return Ok(AwaitResult::ready(
                                     elapsed,
                                     consecutive_stable_ready,
@@ -631,8 +635,10 @@ impl Workspace {
                     last_tail = Some(tail);
                 }
                 PollStep::Dead(reason) => {
-                    on_poll(self);
                     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                    if let Some(result) = on_poll(self, &pane, elapsed, consecutive_stable_ready) {
+                        return Ok(result);
+                    }
                     return Ok(AwaitResult::container_dead(
                         elapsed,
                         consecutive_stable_ready,
@@ -649,7 +655,10 @@ impl Workspace {
                     last_tail = None;
                 }
             }
-            on_poll(self);
+            let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+            if let Some(result) = on_poll(self, &pane, elapsed, consecutive_stable_ready) {
+                return Ok(result);
+            }
             thread::sleep(Duration::from_secs_f64(poll_interval));
         }
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
