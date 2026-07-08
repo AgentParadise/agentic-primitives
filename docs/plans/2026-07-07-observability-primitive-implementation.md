@@ -95,6 +95,11 @@ Completion audit:
   `Codex Turn` agent observation, two generation observations with usage, an
   `exec_command` tool observation, total cost, and sidecar dedup state. No Rust
   OTLP writer path ran during the experiment.
+- The single-rich-exporter guard experiment passed. `itmux` now suppresses the
+  Rust `langfuse_otlp` writer when `TRACE_TO_LANGFUSE=true` indicates an
+  official LangFuse plugin is already tracing, preserves file JSONL, and
+  exposes `--observability-langfuse-force` for deliberate fallback/collector or
+  Syntropic137 routing.
 - The refreshed
   `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
   both minimal OTLP ingestion and the current
@@ -271,4 +276,6 @@ Completion audit:
 - Agents can pull compact trace summaries through both CLI and MCP, using the
   same LangFuse query implementation.
 - Rust OTLP fallback does not create duplicate/noisy LangFuse traces by default
-  for Claude/Codex official-plugin runs.
+  for Claude/Codex official-plugin runs:
+  **satisfied for `itmux` CLI exporter construction by
+  `experiments/2026-07-08--langfuse--single-rich-exporter-guard`**.

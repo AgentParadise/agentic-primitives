@@ -126,6 +126,13 @@ the default to send the same Claude/Codex run through both the official plugin
 and the Rust OTLP writer, because that creates duplicate or less-useful
 LangFuse traces.
 
+The `itmux` CLI enforces that default for human-facing runs: when
+`TRACE_TO_LANGFUSE=true` indicates an official LangFuse plugin is active,
+`--observability-langfuse` suppresses the Rust OTLP writer while preserving
+`--observability-file` JSONL fanout. Use `--observability-langfuse-force` only
+when deliberately testing fallback OTLP or sending the same normalized events
+to a collector/Syntropic137 path.
+
 ## macOS Keychain Setup
 
 On MacBooks and Mac Minis, store the values in Keychain and export them only for

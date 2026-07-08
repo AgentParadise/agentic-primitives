@@ -75,7 +75,8 @@ final `AgentRunResult.observability.exporters[]` report includes status,
 event count, target, and a link URI. This works the same on a Mac, a VPS, or
 inside Docker when the path is mounted into the executing environment.
 
-LangFuse plugs into the same fanout layer through OTLP HTTP/protobuf:
+LangFuse fallback/collector export plugs into the same fanout layer through
+OTLP HTTP/protobuf:
 
 ```bash
 itmux run \
@@ -86,10 +87,17 @@ itmux run \
   --result-file /tmp/itmux-run-result.json
 ```
 
-Load `LANGFUSE_*` from the operator's secret manager before running this
-command. See
+For rich Claude/Codex traces, prefer LangFuse's official Claude Code and Codex
+plugins. Load `LANGFUSE_*` from the operator's secret manager before running
+the fallback command. See
 [`docs/guides/langfuse-observability-setup.md`](../../../../docs/guides/langfuse-observability-setup.md)
 for the macOS Keychain, VPS, Docker, and real backend smoke procedure.
+
+When `TRACE_TO_LANGFUSE=true` indicates an official LangFuse plugin is active,
+the CLI suppresses the Rust OTLP writer to avoid duplicate/noisy LangFuse
+traces while preserving `--observability-file` JSONL fanout. Use
+`--observability-langfuse-force` only for deliberate fallback/collector smoke
+or Syntropic137 routing.
 
 If LangFuse config is missing or invalid, the run still completes and local
 file export still works; the LangFuse exporter reports `status:"failed"` in the

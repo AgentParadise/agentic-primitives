@@ -121,6 +121,10 @@ This is a noise-control boundary. For any one run, at most one backend path
 should create rich LangFuse observations by default. JSONL can run in parallel
 as durable local evidence. Rust OTLP-to-LangFuse is explicit opt-in for
 Claude/Codex, or fallback for harnesses without official LangFuse support.
+The `itmux` CLI enforces this for human-facing runs: truthy
+`TRACE_TO_LANGFUSE` suppresses the Rust `langfuse_otlp` writer while preserving
+file JSONL, and `--observability-langfuse-force` is required to deliberately
+send the same normalized events through fallback OTLP anyway.
 
 LangFuse also acts as a learning-loop store. `itmux langfuse-traces` gives
 agents a discovery path, `itmux langfuse-trace` gives compact trace summaries,

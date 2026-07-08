@@ -25,9 +25,12 @@ exporter failures.
 locally implemented and proven against local Docker Compose. The official
 LangFuse Claude/Codex plugin path is proven by direct local hook invocation
 against the same backend, and is now the canonical rich-trace path for those
-harnesses. The remaining close gate is real-session setup through the official
-marketplace plugins plus trace discoverability/queryability and learning-loop
-reads against LangFuse Cloud or the planned Mac Mini self-host.
+harnesses. The default noise-control guard is also proven for `itmux`: truthy
+`TRACE_TO_LANGFUSE` suppresses Rust OTLP while preserving file JSONL unless
+`--observability-langfuse-force` is supplied. The remaining close gate is
+real-session setup through the official marketplace plugins plus trace
+discoverability/queryability and learning-loop reads against LangFuse Cloud or
+the planned Mac Mini self-host.
 
 ## `.6` Evidence Matrix
 
@@ -61,6 +64,7 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
 | Official LangFuse plugins are canonical for rich Claude/Codex traces | Proven locally | ADR-038; `experiments/2026-07-08--langfuse--official-plugin-trace-shape`; `experiments/2026-07-08--langfuse--official-plugin-e2e-local` | Claude and Codex official plugins emitted LangFuse-native turns, generations, tools, input/output, and Codex cost/usage against local Docker Compose. |
+| Single-active-rich-exporter guard exists in `itmux` CLI | Proven locally | `experiments/2026-07-08--langfuse--single-rich-exporter-guard` | `TRACE_TO_LANGFUSE=true` suppresses Rust `langfuse_otlp`, preserves file JSONL, and `--observability-langfuse-force` restores fallback OTLP for deliberate collector/Syntropic137 use. |
 | Rust OTLP remains available as fallback/collector exporter | Proven locally | ADR-038; `ObservabilityExporter::LangFuseOtlp`; `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md` | Preserves backend-independent fanout for local smoke, Syntropic137/collector use, and unsupported harnesses. |
 | Endpoint derivation and Basic auth construction work | Local-receiver-proven | `experiments/2026-07-07--langfuse--otel-preflight-local-receiver/results.md`; Rust unit tests in `observability.rs` | Supports origin, `/api/public/otel`, and `/api/public/otel/v1/traces` inputs. |
 | Missing config fails safely without leaking secrets | Proven | `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md`; `experiments/2026-07-07--langfuse--cli-runtime-failfast/results.md` | Failure is reported in `ObservabilityExportReport`, not stdout corruption. |

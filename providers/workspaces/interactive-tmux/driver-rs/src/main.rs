@@ -188,6 +188,10 @@ enum Cmd {
         /// rich Claude/Codex trace UX.
         #[arg(long)]
         observability_langfuse: bool,
+        /// Force fallback LangFuse OTLP export even when TRACE_TO_LANGFUSE
+        /// indicates an official LangFuse plugin is already tracing.
+        #[arg(long)]
+        observability_langfuse_force: bool,
         /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
         #[arg(long)]
         langfuse_base_url: Option<String>,
@@ -232,6 +236,10 @@ enum Cmd {
         /// rich Claude/Codex trace UX.
         #[arg(long)]
         observability_langfuse: bool,
+        /// Force fallback LangFuse OTLP export even when TRACE_TO_LANGFUSE
+        /// indicates an official LangFuse plugin is already tracing.
+        #[arg(long)]
+        observability_langfuse_force: bool,
         /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
         #[arg(long)]
         langfuse_base_url: Option<String>,
@@ -269,6 +277,10 @@ enum Cmd {
         /// rich Claude/Codex trace UX.
         #[arg(long)]
         observability_langfuse: bool,
+        /// Force fallback LangFuse OTLP export even when TRACE_TO_LANGFUSE
+        /// indicates an official LangFuse plugin is already tracing.
+        #[arg(long)]
+        observability_langfuse_force: bool,
         /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
         #[arg(long)]
         langfuse_base_url: Option<String>,
@@ -820,6 +832,8 @@ fn install_signal_watcher(
 #[derive(Debug, Clone, Default)]
 struct LangFuseCliOptions {
     enabled: bool,
+    force: bool,
+    official_plugin_tracing_active: bool,
     base_url: Option<String>,
     project_id: Option<String>,
     label: Option<String>,
@@ -838,7 +852,7 @@ fn build_observability_exporters(
         .into_iter()
         .collect();
 
-    if langfuse.enabled {
+    if langfuse.enabled && (!langfuse.official_plugin_tracing_active || langfuse.force) {
         exporters.push(ObservabilityExporter::LangFuseOtlp {
             base_url: langfuse.base_url,
             public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
@@ -854,6 +868,22 @@ fn build_observability_exporters(
     }
 
     exporters
+}
+
+fn official_langfuse_plugin_tracing_active() -> bool {
+    truthy_env("TRACE_TO_LANGFUSE")
+}
+
+fn truthy_env(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn resolve_codex_exec_model(explicit_model: Option<String>) -> Option<String> {
@@ -3504,6 +3534,7 @@ fn main() -> ExitCode {
             allow_host_auth_fallback,
             observability_file,
             observability_langfuse,
+            observability_langfuse_force,
             langfuse_base_url,
             langfuse_project_id,
             langfuse_label,
@@ -3522,6 +3553,8 @@ fn main() -> ExitCode {
             observability_file,
             LangFuseCliOptions {
                 enabled: observability_langfuse,
+                force: observability_langfuse_force,
+                official_plugin_tracing_active: official_langfuse_plugin_tracing_active(),
                 base_url: langfuse_base_url,
                 project_id: langfuse_project_id,
                 label: langfuse_label,
@@ -3536,6 +3569,7 @@ fn main() -> ExitCode {
             result_file,
             observability_file,
             observability_langfuse,
+            observability_langfuse_force,
             langfuse_base_url,
             langfuse_project_id,
             langfuse_label,
@@ -3549,6 +3583,8 @@ fn main() -> ExitCode {
             observability_file,
             LangFuseCliOptions {
                 enabled: observability_langfuse,
+                force: observability_langfuse_force,
+                official_plugin_tracing_active: official_langfuse_plugin_tracing_active(),
                 base_url: langfuse_base_url,
                 project_id: langfuse_project_id,
                 label: langfuse_label,
@@ -3561,6 +3597,7 @@ fn main() -> ExitCode {
             result_file,
             observability_file,
             observability_langfuse,
+            observability_langfuse_force,
             langfuse_base_url,
             langfuse_project_id,
             langfuse_label,
@@ -3572,6 +3609,8 @@ fn main() -> ExitCode {
             observability_file,
             LangFuseCliOptions {
                 enabled: observability_langfuse,
+                force: observability_langfuse_force,
+                official_plugin_tracing_active: official_langfuse_plugin_tracing_active(),
                 base_url: langfuse_base_url,
                 project_id: langfuse_project_id,
                 label: langfuse_label,
@@ -3697,6 +3736,8 @@ mod cli_tests {
             "local events",
             LangFuseCliOptions {
                 enabled: true,
+                force: false,
+                official_plugin_tracing_active: false,
                 base_url: Some("https://cloud.langfuse.com".to_string()),
                 project_id: Some("project-123".to_string()),
                 label: Some("trace view".to_string()),
@@ -3736,6 +3777,8 @@ mod cli_tests {
             "local events",
             LangFuseCliOptions {
                 enabled: true,
+                force: false,
+                official_plugin_tracing_active: false,
                 base_url: None,
                 project_id: None,
                 label: None,
@@ -3758,6 +3801,48 @@ mod cli_tests {
             }
             ObservabilityExporter::File { .. } => panic!("expected LangFuse exporter"),
         }
+    }
+
+    #[test]
+    fn cli_exporters_suppress_langfuse_when_official_plugin_tracing_is_active() {
+        let exporters = build_observability_exporters(
+            Some(PathBuf::from("/tmp/events.jsonl")),
+            "local events",
+            LangFuseCliOptions {
+                enabled: true,
+                force: false,
+                official_plugin_tracing_active: true,
+                base_url: Some("http://localhost:3000".to_string()),
+                project_id: None,
+                label: None,
+            },
+        );
+
+        assert_eq!(exporters.len(), 1);
+        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
+    }
+
+    #[test]
+    fn cli_exporters_can_force_langfuse_when_official_plugin_tracing_is_active() {
+        let exporters = build_observability_exporters(
+            Some(PathBuf::from("/tmp/events.jsonl")),
+            "local events",
+            LangFuseCliOptions {
+                enabled: true,
+                force: true,
+                official_plugin_tracing_active: true,
+                base_url: Some("http://localhost:3000".to_string()),
+                project_id: None,
+                label: None,
+            },
+        );
+
+        assert_eq!(exporters.len(), 2);
+        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
+        assert!(matches!(
+            exporters[1],
+            ObservabilityExporter::LangFuseOtlp { .. }
+        ));
     }
 
     #[test]

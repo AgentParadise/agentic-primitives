@@ -13,7 +13,9 @@ events, git/workspace lifecycle events, Syntropic137/source-of-truth fanout,
 and the `agentic-langfuse` MCP query tools. Do not enable the Rust
 `--observability-langfuse` writer for the same Claude/Codex run that is already
 exported by an official LangFuse plugin unless you are deliberately debugging
-fallback OTLP behavior.
+fallback OTLP behavior. The `itmux` CLI suppresses the fallback writer when
+`TRACE_TO_LANGFUSE=true`; use `--observability-langfuse-force` only for an
+intentional collector/Syntropic137/fallback smoke path.
 
 ## Agent LangFuse MCP server
 
