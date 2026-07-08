@@ -1,8 +1,17 @@
 # LangFuse Observability Setup
 
-This guide documents the secret-safe setup path for running the reusable
-observability exporter against a real LangFuse backend. It applies to MacBooks,
-Mac Minis, VPS hosts, and isolated Docker workspaces.
+This guide documents the secret-safe setup path for LangFuse-backed agent
+observability. It applies to MacBooks, Mac Minis, VPS hosts, and isolated
+Docker workspaces.
+
+For Claude Code and Codex, the canonical rich-trace path is LangFuse's
+official marketplace plugins. Those plugins read each harness' native
+transcript or rollout and export LangFuse-native turns, generations, tool
+calls, token usage, costs, timings, and session grouping. The `itmux`
+`--observability-langfuse` OTLP exporter remains useful for local backend
+smoke tests, generic OTEL collectors, Syntropic137 ingestion, and harnesses
+without an official LangFuse plugin, but it should not be enabled for the same
+Claude/Codex run that is already traced by an official LangFuse plugin.
 
 ## Required Runtime Environment
 
@@ -21,10 +30,101 @@ Optional:
 
 - `LANGFUSE_PROJECT_ID`, used only to report human-facing trace links in the
   final observability bundle.
+- `TRACE_TO_LANGFUSE=true`, used by the official Claude and Codex plugins to
+  opt into exporting a session or project.
+- `LANGFUSE_TRACING_ENVIRONMENT`, used by the official plugins and local
+  tooling to label traces by environment, for example `local-macbook`,
+  `mac-mini`, `vps`, or `docker-workspace`.
 
 `LANGFUSE_BASE_URL` should be the LangFuse origin, for example
-`https://langfuse.example.com`. The exporter derives the OTLP traces endpoint
-from that origin.
+`https://langfuse.example.com` or `http://localhost:3000` for the local Docker
+Compose stack.
+
+## Canonical Rich Tracing
+
+Official references:
+
+- Claude Code:
+  <https://langfuse.com/integrations/developer-tools/claude-code>
+- Codex: <https://langfuse.com/integrations/developer-tools/codex>
+
+### Claude Code
+
+Use LangFuse's maintained Claude Code marketplace plugin for real Claude
+sessions:
+
+```bash
+claude plugin marketplace add langfuse/Claude-Observability-Plugin
+claude plugin install langfuse-observability@langfuse-observability
+```
+
+Restart Claude Code after installation. The plugin prompts for
+`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL`; the
+secret key is stored in the OS keychain by the plugin. Reconfigure later with:
+
+```text
+/plugin configure langfuse-observability@langfuse-observability
+```
+
+For project-scoped enablement, set `TRACE_TO_LANGFUSE=true` and the
+`LANGFUSE_*` values through an ignored local settings file or runtime
+environment. Do not commit project API keys.
+
+The expected trace shape is one Claude turn per trace, generation observations
+for assistant messages, `Tool: <name>` observations with inputs and outputs,
+session grouping, usage, and costs when the transcript carries usage values.
+
+### Codex
+
+Use LangFuse's maintained Codex marketplace plugin for real Codex sessions:
+
+```bash
+codex plugin marketplace add langfuse/codex-observability-plugin
+```
+
+Enable Codex plugin hooks globally in `~/.codex/config.toml`, or per project in
+`<project>/.codex/config.toml`:
+
+```toml
+[features]
+plugin_hooks = true
+
+[plugins."tracing@codex-observability-plugin"]
+enabled = true
+```
+
+Run Codex with tracing env enabled:
+
+```bash
+export TRACE_TO_LANGFUSE=true
+export LANGFUSE_BASE_URL=http://localhost:3000
+export LANGFUSE_PUBLIC_KEY=...
+export LANGFUSE_SECRET_KEY=...
+export LANGFUSE_TRACING_ENVIRONMENT=local-macbook
+codex
+```
+
+For durable machines, load the same variables from Keychain, a systemd
+environment file owned by the operator, or the workspace orchestrator's secret
+injection. The expected trace shape is one Codex turn per trace, generation
+observations with model/usage/cost, tool observations such as `exec_command` or
+MCP calls, subagent grouping where present, and sidecar deduplication.
+
+### Exporter Ownership
+
+Use only one rich LangFuse writer per run by default:
+
+| Path | Default role |
+|---|---|
+| Official Claude plugin | Canonical rich LangFuse traces for Claude Code |
+| Official Codex plugin | Canonical rich LangFuse traces for Codex |
+| `--observability-file` JSONL | Durable local evidence and Syntropic137/source-of-truth fanout |
+| `--observability-langfuse` Rust OTLP | Explicit fallback, collector, backend smoke, or unsupported harness path |
+
+It is safe to keep JSONL fanout enabled alongside an official plugin. It is not
+the default to send the same Claude/Codex run through both the official plugin
+and the Rust OTLP writer, because that creates duplicate or less-useful
+LangFuse traces.
 
 ## macOS Keychain Setup
 
@@ -151,18 +251,41 @@ After startup, run:
 scripts/langfuse-local.sh smoke
 ```
 
-The smoke uses the provisioned local project/API keys, exports a current
-`itmux codex-exec --observability-langfuse` run, polls LangFuse for
-discoverability through `itmux langfuse-trace --api legacy-trace`, and checks
-that the emitted trace URL resolves.
+The smoke uses the provisioned local project/API keys, exports a minimal
+fallback OTLP run through `itmux codex-exec --observability-langfuse`, polls
+LangFuse for discoverability through `itmux langfuse-trace --api legacy-trace`,
+and checks that the emitted trace URL resolves. This proves local LangFuse
+ingestion and the fallback exporter. It is not the canonical rich trace test
+for Claude or Codex.
+
+For rich local validation, install or directly invoke the official LangFuse
+Claude/Codex plugins against the same local project. The local E2E experiment
+that proves this path is:
+
+```text
+experiments/2026-07-08--langfuse--official-plugin-e2e-local
+```
+
+Known-good local traces from that experiment:
+
+- Claude official plugin:
+  `76a54f7c977ae138c22ebae34b05e047`
+- Codex official plugin:
+  `6905cfb7d1b969a0214e613383748ce7`
 
 This local bootstrap is for development and smoke testing. For production or
 durable Mac Mini hosting, review LangFuse's current self-hosting guidance and
 set persistent secrets, storage, backups, and upgrade policy explicitly.
 
-## Real Backend Smoke
+## Fallback OTLP Smoke
 
-After the environment is loaded, run a smoke against the current exporter path:
+Use this section when validating the reusable Rust OTLP exporter, a generic
+collector, Syntropic137 fanout, or an unsupported harness. Do not use this as
+the primary proof of rich Claude/Codex LangFuse UX when the official plugins
+are available.
+
+After the environment is loaded, run a smoke against the fallback exporter
+path:
 
 ```bash
 mkdir -p /tmp/agentic-langfuse-smoke
@@ -174,8 +297,8 @@ itmux codex-exec \
   --result-file /tmp/agentic-langfuse-smoke/result.json
 ```
 
-For a Codex recipe that should use the same rich structured observer through
-the standard run surface, use `--codex-mode exec`:
+For a Codex recipe that should use the same normalized event fanout through the
+standard run surface, use `--codex-mode exec`:
 
 ```bash
 itmux run \
@@ -191,7 +314,8 @@ This mode is only valid when the recipe default agent is Codex. The default
 Codex `tui` mode preserves the interactive Docker workspace path and currently
 has only coarse lifecycle observability. The `exec` mode runs `codex exec
 --json`, normalizes its structured event stream, and fans those events out
-through the same file and LangFuse exporters used by Claude workspace runs.
+through the same file and fallback OTLP exporters used by Claude workspace
+runs.
 
 For Claude transcript evidence, normalize a Claude JSONL transcript through the
 same exporter fanout:
@@ -205,14 +329,16 @@ itmux claude-transcript \
   --result-file /tmp/agentic-langfuse-smoke/claude-result.json
 ```
 
-This path maps Claude `tool_use`/`tool_result` transcript items to normalized
+This fallback path maps Claude `tool_use`/`tool_result` transcript items to normalized
 tool spans and `result.modelUsage` entries to shared `token_usage` events with
 `harness=claude`, `provider=anthropic`, model names, token counts, cached-token
 counts, and cost data. Transcript-derived tool input values and result content
 are redacted before export; tool input spans preserve only shape metadata such
 as object key names. The result `session_log` records a summary, not the raw
 transcript. This is the current reusable export path for Claude-shaped
-telemetry.
+telemetry. For production-quality LangFuse UX, prefer the official Claude
+plugin because it reconstructs LangFuse-native turns, generations, and tools
+from the Claude transcript directly.
 
 For `itmux run` with Claude, the workspace executor also drains the Claude
 observability hook sink while the await loop is still polling. When the hook
@@ -231,7 +357,7 @@ Also follow the dedicated ingestion experiment at
 `experiments/2026-07-07--langfuse--otel-ingestion-smoke/eval-pack.md` against
 the same reachable backend.
 
-Passing local criteria:
+Passing fallback exporter criteria:
 
 - the command exits successfully;
 - `/tmp/agentic-langfuse-smoke/events.jsonl` contains normalized run events;
@@ -242,10 +368,11 @@ Passing local criteria:
 - `itmux langfuse-trace` can query the trace. For LangFuse v3 Docker Compose,
   use `--api legacy-trace`; Observations API v2 requires LangFuse v4 write mode.
 - the emitted trace link resolves in the LangFuse UI.
-- token usage appears as native LangFuse generation data when the harness
-  provides model/usage metadata: model name, prompt/completion/total tokens,
-  calculated cost, environment, and harness tags should be visible in the trace
-  API and dashboard.
+- token usage appears as native LangFuse generation data when the fallback
+  harness path provides model/usage metadata. If the LangFuse UI shows generic
+  `tool_start`, `tool_end`, or `token_usage` observations without meaningful
+  root input/output, that is a fallback exporter limitation, not a passing
+  rich Claude/Codex trace.
 - `itmux langfuse-score` can attach a trace-scoped score for evaluator or
   operator feedback, and `itmux langfuse-scores` can read that score back for
   the next agent loop.
@@ -347,9 +474,9 @@ token/cost/model coverage, unscored traces, and failed agent-tool
 recommendations. Pass `include_insights=false` when a consumer needs a raw
 rollup without heuristic guidance.
 
-Passing backend criteria:
+Passing rich backend criteria:
 
-- LangFuse accepts the OTLP payload;
+- LangFuse receives traces from the official Claude and Codex plugins;
 - the trace is visible and queryable in the LangFuse UI;
 - `itmux langfuse-trace --output summary --run-id <run_id>` returns the
   learning-loop summary for the exported trace after the expected ingestion
@@ -358,6 +485,8 @@ Passing backend criteria:
 - the trace has at least one `GENERATION` observation for usage-bearing model
   calls, with nonzero native token fields and calculated cost when the model is
   known to LangFuse;
+- root trace input/output and observation input/output are populated for real
+  harness turns;
 - `summary.generations.by_model` and `summary.generations.sequence` expose
   model ids, harness/provider, input/output/total tokens, cached-token details,
   split input/output costs, total costs, pricing tier, and unit for Codex and
@@ -368,8 +497,9 @@ Passing backend criteria:
   generation cost, and split `agent_tools`/`harness_tools` where applicable;
 - the reported trace link resolves when project id metadata is available.
 
-`okrs-51p.9` remains open until both the local and backend criteria pass against
-LangFuse Cloud or the planned self-hosted Mac Mini deployment.
+`okrs-51p.9` remains open until the official-plugin setup is proven for real
+Claude and Codex sessions against LangFuse Cloud or the planned self-hosted Mac
+Mini deployment. The fallback OTLP smoke alone is not sufficient to close it.
 
 ## Agent Trace Query
 

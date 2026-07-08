@@ -2,6 +2,19 @@
 
 Full-spectrum agent observability — hooks every Claude Code lifecycle event and all git operations, emitting structured JSONL events via `agentic_events`.
 
+For rich LangFuse traces of Claude Code and Codex sessions, use LangFuse's
+official marketplace plugins:
+
+- Claude Code: `langfuse/Claude-Observability-Plugin`
+- Codex: `langfuse/codex-observability-plugin`
+
+This plugin remains the agentic-primitives observability layer for local JSONL
+events, git/workspace lifecycle events, Syntropic137/source-of-truth fanout,
+and the `agentic-langfuse` MCP query tools. Do not enable the Rust
+`--observability-langfuse` writer for the same Claude/Codex run that is already
+exported by an official LangFuse plugin unless you are deliberately debugging
+fallback OTLP behavior.
+
 ## Agent LangFuse MCP server
 
 The plugin also exposes an MCP server named `agentic-langfuse` for learning-loop

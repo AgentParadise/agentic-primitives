@@ -21,11 +21,13 @@ normalized harness events can be observed, fanned out to backend-independent
 file JSONL, reported in `ObservabilityBundle`, and kept isolated from backend
 exporter failures.
 
-`.9` is locally implemented and local-receiver-proven, but not complete. It remains gated
-on a reachable LangFuse deployment plus real `LANGFUSE_*` setup. The close gate
-is the refreshed ingestion smoke proving backend acceptance, trace
-discoverability/queryability, and trace-link resolution through the current
-`itmux codex-exec --observability-langfuse` path.
+`.9` has two proven pieces, but is not complete. The Rust OTLP fallback path is
+locally implemented and proven against local Docker Compose. The official
+LangFuse Claude/Codex plugin path is proven by direct local hook invocation
+against the same backend, and is now the canonical rich-trace path for those
+harnesses. The remaining close gate is real-session setup through the official
+marketplace plugins plus trace discoverability/queryability and learning-loop
+reads against LangFuse Cloud or the planned Mac Mini self-host.
 
 ## `.6` Evidence Matrix
 
@@ -58,16 +60,18 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
-| LangFuse is represented as a backend exporter, not a per-harness plugin | Proven locally | ADR-038; `ObservabilityExporter::LangFuseOtlp`; `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md` | Preserves harness/backend separation. |
+| Official LangFuse plugins are canonical for rich Claude/Codex traces | Proven locally | ADR-038; `experiments/2026-07-08--langfuse--official-plugin-trace-shape`; `experiments/2026-07-08--langfuse--official-plugin-e2e-local` | Claude and Codex official plugins emitted LangFuse-native turns, generations, tools, input/output, and Codex cost/usage against local Docker Compose. |
+| Rust OTLP remains available as fallback/collector exporter | Proven locally | ADR-038; `ObservabilityExporter::LangFuseOtlp`; `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md` | Preserves backend-independent fanout for local smoke, Syntropic137/collector use, and unsupported harnesses. |
 | Endpoint derivation and Basic auth construction work | Local-receiver-proven | `experiments/2026-07-07--langfuse--otel-preflight-local-receiver/results.md`; Rust unit tests in `observability.rs` | Supports origin, `/api/public/otel`, and `/api/public/otel/v1/traces` inputs. |
 | Missing config fails safely without leaking secrets | Proven | `experiments/2026-07-07--langfuse--exporter-config-failfast/results.md`; `experiments/2026-07-07--langfuse--cli-runtime-failfast/results.md` | Failure is reported in `ObservabilityExportReport`, not stdout corruption. |
 | OTLP HTTP/protobuf transport works against a receiver | Local-receiver-proven | `experiments/2026-07-07--langfuse--otlp-transport-local-receiver/results.md` | Sends protobuf body with Basic auth and `x-langfuse-ingestion-version: 4`; local receiver 2xx reports `ok`. |
 | Trace links can be reported when project id is known | Local-receiver-proven | `experiments/2026-07-07--langfuse--trace-link-reporting/results.md` | Real URL resolution is still pending real backend ingestion. |
 | CLI setup exists for `itmux run` and `itmux codex-exec` | Proven locally | `experiments/2026-07-07--langfuse--cli-setup-path/results.md`; driver README | Public/secret keys remain env refs. |
 | Mixed local+LangFuse export is safe during setup | Proven | `experiments/2026-07-07--observability--mixed-exporter-isolation/results.md` | Local file JSONL remains complete when LangFuse is absent. |
-| Repeatable real-backend smoke runner exists | Proven | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `scripts/langfuse-local.sh`; `runs/real-backend-smoke/summary.txt` | Wrapper starts the local LangFuse Docker Compose stack, seeds ignored local env, exports the current `itmux` path, polls queryability, and checks trace URL resolution. |
+| Repeatable fallback backend smoke runner exists | Proven | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`; `scripts/langfuse-local.sh`; `runs/real-backend-smoke/summary.txt` | Wrapper starts the local LangFuse Docker Compose stack, seeds ignored local env, exports the Rust OTLP fallback path, polls queryability, and checks trace URL resolution. |
 | Agent trace-query integration exists | Proven locally/local-receiver-proven | `itmux langfuse-trace`; `experiments/2026-07-07--langfuse--trace-query-cli/results.md` | The command derives trace id from run id, queries bounded Observations API v2 rows or a legacy trace endpoint for self-host compatibility, fails safely when query config is absent, and the actual CLI GET/auth/JSON path is proven against a local receiver. |
-| Real LangFuse backend accepts traces | Proven on local Docker Compose | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/real-backend-smoke/result.json` | Local LangFuse v3 Docker Compose accepted OTLP HTTP/protobuf export and reported `status=ok`, `events_exported=6`. |
+| Real LangFuse backend accepts fallback OTLP traces | Proven on local Docker Compose | `experiments/2026-07-07--langfuse--otel-ingestion-smoke/results.md`; `runs/real-backend-smoke/result.json` | Local LangFuse v3 Docker Compose accepted OTLP HTTP/protobuf export and reported `status=ok`, `events_exported=6`. |
+| Real LangFuse backend accepts official-plugin rich traces | Proven on local Docker Compose | `experiments/2026-07-08--langfuse--official-plugin-e2e-local/results.md` | Claude trace `76a54f7c977ae138c22ebae34b05e047` and Codex trace `6905cfb7d1b969a0214e613383748ce7` were discoverable with root input/output, generation observations, tool observations, and Codex native cost/usage. |
 | Trace is discoverable/queryable in LangFuse | Proven on local Docker Compose | `runs/real-backend-smoke/langfuse-trace-query-legacy.json` | `itmux langfuse-trace --api legacy-trace` returned the trace with 7 observations. Observations API v2 returned the expected v3/v4-mode 404. |
 | Trace link resolves in real LangFuse UI | Proven on local Docker Compose | `runs/real-backend-smoke/trace-ui-response.txt` | Emitted trace URL returned HTTP 200. |
 
@@ -75,18 +79,23 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 
 1. Load a real LangFuse configuration using
    `docs/guides/langfuse-observability-setup.md`.
-2. Rerun
-   `experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh`
-   against LangFuse Cloud or the planned Mac Mini self-host.
-3. Run the current `itmux codex-exec --observability-langfuse` smoke against
-   that backend.
-4. Capture redacted evidence that:
-   - `langfuse_otlp` reports `status = ok`;
-   - `events_exported > 0`;
-   - the backend trace is visible/queryable by run id via `itmux langfuse-trace`;
-   - at least three child observations are present;
-   - the trace link resolves when project metadata is configured.
-5. Only then close `.9` or claim production LangFuse readiness.
+2. Configure LangFuse's official Claude Code marketplace plugin for a real
+   Claude session.
+3. Configure LangFuse's official Codex marketplace plugin for a real Codex
+   session.
+4. Keep JSONL enabled for local evidence where useful, but leave the Rust
+   `--observability-langfuse` writer off for those same real sessions unless
+   explicitly testing fallback OTLP.
+5. Capture redacted evidence that:
+   - the official-plugin traces are visible/queryable;
+   - root input/output and observation input/output are populated;
+   - at least one `GENERATION` observation has native usage/cost where the
+     harness transcript provides usage;
+   - tool observations have meaningful names and payloads;
+   - the traces can be pulled through `itmux langfuse-trace` and the
+     `agentic-langfuse` MCP server for learning-loop use.
+6. Only then close `.9` or claim production LangFuse readiness. The fallback
+   OTLP smoke remains a separate regression for collector/exporter health.
 
 ## Stack State
 

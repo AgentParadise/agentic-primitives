@@ -183,8 +183,9 @@ enum Cmd {
         /// artifact. Relative paths resolve in the driver process.
         #[arg(long)]
         observability_file: Option<PathBuf>,
-        /// Enable LangFuse OTLP trace export using LANGFUSE_* environment
-        /// variables for credentials.
+        /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
+        /// credentials. Prefer official LangFuse Claude/Codex plugins for
+        /// rich Claude/Codex trace UX.
         #[arg(long)]
         observability_langfuse: bool,
         /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
@@ -226,8 +227,9 @@ enum Cmd {
         /// Append normalized observer events to this JSONL file.
         #[arg(long)]
         observability_file: Option<PathBuf>,
-        /// Enable LangFuse OTLP trace export using LANGFUSE_* environment
-        /// variables for credentials.
+        /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
+        /// credentials. Prefer official LangFuse Claude/Codex plugins for
+        /// rich Claude/Codex trace UX.
         #[arg(long)]
         observability_langfuse: bool,
         /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
@@ -262,8 +264,9 @@ enum Cmd {
         /// Append normalized observer events to this JSONL file.
         #[arg(long)]
         observability_file: Option<PathBuf>,
-        /// Enable LangFuse OTLP trace export using LANGFUSE_* environment
-        /// variables for credentials.
+        /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
+        /// credentials. Prefer official LangFuse Claude/Codex plugins for
+        /// rich Claude/Codex trace UX.
         #[arg(long)]
         observability_langfuse: bool,
         /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
