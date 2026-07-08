@@ -30,9 +30,11 @@ harnesses. The default noise-control guard is also proven for `itmux`: truthy
 `--observability-langfuse-force` is supplied. The direct CLI/MCP trace-summary
 read path is proven against real local official-plugin traces. The remaining
 close gate is durable setup across the target deployment surfaces
-(MacBook/Mac Mini/VPS/Docker workspace), including the Claude stored-config
-caveat and discovery/filter polish for learning-loop reports against LangFuse
-Cloud or the planned Mac Mini self-host.
+(Mac Mini/VPS/Docker workspace plus repeatable MacBook setup), including the
+Claude stored-config caveat and discovery/filter polish for learning-loop
+reports against LangFuse Cloud or the planned Mac Mini self-host. The local
+MacBook Codex hook/config readiness issue has been remediated and recorded as
+evidence, but credential provisioning and target-host rollout are still open.
 
 ## `.6` Evidence Matrix
 
@@ -83,7 +85,7 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
 | Runtime noise guard preserves JSONL while suppressing fallback OTLP | Proven locally | `experiments/2026-07-08--langfuse--runtime-noise-guard` | With `TRACE_TO_LANGFUSE=true`, `itmux claude-transcript --observability-langfuse` sent zero OTLP receiver requests while file and Syntropic137 JSONL each exported 7 events. Adding `--observability-langfuse-force` sent exactly one OTLP POST and kept both JSONL exporters `ok`. |
 | Official-plugin tool observations are visible through CLI/MCP summaries | Proven locally | `experiments/2026-07-08--langfuse--official-plugin-tool-rollups`; `experiments/2026-07-08--langfuse--runtime-noise-guard/runs/real-langfuse-*-summary.json` | Claude real trace reports `agent_tools.names: ["Read"]`; Codex real trace reports `agent_tools.names: ["exec_command"]`, with usage/cost and generation counts from the real LangFuse backend. |
 | Portable setup doctor exists for MacBook/VPS/Docker readiness | Proven locally | `experiments/2026-07-08--langfuse--portable-setup-doctor`; `experiments/2026-07-08--langfuse--doctor-minimal-env-portability`; `experiments/2026-07-08--langfuse--doctor-workspace-image`; `scripts/langfuse-observability-doctor.sh` | Read-only preflight reports official Claude/Codex prerequisites, `LANGFUSE_*` set/missing state, JSONL/Syntropic137 fanout, MCP presence, and the focused OTLP noise-guard test without printing credentials. Minimal shell mode no longer requires `rg`; `--no-tests` supports VPS/Docker shells without Cargo; the command runs successfully inside `agentic-workspace-interactive-tmux:latest` with the repo mounted read-only. |
-| Codex plugin-hooks setup caveat is diagnosable | Proven locally | `experiments/2026-07-08--langfuse--codex-plugin-hooks-doctor`; `scripts/langfuse-observability-doctor.sh`; `docs/guides/langfuse-observability-setup.md` | The doctor now reports checked Codex config paths, whether `plugin_hooks = true` was found, whether the official tracing plugin is enabled, and the exact `[features]` remediation without mutating user config or printing secrets. |
+| Codex plugin-hooks setup caveat is diagnosable and remediated on this MacBook | Proven locally | `experiments/2026-07-08--langfuse--codex-plugin-hooks-doctor`; `experiments/2026-07-08--langfuse--codex-plugin-hooks-remediation`; `scripts/langfuse-observability-doctor.sh`; `docs/guides/langfuse-observability-setup.md` | The doctor reports checked Codex config paths, whether `plugin_hooks = true` was found, whether the official tracing plugin is enabled, and the exact `[features]` remediation without printing secrets. The follow-up remediation experiment added `plugin_hooks = true` to `~/.codex/config.toml` and flipped Codex readiness from `ready=false` to `ready=true` with no LangFuse credentials added to shell config. |
 | Trace is discoverable/queryable in LangFuse | Proven on local Docker Compose | `runs/real-backend-smoke/langfuse-trace-query-legacy.json` | `itmux langfuse-trace --api legacy-trace` returned the trace with 7 observations. Observations API v2 returned the expected v3/v4-mode 404. |
 | Trace link resolves in real LangFuse UI | Proven on local Docker Compose | `runs/real-backend-smoke/trace-ui-response.txt` | Emitted trace URL returned HTTP 200. |
 
@@ -95,8 +97,10 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
    Docker workspace paths, including the Claude stored-config caveat from
    `experiments/2026-07-08--langfuse--official-plugin-real-session`.
    `scripts/langfuse-observability-doctor.sh` now covers read-only readiness
-   checks and Codex plugin-hooks remediation guidance; remaining work is
-   target-machine remediation/installation, not detecting the setup state.
+   checks and Codex plugin-hooks remediation guidance; the Codex hook setting
+   has been applied on this MacBook. Remaining work is target-machine
+   remediation/installation and credential provisioning, not detecting the setup
+   state.
 3. Keep the agent-facing summary path counting official-plugin `TOOL`
    observations, not only agentic-primitives metadata-shaped tool events:
    **done for direct CLI/MCP trace summaries by
