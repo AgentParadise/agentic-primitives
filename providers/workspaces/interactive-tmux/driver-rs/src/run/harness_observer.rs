@@ -5,6 +5,7 @@
 //! or future harness surfaces; fanout exporters only receive normalized run
 //! events.
 
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
 
@@ -15,6 +16,7 @@ use crate::run::contract::AgentRunEventPayload;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HarnessEventSource {
     CodexExecJson,
+    ClaudeTranscriptJsonl,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +154,56 @@ impl HarnessObserver for CodexExecJsonObserver {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct ClaudeTranscriptObserver;
+
+impl ClaudeTranscriptObserver {
+    pub fn new() -> Self {
+        Self
+    }
+
+    fn event(payload: AgentRunEventPayload) -> ObservedAgentEvent {
+        ObservedAgentEvent {
+            source: HarnessEventSource::ClaudeTranscriptJsonl,
+            payload,
+        }
+    }
+}
+
+impl HarnessObserver for ClaudeTranscriptObserver {
+    fn observe_jsonl_line(&mut self, line: &str) -> Result<Vec<ObservedAgentEvent>, ObserverError> {
+        if line.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let event: ClaudeTranscriptJsonEvent =
+            serde_json::from_str(line).map_err(ObserverError::invalid_json)?;
+        match event {
+            ClaudeTranscriptJsonEvent::Result { model_usage } => {
+                let mut out = Vec::new();
+                for (model, usage) in model_usage {
+                    out.push(Self::event(AgentRunEventPayload::TokenUsage {
+                        input_tokens: usage.input_tokens,
+                        output_tokens: usage.output_tokens,
+                        cached_input_tokens: Some(
+                            usage
+                                .cache_read_input_tokens
+                                .saturating_add(usage.cache_creation_input_tokens),
+                        ),
+                        reasoning_output_tokens: None,
+                        cost_usd: usage.cost_usd,
+                        harness: Some("claude".to_string()),
+                        provider: Some("anthropic".to_string()),
+                        model: Some(model),
+                    }));
+                }
+                Ok(out)
+            }
+            ClaudeTranscriptJsonEvent::Other => Ok(Vec::new()),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum CodexExecJsonEvent {
@@ -169,6 +221,32 @@ enum CodexExecJsonEvent {
     Error { message: String },
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+enum ClaudeTranscriptJsonEvent {
+    #[serde(rename = "result")]
+    Result {
+        #[serde(default, rename = "modelUsage")]
+        model_usage: BTreeMap<String, ClaudeModelUsage>,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeModelUsage {
+    #[serde(default, rename = "inputTokens")]
+    input_tokens: u64,
+    #[serde(default, rename = "outputTokens")]
+    output_tokens: u64,
+    #[serde(default, rename = "cacheReadInputTokens")]
+    cache_read_input_tokens: u64,
+    #[serde(default, rename = "cacheCreationInputTokens")]
+    cache_creation_input_tokens: u64,
+    #[serde(default, rename = "costUSD")]
+    cost_usd: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -295,5 +373,63 @@ mod tests {
             } if tool_name == "codex_exec.turn"
                 && output_summary.as_deref() == Some("model is not supported")
         ));
+    }
+
+    #[test]
+    fn claude_transcript_maps_result_model_usage() {
+        let mut observer = ClaudeTranscriptObserver::new();
+        let events = observer
+            .observe_jsonl_line(
+                r#"{"type":"result","subtype":"success","total_cost_usd":0.09459784999999998,"modelUsage":{"claude-sonnet-4-5-20250929":{"inputTokens":33,"outputTokens":2168,"cacheReadInputTokens":111517,"cacheCreationInputTokens":7189,"webSearchRequests":0,"costUSD":0.09303285},"claude-haiku-4-5-20251001":{"inputTokens":1315,"outputTokens":50,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.001565}}}"#,
+            )
+            .expect("parse result line");
+
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            events[0].source,
+            HarnessEventSource::ClaudeTranscriptJsonl
+        ));
+        match &events[0].payload {
+            AgentRunEventPayload::TokenUsage {
+                input_tokens,
+                output_tokens,
+                cached_input_tokens,
+                cost_usd,
+                harness,
+                provider,
+                model,
+                ..
+            } => {
+                assert_eq!(*input_tokens, 1315);
+                assert_eq!(*output_tokens, 50);
+                assert_eq!(*cached_input_tokens, Some(0));
+                assert_eq!(*cost_usd, Some(0.001565));
+                assert_eq!(harness.as_deref(), Some("claude"));
+                assert_eq!(provider.as_deref(), Some("anthropic"));
+                assert_eq!(model.as_deref(), Some("claude-haiku-4-5-20251001"));
+            }
+            other => panic!("expected token usage, got {other:?}"),
+        }
+        match &events[1].payload {
+            AgentRunEventPayload::TokenUsage {
+                input_tokens,
+                output_tokens,
+                cached_input_tokens,
+                cost_usd,
+                harness,
+                provider,
+                model,
+                ..
+            } => {
+                assert_eq!(*input_tokens, 33);
+                assert_eq!(*output_tokens, 2168);
+                assert_eq!(*cached_input_tokens, Some(118706));
+                assert_eq!(*cost_usd, Some(0.09303285));
+                assert_eq!(harness.as_deref(), Some("claude"));
+                assert_eq!(provider.as_deref(), Some("anthropic"));
+                assert_eq!(model.as_deref(), Some("claude-sonnet-4-5-20250929"));
+            }
+            other => panic!("expected token usage, got {other:?}"),
+        }
     }
 }
