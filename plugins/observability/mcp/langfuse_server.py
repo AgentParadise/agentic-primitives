@@ -788,27 +788,39 @@ def _basic_trace_summary(response: Any, trace_id: str, run_id: str | None) -> di
 def _basic_trace_row(trace: Any) -> dict[str, Any]:
     if not isinstance(trace, dict):
         return {"raw": trace}
+    official = _infer_official_plugin_trace(trace)
     return {
         "id": trace.get("id") or trace.get("traceId"),
         "name": trace.get("name"),
         "timestamp": trace.get("timestamp") or trace.get("createdAt"),
         "environment": trace.get("environment") or _deep_get(trace, ("metadata", "agentic.environment")),
-        "harness": _deep_get(trace, ("metadata", "agentic.harness")),
-        "provider": _deep_get(trace, ("metadata", "agentic.provider")),
+        "harness": _deep_get(trace, ("metadata", "agentic.harness")) or official.get("harness"),
+        "provider": _deep_get(trace, ("metadata", "agentic.provider")) or official.get("provider"),
         "model": _deep_get(trace, ("metadata", "agentic.model")),
         "usage": trace.get("usage") or trace.get("usageDetails"),
     }
 
 
+def _infer_official_plugin_trace(trace: Any) -> dict[str, str]:
+    if not isinstance(trace, dict):
+        return {}
+    name = str(trace.get("name") or "")
+    if name.startswith("Codex Turn"):
+        return {"harness": "codex", "provider": "openai"}
+    if name.startswith("Claude Code") or name.startswith("Conversational Turn"):
+        return {"harness": "claude", "provider": "anthropic"}
+    return {}
+
+
 def _trace_selector_from_row(row: Any) -> dict[str, str] | None:
     if not isinstance(row, dict):
         return None
-    run_id = row.get("run_id") or row.get("session_id")
-    if run_id:
-        return {"run_id": str(run_id)}
     trace_id = row.get("trace_id") or row.get("id") or row.get("traceId")
     if trace_id:
         return {"trace_id": str(trace_id)}
+    run_id = row.get("run_id") or row.get("session_id")
+    if run_id:
+        return {"run_id": str(run_id)}
     return None
 
 
@@ -1158,6 +1170,9 @@ def self_test() -> int:
     import tempfile
 
     assert langfuse_trace_id_for_run("run-test") == "56e46cb6e46dc6d0ef3a439f691881dd"
+    assert _trace_selector_from_row({"trace_id": "1" * 32, "run_id": "run-test"}) == {"trace_id": "1" * 32}
+    assert _basic_trace_row({"id": "2" * 32, "name": "Codex Turn"})["harness"] == "codex"
+    assert _basic_trace_row({"id": "3" * 32, "name": "Claude Code - Turn 1 (abcd1234)"})["provider"] == "anthropic"
 
     with tempfile.TemporaryDirectory() as tmp:
         fake = Path(tmp) / "itmux"

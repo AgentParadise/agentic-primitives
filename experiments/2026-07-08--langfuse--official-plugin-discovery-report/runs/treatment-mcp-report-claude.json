@@ -1,0 +1,189 @@
+{
+  "ok": true,
+  "request": {
+    "environment": "local-macbook",
+    "harness": "claude",
+    "include_insights": true,
+    "include_scores": false,
+    "limit": 20,
+    "page": 1,
+    "score_limit": 20,
+    "trace_limit": 1
+  },
+  "summary": {
+    "agent_tools": {
+      "end_count": 1,
+      "failure_count": 0,
+      "start_count": 0,
+      "success_count": 1
+    },
+    "backend_total_items": 23,
+    "cost": {
+      "calculated_total_usd": 0.1139603
+    },
+    "errors": [],
+    "generations": {
+      "count": 2
+    },
+    "harnesses": [
+      "claude"
+    ],
+    "insights": {
+      "failed_tool_traces": [],
+      "missing_cost_traces": [],
+      "missing_model_traces": [],
+      "recommendations": [
+        {
+          "calculated_total_usd": 0.1139603,
+          "code": "cost_hotspot",
+          "message": "This trace is the highest-cost trace in the report window; review generations.sequence for cost drivers.",
+          "run_id": "dfec301e-8152-4566-9253-cc211739b80b",
+          "severity": "info",
+          "trace_id": "0e553fc833c71639acd03be9807eb616"
+        },
+        {
+          "code": "missing_feedback_scores",
+          "message": "Some traces have no feedback scores yet; attach evaluator scores before treating them as durable examples.",
+          "severity": "info",
+          "trace_count": 1
+        }
+      ],
+      "top_cost_trace": {
+        "calculated_total_usd": 0.1139603,
+        "run_id": "dfec301e-8152-4566-9253-cc211739b80b",
+        "trace_id": "0e553fc833c71639acd03be9807eb616"
+      },
+      "top_token_trace": {
+        "run_id": "dfec301e-8152-4566-9253-cc211739b80b",
+        "total_tokens": 97804,
+        "trace_id": "0e553fc833c71639acd03be9807eb616"
+      },
+      "unscored_traces": [
+        {
+          "run_id": "dfec301e-8152-4566-9253-cc211739b80b",
+          "trace_id": "0e553fc833c71639acd03be9807eb616"
+        }
+      ]
+    },
+    "models": [
+      "claude-sonnet-5"
+    ],
+    "providers": [
+      "anthropic"
+    ],
+    "trace_count": 1,
+    "traces": [
+      {
+        "agent_tools": {
+          "by_name": [
+            {
+              "ends": 1,
+              "failures": 0,
+              "name": "Read",
+              "starts": 0,
+              "successes": 1
+            }
+          ],
+          "end_count": 1,
+          "failure_count": 0,
+          "names": [
+            "Read"
+          ],
+          "start_count": 0,
+          "success_count": 1
+        },
+        "cost": {
+          "calculated_total_usd": 0.1139603
+        },
+        "generations": {
+          "by_model": [
+            {
+              "calculated_total_usd": 0.1139603,
+              "count": 2,
+              "harnesses": [],
+              "input_tokens": 15445,
+              "model": "claude-sonnet-5",
+              "model_ids": [
+                "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+              ],
+              "output_tokens": 149,
+              "providers": [],
+              "total_tokens": 97804
+            }
+          ],
+          "calculated_total_usd": 0.1139603,
+          "count": 2,
+          "sequence": [
+            {
+              "cached_input_tokens": null,
+              "calculated_input_cost_usd": 0.030886,
+              "calculated_output_cost_usd": 0.00116,
+              "calculated_total_cost_usd": 0.0553701,
+              "harness": null,
+              "input_tokens": 15443,
+              "model": "claude-sonnet-5",
+              "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+              "name": "LLM Call 1",
+              "observation_id": "bbb5d8b9661b717b",
+              "output_tokens": 116,
+              "pricing_tier": "Standard",
+              "provider": null,
+              "reasoning_output_tokens": null,
+              "seq": null,
+              "total_tokens": 46240,
+              "unit": "TOKENS"
+            },
+            {
+              "cached_input_tokens": null,
+              "calculated_input_cost_usd": 4e-06,
+              "calculated_output_cost_usd": 0.00033,
+              "calculated_total_cost_usd": 0.0585902,
+              "harness": null,
+              "input_tokens": 2,
+              "model": "claude-sonnet-5",
+              "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+              "name": "LLM Call 2",
+              "observation_id": "d11a8864e47cb272",
+              "output_tokens": 33,
+              "pricing_tier": "Standard",
+              "provider": null,
+              "reasoning_output_tokens": null,
+              "seq": null,
+              "total_tokens": 51564,
+              "unit": "TOKENS"
+            }
+          ],
+          "total_tokens": 97804
+        },
+        "harness_tools": {
+          "by_name": {},
+          "end_count": 0,
+          "failure_count": 0,
+          "names": [],
+          "start_count": 0,
+          "success_count": 0
+        },
+        "harnesses": [
+          "claude"
+        ],
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "providers": [
+          "anthropic"
+        ],
+        "run_id": "dfec301e-8152-4566-9253-cc211739b80b",
+        "scores": {},
+        "trace_id": "0e553fc833c71639acd03be9807eb616",
+        "usage": {
+          "input_tokens": 15445,
+          "output_tokens": 149,
+          "total_tokens": 97804
+        }
+      }
+    ],
+    "usage": {
+      "total_tokens": 97804
+    }
+  }
+}

@@ -2431,6 +2431,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         .and_then(Value::as_object)
         .map(|_| response.get("response").unwrap())
         .unwrap_or(response);
+    let official_trace = infer_official_plugin_trace(trace);
     let observations = trace
         .get("observations")
         .and_then(Value::as_array)
@@ -2795,6 +2796,10 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
     let agent_tools = summarize_tool_trace_group(agent_tool_stats, agent_tool_events, 100);
     let harness_tools = summarize_tool_trace_group(harness_tool_stats, harness_tool_events, 100);
     let generations = summarize_generation_trace_group(generation_stats, generation_events, 100);
+    if let Some(inference) = official_trace {
+        harnesses.insert(inference.harness.to_string());
+        providers.insert(inference.provider.to_string());
+    }
 
     json!({
         "trace_id": trace.get("id").and_then(Value::as_str),
@@ -2980,19 +2985,23 @@ fn summarize_langfuse_traces_response(
 
     for trace in rows {
         let metadata = trace.get("metadata");
-        let harness = metadata_string(metadata, "harness").or_else(|| {
-            trace
-                .get("tags")
-                .and_then(Value::as_array)
-                .and_then(|tags| {
-                    tags.iter().find_map(|tag| {
-                        tag.as_str()
-                            .and_then(|tag| tag.strip_prefix("harness:"))
-                            .map(ToOwned::to_owned)
+        let official_trace = infer_official_plugin_trace(&trace);
+        let harness = metadata_string(metadata, "harness")
+            .or_else(|| {
+                trace
+                    .get("tags")
+                    .and_then(Value::as_array)
+                    .and_then(|tags| {
+                        tags.iter().find_map(|tag| {
+                            tag.as_str()
+                                .and_then(|tag| tag.strip_prefix("harness:"))
+                                .map(ToOwned::to_owned)
+                        })
                     })
-                })
-        });
-        let provider = metadata_string(metadata, "provider");
+            })
+            .or_else(|| official_trace.map(|inference| inference.harness.to_string()));
+        let provider = metadata_string(metadata, "provider")
+            .or_else(|| official_trace.map(|inference| inference.provider.to_string()));
         let model = metadata_string(metadata, "model");
         let environment = trace
             .get("environment")
@@ -3069,6 +3078,32 @@ fn summarize_langfuse_traces_response(
         "total_cost": if has_cost { Some(total_cost) } else { None },
         "traces": traces,
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OfficialPluginTraceInference {
+    harness: &'static str,
+    provider: &'static str,
+}
+
+fn infer_official_plugin_trace(trace: &Value) -> Option<OfficialPluginTraceInference> {
+    let name = trace
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if name.starts_with("Codex Turn") {
+        return Some(OfficialPluginTraceInference {
+            harness: "codex",
+            provider: "openai",
+        });
+    }
+    if name.starts_with("Claude Code") || name.starts_with("Conversational Turn") {
+        return Some(OfficialPluginTraceInference {
+            harness: "claude",
+            provider: "anthropic",
+        });
+    }
+    None
 }
 
 #[derive(Debug, Default)]
@@ -4478,6 +4513,52 @@ mod cli_tests {
     }
 
     #[test]
+    fn langfuse_traces_summary_infers_official_plugin_harnesses() {
+        let response = json!({
+            "data": [
+                {
+                    "id": "trace-codex-official",
+                    "name": "Codex Turn",
+                    "timestamp": "2026-07-08T19:00:00.000Z",
+                    "environment": "local-macbook",
+                    "sessionId": "codex-session",
+                    "observations": ["agent", "generation", "tool"],
+                    "totalCost": 0.17
+                },
+                {
+                    "id": "trace-claude-official",
+                    "name": "Claude Code - Turn 1 (abcd1234)",
+                    "timestamp": "2026-07-08T18:59:00.000Z",
+                    "environment": "local-macbook",
+                    "sessionId": "claude-session",
+                    "observations": ["span", "generation", "tool"],
+                    "totalCost": 0.11
+                }
+            ],
+            "meta": {"totalItems": 2}
+        });
+        let request = LangFuseTracesListRequest {
+            endpoint: "https://langfuse.example.com/api/public/traces?limit=20&page=1".to_string(),
+            limit: 20,
+            page: 1,
+            harness: Some("codex".to_string()),
+            provider: None,
+            model: None,
+            environment: Some("local-macbook".to_string()),
+        };
+
+        let summary = summarize_langfuse_traces_response(&response, &request);
+
+        assert_eq!(summary["returned_count"], 1);
+        assert_eq!(summary["harnesses"], json!(["codex"]));
+        assert_eq!(summary["providers"], json!(["openai"]));
+        assert_eq!(summary["traces"][0]["trace_id"], "trace-codex-official");
+        assert_eq!(summary["traces"][0]["run_id"], "codex-session");
+        assert_eq!(summary["traces"][0]["session_id"], "codex-session");
+        assert_eq!(summary["traces"][0]["observation_count"], 3);
+    }
+
+    #[test]
     fn langfuse_trace_summary_extracts_learning_loop_fields() {
         let response = json!({
             "id": "trace-1",
@@ -4717,7 +4798,7 @@ mod cli_tests {
     fn langfuse_trace_summary_counts_official_plugin_tool_observations() {
         let response = json!({
             "id": "trace-official-tools",
-            "name": "official plugin trace",
+            "name": "Claude Code - Turn 1 (abcd1234)",
             "sessionId": "session-1",
             "environment": "local-test",
             "observations": [
@@ -4755,6 +4836,8 @@ mod cli_tests {
         let summary = summarize_langfuse_trace_response(&response);
 
         assert_eq!(summary["observation_types"], json!(["GENERATION", "TOOL"]));
+        assert_eq!(summary["harnesses"], json!(["claude"]));
+        assert_eq!(summary["providers"], json!(["anthropic"]));
         assert_eq!(
             summary["events"]["category_counts"],
             json!([
