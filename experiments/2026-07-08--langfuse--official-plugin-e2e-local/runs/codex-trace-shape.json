@@ -1,0 +1,22 @@
+{
+  "trace_id": "6905cfb7d1b969a0214e613383748ce7",
+  "name": null,
+  "input_present": true,
+  "output_present": true,
+  "observation_count": 4,
+  "observation_types": [
+    "AGENT",
+    "GENERATION",
+    "TOOL"
+  ],
+  "observation_names": [
+    "gpt-5.4",
+    "gpt-5.4",
+    "exec_command",
+    "Codex Turn"
+  ],
+  "models": [
+    "gpt-5.4"
+  ],
+  "total_cost": 0.001374999999
+}

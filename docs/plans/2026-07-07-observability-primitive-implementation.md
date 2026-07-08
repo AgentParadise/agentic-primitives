@@ -24,6 +24,7 @@ Completion audit:
 - `experiments/2026-07-07--observability--claude-hook-sink-capture`
 - `experiments/2026-07-07--observability--stock-itmux-hook-sink`
 - `experiments/2026-07-08--langfuse--official-plugin-trace-shape`
+- `experiments/2026-07-08--langfuse--official-plugin-e2e-local`
 
 ## Current Facts
 
@@ -88,6 +89,12 @@ Completion audit:
   noisy in LangFuse: generic event spans, missing root input/output, unpaired
   tool start/end spans, and token usage as a generic event rather than a
   generation observation.
+- The official-plugin E2E local experiment passed against the local LangFuse
+  stack. The official Claude hook exported root input/output, two generation
+  observations, and `Tool: Read`. The official Codex hook exported a
+  `Codex Turn` agent observation, two generation observations with usage, an
+  `exec_command` tool observation, total cost, and sidecar dedup state. No Rust
+  OTLP writer path ran during the experiment.
 - The refreshed
   `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
   both minimal OTLP ingestion and the current
@@ -239,22 +246,23 @@ Completion audit:
 13. Expose MCP trace tools for agent learning loops:
    **done through `plugins/observability/mcp/langfuse_server.py`; local
    LangFuse proof captured in `runs/langfuse-mcp-trace-query`**.
-14. Run the next required official-plugin E2E experiment:
-   - configure official Claude plugin against local LangFuse;
-   - configure official Codex plugin against local LangFuse;
-   - run one minimal tool-using turn per harness;
-   - capture UI/API/MCP evidence for root input/output, generation
-     observations, tool observations, usage/cost, session/environment filters,
-     and queryability;
-   - verify Rust OTLP is not also sending duplicate rich traces by default.
+14. Run the official-plugin E2E experiment:
+   **done through direct official hook invocation against local LangFuse**.
+   Follow-up is production setup, not proof of trace shape:
+   - configure official Claude marketplace plugin for real Claude sessions;
+   - configure official Codex marketplace plugin for real Codex sessions;
+   - keep Rust OTLP off by default when those official plugins are enabled.
 
 ## `.9` Exit Criteria
 
 - Official Claude and Codex LangFuse plugins create discoverable rich traces
-  against a reachable LangFuse deployment.
+  against a reachable LangFuse deployment:
+  **satisfied for local direct-hook fixture validation**.
 - Rich traces include root input/output, generation observations,
   tool observations, usage/cost, real timings, environment, and session
-  grouping.
+  grouping:
+  **satisfied for local direct-hook fixture validation, except the Claude
+  fixture has zero usage/cost because it carries no nonzero usage fields**.
 - Final result includes a human-usable trace link.
 - Missing or invalid credentials produce a failed exporter report, not silent
   success and not stdout corruption.

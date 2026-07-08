@@ -453,6 +453,9 @@ Current status for `okrs-51p.9`:
 
 `experiments/2026-07-08--langfuse--official-plugin-trace-shape` validated the
 architecture pivot requested after LangFuse UI inspection.
+`experiments/2026-07-08--langfuse--official-plugin-e2e-local` then validated
+that pivot end to end against the local self-hosted LangFuse stack without
+global plugin installation.
 
 Findings:
 
@@ -486,15 +489,19 @@ Decision from this experiment:
   Syntropic137 bridge.
 - Rust OTLP must not be enabled by default alongside official Claude/Codex
   LangFuse plugins because it creates duplicate/noisy low-level observations.
+- The local E2E run proved the official hook entrypoints can export rich traces
+  directly: Claude produced root input/output, two `GENERATION` observations,
+  and `Tool: Read`; Codex produced a `Codex Turn` `AGENT` observation, two
+  `GENERATION` observations with usage, an `exec_command` `TOOL` observation,
+  total cost, and sidecar dedup state. No `itmux ... --observability-langfuse`
+  writer path or direct Rust OTLP exporter ran during that experiment.
 
 Remaining gate for production deployment:
 
-1. Validate the official Claude and Codex plugins end-to-end against the local
-   LangFuse stack and capture UI/API evidence for root input/output,
-   generations, tools, usage/cost, session/environment filters, and agent
-   queryability.
-2. Verify that enabling the official plugins does not also enable duplicate
-   Rust OTLP rich traces by default.
+1. Convert the local direct-hook validation into documented setup using the
+   official Claude/Codex marketplace install flows for real sessions.
+2. Ensure workspace/bootstrap config enforces the single-active-rich-exporter
+   rule by default.
 3. Move the same Compose/bootstrap pattern to the durable Mac Mini host with
    persistent secrets, storage, backups, and upgrade policy.
 4. Decide whether `.9` closes on local real-backend proof or waits for the Mac

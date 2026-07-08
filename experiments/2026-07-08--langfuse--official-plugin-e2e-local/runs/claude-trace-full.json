@@ -1,0 +1,597 @@
+{
+  "ok": true,
+  "request": {
+    "api": "legacy_trace",
+    "endpoint": "http://localhost:3000/api/public/traces/76a54f7c977ae138c22ebae34b05e047",
+    "trace_id": "76a54f7c977ae138c22ebae34b05e047",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 100,
+    "include_scores": false,
+    "score_limit": 20,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
+  },
+  "summary": {
+    "trace_id": "76a54f7c977ae138c22ebae34b05e047",
+    "trace_name": "Claude Code - Turn 1 (official-cla)",
+    "session_id": "official-claude-e2e-1783535611",
+    "environment": "official-plugin-e2e-local",
+    "observation_count": 4,
+    "observation_names": [
+      "Conversational Turn",
+      "LLM Call 1",
+      "LLM Call 2",
+      "Tool: Read"
+    ],
+    "observation_types": [
+      "GENERATION",
+      "SPAN",
+      "TOOL"
+    ],
+    "environments": [
+      "official-plugin-e2e-local"
+    ],
+    "harnesses": [],
+    "providers": [],
+    "models": [
+      "claude-test"
+    ],
+    "model_ids": [],
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0
+    },
+    "cost": {
+      "calculated_total_usd": 0.0
+    },
+    "events": {
+      "sequence_source": null,
+      "category_counts": [
+        {
+          "category": "other",
+          "count": 4
+        }
+      ],
+      "sequence": [
+        {
+          "seq": null,
+          "event": "Conversational Turn",
+          "name": "Conversational Turn",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 1",
+          "name": "LLM Call 1",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-test",
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "Tool: Read",
+          "name": "Tool: Read",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 2",
+          "name": "LLM Call 2",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-test",
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "operations": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "agent_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "harness_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "generations": {
+      "count": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "calculated_total_usd": 0.0,
+      "by_model": [
+        {
+          "model": "claude-test",
+          "model_ids": [],
+          "providers": [],
+          "harnesses": [],
+          "count": 2,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "calculated_total_usd": 0.0
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "observation_id": "b8e444bdcd8ad984",
+          "name": "LLM Call 1",
+          "model": "claude-test",
+          "model_id": null,
+          "harness": null,
+          "provider": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": null,
+          "calculated_output_cost_usd": null,
+          "calculated_total_cost_usd": 0.0,
+          "pricing_tier": null,
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "e0a6a7aa0fed787e",
+          "name": "LLM Call 2",
+          "model": "claude-test",
+          "model_id": null,
+          "harness": null,
+          "provider": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": null,
+          "calculated_output_cost_usd": null,
+          "calculated_total_cost_usd": 0.0,
+          "pricing_tier": null,
+          "unit": "TOKENS"
+        }
+      ],
+      "sequence_truncated": false
+    }
+  },
+  "response": {
+    "id": "76a54f7c977ae138c22ebae34b05e047",
+    "projectId": "agentic-primitives-local-project",
+    "name": "Claude Code - Turn 1 (official-cla)",
+    "timestamp": "2026-01-01T00:01:00.000Z",
+    "environment": "official-plugin-e2e-local",
+    "tags": [
+      "claude-code"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "agentic-official-plugin-e2e",
+    "sessionId": "official-claude-e2e-1783535611",
+    "public": false,
+    "input": {
+      "role": "user",
+      "content": "Read the file."
+    },
+    "output": {
+      "role": "assistant",
+      "content": "The file starts with a heading."
+    },
+    "metadata": {
+      "source": "claude-code",
+      "session_id": "official-claude-e2e-1783535611",
+      "turn_number": 1,
+      "transcript_path": "claude-tool-turn.jsonl",
+      "user_text": {
+        "truncated": false,
+        "orig_len": 14
+      },
+      "assistant_message_count": 2,
+      "cwd": "/repo",
+      "git_branch": "feature/test",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.43.0",
+        "service.instance.id": "39512917-334f-41c8-b346-f442c4237b68",
+        "langfuse.environment": "official-plugin-e2e-local",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.13.2",
+        "attributes": {
+          "public_key": "<redacted-public-key>"
+        }
+      }
+    },
+    "createdAt": "2026-07-08T18:33:47.007Z",
+    "updatedAt": "2026-07-08T18:33:47.018Z",
+    "externalId": null,
+    "scores": [],
+    "latency": 3,
+    "observations": [
+      {
+        "id": "b8e444bdcd8ad984",
+        "traceId": "76a54f7c977ae138c22ebae34b05e047",
+        "startTime": "2026-01-01T00:01:00.000Z",
+        "endTime": "2026-01-01T00:01:02.000Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "5da4e7805e690c6c",
+        "type": "GENERATION",
+        "environment": "official-plugin-e2e-local",
+        "name": "LLM Call 1",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T18:33:47.003Z",
+        "updatedAt": "2026-07-08T18:33:47.013Z",
+        "input": {
+          "role": "user",
+          "content": "Read the file."
+        },
+        "output": {
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "id": "toolu_read_1",
+              "name": "Read"
+            }
+          ]
+        },
+        "metadata": {
+          "assistant_index": 0,
+          "assistant_text": {
+            "truncated": false,
+            "orig_len": 0
+          },
+          "tool_count": 1,
+          "resourceAttributes": {
+            "telemetry.sdk.language": "python",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "1.43.0",
+            "service.instance.id": "39512917-334f-41c8-b346-f442c4237b68",
+            "langfuse.environment": "official-plugin-e2e-local",
+            "service.name": "unknown_service"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "4.13.2",
+            "attributes": {
+              "public_key": "<redacted-public-key>"
+            }
+          }
+        },
+        "model": "claude-test",
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 2,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "e0a6a7aa0fed787e",
+        "traceId": "76a54f7c977ae138c22ebae34b05e047",
+        "startTime": "2026-01-01T00:01:02.000Z",
+        "endTime": "2026-01-01T00:01:03.000Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "5da4e7805e690c6c",
+        "type": "GENERATION",
+        "environment": "official-plugin-e2e-local",
+        "name": "LLM Call 2",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T18:33:47.003Z",
+        "updatedAt": "2026-07-08T18:33:47.012Z",
+        "input": {
+          "role": "tool",
+          "tool_results": [
+            {
+              "tool_use_id": "toolu_read_1",
+              "tool_name": "Read",
+              "output": "# Example"
+            }
+          ]
+        },
+        "output": {
+          "role": "assistant",
+          "content": "The file starts with a heading."
+        },
+        "metadata": {
+          "assistant_index": 1,
+          "assistant_text": {
+            "truncated": false,
+            "orig_len": 31
+          },
+          "tool_count": 0,
+          "resourceAttributes": {
+            "telemetry.sdk.language": "python",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "1.43.0",
+            "service.instance.id": "39512917-334f-41c8-b346-f442c4237b68",
+            "langfuse.environment": "official-plugin-e2e-local",
+            "service.name": "unknown_service"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "4.13.2",
+            "attributes": {
+              "public_key": "<redacted-public-key>"
+            }
+          }
+        },
+        "model": "claude-test",
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 1,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "5da4e7805e690c6c",
+        "traceId": "76a54f7c977ae138c22ebae34b05e047",
+        "startTime": "2026-01-01T00:01:00.000Z",
+        "endTime": "2026-01-01T00:01:03.000Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": null,
+        "type": "SPAN",
+        "environment": "official-plugin-e2e-local",
+        "name": "Conversational Turn",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T18:33:47.003Z",
+        "updatedAt": "2026-07-08T18:33:47.012Z",
+        "input": {
+          "role": "user",
+          "content": "Read the file."
+        },
+        "output": {
+          "role": "assistant",
+          "content": "The file starts with a heading."
+        },
+        "metadata": {
+          "source": "claude-code",
+          "session_id": "official-claude-e2e-1783535611",
+          "turn_number": 1,
+          "transcript_path": "claude-tool-turn.jsonl",
+          "user_text": {
+            "truncated": false,
+            "orig_len": 14
+          },
+          "assistant_message_count": 2,
+          "cwd": "/repo",
+          "git_branch": "feature/test",
+          "resourceAttributes": {
+            "telemetry.sdk.language": "python",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "1.43.0",
+            "service.instance.id": "39512917-334f-41c8-b346-f442c4237b68",
+            "langfuse.environment": "official-plugin-e2e-local",
+            "service.name": "unknown_service"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "4.13.2",
+            "attributes": {
+              "public_key": "<redacted-public-key>"
+            }
+          }
+        },
+        "model": null,
+        "modelParameters": null,
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 3,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "c7f8468093a53152",
+        "traceId": "76a54f7c977ae138c22ebae34b05e047",
+        "startTime": "2026-01-01T00:01:01.000Z",
+        "endTime": "2026-01-01T00:01:02.000Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "5da4e7805e690c6c",
+        "type": "TOOL",
+        "environment": "official-plugin-e2e-local",
+        "name": "Tool: Read",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T18:33:47.003Z",
+        "updatedAt": "2026-07-08T18:33:47.011Z",
+        "input": {
+          "file_path": "README.md"
+        },
+        "output": "# Example",
+        "metadata": {
+          "tool_name": "Read",
+          "tool_id": "toolu_read_1",
+          "output_meta": {
+            "truncated": false,
+            "orig_len": 9
+          },
+          "resourceAttributes": {
+            "telemetry.sdk.language": "python",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "1.43.0",
+            "service.instance.id": "39512917-334f-41c8-b346-f442c4237b68",
+            "langfuse.environment": "official-plugin-e2e-local",
+            "service.name": "unknown_service"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "4.13.2",
+            "attributes": {
+              "public_key": "<redacted-public-key>"
+            }
+          }
+        },
+        "model": null,
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 1,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "htmlPath": "/project/agentic-primitives-local-project/traces/76a54f7c977ae138c22ebae34b05e047",
+    "totalCost": 0
+  },
+  "scores_response": null
+}
