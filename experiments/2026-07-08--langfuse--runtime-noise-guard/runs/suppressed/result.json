@@ -1,0 +1,38 @@
+{
+  "result": {
+    "success": true,
+    "summary": "claude transcript normalized successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "claude transcript omitted from result; normalized 6 events from 10 input lines",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/suppressed/events.jsonl",
+        "events_exported": 7,
+        "links": [
+          {
+            "label": "claude transcript events",
+            "uri": "file:///Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/suppressed/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "syntropic_jsonl",
+        "status": "ok",
+        "target": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/suppressed/syntropic-events.jsonl",
+        "events_exported": 7,
+        "links": [
+          {
+            "label": "Syntropic137 events",
+            "uri": "file:///Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/suppressed/syntropic-events.jsonl"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

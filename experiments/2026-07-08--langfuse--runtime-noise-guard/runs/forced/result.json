@@ -1,0 +1,51 @@
+{
+  "result": {
+    "success": true,
+    "summary": "claude transcript normalized successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "claude transcript omitted from result; normalized 6 events from 10 input lines",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/forced/events.jsonl",
+        "events_exported": 7,
+        "links": [
+          {
+            "label": "claude transcript events",
+            "uri": "file:///Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/forced/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "syntropic_jsonl",
+        "status": "ok",
+        "target": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/forced/syntropic-events.jsonl",
+        "events_exported": 7,
+        "links": [
+          {
+            "label": "Syntropic137 events",
+            "uri": "file:///Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/forced/syntropic-events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "ok",
+        "target": "http://127.0.0.1:59346/api/public/otel/v1/traces",
+        "events_exported": 7,
+        "links": [
+          {
+            "label": "forced LangFuse fallback",
+            "uri": "http://127.0.0.1:59346/project/runtime-noise-project/traces/e2dab451ce6295b7b4883d062db01f5a"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "request_count": 1,
+  "requests": [
+    {
+      "body_len": 4560,
+      "body_prefix_b64": "Cs0jCosBCiQKDHNlcnZpY2UubmFtZRIUChJhZ2VudGljLXByaW1pdGl2ZXMKNAobZGVwbG95bWVudC5lbnZpcm9ubWVudC5uYW1lEhUKE3J1bnRpbWUtbm9pc2UtZ3Vh",
+      "headers": {
+        "Accept": "*/*",
+        "Authorization": "Basic [REDACTED]",
+        "Content-Length": "4560",
+        "Content-Type": "application/x-protobuf",
+        "Host": "127.0.0.1:59346",
+        "User-Agent": "ureq/2.12.1",
+        "x-langfuse-ingestion-version": "4"
+      },
+      "method": "POST",
+      "path": "/api/public/otel/v1/traces"
+    }
+  ]
+}

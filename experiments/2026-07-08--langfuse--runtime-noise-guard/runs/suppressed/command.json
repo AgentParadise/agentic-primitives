@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/interactive-tmux/driver-rs/target/debug/itmux",
+    "claude-transcript",
+    "--transcript",
+    "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/claude-cli/fixtures/recordings/v2.0.74_claude-sonnet-4-5_file-read.jsonl",
+    "--run-id",
+    "runtime-noise-guard-suppressed",
+    "--result-file",
+    "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/suppressed/result.json",
+    "--observability-file",
+    "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/suppressed/events.jsonl",
+    "--observability-syntropic-file",
+    "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--langfuse--runtime-noise-guard/runs/suppressed/syntropic-events.jsonl",
+    "--observability-langfuse",
+    "--langfuse-base-url",
+    "http://127.0.0.1:59344",
+    "--langfuse-project-id",
+    "runtime-noise-project",
+    "--langfuse-label",
+    "suppressed LangFuse fallback"
+  ],
+  "env": {
+    "LANGFUSE_PUBLIC_KEY": "pk-lf-REDACTED",
+    "LANGFUSE_SECRET_KEY": "sk-lf-REDACTED",
+    "LANGFUSE_TRACING_ENVIRONMENT": "runtime-noise-guard",
+    "TRACE_TO_LANGFUSE": "true"
+  },
+  "receiver_base_url": "http://127.0.0.1:59344",
+  "returncode": 0
+}
