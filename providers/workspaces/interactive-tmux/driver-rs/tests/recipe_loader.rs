@@ -54,6 +54,7 @@ fn loads_recipe_and_maps_default_agent_to_claude() {
     assert_eq!(plan.recipe_name, "plain-recipe");
     // default_agent = main, whose harness is claude.
     assert_eq!(plan.agent, Agent::Claude);
+    assert_eq!(plan.model_name, "anthropic/claude-opus-4-8");
     // Only the default agent is launched (R5), never the codex subagent.
     assert_eq!(plan.start_agents(), vec![Agent::Claude]);
 }

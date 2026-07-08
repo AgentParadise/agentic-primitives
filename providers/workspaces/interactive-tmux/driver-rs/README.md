@@ -95,6 +95,27 @@ If LangFuse config is missing or invalid, the run still completes and local
 file export still works; the LangFuse exporter reports `status:"failed"` in the
 final observability bundle.
 
+For Codex recipes, `itmux run` defaults to the existing interactive TUI
+workspace mode. Use `--codex-mode exec` when the run needs structured Codex
+tool/token/cost telemetry:
+
+```bash
+itmux run \
+  --recipe /path/to/codex-recipe \
+  --task "Reply exactly: OK" \
+  --codex-mode exec \
+  --observability-file /tmp/codex-run-events.jsonl \
+  --observability-langfuse \
+  --result-file /tmp/codex-run-result.json
+```
+
+`--codex-mode exec` is valid only for recipes whose default agent is Codex. It
+loads the recipe prompt/model, runs `codex exec --json`, strips an `openai/`
+model prefix before passing the model to Codex, and normalizes the structured
+event stream through the same `AgentRunEvent` and exporter fanout used by the
+rest of `itmux run`. The default `tui` mode remains the Docker workspace path
+and currently has only coarse lifecycle observability.
+
 ## `itmux codex-exec` observer export
 
 `itmux codex-exec` runs `codex exec --json`, normalizes Codex's structured

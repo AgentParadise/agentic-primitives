@@ -1,0 +1,8 @@
+name: main
+agent: codex
+model:
+  name: openai/gpt-5.5
+  effort: low
+system_instructions:
+  mode: append
+  content: ""

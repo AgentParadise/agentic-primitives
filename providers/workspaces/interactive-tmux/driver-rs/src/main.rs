@@ -50,6 +50,14 @@ struct Cli {
     cmd: Cmd,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CodexRunMode {
+    /// Launch the interactive Codex TUI in the Docker workspace.
+    Tui,
+    /// Run `codex exec --json` and normalize its structured event stream.
+    Exec,
+}
+
 #[derive(Subcommand, Debug)]
 enum Cmd {
     /// Start a workspace.
@@ -131,6 +139,17 @@ enum Cmd {
         /// Container image. Defaults to the interactive-tmux workspace image.
         #[arg(long, default_value = DEFAULT_IMAGE)]
         image: String,
+        /// How Codex recipes execute. `tui` preserves the current interactive
+        /// workspace behavior; `exec` uses structured `codex exec --json`
+        /// telemetry for rich tool/token/cost observability.
+        #[arg(long, default_value = "tui")]
+        codex_mode: CodexRunMode,
+        /// Codex binary used when `--codex-mode exec`.
+        #[arg(long, default_value = "codex")]
+        codex_bin: String,
+        /// Sandbox policy passed to `codex exec` when `--codex-mode exec`.
+        #[arg(long, default_value = "read-only")]
+        codex_sandbox: String,
         /// Emit event JSONL on stdout (on by default). `--json false`
         /// suppresses the event stream and prints only a human result summary.
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
@@ -888,11 +907,22 @@ fn non_empty_string(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn codex_model_for_exec(recipe_model: &str) -> Option<String> {
+    let model = recipe_model
+        .trim()
+        .strip_prefix("openai/")
+        .unwrap_or_else(|| recipe_model.trim());
+    non_empty_string(Some(model.to_string()))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_run(
     recipe: PathBuf,
     task: String,
     image: String,
+    codex_mode: CodexRunMode,
+    codex_bin: String,
+    codex_sandbox: String,
     json: bool,
     result_file: Option<PathBuf>,
     timeout: Option<f64>,
@@ -910,10 +940,42 @@ fn handle_run(
     };
     let observability =
         build_observability_exporters(observability_file, "itmux run events", langfuse);
+    let spec_recipe = recipe.clone();
     let mut spec = build_run_spec(recipe, task, timeout);
     spec.credentials = credentials;
     spec.observability = observability;
     let run_id = generate_run_id();
+    let plan = match itmux::run::recipe_loader::load_execution_plan(&spec) {
+        Ok(plan) => plan,
+        Err(err) => {
+            eprintln!("[itmux run] failed to load recipe: {err}");
+            return ExitCode::from(1);
+        }
+    };
+    if plan.agent == Agent::Codex && codex_mode == CodexRunMode::Exec {
+        let model =
+            codex_model_for_exec(&plan.model_name).or_else(|| resolve_codex_exec_model(None));
+        return handle_codex_exec_with_exporters(CodexExecRunOptions {
+            prompt: plan.submit_text,
+            codex_bin,
+            model,
+            sandbox: codex_sandbox,
+            json,
+            result_file,
+            exporters: spec.observability,
+            run_id,
+            log_prefix: "itmux run codex-exec",
+            human_label: "run codex-exec",
+        });
+    }
+    if plan.agent != Agent::Codex && codex_mode == CodexRunMode::Exec {
+        eprintln!(
+            "[itmux run] --codex-mode exec was requested, but recipe {} default agent is {}",
+            spec_recipe.display(),
+            plan.agent.as_str()
+        );
+        return ExitCode::from(64);
+    }
     let cancel = CancelToken::new();
 
     // Wire OS signals to the two-tier cancellation (Task 6): first Ctrl-C ->
@@ -1009,6 +1071,19 @@ fn handle_run(
     }
 }
 
+struct CodexExecRunOptions<'a> {
+    prompt: String,
+    codex_bin: String,
+    model: Option<String>,
+    sandbox: String,
+    json: bool,
+    result_file: Option<PathBuf>,
+    exporters: Vec<ObservabilityExporter>,
+    run_id: String,
+    log_prefix: &'a str,
+    human_label: &'a str,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_codex_exec(
     prompt: String,
@@ -1022,11 +1097,37 @@ fn handle_codex_exec(
 ) -> ExitCode {
     let exporters =
         build_observability_exporters(observability_file, "codex exec events", langfuse);
+    handle_codex_exec_with_exporters(CodexExecRunOptions {
+        prompt,
+        codex_bin,
+        model,
+        sandbox,
+        json,
+        result_file,
+        exporters,
+        run_id: generate_run_id(),
+        log_prefix: "itmux codex-exec",
+        human_label: "codex exec",
+    })
+}
+
+fn handle_codex_exec_with_exporters(options: CodexExecRunOptions<'_>) -> ExitCode {
+    let CodexExecRunOptions {
+        prompt,
+        codex_bin,
+        model,
+        sandbox,
+        json,
+        result_file,
+        exporters,
+        run_id,
+        log_prefix,
+        human_label,
+    } = options;
     let mut fanout = ObservabilityFanout::new(&exporters);
     let requested_model = non_empty_string(model.clone());
     let telemetry_model = resolve_codex_exec_model(model.clone());
     let mut observer = CodexExecJsonObserver::with_model(telemetry_model);
-    let run_id = generate_run_id();
     let mut seq = 0u64;
     let mut session_log = String::new();
     let mut parse_error: Option<String> = None;
@@ -1043,7 +1144,7 @@ fn handle_codex_exec(
         if json {
             match serde_json::to_string(&event) {
                 Ok(line) => println!("{line}"),
-                Err(err) => eprintln!("[itmux codex-exec] failed to serialize event: {err}"),
+                Err(err) => eprintln!("[{log_prefix}] failed to serialize event: {err}"),
             }
         }
     };
@@ -1064,7 +1165,7 @@ fn handle_codex_exec(
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(err) => {
-            eprintln!("[itmux codex-exec] failed to spawn {codex_bin}: {err}");
+            eprintln!("[{log_prefix}] failed to spawn {codex_bin}: {err}");
             return ExitCode::from(1);
         }
     };
@@ -1125,7 +1226,7 @@ fn handle_codex_exec(
     let status = match child.wait() {
         Ok(status) => status,
         Err(err) => {
-            eprintln!("[itmux codex-exec] failed waiting for codex process: {err}");
+            eprintln!("[{log_prefix}] failed waiting for codex process: {err}");
             return ExitCode::from(1);
         }
     };
@@ -1173,14 +1274,14 @@ fn handle_codex_exec(
             Ok(bytes) => {
                 if let Err(err) = std::fs::write(&path, bytes) {
                     eprintln!(
-                        "[itmux codex-exec] failed to write result file {}: {err}",
+                        "[{log_prefix}] failed to write result file {}: {err}",
                         path.display()
                     );
                     return ExitCode::from(1);
                 }
             }
             Err(err) => {
-                eprintln!("[itmux codex-exec] failed to serialize result: {err}");
+                eprintln!("[{log_prefix}] failed to serialize result: {err}");
                 return ExitCode::from(1);
             }
         },
@@ -1189,11 +1290,11 @@ fn handle_codex_exec(
                 let event = AgentRunEvent::result(&run_id, seq, now_rfc3339(), result);
                 match serde_json::to_string(&event) {
                     Ok(line) => println!("{line}"),
-                    Err(err) => eprintln!("[itmux codex-exec] failed to serialize result: {err}"),
+                    Err(err) => eprintln!("[{log_prefix}] failed to serialize result: {err}"),
                 }
             } else {
                 println!(
-                    "codex exec {}: success={}",
+                    "{human_label} {}: success={}",
                     run_id,
                     if success { "true" } else { "false" }
                 );
@@ -3305,6 +3406,9 @@ fn main() -> ExitCode {
             recipe,
             task,
             image,
+            codex_mode,
+            codex_bin,
+            codex_sandbox,
             json,
             result_file,
             timeout,
@@ -3319,6 +3423,9 @@ fn main() -> ExitCode {
             recipe,
             task,
             image,
+            codex_mode,
+            codex_bin,
+            codex_sandbox,
             json,
             result_file,
             timeout,
@@ -3594,6 +3701,50 @@ mod cli_tests {
         "#;
 
         assert_eq!(parse_codex_config_model(raw), None);
+    }
+
+    #[test]
+    fn codex_exec_model_strips_openai_recipe_prefix() {
+        assert_eq!(
+            codex_model_for_exec("openai/gpt-5.5").as_deref(),
+            Some("gpt-5.5")
+        );
+        assert_eq!(
+            codex_model_for_exec(" gpt-5.5 ").as_deref(),
+            Some("gpt-5.5")
+        );
+        assert_eq!(codex_model_for_exec("  "), None);
+    }
+
+    #[test]
+    fn run_cli_accepts_codex_exec_mode() {
+        let cli = Cli::parse_from([
+            "itmux",
+            "run",
+            "--recipe",
+            "/tmp/recipe",
+            "--task",
+            "hello",
+            "--codex-mode",
+            "exec",
+            "--codex-bin",
+            "codex-dev",
+            "--codex-sandbox",
+            "workspace-write",
+        ]);
+        match cli.cmd {
+            Cmd::Run {
+                codex_mode,
+                codex_bin,
+                codex_sandbox,
+                ..
+            } => {
+                assert_eq!(codex_mode, CodexRunMode::Exec);
+                assert_eq!(codex_bin, "codex-dev");
+                assert_eq!(codex_sandbox, "workspace-write");
+            }
+            other => panic!("expected run command, got {other:?}"),
+        }
     }
 
     #[test]

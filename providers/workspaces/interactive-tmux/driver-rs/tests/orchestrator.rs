@@ -205,6 +205,7 @@ fn fake_plan() -> RecipeExecutionPlan {
         claude_plugin_dirs: vec![PathBuf::from("/skills/x")],
         submit_text: "do the task".to_string(),
         subagents: vec![],
+        model_name: "anthropic/claude-opus-4-8".to_string(),
     }
 }
 

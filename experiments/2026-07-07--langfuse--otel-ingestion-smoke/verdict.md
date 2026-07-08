@@ -1,8 +1,9 @@
 # Verdict
 
 **Go on local LangFuse backend export, queryability, trace-link resolution,
-live Codex usage/cost/model telemetry, Claude transcript/workspace telemetry,
-and agent-facing feedback write-back.**
+live Codex usage/cost/model telemetry through both direct exec and
+recipe-driven `itmux run --codex-mode exec`, Claude transcript/workspace
+telemetry, and agent-facing feedback write-back.**
 
 The current `itmux` exporter path was run against a real local LangFuse Docker
 Compose backend on this MacBook. LangFuse accepted the OTLP HTTP/protobuf
@@ -30,6 +31,7 @@ evidence under `runs/real-backend-smoke/`.
 | Current `itmux` exporter reports `langfuse_otlp` success against the backend | Observed `status=ok`, `events_exported=6`, one trace link | correct | `runs/real-backend-smoke/summary.txt`. |
 | Token usage becomes native LangFuse usage/cost/model data, not only metadata | Observed `token_usage` as `GENERATION`, model `gpt-4o-mini`, 13 tokens, calculated total cost `0.000003299999` | correct for Codex | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`; `/tmp/langfuse-playwright/dashboard-rich.har`. |
 | Live Codex runs can export useful LangFuse traces | Real `codex exec --json` via `itmux codex-exec` exported six events; LangFuse returned seven observations with harness `codex`, provider `openai`, model `gpt-5.5`, 15932 total tokens, calculated cost `0.07996`, OpenAI cache tokens preserved as metadata but not double-counted, event/tool sequences ordered by `agentic.event.seq`, and `agent_tool` vs `harness_tool` grouping | correct for live Codex exec | `runs/codex-live-real-langfuse-token-total-fixed/events.jsonl`; `runs/codex-live-real-langfuse-token-total-fixed/langfuse-trace-query-legacy.json`; `runs/codex-live-real-langfuse-token-total-fixed/summary.txt`. |
+| Recipe-driven Codex runs can choose the rich observer path | Standard `itmux run --codex-mode exec` loaded a Codex recipe, invoked `codex exec --json`, fanned six normalized events to file and LangFuse exporters, and queried back one generation with harness `codex`, provider `openai`, model `gpt-5.5`, 15943 total tokens, 4992 cached input tokens, calculated cost `0.080015`, `agent_tools.codex_exec.item.agent_message`, and `harness_tools.codex_exec.thread`/`codex_exec.turn` | correct for recipe-driven Codex exec mode | `runs/codex-itmux-run-exec-mode/events.jsonl`; `runs/codex-itmux-run-exec-mode/result.json`; `runs/codex-itmux-run-exec-mode/langfuse-trace-summary.json`; `runs/codex-itmux-run-exec-mode/summary.txt`. |
 | Claude transcript usage maps into the same backend contract | Observed two Claude `token_usage` generations, five tool-start spans, five tool-end spans, harness `claude`, provider `anthropic`, both Claude model names, 122272 total tokens, and calculated cost `0.09459785`; transcript-derived tool values are redacted in the committed evidence | correct for transcript export | `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json`; `runs/claude-transcript-langfuse/summary.txt`. |
 | Completed Claude workspace runs can export useful LangFuse traces | Live `itmux run` exported 15 events; LangFuse returned 16 observations with hook spans, tool spans, one `token_usage` generation, harness `claude`, provider `anthropic`, model `claude-sonnet-4-6`, 15737 total tokens, and calculated cost `0.000234` | correct for terminalization-time collection | `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json`; `runs/claude-live-itmux-run/summary.txt`. |
 | Claude workspace runs can stream observed events before await ends | Live `itmux run` exported hook events and one transcript-derived `token_usage` event before the `await` phase ended; LangFuse returned 16 observations, native `GENERATION` usage, model `claude-sonnet-4-6`, 15735 total tokens, and calculated cost `0.000219` | correct for poll-time hook/transcript delta collection | `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`; `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json`; `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`. |
@@ -59,10 +61,13 @@ evidence under `runs/real-backend-smoke/`.
 - The normalized `token_usage` event contract now has optional
   `harness`/`provider`/`model` metadata and now has both Codex and Claude
   evidence against the same LangFuse backend. For Codex, `itmux codex-exec`
-  annotates token usage with an explicit `--model` when supplied, else
-  `CODEX_MODEL`, else top-level Codex config `model`, which makes LangFuse
-  cost/model fields queryable for default-account runs without changing the
-  Codex execution model. The OTLP exporter now computes provider-aware total
+  and `itmux run --codex-mode exec` both use the `codex exec --json` observer;
+  the recipe-driven mode strips an `openai/` recipe prefix before passing the
+  model to Codex. Direct `itmux codex-exec` annotates token usage with an
+  explicit `--model` when supplied, else `CODEX_MODEL`, else top-level Codex
+  config `model`, which makes LangFuse cost/model fields queryable for
+  default-account runs without changing the Codex execution model. The OTLP
+  exporter now computes provider-aware total
   tokens: OpenAI/Codex cached and reasoning fields are emitted as metadata but
   not added to the native total, while Anthropic/Claude cache fields remain
   additive. `itmux run` now drains Claude hook/transcript deltas

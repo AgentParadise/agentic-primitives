@@ -127,7 +127,9 @@ by vendor. The initial observer set is:
 - `claude_stream_json`: normalizes Claude headless stream JSON where available.
 - `codex_exec_json`: normalizes `codex exec --json` events, including usage.
 - `codex_tui`: watches runtime outputs available inside the workspace container
-  or host tmux adapter; parity is experimental until proven.
+  or host tmux adapter; parity is experimental until proven. Standard
+  recipe-driven Codex runs can opt into the rich `codex_exec_json` path with
+  `itmux run --codex-mode exec`.
 
 Secrets must not be embedded in specs, examples, CLI args, or committed files.
 LangFuse credentials should come from environment injection, keychain-backed
@@ -246,6 +248,9 @@ Current branch `feat/observability-exporter-primitive` starts this decision:
 - `itmux codex-exec` is the first runnable observer path: it runs
   `codex exec --json`, envelopes observed payloads as `AgentRunEvent`s, and
   feeds them through the same file exporter/final result reporting layer.
+- `itmux run --codex-mode exec` reuses the same Codex observer and exporter
+  fanout from the standard recipe-driven run surface for Codex recipes. The
+  default Codex `tui` mode remains the interactive Docker workspace path.
 - `providers/workspaces/interactive-tmux/driver-rs/src/run/observability.rs`
   implements file fanout.
 - `workspace_executor.rs` fans out `AgentRunEvent`s while preserving stdout
@@ -268,7 +273,9 @@ The first hypothesis-first probes produced these architecture constraints:
   `thread.started`, `turn.started`, `item.completed`, and `turn.completed`
   events, with `turn.completed.usage` carrying token counts. Therefore
   `codex_exec_json` is the first viable Codex usage observer; `codex_tui`
-  remains a coarse observer until another live source is proven.
+  remains a coarse observer until another live source is proven. A later
+  recipe-driven proof connected that rich observer back to standard
+  `itmux run` through explicit `--codex-mode exec`.
 - `experiments/2026-07-07--langfuse--otel-ingestion-smoke` generated the local
   synthetic root span plus three child spans, but did not export because no
   LangFuse base URL or credentials were present. The refreshed experiment also
@@ -377,7 +384,8 @@ Current status for `okrs-51p.9`:
 3. Link reporting is local-receiver-proven when a `LANGFUSE_PROJECT_ID` or explicit
    project id is available.
 4. CLI setup is implemented for `itmux run --observability-langfuse` and
-   `itmux codex-exec --observability-langfuse`.
+   `itmux codex-exec --observability-langfuse`, including recipe-driven Codex
+   rich telemetry through `itmux run --codex-mode exec`.
 5. Missing setup fails safely through the actual `itmux codex-exec` CLI path:
    the run remains usable and the exporter reports a failed
    `ObservabilityExportReport`.
@@ -399,6 +407,12 @@ Current status for `okrs-51p.9`:
    `itmux codex-exec --observability-langfuse` path, LangFuse accepts six
    events, `itmux langfuse-trace --api legacy-trace` returns seven
    observations, and the emitted trace URL resolves with HTTP 200.
+9. A standard Codex recipe run is proven against the same local backend through
+   `itmux run --codex-mode exec --observability-langfuse`: LangFuse accepted
+   six events and the compact query returned harness `codex`, provider
+   `openai`, model `gpt-5.5`, one generation, 15943 total tokens, 4992 cached
+   input tokens, calculated total cost `0.080015`, and split
+   `agent_tools`/`harness_tools`.
 
 Remaining gate for production deployment:
 

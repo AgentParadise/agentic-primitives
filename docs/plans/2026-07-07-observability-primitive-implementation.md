@@ -41,6 +41,9 @@ Completion audit:
 - Second implementation slice added the `itmux codex-exec` command, which runs
   `codex exec --json`, envelopes observed payloads with run id/sequence/time,
   and sends them through the same file fanout/report path.
+- Third implementation slice added `itmux run --codex-mode exec`, which lets
+  Codex recipes use the same structured `codex exec --json` observer and
+  file/LangFuse fanout from the standard recipe-driven run surface.
 - `experiments/2026-07-07--observability--codex-exec-observer-wiring` passed:
   six normalized stdout events, six exported events, one `token_usage` event,
   result success true, exporter status `ok`.
@@ -162,7 +165,8 @@ Completion audit:
   **satisfied by mixed file+LangFuse fanout where file stayed `ok` while
   LangFuse failed on missing env**.
 - Codex token usage parity is scoped to `codex_exec_json`; TUI parity is not
-  claimed.
+  claimed. Recipe-driven Codex parity is available through
+  `itmux run --codex-mode exec`.
 - Claude hook support has an empirical pass:
   **satisfied by hook-sink-capture and stock-itmux-hook-sink**.
 

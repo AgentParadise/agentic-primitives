@@ -71,6 +71,9 @@ pub struct RecipeExecutionPlan {
     /// The default agent's declared `subagents`, VALIDATED but NOT executed in
     /// v1 (R5). Present here purely as metadata; see [`Self::start_agents`].
     pub subagents: Vec<String>,
+    /// Provider-qualified model identifier from the default agent manifest.
+    /// Used by structured one-shot harnesses such as `codex exec --json`.
+    pub model_name: String,
 }
 
 impl RecipeExecutionPlan {
@@ -233,6 +236,7 @@ pub fn plan_from_recipe(
         claude_plugin_dirs,
         submit_text,
         subagents: default_agent.subagents.clone(),
+        model_name: default_agent.model.name.clone(),
     })
 }
 

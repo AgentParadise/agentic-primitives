@@ -174,6 +174,25 @@ itmux codex-exec \
   --result-file /tmp/agentic-langfuse-smoke/result.json
 ```
 
+For a Codex recipe that should use the same rich structured observer through
+the standard run surface, use `--codex-mode exec`:
+
+```bash
+itmux run \
+  --recipe /path/to/codex-recipe \
+  --task "Reply exactly: LANGFUSE_CODEX_RUN_OK" \
+  --codex-mode exec \
+  --observability-file /tmp/agentic-langfuse-smoke/codex-run-events.jsonl \
+  --observability-langfuse \
+  --result-file /tmp/agentic-langfuse-smoke/codex-run-result.json
+```
+
+This mode is only valid when the recipe default agent is Codex. The default
+Codex `tui` mode preserves the interactive Docker workspace path and currently
+has only coarse lifecycle observability. The `exec` mode runs `codex exec
+--json`, normalizes its structured event stream, and fans those events out
+through the same file and LangFuse exporters used by Claude workspace runs.
+
 For Claude transcript evidence, normalize a Claude JSONL transcript through the
 same exporter fanout:
 
@@ -299,6 +318,10 @@ Passing backend criteria:
   model ids, harness/provider, input/output/total tokens, cached-token details,
   split input/output costs, total costs, pricing tier, and unit for Codex and
   Claude traces;
+- Codex recipes that run with `--codex-mode exec` and Claude recipes that run
+  through the interactive workspace both query back through
+  `itmux langfuse-trace --output summary` with harness/provider/model,
+  generation cost, and split `agent_tools`/`harness_tools` where applicable;
 - the reported trace link resolves when project id metadata is available.
 
 `okrs-51p.9` remains open until both the local and backend criteria pass against
