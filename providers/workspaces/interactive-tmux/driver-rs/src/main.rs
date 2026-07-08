@@ -2733,6 +2733,7 @@ fn summarize_langfuse_scores_response(
         .unwrap_or_default();
     let scores = rows
         .iter()
+        .filter(|score| score_matches_scores_request(score, request))
         .map(|score| {
             let trace = score.get("trace");
             json!({
@@ -2771,6 +2772,70 @@ fn summarize_langfuse_scores_response(
             .and_then(Value::as_u64),
         "scores": scores,
     })
+}
+
+fn score_matches_scores_request(score: &Value, request: &LangFuseScoresListRequest) -> bool {
+    if let Some(expected) = request
+        .trace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if score
+            .get("traceId")
+            .and_then(Value::as_str)
+            .map(|actual| actual != expected)
+            .unwrap_or(true)
+        {
+            return false;
+        }
+    }
+    if let Some(expected_ids) = request
+        .score_ids
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let score_id = score.get("id").and_then(Value::as_str);
+        let expected = expected_ids
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if !expected.is_empty() && !score_id.is_some_and(|actual| expected.contains(&actual)) {
+            return false;
+        }
+    }
+    if let Some(expected) = request
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if score
+            .get("name")
+            .and_then(Value::as_str)
+            .map(|actual| actual != expected)
+            .unwrap_or(true)
+        {
+            return false;
+        }
+    }
+    if let Some(expected) = request
+        .data_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if score
+            .get("dataType")
+            .and_then(Value::as_str)
+            .map(|actual| !actual.eq_ignore_ascii_case(expected))
+            .unwrap_or(true)
+        {
+            return false;
+        }
+    }
+    true
 }
 
 fn summarize_langfuse_traces_response(
@@ -4039,6 +4104,53 @@ mod cli_tests {
         assert_eq!(limit, 20);
         assert_eq!(page, 1);
         assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_scores_summary_filters_backend_rows_client_side() {
+        let response = json!({
+            "meta": {"totalItems": 3},
+            "data": [
+                {
+                    "id": "score-good",
+                    "traceId": "trace-wanted",
+                    "name": "agentic.learning_loop_probe",
+                    "dataType": "BOOLEAN",
+                    "value": 1
+                },
+                {
+                    "id": "score-other-trace",
+                    "traceId": "trace-other",
+                    "name": "agentic.learning_loop_probe",
+                    "dataType": "BOOLEAN",
+                    "value": 1
+                },
+                {
+                    "id": "score-other-name",
+                    "traceId": "trace-wanted",
+                    "name": "agentic.other",
+                    "dataType": "BOOLEAN",
+                    "value": 1
+                }
+            ]
+        });
+        let request = LangFuseScoresListRequest {
+            endpoint: "https://langfuse.example.com/api/public/scores".to_string(),
+            trace_id: Some("trace-wanted".to_string()),
+            run_id: Some("run-wanted".to_string()),
+            score_ids: Some("score-good,missing-score".to_string()),
+            name: Some("agentic.learning_loop_probe".to_string()),
+            data_type: Some("BOOLEAN"),
+            limit: 20,
+            page: 1,
+        };
+
+        let summary = summarize_langfuse_scores_response(&response, &request);
+
+        assert_eq!(summary["returned_count"], 1);
+        assert_eq!(summary["total_items"], 3);
+        assert_eq!(summary["scores"][0]["score_id"], "score-good");
+        assert_eq!(summary["scores"][0]["trace_id"], "trace-wanted");
     }
 
     #[test]

@@ -38,6 +38,7 @@ evidence under `runs/real-backend-smoke/`.
 | Live Claude tool use appears as queryable agent tools | Real Claude `itmux run` used Bash; LangFuse returned 21 observations with `agent_tools.Bash`, hook tool execution events, two `token_usage` generations, model `claude-sonnet-4-6`, 31789 total tokens, calculated cost `0.001767`, and success after normal `agent_stopped` ended await | correct for live Claude tool use | `runs/claude-live-agent-tool-itmux-run/events.jsonl`; `runs/claude-live-agent-tool-itmux-run/event-order.json`; `runs/claude-live-agent-tool-itmux-run/langfuse-trace-query-legacy.json`; `runs/claude-live-agent-tool-itmux-run/summary.txt`. |
 | Agents can query useful learning-loop summaries | `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness, provider, model, token totals, cost, tool counts by name, tool success/failure counts, a compact redacted tool sequence, a compact full event sequence ordered by `agentic.event.seq`, and separate `operations`, `agent_tools`, and `harness_tools` groups | correct for local self-host | `/tmp/langfuse-playwright/trace-rich-summary.json`; `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`; `runs/claude-transcript-langfuse/learning-loop-summary.txt`; `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json`; `runs/codex-live-real-langfuse-token-total-fixed/langfuse-trace-query-legacy.json`. |
 | Agents can query trace summaries through MCP tools | The observability plugin MCP server handled a framed `tools/call` for `agentic_langfuse_trace_summary`, delegated to `itmux langfuse-trace --output summary`, and returned `isError=false` plus the compact summary for Codex run `run-88868068` with harness/provider/model, tokens, and cost | correct for local self-host | `plugins/observability/mcp/langfuse_server.py`; `runs/langfuse-mcp-trace-query/response.json`; `runs/langfuse-mcp-trace-query/summary.json`; `runs/langfuse-mcp-trace-query/summary.txt`. |
+| Agents can request aggregate MCP retrospectives across recent runs | `agentic_langfuse_learning_loop_report` discovered and drilled into two Codex traces and two Claude traces, returning aggregate harness/provider/model, generation counts, token totals, calculated costs, agent-tool outcomes, and score counts. A real backend run exposed overbroad score rows; the CLI and MCP report now filter score rows client-side by trace id before presenting feedback to agents. | correct for local self-host | `runs/langfuse-mcp-learning-loop-report/summary.json`; `runs/langfuse-mcp-learning-loop-report/codex-summary.json`; `runs/langfuse-mcp-learning-loop-report/claude-summary.json`; `runs/langfuse-mcp-learning-loop-report/summary.txt`. |
 | Agents can request compact query output | `itmux langfuse-trace --api legacy-trace --output summary --run-id ...` queried both live Codex and Claude traces without explicit time-window arguments and returned only `{ok, request, summary}`; no raw backend `response` key was present | correct for local self-host | `runs/langfuse-trace-compact-summary/codex-summary.json`; `runs/langfuse-trace-compact-summary/claude-summary.json`; `runs/langfuse-trace-compact-summary/summary.txt`. |
 | Agents can discover recent traces | `itmux langfuse-traces` listed recent traces with run ids, harness/provider/model, costs, observation counts, environment, pagination metadata, and no raw backend `response`; `--harness codex` and `--harness claude` produced filtered discovery views | correct for local self-host | `runs/langfuse-traces-discovery/recent-summary.json`; `runs/langfuse-traces-discovery/codex-summary.json`; `runs/langfuse-traces-discovery/claude-summary.json`; `runs/langfuse-traces-discovery/summary.txt`. |
 | Agents can write and read feedback scores | `itmux langfuse-score` created a boolean `agentic.learning_loop_probe` score on live Codex run `run-f7ae62c8`; `itmux langfuse-scores` read the same score back by run id, score id, name, and data type, including trace tags and environment | correct for local self-host | `runs/langfuse-score-feedback/create-score.json`; `runs/langfuse-score-feedback/itmux-langfuse-scores-summary.json`. |
@@ -107,11 +108,18 @@ evidence under `runs/real-backend-smoke/`.
   include a `generations` section with model-grouped and ordered per-call
   usage/cost records, which lets agents distinguish aggregate trace spend from
   per-model/per-call input, output, cached-token, and total costs for both
-  Codex and Claude. Reviewer follow-up tightened that contract by avoiding
-  duplicate Claude live usage when message-level usage and terminal cumulative
-  result usage are both present, ignoring non-generation spans that merely
-  mirror token totals, and failing `itmux langfuse-trace` on malformed backend
-  JSON instead of returning a successful empty trace.
+  Codex and Claude. The MCP server now exposes
+  `agentic_langfuse_learning_loop_report` as the higher-level agent entry point
+  when the agent does not already know a specific run id: it discovers recent
+  traces, drills into the top rows, and returns aggregate cost/token/tool/score
+  rollups across Codex or Claude traces. Real backend testing found that score
+  query responses can be broader than requested, so both the CLI summary and
+  MCP report filter score rows client-side by trace id/name/id/type before
+  surfacing feedback to agents. Reviewer follow-up tightened that contract by
+  avoiding duplicate Claude live usage when message-level usage and terminal
+  cumulative result usage are both present, ignoring non-generation spans that
+  merely mirror token totals, and failing `itmux langfuse-trace` on malformed
+  backend JSON instead of returning a successful empty trace.
 - Mac Mini/VPS setup should use the same official Compose stack plus the
   agentic local override pattern: expose LangFuse web, keep backing stores
   internal unless explicitly needed.

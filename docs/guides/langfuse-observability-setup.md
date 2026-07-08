@@ -322,6 +322,9 @@ MCP tools:
   trace, optionally with scores.
 - `agentic_langfuse_scores`: read trace-scoped feedback.
 - `agentic_langfuse_score_feedback`: write idempotent evaluator feedback.
+- `agentic_langfuse_learning_loop_report`: discover recent traces, summarize
+  the top rows, and return aggregate cost, token, generation, tool, and score
+  rollups for retrospective agents.
 
 Codex MCP config example:
 
@@ -331,6 +334,14 @@ command = "python3"
 args = ["/path/to/agentic-primitives/plugins/observability/mcp/langfuse_server.py"]
 env = { ITMUX_BIN = "/path/to/agentic-primitives/providers/workspaces/interactive-tmux/driver-rs/target/release/itmux" }
 ```
+
+For an agent loop that needs a compact retrospective across recent runs, call
+`agentic_langfuse_learning_loop_report` with optional filters such as
+`harness=codex`, `harness=claude`, `provider`, `model`, or `environment`. The
+tool first uses trace discovery, then drills into the selected traces with
+score inclusion enabled by default. The returned summary includes aggregate
+token count, calculated cost, generation count, agent-tool success/failure
+counts, per-trace generation details, and trace-scoped feedback scores.
 
 Passing backend criteria:
 

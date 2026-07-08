@@ -177,6 +177,57 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "agentic_langfuse_learning_loop_report",
+        "description": (
+            "Discover recent LangFuse traces, drill into the most relevant rows, "
+            "and return one compact learning-loop report with aggregate cost, "
+            "tokens, tool outcomes, models, harnesses, and optional scores."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20,
+                    "description": "Maximum trace rows to request during discovery.",
+                },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "1-based LangFuse discovery page number.",
+                },
+                "trace_limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 25,
+                    "default": 5,
+                    "description": "Maximum discovered traces to summarize in detail.",
+                },
+                "harness": _text_schema("Optional harness filter, for example codex or claude."),
+                "provider": _text_schema("Optional provider filter, for example openai or anthropic."),
+                "model": _text_schema("Optional model filter."),
+                "environment": _text_schema("Optional LangFuse environment filter."),
+                "include_scores": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include trace-scoped scores when drilling into each trace.",
+                },
+                "score_limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "default": 20,
+                    "description": "Maximum score rows to request per trace when include_scores is true.",
+                },
+                "langfuse_base_url": _text_schema("Optional LangFuse origin or OTLP endpoint override."),
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -260,6 +311,8 @@ class McpServer:
             return self._tool_result(request_id, self._langfuse_scores(args))
         if name == "agentic_langfuse_score_feedback":
             return self._tool_result(request_id, self._langfuse_score(args))
+        if name == "agentic_langfuse_learning_loop_report":
+            return self._tool_result(request_id, self._learning_loop_report(args))
         return self._error(request_id, -32602, f"unknown tool: {name}")
 
     def _tool_result(self, request_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -317,6 +370,70 @@ class McpServer:
             self._add_option(cmd, "--metadata-json", json.dumps(args["metadata"], separators=(",", ":")))
         self._add_option(cmd, "--langfuse-base-url", args.get("langfuse_base_url"))
         return self._run_itmux(cmd)
+
+    def _learning_loop_report(self, args: dict[str, Any]) -> dict[str, Any]:
+        discovery_args = {
+            "limit": args.get("limit", 20),
+            "page": args.get("page", 1),
+            "harness": args.get("harness"),
+            "provider": args.get("provider"),
+            "model": args.get("model"),
+            "environment": args.get("environment"),
+            "langfuse_base_url": args.get("langfuse_base_url"),
+        }
+        discovery = self._langfuse_traces(discovery_args)
+        if not discovery["ok"]:
+            return discovery
+
+        discovery_payload = discovery.get("payload") or {}
+        discovery_summary = discovery_payload.get("summary") if isinstance(discovery_payload, dict) else {}
+        discovered = discovery_summary.get("traces") if isinstance(discovery_summary, dict) else []
+        if not isinstance(discovered, list):
+            discovered = []
+
+        trace_limit = max(1, min(int(args.get("trace_limit") or 5), 25))
+        include_scores = bool(args.get("include_scores", True))
+        score_limit = int(args.get("score_limit") or 20)
+        traces: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+
+        for row in discovered[:trace_limit]:
+            selector = _trace_selector_from_row(row)
+            if not selector:
+                errors.append({"trace": row, "error": "discovered trace row did not include trace_id/id or run_id"})
+                continue
+            trace_args = {
+                **selector,
+                "api": "legacy-trace",
+                "include_scores": include_scores,
+                "score_limit": score_limit,
+                "langfuse_base_url": args.get("langfuse_base_url"),
+            }
+            trace_result = self._langfuse_trace(trace_args)
+            if not trace_result["ok"]:
+                errors.append({"selector": selector, "error": trace_result.get("payload")})
+                continue
+            trace_payload = trace_result.get("payload") or {}
+            trace_summary = trace_payload.get("summary") if isinstance(trace_payload, dict) else None
+            if isinstance(trace_summary, dict):
+                traces.append(trace_summary)
+            else:
+                errors.append({"selector": selector, "error": "trace query returned no summary"})
+
+        report = _learning_loop_summary(discovery_summary, traces, errors)
+        return {
+            "ok": True,
+            "payload": {
+                "ok": True,
+                "request": {
+                    **{key: value for key, value in discovery_args.items() if value is not None},
+                    "trace_limit": trace_limit,
+                    "include_scores": include_scores,
+                    "score_limit": score_limit,
+                },
+                "summary": report,
+            },
+        }
 
     def _run_itmux(self, cmd: list[str]) -> dict[str, Any]:
         try:
@@ -456,6 +573,13 @@ class McpServer:
         endpoint = f"{base_url}/api/public/scores?{parse.urlencode(params)}"
         response = _langfuse_request("GET", endpoint)
         scores = _rows(response)
+        scores = _filter_score_rows(
+            scores,
+            trace_id=trace_id,
+            score_ids=args.get("score-ids"),
+            name=args.get("name"),
+            data_type=str(args["data-type"]).upper() if args.get("data-type") else None,
+        )
         return {
             "ok": True,
             "request": {"endpoint": endpoint, "trace_id": trace_id, "run_id": args.get("run-id")},
@@ -669,6 +793,179 @@ def _basic_trace_row(trace: Any) -> dict[str, Any]:
     }
 
 
+def _trace_selector_from_row(row: Any) -> dict[str, str] | None:
+    if not isinstance(row, dict):
+        return None
+    run_id = row.get("run_id") or row.get("session_id")
+    if run_id:
+        return {"run_id": str(run_id)}
+    trace_id = row.get("trace_id") or row.get("id") or row.get("traceId")
+    if trace_id:
+        return {"trace_id": str(trace_id)}
+    return None
+
+
+def _learning_loop_summary(
+    discovery_summary: Any,
+    traces: list[dict[str, Any]],
+    errors: list[dict[str, Any]],
+) -> dict[str, Any]:
+    harnesses: set[str] = set()
+    providers: set[str] = set()
+    models: set[str] = set()
+    total_cost = 0.0
+    total_tokens = 0
+    generation_count = 0
+    tool_start_count = 0
+    tool_end_count = 0
+    tool_success_count = 0
+    tool_failure_count = 0
+    traces_out: list[dict[str, Any]] = []
+
+    for summary in traces:
+        harnesses.update(str(item) for item in _as_list(summary.get("harnesses")))
+        providers.update(str(item) for item in _as_list(summary.get("providers")))
+        models.update(str(item) for item in _as_list(summary.get("models")))
+
+        usage = summary.get("usage") if isinstance(summary.get("usage"), dict) else {}
+        total_tokens += int(_number(usage.get("total_tokens")) or 0)
+
+        cost = summary.get("cost") if isinstance(summary.get("cost"), dict) else {}
+        total_cost += float(_number(cost.get("calculated_total_usd")) or 0.0)
+
+        generations = summary.get("generations") if isinstance(summary.get("generations"), dict) else {}
+        generation_count += int(_number(generations.get("count")) or 0)
+
+        agent_tools = summary.get("agent_tools") if isinstance(summary.get("agent_tools"), dict) else {}
+        tool_start_count += int(_number(agent_tools.get("start_count")) or 0)
+        tool_end_count += int(_number(agent_tools.get("end_count")) or 0)
+        tool_success_count += int(_number(agent_tools.get("success_count")) or 0)
+        tool_failure_count += int(_number(agent_tools.get("failure_count")) or 0)
+
+        traces_out.append(
+            {
+                "trace_id": summary.get("trace_id"),
+                "run_id": summary.get("run_id") or summary.get("session_id"),
+                "harnesses": _as_list(summary.get("harnesses")),
+                "providers": _as_list(summary.get("providers")),
+                "models": _as_list(summary.get("models")),
+                "usage": summary.get("usage") or {},
+                "cost": summary.get("cost") or {},
+                "generations": _compact_generation_summary(generations),
+                "agent_tools": _compact_tool_summary(agent_tools),
+                "harness_tools": _compact_tool_summary(
+                    summary.get("harness_tools") if isinstance(summary.get("harness_tools"), dict) else {}
+                ),
+                "scores": _scores_for_trace(summary.get("scores") or {}, summary.get("trace_id")),
+            }
+        )
+
+    backend_count = None
+    if isinstance(discovery_summary, dict):
+        backend_count = discovery_summary.get("backend_total_items") or discovery_summary.get("returned_count")
+
+    return {
+        "trace_count": len(traces_out),
+        "backend_total_items": backend_count,
+        "harnesses": sorted(harnesses),
+        "providers": sorted(providers),
+        "models": sorted(models),
+        "usage": {"total_tokens": total_tokens},
+        "cost": {"calculated_total_usd": total_cost},
+        "generations": {"count": generation_count},
+        "agent_tools": {
+            "start_count": tool_start_count,
+            "end_count": tool_end_count,
+            "success_count": tool_success_count,
+            "failure_count": tool_failure_count,
+        },
+        "traces": traces_out,
+        "errors": errors,
+    }
+
+
+def _compact_generation_summary(generations: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "count": generations.get("count", 0),
+        "total_tokens": generations.get("total_tokens", 0),
+        "calculated_total_usd": generations.get("calculated_total_usd", 0),
+        "by_model": generations.get("by_model") or {},
+        "sequence": generations.get("sequence") or [],
+    }
+
+
+def _compact_tool_summary(tools: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "names": tools.get("names") or [],
+        "start_count": tools.get("start_count", 0),
+        "end_count": tools.get("end_count", 0),
+        "success_count": tools.get("success_count", 0),
+        "failure_count": tools.get("failure_count", 0),
+        "by_name": tools.get("by_name") or {},
+    }
+
+
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if value in (None, ""):
+        return []
+    return [value]
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _scores_for_trace(scores_summary: Any, trace_id: Any) -> Any:
+    if not isinstance(scores_summary, dict) or not trace_id:
+        return scores_summary
+    scores = scores_summary.get("scores")
+    if not isinstance(scores, list):
+        return scores_summary
+    filtered = _filter_score_rows(scores, trace_id=str(trace_id))
+    return {**scores_summary, "returned_count": len(filtered), "scores": filtered}
+
+
+def _filter_score_rows(
+    scores: list[Any],
+    *,
+    trace_id: str | None = None,
+    score_ids: Any = None,
+    name: Any = None,
+    data_type: str | None = None,
+) -> list[Any]:
+    wanted_ids = {
+        item.strip()
+        for item in str(score_ids or "").split(",")
+        if item.strip()
+    }
+    filtered = []
+    for score in scores:
+        if not isinstance(score, dict):
+            continue
+        actual_trace_id = score.get("traceId") or score.get("trace_id")
+        if trace_id and actual_trace_id != trace_id:
+            continue
+        actual_score_id = score.get("id") or score.get("score_id")
+        if wanted_ids and actual_score_id not in wanted_ids:
+            continue
+        if name and score.get("name") != name:
+            continue
+        actual_data_type = score.get("dataType") or score.get("data_type")
+        if data_type and str(actual_data_type or "").upper() != data_type.upper():
+            continue
+        filtered.append(score)
+    return filtered
+
+
 def _trace_matches(trace: Any, filters: dict[str, Any]) -> bool:
     row = _basic_trace_row(trace)
     for key, expected in filters.items():
@@ -744,11 +1041,18 @@ def self_test() -> int:
             "#!/usr/bin/env python3\n"
             "import json, sys\n"
             "argv = sys.argv[1:]\n"
+            "cmd = argv[0] if argv else ''\n"
             "if '--fail-with-secret' in argv:\n"
             "    secret = 'sk' + '-lf-test-secret'\n"
             "    print(secret)\n"
             "    print('Author' + 'ization: ' + 'Basic ' + 'abc123secret', file=sys.stderr)\n"
             "    raise SystemExit(7)\n"
+            "if cmd == 'langfuse-traces':\n"
+            "    print(json.dumps({'ok': True, 'argv': argv, 'summary': {'returned_count': 1, 'backend_total_items': 1, 'traces': [{'trace_id': '1' * 32, 'run_id': 'run-test', 'harnesses': ['codex'], 'providers': ['openai'], 'models': ['gpt-5.5'], 'cost': {'calculated_total_usd': 0.25}, 'usage': {'total_tokens': 100}}]}}))\n"
+            "    raise SystemExit(0)\n"
+            "if cmd == 'langfuse-trace':\n"
+            "    print(json.dumps({'ok': True, 'argv': argv, 'summary': {'trace_id': '1' * 32, 'run_id': 'run-test', 'harnesses': ['codex'], 'providers': ['openai'], 'models': ['gpt-5.5'], 'usage': {'total_tokens': 100}, 'cost': {'calculated_total_usd': 0.25}, 'generations': {'count': 1, 'total_tokens': 100, 'calculated_total_usd': 0.25, 'by_model': {'gpt-5.5': {'count': 1}}, 'sequence': [{'seq': 2, 'model': 'gpt-5.5'}]}, 'agent_tools': {'names': ['Bash'], 'start_count': 1, 'end_count': 1, 'success_count': 1, 'failure_count': 0, 'by_name': {'Bash': {'success_count': 1}}}, 'harness_tools': {'names': ['codex_exec.turn'], 'start_count': 1, 'end_count': 1, 'success_count': 1, 'failure_count': 0}, 'scores': {'returned_count': 1, 'scores': [{'trace_id': '1' * 32, 'name': 'agentic.learning_loop_probe', 'value': 1}]}}}))\n"
+            "    raise SystemExit(0)\n"
             "print(json.dumps({'ok': True, 'argv': argv}))\n",
             encoding="utf-8",
         )
@@ -808,6 +1112,17 @@ def self_test() -> int:
                         "id": 7,
                         "method": "tools/call",
                         "params": {
+                            "name": "agentic_langfuse_learning_loop_report",
+                            "arguments": {"harness": "codex", "limit": 3, "trace_limit": 1},
+                        },
+                    }
+                )
+                + _frame(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 8,
+                        "method": "tools/call",
+                        "params": {
                             "name": "agentic_langfuse_trace_discovery",
                             "arguments": {"harness": "--fail-with-secret"},
                         },
@@ -839,8 +1154,14 @@ def self_test() -> int:
         score = json.loads(payloads[5]["result"]["content"][0]["text"])["argv"]
         assert score[:1] == ["langfuse-score"]
         assert "--data-type" in score and "boolean" in score
-        failed = json.loads(payloads[6]["result"]["content"][0]["text"])
-        assert payloads[6]["result"]["isError"] is True
+        report = json.loads(payloads[6]["result"]["content"][0]["text"])
+        assert report["summary"]["trace_count"] == 1
+        assert report["summary"]["usage"]["total_tokens"] == 100
+        assert report["summary"]["cost"]["calculated_total_usd"] == 0.25
+        assert report["summary"]["agent_tools"]["success_count"] == 1
+        assert report["summary"]["traces"][0]["scores"]["returned_count"] == 1
+        failed = json.loads(payloads[7]["result"]["content"][0]["text"])
+        assert payloads[7]["result"]["isError"] is True
         assert REDACTION in failed["raw_stdout"]
         assert "Author" + "ization: Basic [REDACTED]" in failed["stderr"]
         assert "sk" + "-lf-test-secret" not in failed["raw_stdout"]

@@ -1,5 +1,13 @@
 # Changelog — observability plugin
 
+## 0.3.1
+- Added `agentic_langfuse_learning_loop_report`, an MCP tool that combines
+  trace discovery with per-trace drilldown to return aggregate learning-loop
+  cost, token, generation, tool outcome, and score summaries for Claude and
+  Codex traces
+- Expanded the MCP self-test to exercise aggregate report generation through a
+  deterministic local `itmux` test double
+
 ## 0.3.0
 - Added the `agentic-langfuse` MCP server, which exposes agent-facing LangFuse
   trace discovery, trace summaries, score reads, and score write-back by

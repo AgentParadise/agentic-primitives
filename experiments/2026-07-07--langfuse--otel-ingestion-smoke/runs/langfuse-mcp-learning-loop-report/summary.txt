@@ -1,0 +1,11 @@
+MCP learning-loop report real-backend evidence
+codex_trace_count=2
+codex_total_tokens=31875
+codex_total_cost=0.159975
+codex_agent_tool_successes=2
+codex_score_counts=0,1
+claude_trace_count=2
+claude_total_tokens=47526
+claude_total_cost=0.0020009999999999997
+claude_generation_count=3
+claude_agent_tool_successes=1
