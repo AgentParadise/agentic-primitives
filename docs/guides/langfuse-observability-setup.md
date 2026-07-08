@@ -324,7 +324,7 @@ MCP tools:
 - `agentic_langfuse_score_feedback`: write idempotent evaluator feedback.
 - `agentic_langfuse_learning_loop_report`: discover recent traces, summarize
   the top rows, and return aggregate cost, token, generation, tool, and score
-  rollups for retrospective agents.
+  rollups plus default learning-loop recommendations for retrospective agents.
 
 Codex MCP config example:
 
@@ -342,6 +342,10 @@ tool first uses trace discovery, then drills into the selected traces with
 score inclusion enabled by default. The returned summary includes aggregate
 token count, calculated cost, generation count, agent-tool success/failure
 counts, per-trace generation details, and trace-scoped feedback scores.
+`include_insights` defaults to true and adds cost/token hotspots, missing
+token/cost/model coverage, unscored traces, and failed agent-tool
+recommendations. Pass `include_insights=false` when a consumer needs a raw
+rollup without heuristic guidance.
 
 Passing backend criteria:
 

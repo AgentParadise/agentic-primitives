@@ -1,0 +1,332 @@
+{
+  "agent_tools": {
+    "end_count": 2,
+    "failure_count": 0,
+    "start_count": 0,
+    "success_count": 2
+  },
+  "backend_total_items": 19,
+  "cost": {
+    "calculated_total_usd": 0.159975
+  },
+  "errors": [],
+  "generations": {
+    "count": 2
+  },
+  "harnesses": [
+    "codex"
+  ],
+  "insights": {
+    "failed_tool_traces": [],
+    "missing_cost_traces": [],
+    "missing_model_traces": [],
+    "recommendations": [
+      {
+        "calculated_total_usd": 0.080015,
+        "code": "cost_hotspot",
+        "message": "This trace is the highest-cost trace in the report window; review generations.sequence for cost drivers.",
+        "run_id": "run-88868068",
+        "severity": "info",
+        "trace_id": "37f5920448612df0be0a2228a671a055"
+      },
+      {
+        "code": "missing_feedback_scores",
+        "message": "Some traces have no feedback scores yet; attach evaluator scores before treating them as durable examples.",
+        "severity": "info",
+        "trace_count": 1
+      }
+    ],
+    "top_cost_trace": {
+      "calculated_total_usd": 0.080015,
+      "run_id": "run-88868068",
+      "trace_id": "37f5920448612df0be0a2228a671a055"
+    },
+    "top_token_trace": {
+      "run_id": "run-88868068",
+      "total_tokens": 15943,
+      "trace_id": "37f5920448612df0be0a2228a671a055"
+    },
+    "unscored_traces": [
+      {
+        "run_id": "run-88868068",
+        "trace_id": "37f5920448612df0be0a2228a671a055"
+      }
+    ]
+  },
+  "models": [
+    "gpt-5.5"
+  ],
+  "providers": [
+    "openai"
+  ],
+  "trace_count": 2,
+  "traces": [
+    {
+      "agent_tools": {
+        "by_name": [
+          {
+            "ends": 1,
+            "failures": 0,
+            "name": "codex_exec.item.agent_message",
+            "starts": 0,
+            "successes": 1
+          }
+        ],
+        "end_count": 1,
+        "failure_count": 0,
+        "names": [
+          "codex_exec.item.agent_message"
+        ],
+        "start_count": 0,
+        "success_count": 1
+      },
+      "cost": {
+        "calculated_total_usd": 0.080015
+      },
+      "generations": {
+        "by_model": [
+          {
+            "calculated_total_usd": 0.080015,
+            "count": 1,
+            "harnesses": [
+              "codex"
+            ],
+            "input_tokens": 15931,
+            "model": "gpt-5.5",
+            "model_ids": [
+              "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+            ],
+            "output_tokens": 12,
+            "providers": [
+              "openai"
+            ],
+            "total_tokens": 15943
+          }
+        ],
+        "calculated_total_usd": 0.080015,
+        "count": 1,
+        "sequence": [
+          {
+            "cached_input_tokens": 4992,
+            "calculated_input_cost_usd": 0.079655,
+            "calculated_output_cost_usd": 0.00036,
+            "calculated_total_cost_usd": 0.080015,
+            "harness": "codex",
+            "input_tokens": 15931,
+            "model": "gpt-5.5",
+            "model_id": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+            "name": "token_usage",
+            "observation_id": "64af761f3c5802b7",
+            "output_tokens": 12,
+            "pricing_tier": "Standard",
+            "provider": "openai",
+            "reasoning_output_tokens": null,
+            "seq": 4,
+            "total_tokens": 15943,
+            "unit": "TOKENS"
+          }
+        ],
+        "total_tokens": 15943
+      },
+      "harness_tools": {
+        "by_name": [
+          {
+            "ends": 0,
+            "failures": 0,
+            "name": "codex_exec.thread",
+            "starts": 1,
+            "successes": 0
+          },
+          {
+            "ends": 1,
+            "failures": 0,
+            "name": "codex_exec.turn",
+            "starts": 1,
+            "successes": 1
+          }
+        ],
+        "end_count": 1,
+        "failure_count": 0,
+        "names": [
+          "codex_exec.thread",
+          "codex_exec.turn"
+        ],
+        "start_count": 2,
+        "success_count": 1
+      },
+      "harnesses": [
+        "codex"
+      ],
+      "models": [
+        "gpt-5.5"
+      ],
+      "providers": [
+        "openai"
+      ],
+      "run_id": "run-88868068",
+      "scores": {
+        "requested_name": null,
+        "requested_run_id": "run-88868068",
+        "requested_score_ids": null,
+        "requested_trace_id": "37f5920448612df0be0a2228a671a055",
+        "returned_count": 0,
+        "scores": [],
+        "total_items": 1
+      },
+      "trace_id": "37f5920448612df0be0a2228a671a055",
+      "usage": {
+        "input_tokens": 15931,
+        "output_tokens": 12,
+        "total_tokens": 15943
+      }
+    },
+    {
+      "agent_tools": {
+        "by_name": [
+          {
+            "ends": 1,
+            "failures": 0,
+            "name": "codex_exec.item.agent_message",
+            "starts": 0,
+            "successes": 1
+          }
+        ],
+        "end_count": 1,
+        "failure_count": 0,
+        "names": [
+          "codex_exec.item.agent_message"
+        ],
+        "start_count": 0,
+        "success_count": 1
+      },
+      "cost": {
+        "calculated_total_usd": 0.07996
+      },
+      "generations": {
+        "by_model": [
+          {
+            "calculated_total_usd": 0.07996,
+            "count": 1,
+            "harnesses": [
+              "codex"
+            ],
+            "input_tokens": 15920,
+            "model": "gpt-5.5",
+            "model_ids": [
+              "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+            ],
+            "output_tokens": 12,
+            "providers": [
+              "openai"
+            ],
+            "total_tokens": 15932
+          }
+        ],
+        "calculated_total_usd": 0.07996,
+        "count": 1,
+        "sequence": [
+          {
+            "cached_input_tokens": 9600,
+            "calculated_input_cost_usd": 0.0796,
+            "calculated_output_cost_usd": 0.00036,
+            "calculated_total_cost_usd": 0.07996,
+            "harness": "codex",
+            "input_tokens": 15920,
+            "model": "gpt-5.5",
+            "model_id": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+            "name": "token_usage",
+            "observation_id": "5cc12ec16863600d",
+            "output_tokens": 12,
+            "pricing_tier": "Standard",
+            "provider": "openai",
+            "reasoning_output_tokens": null,
+            "seq": 4,
+            "total_tokens": 15932,
+            "unit": "TOKENS"
+          }
+        ],
+        "total_tokens": 15932
+      },
+      "harness_tools": {
+        "by_name": [
+          {
+            "ends": 0,
+            "failures": 0,
+            "name": "codex_exec.thread",
+            "starts": 1,
+            "successes": 0
+          },
+          {
+            "ends": 1,
+            "failures": 0,
+            "name": "codex_exec.turn",
+            "starts": 1,
+            "successes": 1
+          }
+        ],
+        "end_count": 1,
+        "failure_count": 0,
+        "names": [
+          "codex_exec.thread",
+          "codex_exec.turn"
+        ],
+        "start_count": 2,
+        "success_count": 1
+      },
+      "harnesses": [
+        "codex"
+      ],
+      "models": [
+        "gpt-5.5"
+      ],
+      "providers": [
+        "openai"
+      ],
+      "run_id": "run-f7ae62c8",
+      "scores": {
+        "requested_name": null,
+        "requested_run_id": "run-f7ae62c8",
+        "requested_score_ids": null,
+        "requested_trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+        "returned_count": 1,
+        "scores": [
+          {
+            "comment": "Local verification that agentic-primitives agents can write learning-loop feedback to LangFuse.",
+            "created_at": "2026-07-08T04:09:42.075Z",
+            "data_type": "BOOLEAN",
+            "environment": "local",
+            "metadata": {
+              "experiment": "2026-07-07--langfuse--otel-ingestion-smoke",
+              "harness": "codex",
+              "purpose": "learning_loop_writeback"
+            },
+            "name": "agentic.learning_loop_probe",
+            "observation_id": null,
+            "score_id": "agentic-learning-loop-probe-run-f7ae62c8",
+            "source": "API",
+            "string_value": "True",
+            "trace_environment": "local-macbook",
+            "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+            "trace_tags": [
+              "agentic-primitives",
+              "harness:codex",
+              "itmux"
+            ],
+            "updated_at": "2026-07-08T04:09:47.111Z",
+            "value": 1
+          }
+        ],
+        "total_items": 1
+      },
+      "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+      "usage": {
+        "input_tokens": 15920,
+        "output_tokens": 12,
+        "total_tokens": 15932
+      }
+    }
+  ],
+  "usage": {
+    "total_tokens": 31875
+  }
+}

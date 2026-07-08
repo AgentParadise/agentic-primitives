@@ -216,6 +216,11 @@ TOOLS: list[dict[str, Any]] = [
                     "default": True,
                     "description": "Include trace-scoped scores when drilling into each trace.",
                 },
+                "include_insights": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include heuristic learning-loop insights and recommendations.",
+                },
                 "score_limit": {
                     "type": "integer",
                     "minimum": 1,
@@ -280,7 +285,7 @@ class McpServer:
                         "capabilities": {"tools": {}},
                         "serverInfo": {
                             "name": "agentic-primitives-langfuse",
-                            "version": "0.3.0",
+                            "version": "0.3.2",
                         },
                     },
                 )
@@ -393,6 +398,7 @@ class McpServer:
 
         trace_limit = max(1, min(int(args.get("trace_limit") or 5), 25))
         include_scores = bool(args.get("include_scores", True))
+        include_insights = bool(args.get("include_insights", True))
         score_limit = int(args.get("score_limit") or 20)
         traces: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
@@ -420,7 +426,7 @@ class McpServer:
             else:
                 errors.append({"selector": selector, "error": "trace query returned no summary"})
 
-        report = _learning_loop_summary(discovery_summary, traces, errors)
+        report = _learning_loop_summary(discovery_summary, traces, errors, include_insights=include_insights)
         return {
             "ok": True,
             "payload": {
@@ -429,6 +435,7 @@ class McpServer:
                     **{key: value for key, value in discovery_args.items() if value is not None},
                     "trace_limit": trace_limit,
                     "include_scores": include_scores,
+                    "include_insights": include_insights,
                     "score_limit": score_limit,
                 },
                 "summary": report,
@@ -809,6 +816,8 @@ def _learning_loop_summary(
     discovery_summary: Any,
     traces: list[dict[str, Any]],
     errors: list[dict[str, Any]],
+    *,
+    include_insights: bool = True,
 ) -> dict[str, Any]:
     harnesses: set[str] = set()
     providers: set[str] = set()
@@ -864,7 +873,7 @@ def _learning_loop_summary(
     if isinstance(discovery_summary, dict):
         backend_count = discovery_summary.get("backend_total_items") or discovery_summary.get("returned_count")
 
-    return {
+    report = {
         "trace_count": len(traces_out),
         "backend_total_items": backend_count,
         "harnesses": sorted(harnesses),
@@ -881,6 +890,121 @@ def _learning_loop_summary(
         },
         "traces": traces_out,
         "errors": errors,
+    }
+    if include_insights:
+        report["insights"] = _learning_loop_insights(report)
+    return report
+
+
+def _learning_loop_insights(report: dict[str, Any]) -> dict[str, Any]:
+    traces = report.get("traces") if isinstance(report.get("traces"), list) else []
+    recommendations: list[dict[str, Any]] = []
+    missing_cost = []
+    missing_model = []
+    unscored = []
+    failed_tools = []
+
+    top_cost_trace = None
+    top_cost = -1.0
+    top_token_trace = None
+    top_tokens = -1
+
+    for trace in traces:
+        if not isinstance(trace, dict):
+            continue
+        trace_ref = {
+            "trace_id": trace.get("trace_id"),
+            "run_id": trace.get("run_id"),
+        }
+        cost = _number(_deep_get(trace, ("cost", "calculated_total_usd")))
+        tokens = _number(_deep_get(trace, ("usage", "total_tokens")))
+        models = _as_list(trace.get("models"))
+        scores = trace.get("scores") if isinstance(trace.get("scores"), dict) else {}
+        agent_tools = trace.get("agent_tools") if isinstance(trace.get("agent_tools"), dict) else {}
+        failures = int(_number(agent_tools.get("failure_count")) or 0)
+
+        if cost is None or cost <= 0:
+            missing_cost.append(trace_ref)
+        elif cost > top_cost:
+            top_cost = cost
+            top_cost_trace = {**trace_ref, "calculated_total_usd": cost}
+
+        if tokens is None or tokens <= 0:
+            recommendations.append(
+                {
+                    "severity": "medium",
+                    "code": "missing_token_usage",
+                    "message": "Trace has no positive token total; verify generation usage mapping for this harness.",
+                    **trace_ref,
+                }
+            )
+        elif int(tokens) > top_tokens:
+            top_tokens = int(tokens)
+            top_token_trace = {**trace_ref, "total_tokens": int(tokens)}
+
+        if not models:
+            missing_model.append(trace_ref)
+
+        if failures > 0:
+            failed_tools.append({**trace_ref, "failure_count": failures})
+            recommendations.append(
+                {
+                    "severity": "high",
+                    "code": "agent_tool_failures",
+                    "message": "Trace contains failed agent-visible tool calls; inspect tool sequence before reusing this pattern.",
+                    "failure_count": failures,
+                    **trace_ref,
+                }
+            )
+
+        if scores.get("returned_count") in (None, 0):
+            unscored.append(trace_ref)
+
+    if top_cost_trace:
+        recommendations.append(
+            {
+                "severity": "info",
+                "code": "cost_hotspot",
+                "message": "This trace is the highest-cost trace in the report window; review generations.sequence for cost drivers.",
+                **top_cost_trace,
+            }
+        )
+    if missing_cost:
+        recommendations.append(
+            {
+                "severity": "medium",
+                "code": "missing_cost",
+                "message": "Some traces have no calculated cost; verify model ids/pricing coverage in LangFuse.",
+                "trace_count": len(missing_cost),
+            }
+        )
+    if missing_model:
+        recommendations.append(
+            {
+                "severity": "medium",
+                "code": "missing_model",
+                "message": "Some traces have no model metadata; cost dashboards and model-specific learning will be weaker.",
+                "trace_count": len(missing_model),
+            }
+        )
+    if unscored:
+        recommendations.append(
+            {
+                "severity": "info",
+                "code": "missing_feedback_scores",
+                "message": "Some traces have no feedback scores yet; attach evaluator scores before treating them as durable examples.",
+                "trace_count": len(unscored),
+            }
+        )
+
+    return {
+        "top_cost_trace": top_cost_trace,
+        "top_token_trace": top_token_trace,
+        "missing_cost_traces": missing_cost,
+        "missing_model_traces": missing_model,
+        "unscored_traces": unscored,
+        "failed_tool_traces": failed_tools,
+        "recommendations": recommendations,
     }
 
 
@@ -1160,6 +1284,36 @@ def self_test() -> int:
         assert report["summary"]["cost"]["calculated_total_usd"] == 0.25
         assert report["summary"]["agent_tools"]["success_count"] == 1
         assert report["summary"]["traces"][0]["scores"]["returned_count"] == 1
+        insights = report["summary"]["insights"]
+        assert insights["top_cost_trace"]["run_id"] == "run-test"
+        assert insights["top_token_trace"]["total_tokens"] == 100
+        assert any(item["code"] == "cost_hotspot" for item in insights["recommendations"])
+        insight_fixture = _learning_loop_summary(
+            {},
+            [
+                {
+                    "trace_id": "2" * 32,
+                    "run_id": "run-missing-coverage",
+                    "harnesses": ["claude"],
+                    "providers": ["anthropic"],
+                    "models": [],
+                    "usage": {"total_tokens": 0},
+                    "cost": {},
+                    "agent_tools": {"failure_count": 1},
+                    "scores": {"returned_count": 0, "scores": []},
+                }
+            ],
+            [],
+            include_insights=True,
+        )
+        recommendation_codes = {item["code"] for item in insight_fixture["insights"]["recommendations"]}
+        assert {
+            "agent_tool_failures",
+            "missing_cost",
+            "missing_feedback_scores",
+            "missing_model",
+            "missing_token_usage",
+        } <= recommendation_codes
         failed = json.loads(payloads[7]["result"]["content"][0]["text"])
         assert payloads[7]["result"]["isError"] is True
         assert REDACTION in failed["raw_stdout"]

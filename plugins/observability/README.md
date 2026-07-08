@@ -19,11 +19,15 @@ Available MCP tools:
 | `agentic_langfuse_trace_discovery` | List recent traces with harness/provider/model/environment filters |
 | `agentic_langfuse_scores` | Read trace-scoped feedback scores |
 | `agentic_langfuse_score_feedback` | Write durable trace-scoped feedback for evaluator loops |
-| `agentic_langfuse_learning_loop_report` | Discover recent traces, drill into the top rows, and return aggregate cost/token/tool/score rollups for agent retrospectives |
+| `agentic_langfuse_learning_loop_report` | Discover recent traces, drill into the top rows, and return aggregate cost/token/tool/score rollups plus default learning-loop recommendations for agent retrospectives |
 
 Set `ITMUX_BIN` if `itmux` is not on `PATH` and you want the richer CLI-shaped
 summary path. Without `itmux`, the MCP server still supports trace discovery,
 trace fetch, score reads, and score write-back through LangFuse's public API.
+Pass `include_insights=false` to `agentic_langfuse_learning_loop_report` when a
+consumer needs only aggregate rollups. The default insights identify cost/token
+hotspots, missing token/cost/model coverage, unscored traces, and failed
+agent-visible tool calls.
 
 Codex MCP config example:
 

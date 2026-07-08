@@ -1,5 +1,13 @@
 # Changelog — observability plugin
 
+## 0.3.2
+- Added default learning-loop insights to
+  `agentic_langfuse_learning_loop_report`, including cost hotspots, token
+  hotspots, missing model/cost/token coverage, unscored traces, and failed
+  agent-tool recommendations
+- Expanded the MCP self-test to cover both populated trace insights and
+  missing-coverage recommendations
+
 ## 0.3.1
 - Added `agentic_langfuse_learning_loop_report`, an MCP tool that combines
   trace discovery with per-trace drilldown to return aggregate learning-loop
