@@ -200,8 +200,12 @@ observability hook sink at terminalization. When the hook stream includes a
 Claude `transcript_path`, `itmux run` reads that transcript from the workspace
 and normalizes it through the same redacted Claude transcript observer before
 fanout. This gives completed interactive Claude workspace runs token, cost,
-tool, and hook telemetry in the same file/LangFuse exporters. Continuous
-mid-run transcript streaming remains a follow-up.
+tool, and hook telemetry in the same file/LangFuse exporters. If the transcript
+contains aggregate `result.modelUsage`, that aggregate is used by the replay
+path. If an interactive transcript only contains assistant message usage, the
+workspace-run drain emits message-level token usage so LangFuse still receives a
+native generation row. Continuous mid-run transcript streaming remains a
+follow-up.
 
 Also follow the dedicated ingestion experiment at
 `experiments/2026-07-07--langfuse--otel-ingestion-smoke/eval-pack.md` against

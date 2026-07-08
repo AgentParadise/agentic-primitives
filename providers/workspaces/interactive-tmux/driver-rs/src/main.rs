@@ -1084,7 +1084,8 @@ fn handle_claude_transcript(
                 }
             }
             Err(err) => {
-                let message = err.to_string();
+                let message = "invalid claude transcript JSONL line".to_string();
+                eprintln!("[itmux claude-transcript] {err}");
                 parse_error.get_or_insert_with(|| message.clone());
                 emit_payload(
                     AgentRunEventPayload::ToolEnd {

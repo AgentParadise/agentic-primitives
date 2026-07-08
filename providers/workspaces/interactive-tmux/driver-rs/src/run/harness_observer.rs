@@ -157,11 +157,17 @@ impl HarnessObserver for CodexExecJsonObserver {
 #[derive(Debug, Default)]
 pub struct ClaudeTranscriptObserver {
     tool_names: HashMap<String, String>,
+    emit_message_usage: bool,
 }
 
 impl ClaudeTranscriptObserver {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_message_usage(mut self, emit_message_usage: bool) -> Self {
+        self.emit_message_usage = emit_message_usage;
+        self
     }
 
     fn event(payload: AgentRunEventPayload) -> ObservedAgentEvent {
@@ -188,7 +194,27 @@ impl HarnessObserver for ClaudeTranscriptObserver {
         match event {
             ClaudeTranscriptJsonEvent::Assistant { message } => {
                 let mut out = Vec::new();
-                for item in message.content {
+                if self.emit_message_usage {
+                    if let (Some(model), Some(usage)) =
+                        (message.model.as_deref(), message.usage.as_ref())
+                    {
+                        out.push(Self::event(AgentRunEventPayload::TokenUsage {
+                            input_tokens: usage.input_tokens,
+                            output_tokens: usage.output_tokens,
+                            cached_input_tokens: Some(
+                                usage
+                                    .cache_read_input_tokens
+                                    .saturating_add(usage.cache_creation_input_tokens),
+                            ),
+                            reasoning_output_tokens: None,
+                            cost_usd: None,
+                            harness: Some("claude".to_string()),
+                            provider: Some("anthropic".to_string()),
+                            model: Some(model.to_string()),
+                        }));
+                    }
+                }
+                for item in message.content_items() {
                     if let ClaudeContentItem::ToolUse { id, name, input } = item {
                         self.tool_names.insert(id, name.clone());
                         out.push(Self::event(AgentRunEventPayload::ToolStart {
@@ -201,7 +227,7 @@ impl HarnessObserver for ClaudeTranscriptObserver {
             }
             ClaudeTranscriptJsonEvent::User { message } => {
                 let mut out = Vec::new();
-                for item in message.content {
+                for item in message.content_items() {
                     if let ClaudeContentItem::ToolResult {
                         tool_use_id,
                         content,
@@ -285,7 +311,23 @@ enum ClaudeTranscriptJsonEvent {
 #[derive(Debug, Deserialize)]
 struct ClaudeMessage {
     #[serde(default)]
-    content: Vec<ClaudeContentItem>,
+    model: Option<String>,
+    #[serde(default)]
+    usage: Option<ClaudeAssistantUsage>,
+    #[serde(default)]
+    content: serde_json::Value,
+}
+
+impl ClaudeMessage {
+    fn content_items(self) -> Vec<ClaudeContentItem> {
+        let serde_json::Value::Array(items) = self.content else {
+            return Vec::new();
+        };
+        items
+            .into_iter()
+            .filter_map(|item| serde_json::from_value(item).ok())
+            .collect()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -322,6 +364,18 @@ struct ClaudeModelUsage {
     cache_creation_input_tokens: u64,
     #[serde(default, rename = "costUSD")]
     cost_usd: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeAssistantUsage {
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    output_tokens: u64,
+    #[serde(default)]
+    cache_read_input_tokens: u64,
+    #[serde(default)]
+    cache_creation_input_tokens: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -616,5 +670,44 @@ mod tests {
             serialized.contains("redacted claude tool result"),
             "{serialized}"
         );
+    }
+
+    #[test]
+    fn claude_transcript_ignores_string_content_without_leaking_text() {
+        let mut observer = ClaudeTranscriptObserver::new();
+        let events = observer
+            .observe_jsonl_line(
+                r#"{"type":"user","message":{"role":"user","content":"Reply exactly: SECRET_PROMPT_TEXT"}}"#,
+            )
+            .expect("string content is valid transcript content");
+
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn claude_transcript_can_emit_assistant_message_usage_for_live_runs() {
+        let mut observer = ClaudeTranscriptObserver::new().with_message_usage(true);
+        let events = observer
+            .observe_jsonl_line(
+                r#"{"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":6,"cache_creation_input_tokens":2,"cache_read_input_tokens":11,"output_tokens":3}}}"#,
+            )
+            .expect("assistant usage parses");
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0].payload,
+            AgentRunEventPayload::TokenUsage {
+                input_tokens: 6,
+                output_tokens: 3,
+                cached_input_tokens: Some(13),
+                cost_usd: None,
+                ref harness,
+                ref provider,
+                ref model,
+                ..
+            } if harness.as_deref() == Some("claude")
+                && provider.as_deref() == Some("anthropic")
+                && model.as_deref() == Some("claude-sonnet-4-5-20250929")
+        ));
     }
 }

@@ -501,15 +501,15 @@ fn read_workspace_file_if_present(workspace: &Workspace, path: &str) -> io::Resu
 }
 
 fn parse_claude_transcript_events(raw: &str) -> Vec<AgentRunEventPayload> {
-    let mut observer = ClaudeTranscriptObserver::new();
+    let mut observer = ClaudeTranscriptObserver::new().with_message_usage(true);
     let mut payloads = Vec::new();
     for line in raw.lines() {
         match observer.observe_jsonl_line(line) {
             Ok(events) => payloads.extend(events.into_iter().map(|event| event.payload)),
-            Err(err) => payloads.push(AgentRunEventPayload::ToolEnd {
+            Err(_) => payloads.push(AgentRunEventPayload::ToolEnd {
                 tool_name: "claude_transcript.parse".to_string(),
                 success: false,
-                output_summary: Some(err.to_string()),
+                output_summary: Some("invalid claude transcript JSONL line".to_string()),
             }),
         }
     }

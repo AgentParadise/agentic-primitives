@@ -9,6 +9,7 @@
 | Native usage/cost/model fields | `runs/real-backend-smoke/summary.txt`, `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/dashboard-rich.har` | Passed: LangFuse classified `token_usage` as a `GENERATION`, set `model=gpt-4o-mini`, recorded 13 tokens, calculated `$0.000003299999`, and dashboard cost/model queries returned non-null values. |
 | Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields for learning loops. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
+| Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
 | Repeatable real-backend runner | `run-smoke.sh`, `runs/real-backend-smoke/summary.txt`, `scripts/langfuse-local.sh` | Passed through `scripts/langfuse-local.sh smoke` using the ignored local Compose override/env generated under `.agentic/langfuse/`. |
 
 ## Local Synthetic Trace
@@ -89,3 +90,34 @@ Unit evidence now covers hook-path extraction, redacted transcript
 normalization, and `result.modelUsage` availability through the workspace-run
 path. This is terminalization-time collection for completed interactive Claude
 workspace runs; continuous mid-run transcript streaming remains unproven.
+
+## Live Claude Workspace Smoke
+
+The local Docker Compose LangFuse backend also accepted a real recipe-driven
+Claude `itmux run` after the terminalization drain was wired.
+
+Current key evidence from `runs/claude-live-itmux-run/summary.txt`:
+
+- Run id: `run-0b3f4760`
+- Trace id: `8603e096fe56957c7683d7114499702d`
+- Exporter status: `ok`
+- Events exported: `15`
+- Backend observation count: `16`
+- Observation types: `GENERATION`, `SPAN`
+- Event names: hook events, `tool_start`, `tool_end`, `token_usage`,
+  `session_end`
+- Model names: `claude-sonnet-4-6`
+- Native input tokens: `3`
+- Native output tokens: `15`
+- Native total tokens: `15737`
+- Calculated total cost: `0.000234`
+- Harness values: `claude`
+- Provider values: `anthropic`
+
+The first live attempt exposed two useful misses: live Claude transcript lines
+can use string `message.content`, and parse errors could leak that string if
+they were forwarded verbatim. The parser now treats string content as valid but
+non-observable content, redacts parse-error summaries, and enables
+assistant-message usage only for the workspace-run drain path. The committed
+live evidence has its pane `session_log` redacted and scans clean for the prompt
+text, hook preview fields, auth headers, and secret-like test strings.
