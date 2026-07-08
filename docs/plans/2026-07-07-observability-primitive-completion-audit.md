@@ -111,8 +111,9 @@ Those belong to `.9`, `.10`, or the OTEL agentic standard work.
    - tool observations have meaningful names and payloads;
    - the traces can be pulled through `itmux langfuse-trace` and the
      `agentic-langfuse` MCP server for learning-loop use.
-   **done locally for direct trace-summary reads; discovery-driven
-   learning-loop report filtering remains follow-up.**
+   **done locally for direct trace-summary reads and discovery-driven
+   learning-loop filtering by
+   `experiments/2026-07-08--langfuse--official-plugin-discovery-report`.**
 6. Only then close `.9` or claim production LangFuse readiness. The fallback
    OTLP smoke remains a separate regression for collector/exporter health.
 
