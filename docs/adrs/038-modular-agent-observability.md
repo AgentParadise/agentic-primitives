@@ -17,6 +17,9 @@ tags: [architecture, observability, workspaces, langfuse, otel, plugins]
 - Updated: 2026-07-07
 - Author(s): Neural
 - Related: ADR-022, ADR-027, ADR-033, ADR-035, ADR-037
+- Partially superseded by: ADR-039 for the Rust OTLP-to-LangFuse exporter
+  decision. ADR-038 still stands for normalized local events, JSONL fanout,
+  Syntropic137 projection, and LangFuse query/score tooling.
 - OKRs: `okrs-51p.6` blocks `okrs-51p.9`
 - Completion audit:
   `docs/plans/2026-07-07-observability-primitive-completion-audit.md`
