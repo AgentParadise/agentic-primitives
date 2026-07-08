@@ -8,6 +8,12 @@ official marketplace plugins:
 - Claude Code: `langfuse/Claude-Observability-Plugin`
 - Codex: `langfuse/codex-observability-plugin`
 
+The Claude plugin is configured through Claude Code's plugin install/configure
+flow and stores its secret key in the OS keychain. The Codex plugin is enabled
+through Codex plugin hooks in `~/.codex/config.toml` or project
+`.codex/config.toml`, then opts in with `TRACE_TO_LANGFUSE=true` plus
+LangFuse credentials from env or Codex's `langfuse.json` config.
+
 This plugin remains the agentic-primitives observability layer for local JSONL
 events, git/workspace lifecycle events, Syntropic137/source-of-truth fanout,
 and the `agentic-langfuse` MCP query tools. Do not enable the Rust

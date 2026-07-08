@@ -13,28 +13,34 @@ smoke tests, generic OTEL collectors, Syntropic137 ingestion, and harnesses
 without an official LangFuse plugin, but it should not be enabled for the same
 Claude/Codex run that is already traced by an official LangFuse plugin.
 
-## Required Runtime Environment
+## Runtime Environment
 
-The exporter reads credentials from environment variables at runtime. Do not put
-these values in recipes, specs, CLI arguments, Docker images, committed files,
-or experiment artifacts.
+Do not put LangFuse credentials in recipes, specs, Docker images, committed
+files, or experiment artifacts.
 
-Required:
+There are two credential paths:
+
+1. **Official Claude/Codex plugin config**, used for canonical rich traces.
+2. **agentic-primitives runtime env**, used by the fallback Rust OTLP exporter,
+   `itmux langfuse-*` query commands, MCP learning-loop tools, and local smoke
+   scripts.
+
+For the agentic-primitives runtime env, required values are:
 
 - `LANGFUSE_BASE_URL`
 - `LANGFUSE_PUBLIC_KEY`
 - `LANGFUSE_SECRET_KEY`
-- `LANGFUSE_TRACING_ENVIRONMENT`
 
-Optional:
+Recommended values are:
+
+- `LANGFUSE_TRACING_ENVIRONMENT`, used by local tooling and the official Codex
+  plugin to label traces by environment, for example `local-macbook`,
+  `mac-mini`, `vps`, or `docker-workspace`.
 
 - `LANGFUSE_PROJECT_ID`, used only to report human-facing trace links in the
   final observability bundle.
 - `TRACE_TO_LANGFUSE=true`, used by the official Claude and Codex plugins to
   opt into exporting a session or project.
-- `LANGFUSE_TRACING_ENVIRONMENT`, used by the official plugins and local
-  tooling to label traces by environment, for example `local-macbook`,
-  `mac-mini`, `vps`, or `docker-workspace`.
 
 `LANGFUSE_BASE_URL` should be the LangFuse origin, for example
 `https://langfuse.example.com` or `http://localhost:3000` for the local Docker
@@ -66,9 +72,20 @@ secret key is stored in the OS keychain by the plugin. Reconfigure later with:
 /plugin configure langfuse-observability@langfuse-observability
 ```
 
-For project-scoped enablement, set `TRACE_TO_LANGFUSE=true` and the
-`LANGFUSE_*` values through an ignored local settings file or runtime
-environment. Do not commit project API keys.
+You can also pass plugin config during install:
+
+```bash
+claude plugin install langfuse-observability@langfuse-observability \
+  --config LANGFUSE_PUBLIC_KEY=pk-lf-... \
+  --config LANGFUSE_SECRET_KEY=sk-lf-... \
+  --config LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+The official Claude plugin requires either `uv` on `PATH` or Python 3.10+ with
+`langfuse>=4.0,<5` available. It also accepts optional controls such as
+`LANGFUSE_USER_ID`, `CC_LANGFUSE_DEBUG`, `CC_LANGFUSE_MAX_CHARS`,
+`CC_LANGFUSE_SKILL_TAGS`, and `CC_LANGFUSE_CAPTURE_SKILL_CONTENT`. Treat those
+as plugin configuration, not as requirements for the Rust fallback exporter.
 
 The expected trace shape is one Claude turn per trace, generation observations
 for assistant messages, `Tool: <name>` observations with inputs and outputs,
@@ -81,6 +98,9 @@ Use LangFuse's maintained Codex marketplace plugin for real Codex sessions:
 ```bash
 codex plugin marketplace add langfuse/codex-observability-plugin
 ```
+
+The official Codex plugin currently requires Node.js 22+ and a Codex build with
+plugin hook support.
 
 Enable Codex plugin hooks globally in `~/.codex/config.toml`, or per project in
 `<project>/.codex/config.toml`:
@@ -103,6 +123,13 @@ export LANGFUSE_SECRET_KEY=...
 export LANGFUSE_TRACING_ENVIRONMENT=local-macbook
 codex
 ```
+
+Codex can also read `~/.codex/langfuse.json` or
+`<project>/.codex/langfuse.json`. Configuration precedence is defaults, then
+global JSON config, then project JSON config, then environment variables.
+`LANGFUSE_CODEX_*` variables override matching standard `LANGFUSE_*` variables
+for Codex only, which is useful when Claude and Codex should write to separate
+projects or environments on the same machine.
 
 For durable machines, load the same variables from Keychain, a systemd
 environment file owned by the operator, or the workspace orchestrator's secret
