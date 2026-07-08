@@ -5,7 +5,7 @@
 //! or future harness surfaces; fanout exporters only receive normalized run
 //! events.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt;
 
@@ -155,11 +155,13 @@ impl HarnessObserver for CodexExecJsonObserver {
 }
 
 #[derive(Debug, Default)]
-pub struct ClaudeTranscriptObserver;
+pub struct ClaudeTranscriptObserver {
+    tool_names: HashMap<String, String>,
+}
 
 impl ClaudeTranscriptObserver {
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     fn event(payload: AgentRunEventPayload) -> ObservedAgentEvent {
@@ -176,9 +178,50 @@ impl HarnessObserver for ClaudeTranscriptObserver {
             return Ok(Vec::new());
         }
 
-        let event: ClaudeTranscriptJsonEvent =
+        let raw: serde_json::Value =
             serde_json::from_str(line).map_err(ObserverError::invalid_json)?;
+        if raw.get("type").is_none() {
+            return Ok(Vec::new());
+        }
+        let event: ClaudeTranscriptJsonEvent =
+            serde_json::from_value(raw).map_err(ObserverError::invalid_json)?;
         match event {
+            ClaudeTranscriptJsonEvent::Assistant { message } => {
+                let mut out = Vec::new();
+                for item in message.content {
+                    if let ClaudeContentItem::ToolUse { id, name, input } = item {
+                        self.tool_names.insert(id, name.clone());
+                        out.push(Self::event(AgentRunEventPayload::ToolStart {
+                            tool_name: name,
+                            tool_input: input,
+                        }));
+                    }
+                }
+                Ok(out)
+            }
+            ClaudeTranscriptJsonEvent::User { message } => {
+                let mut out = Vec::new();
+                for item in message.content {
+                    if let ClaudeContentItem::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } = item
+                    {
+                        let tool_name = self
+                            .tool_names
+                            .get(&tool_use_id)
+                            .cloned()
+                            .unwrap_or_else(|| "claude.tool_result".to_string());
+                        out.push(Self::event(AgentRunEventPayload::ToolEnd {
+                            tool_name,
+                            success: !is_error.unwrap_or(false),
+                            output_summary: content.map(trim_summary),
+                        }));
+                    }
+                }
+                Ok(out)
+            }
             ClaudeTranscriptJsonEvent::Result { model_usage } => {
                 let mut out = Vec::new();
                 for (model, usage) in model_usage {
@@ -226,10 +269,42 @@ enum CodexExecJsonEvent {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum ClaudeTranscriptJsonEvent {
+    #[serde(rename = "assistant")]
+    Assistant { message: ClaudeMessage },
+    #[serde(rename = "user")]
+    User { message: ClaudeMessage },
     #[serde(rename = "result")]
     Result {
         #[serde(default, rename = "modelUsage")]
         model_usage: BTreeMap<String, ClaudeModelUsage>,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeMessage {
+    #[serde(default)]
+    content: Vec<ClaudeContentItem>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+enum ClaudeContentItem {
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        #[serde(default)]
+        input: serde_json::Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        tool_use_id: String,
+        #[serde(default)]
+        content: Option<String>,
+        #[serde(default)]
+        is_error: Option<bool>,
     },
     #[serde(other)]
     Other,
@@ -431,5 +506,38 @@ mod tests {
             }
             other => panic!("expected token usage, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn claude_transcript_maps_tool_use_and_tool_result() {
+        let mut observer = ClaudeTranscriptObserver::new();
+        let start = observer
+            .observe_jsonl_line(
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"git status"}}]}}"#,
+            )
+            .expect("parse tool use");
+        let end = observer
+            .observe_jsonl_line(
+                r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"On branch main","is_error":false}]}}"#,
+            )
+            .expect("parse tool result");
+
+        assert_eq!(start.len(), 1);
+        assert_eq!(end.len(), 1);
+        assert!(matches!(
+            start[0].payload,
+            AgentRunEventPayload::ToolStart {
+                ref tool_name,
+                ref tool_input,
+            } if tool_name == "Bash" && tool_input["command"] == "git status"
+        ));
+        assert!(matches!(
+            end[0].payload,
+            AgentRunEventPayload::ToolEnd {
+                ref tool_name,
+                success: true,
+                ref output_summary,
+            } if tool_name == "Bash" && output_summary.as_deref() == Some("On branch main")
+        ));
     }
 }

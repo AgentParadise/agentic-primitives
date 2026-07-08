@@ -1,0 +1,11 @@
+Run id: run-claude-fixture-rich
+Trace id: 41eedb37a10d825b0522048e8ea119a0
+Observation count: 14
+Observation types: GENERATION,SPAN
+Harness values: claude
+Provider values: anthropic
+Models: claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929
+Input tokens: 1348
+Output tokens: 2218
+Total tokens: 122272
+Calculated total cost: 0.09459785

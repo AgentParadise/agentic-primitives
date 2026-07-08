@@ -174,6 +174,25 @@ itmux codex-exec \
   --result-file /tmp/agentic-langfuse-smoke/result.json
 ```
 
+For Claude transcript evidence, normalize a Claude JSONL transcript through the
+same exporter fanout:
+
+```bash
+itmux claude-transcript \
+  --transcript /path/to/claude-transcript.jsonl \
+  --run-id run-claude-smoke \
+  --observability-file /tmp/agentic-langfuse-smoke/claude-events.jsonl \
+  --observability-langfuse \
+  --result-file /tmp/agentic-langfuse-smoke/claude-result.json
+```
+
+This path maps Claude `tool_use`/`tool_result` transcript items to normalized
+tool spans and `result.modelUsage` entries to shared `token_usage` events with
+`harness=claude`, `provider=anthropic`, model names, token counts, cached-token
+counts, and cost data. It is the current reusable export path for Claude-shaped
+telemetry; live transcript tailing from interactive Claude sessions is tracked
+as the next integration layer.
+
 Also follow the dedicated ingestion experiment at
 `experiments/2026-07-07--langfuse--otel-ingestion-smoke/eval-pack.md` against
 the same reachable backend.

@@ -19,7 +19,9 @@ use itmux::run::contract::{
     AgentRunEvent, AgentRunEventPayload, AgentRunLimits, AgentRunOutcome, AgentRunResult,
     AgentRunSpec, ObservabilityExporter,
 };
-use itmux::run::harness_observer::{CodexExecJsonObserver, HarnessObserver};
+use itmux::run::harness_observer::{
+    ClaudeTranscriptObserver, CodexExecJsonObserver, HarnessObserver,
+};
 use itmux::run::observability::{
     langfuse_api_base_url, langfuse_basic_auth_header, langfuse_trace_id_for_run,
     ObservabilityFanout,
@@ -185,6 +187,42 @@ enum Cmd {
         /// Sandbox policy passed to `codex exec`.
         #[arg(long, default_value = "read-only")]
         sandbox: String,
+        /// Emit normalized AgentRunEvent JSONL on stdout.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        json: bool,
+        /// Write the final `AgentRunResult` JSON to this file. If omitted and
+        /// `--json true`, the result is emitted as a final `type:"result"`
+        /// event on stdout.
+        #[arg(long)]
+        result_file: Option<PathBuf>,
+        /// Append normalized observer events to this JSONL file.
+        #[arg(long)]
+        observability_file: Option<PathBuf>,
+        /// Enable LangFuse OTLP trace export using LANGFUSE_* environment
+        /// variables for credentials.
+        #[arg(long)]
+        observability_langfuse: bool,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// LangFuse project id used to report UI trace links. Defaults to
+        /// LANGFUSE_PROJECT_ID when set.
+        #[arg(long)]
+        langfuse_project_id: Option<String>,
+        /// Label for the LangFuse observability link in AgentRunResult.
+        #[arg(long)]
+        langfuse_label: Option<String>,
+    },
+    /// Read Claude Code transcript JSONL, normalize tool/usage events, and fan
+    /// them out to observability exporters.
+    #[command(name = "claude-transcript")]
+    ClaudeTranscript {
+        /// Claude transcript JSONL file. Use `-` to read stdin.
+        #[arg(long)]
+        transcript: PathBuf,
+        /// Optional run id. Defaults to a generated `itmux` run id.
+        #[arg(long)]
+        run_id: Option<String>,
         /// Emit normalized AgentRunEvent JSONL on stdout.
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         json: bool,
@@ -978,6 +1016,148 @@ fn handle_codex_exec(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn handle_claude_transcript(
+    transcript: PathBuf,
+    run_id: Option<String>,
+    json: bool,
+    result_file: Option<PathBuf>,
+    observability_file: Option<PathBuf>,
+    langfuse: LangFuseCliOptions,
+) -> ExitCode {
+    let exporters =
+        build_observability_exporters(observability_file, "claude transcript events", langfuse);
+    let mut fanout = ObservabilityFanout::new(&exporters);
+    let mut observer = ClaudeTranscriptObserver::new();
+    let run_id = run_id.unwrap_or_else(generate_run_id);
+    let mut seq = 0u64;
+    let mut session_log = String::new();
+    let mut parse_error: Option<String> = None;
+
+    let input = if transcript.as_os_str() == "-" {
+        let mut input = String::new();
+        if let Err(err) = std::io::stdin().read_to_string(&mut input) {
+            eprintln!("[itmux claude-transcript] failed to read stdin: {err}");
+            return ExitCode::from(1);
+        }
+        input
+    } else {
+        match std::fs::read_to_string(&transcript) {
+            Ok(input) => input,
+            Err(err) => {
+                eprintln!(
+                    "[itmux claude-transcript] failed to read transcript {}: {err}",
+                    transcript.display()
+                );
+                return ExitCode::from(1);
+            }
+        }
+    };
+
+    let mut emit_payload = |payload: AgentRunEventPayload, fanout: &mut ObservabilityFanout| {
+        let event = AgentRunEvent {
+            run_id: run_id.clone(),
+            seq,
+            ts: now_rfc3339(),
+            payload,
+        };
+        seq += 1;
+        fanout.emit(&event);
+        if json {
+            match serde_json::to_string(&event) {
+                Ok(line) => println!("{line}"),
+                Err(err) => {
+                    eprintln!("[itmux claude-transcript] failed to serialize event: {err}");
+                }
+            }
+        }
+    };
+
+    for line in input.lines() {
+        session_log.push_str(line);
+        session_log.push('\n');
+        match observer.observe_jsonl_line(line) {
+            Ok(events) => {
+                for observed in events {
+                    emit_payload(observed.payload, &mut fanout);
+                }
+            }
+            Err(err) => {
+                let message = err.to_string();
+                parse_error.get_or_insert_with(|| message.clone());
+                emit_payload(
+                    AgentRunEventPayload::ToolEnd {
+                        tool_name: "claude_transcript.parse".to_string(),
+                        success: false,
+                        output_summary: Some(message),
+                    },
+                    &mut fanout,
+                );
+            }
+        }
+    }
+
+    let success = parse_error.is_none();
+    let summary = parse_error
+        .map(|err| format!("claude transcript observer parse failure: {err}"))
+        .unwrap_or_else(|| "claude transcript normalized successfully".to_string());
+    let outcome = AgentRunOutcome { success, summary };
+    emit_payload(
+        AgentRunEventPayload::SessionEnd {
+            outcome: outcome.clone(),
+        },
+        &mut fanout,
+    );
+
+    let result = AgentRunResult {
+        result: outcome,
+        output_artifacts: Vec::new(),
+        session_log,
+        observability: fanout.finish(),
+    };
+
+    match result_file {
+        Some(path) => match serde_json::to_vec_pretty(&result) {
+            Ok(bytes) => {
+                if let Err(err) = std::fs::write(&path, bytes) {
+                    eprintln!(
+                        "[itmux claude-transcript] failed to write result file {}: {err}",
+                        path.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("[itmux claude-transcript] failed to serialize result: {err}");
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            if json {
+                let event = AgentRunEvent::result(&run_id, seq, now_rfc3339(), result);
+                match serde_json::to_string(&event) {
+                    Ok(line) => println!("{line}"),
+                    Err(err) => {
+                        eprintln!("[itmux claude-transcript] failed to serialize result: {err}");
+                    }
+                }
+            } else {
+                println!(
+                    "claude transcript {}: success={}",
+                    run_id,
+                    if success { "true" } else { "false" }
+                );
+            }
+        }
+    }
+
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(3)
+    }
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum LangFuseTraceApi {
     /// Recommended row-level API for current LangFuse Cloud/newer deployments.
@@ -1447,6 +1627,29 @@ fn main() -> ExitCode {
             codex_bin,
             model,
             sandbox,
+            json,
+            result_file,
+            observability_file,
+            LangFuseCliOptions {
+                enabled: observability_langfuse,
+                base_url: langfuse_base_url,
+                project_id: langfuse_project_id,
+                label: langfuse_label,
+            },
+        ),
+        Cmd::ClaudeTranscript {
+            transcript,
+            run_id,
+            json,
+            result_file,
+            observability_file,
+            observability_langfuse,
+            langfuse_base_url,
+            langfuse_project_id,
+            langfuse_label,
+        } => handle_claude_transcript(
+            transcript,
+            run_id,
             json,
             result_file,
             observability_file,
