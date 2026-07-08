@@ -32,6 +32,11 @@ official plugin config hints, `LANGFUSE_*` set/missing state, JSONL and
 Syntropic137 fanout support, and the focused runtime guard test that keeps the
 Rust OTLP fallback quiet when `TRACE_TO_LANGFUSE=true`.
 
+For Codex, the doctor also reports the checked config paths, whether the
+official tracing plugin is enabled, and whether `plugin_hooks = true` was found
+in a scanned `config.toml`. If hooks are false while the tracing plugin is
+enabled, add the `[features]` snippet below.
+
 On minimal VPS or Docker shells where Rust is not installed, use:
 
 ```bash

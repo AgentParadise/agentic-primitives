@@ -104,6 +104,51 @@ codex_config_paths() {
   printf '%s\n' "$ROOT/.codex/config.toml"
 }
 
+codex_config_paths_json() {
+  local first="true"
+  local path
+  printf '['
+  while IFS= read -r path; do
+    if [ "$first" = "true" ]; then
+      first="false"
+    else
+      printf ', '
+    fi
+    printf '{"path": '
+    json_string "$path"
+    printf ', "exists": '
+    if [ -f "$path" ]; then
+      printf 'true'
+    else
+      printf 'false'
+    fi
+    printf '}'
+  done < <(codex_config_paths)
+  printf ']'
+}
+
+codex_config_paths_text() {
+  local path
+  while IFS= read -r path; do
+    if [ -f "$path" ]; then
+      printf '    - %s (exists)\n' "$path"
+    else
+      printf '    - %s (missing)\n' "$path"
+    fi
+  done < <(codex_config_paths)
+}
+
+codex_config_any_exists() {
+  local path
+  while IFS= read -r path; do
+    if [ -f "$path" ]; then
+      printf 'true'
+      return
+    fi
+  done < <(codex_config_paths)
+  printf 'false'
+}
+
 codex_plugin_hooks_enabled() {
   local path
   while IFS= read -r path; do
@@ -181,6 +226,8 @@ if [ -n "$uv_path" ] || [ -n "$python_path" ]; then
 fi
 codex_hooks_enabled="$(codex_plugin_hooks_enabled)"
 codex_plugin_enabled="$(codex_tracing_plugin_enabled)"
+codex_config_exists="$(codex_config_any_exists)"
+codex_hooks_remediation="add [features] plugin_hooks = true and enable [plugins.\"tracing@codex-observability-plugin\"] in ~/.codex/config.toml or <project>/.codex/config.toml"
 runtime_ready="true"
 for required in LANGFUSE_BASE_URL LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
   if [ "$(status_for_env "$required")" != "set" ]; then
@@ -223,6 +270,15 @@ if [ "$OUTPUT" = "json" ]; then
       "node22_plus": $(json_bool "$node22_plus"),
       "plugin_hooks_enabled": $(json_bool "$codex_hooks_enabled"),
       "tracing_plugin_configured": $(json_bool "$codex_plugin_enabled"),
+      "config": {
+        "checked_paths": $(codex_config_paths_json),
+        "any_config_file_exists": $(json_bool "$codex_config_exists"),
+        "plugin_hooks_required": true,
+        "plugin_hooks_found": $(json_bool "$codex_hooks_enabled"),
+        "tracing_plugin_found": $(json_bool "$codex_plugin_enabled"),
+        "ready": $(json_bool "$([ "$codex_hooks_enabled" = "true" ] && [ "$codex_plugin_enabled" = "true" ] && printf true || printf false)"),
+        "remediation": $(json_string "$codex_hooks_remediation")
+      },
       "expected_plugin": "langfuse/codex-observability-plugin"
     }
   },
@@ -264,6 +320,9 @@ Official rich trace path:
   Codex Node 22+: $([ "$node22_plus" = "true" ] && printf 'ok' || printf 'missing')
   Codex plugin_hooks: $codex_hooks_enabled
   Codex tracing plugin configured: $codex_plugin_enabled
+  Codex config checked:
+$(codex_config_paths_text)
+  Codex remediation: $codex_hooks_remediation
 
 Runtime LangFuse env:
   LANGFUSE_BASE_URL=$(status_for_env LANGFUSE_BASE_URL)

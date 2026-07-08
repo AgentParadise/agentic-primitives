@@ -1,0 +1,7 @@
+{
+  "command_present": true,
+  "node22_plus": true,
+  "plugin_hooks_enabled": false,
+  "tracing_plugin_configured": true,
+  "expected_plugin": "langfuse/codex-observability-plugin"
+}
