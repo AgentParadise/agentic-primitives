@@ -39,6 +39,7 @@ It is read-only and secret-safe: it reports official Claude/Codex plugin
 prerequisites, `LANGFUSE_*` set/missing state, JSONL/Syntropic137 fanout
 support, and the focused runtime guard that keeps fallback Rust OTLP quiet when
 official plugin tracing is active.
+Use `--json --no-tests` on minimal VPS or Docker shells that do not have Cargo.
 
 ## Agent LangFuse MCP server
 

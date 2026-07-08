@@ -32,6 +32,15 @@ official plugin config hints, `LANGFUSE_*` set/missing state, JSONL and
 Syntropic137 fanout support, and the focused runtime guard test that keeps the
 Rust OTLP fallback quiet when `TRACE_TO_LANGFUSE=true`.
 
+On minimal VPS or Docker shells where Rust is not installed, use:
+
+```bash
+scripts/langfuse-observability-doctor.sh --json --no-tests
+```
+
+That keeps the setup report available and marks the focused guard test as
+skipped instead of requiring Cargo.
+
 There are two credential paths:
 
 1. **Official Claude/Codex plugin config**, used for canonical rich traces.

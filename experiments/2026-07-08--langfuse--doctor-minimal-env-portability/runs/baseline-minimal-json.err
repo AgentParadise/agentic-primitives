@@ -1,0 +1,2 @@
+scripts/langfuse-observability-doctor.sh: line 100: rg: command not found
+scripts/langfuse-observability-doctor.sh: line 111: rg: command not found

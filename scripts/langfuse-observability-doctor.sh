@@ -3,15 +3,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="text"
+RUN_TESTS="true"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/langfuse-observability-doctor.sh [--json]
+Usage: scripts/langfuse-observability-doctor.sh [--json] [--no-tests]
 
 Secret-safe preflight for agentic-primitives LangFuse observability setup.
 It does not install plugins, mutate config, or print LangFuse credential
 values. It reports set/missing state and runs the focused runtime guard test
-when cargo is available.
+when cargo is available unless --no-tests is passed.
 EOF
 }
 
@@ -19,6 +20,9 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --json)
       OUTPUT="json"
+      ;;
+    --no-tests)
+      RUN_TESTS="false"
       ;;
     -h|--help)
       usage
@@ -79,10 +83,16 @@ node_major() {
   esac
 }
 
+contains_pattern() {
+  local pattern="$1"
+  shift
+  grep -Eq "$pattern" "$@" 2>/dev/null
+}
+
 file_contains() {
   local file="$1"
   local pattern="$2"
-  if [ -f "$file" ] && rg -q "$pattern" "$file"; then
+  if [ -f "$file" ] && contains_pattern "$pattern" "$file"; then
     printf 'true'
   else
     printf 'false'
@@ -97,7 +107,7 @@ codex_config_paths() {
 codex_plugin_hooks_enabled() {
   local path
   while IFS= read -r path; do
-    if [ -f "$path" ] && rg -q 'plugin_hooks[[:space:]]*=[[:space:]]*true' "$path"; then
+    if [ -f "$path" ] && contains_pattern 'plugin_hooks[[:space:]]*=[[:space:]]*true' "$path"; then
       printf 'true'
       return
     fi
@@ -108,7 +118,7 @@ codex_plugin_hooks_enabled() {
 codex_tracing_plugin_enabled() {
   local path
   while IFS= read -r path; do
-    if [ -f "$path" ] && rg -q 'tracing@codex-observability-plugin|codex-observability-plugin' "$path"; then
+    if [ -f "$path" ] && contains_pattern 'tracing@codex-observability-plugin|codex-observability-plugin' "$path"; then
       printf 'true'
       return
     fi
@@ -127,7 +137,7 @@ repo_has_file() {
 repo_has_text() {
   local pattern="$1"
   shift
-  if rg -q "$pattern" "$@" 2>/dev/null; then
+  if contains_pattern "$pattern" "$@"; then
     printf 'true'
   else
     printf 'false'
@@ -136,7 +146,9 @@ repo_has_text() {
 
 guard_test_status="skipped"
 guard_test_detail="cargo not found"
-if command -v cargo >/dev/null 2>&1; then
+if [ "$RUN_TESTS" = "false" ]; then
+  guard_test_detail="tests disabled by --no-tests"
+elif command -v cargo >/dev/null 2>&1; then
   guard_output="$(mktemp "${TMPDIR:-/tmp}/agentic-langfuse-guard.XXXXXX")"
   if (
     cd "$ROOT"
