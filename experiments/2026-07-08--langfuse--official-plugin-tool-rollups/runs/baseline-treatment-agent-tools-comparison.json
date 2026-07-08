@@ -1,0 +1,84 @@
+{
+  "claude": {
+    "baseline": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "treatment": {
+      "start_count": 0,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "Read"
+      ],
+      "by_name": [
+        {
+          "name": "Read",
+          "starts": 0,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Read",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    }
+  },
+  "codex": {
+    "baseline": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "treatment": {
+      "start_count": 0,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "exec_command"
+      ],
+      "by_name": [
+        {
+          "name": "exec_command",
+          "starts": 0,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "exec_command",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    }
+  }
+}

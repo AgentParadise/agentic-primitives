@@ -1,0 +1,48 @@
+    Blocking waiting for file lock on package cache
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/experiment/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/standard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/substandard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling itmux v0.1.0 (/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/interactive-tmux/driver-rs)
+error[E0382]: use of moved value: `tool_name`
+    --> src/main.rs:2650:29
+     |
+2472 |         let tool_name = attr_string(attrs, "agentic.tool.name").or(official_tool_name);
+     |             ---------   -------------------------------------------------------------- this reinitialization might get skipped
+     |             |
+     |             move occurs because `tool_name` has type `std::option::Option<std::string::String>`, which does not implement the `Copy` trait
+...
+2602 |             let tool_name = tool_name.unwrap_or_else(|| "unknown".to_string());
+     |                                       ---------------------------------------- `tool_name` moved due to this method call
+...
+2650 |             let tool_name = tool_name.unwrap_or_else(|| "unknown".to_string());
+     |                             ^^^^^^^^^ value used here after move
+     |
+note: `std::option::Option::<T>::unwrap_or_else` takes ownership of the receiver `self`, which moves `tool_name`
+    --> /rustc/6b00bc3880198600130e1cf62b8f8a93494488cc/library/core/src/option.rs:1042:30
+help: you can `clone` the value and consume it, but this might not be your desired behavior
+     |
+2602 |             let tool_name = tool_name.clone().unwrap_or_else(|| "unknown".to_string());
+     |                                      ++++++++
+
+For more information about this error, try `rustc --explain E0382`.
+error: could not compile `itmux` (bin "itmux") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `itmux` (bin "itmux" test) due to 1 previous error

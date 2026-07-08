@@ -2510,14 +2510,31 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
             attrs.and_then(|attrs| attrs.get("agentic.model")),
         );
 
-        let event_type = attr_string(attrs, "agentic.event.type").or_else(|| {
-            observation
-                .get("name")
-                .and_then(Value::as_str)
-                .map(str::to_string)
+        let metadata_event_type = attr_string(attrs, "agentic.event.type");
+        let observation_type = observation.get("type").and_then(Value::as_str);
+        let is_official_tool_observation = matches!(observation_type, Some("TOOL"))
+            && !matches!(
+                metadata_event_type.as_deref(),
+                Some("tool_start" | "tool_end")
+            );
+        let official_tool_name = is_official_tool_observation
+            .then(|| langfuse_tool_observation_name(observation, attrs));
+        let event_type = metadata_event_type.clone().or_else(|| {
+            if is_official_tool_observation {
+                Some("tool".to_string())
+            } else {
+                observation
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            }
         });
-        let tool_name = attr_string(attrs, "agentic.tool.name");
-        let category = classify_trace_event(event_type.as_deref(), tool_name.as_deref());
+        let tool_name = attr_string(attrs, "agentic.tool.name").or(official_tool_name);
+        let category = if is_official_tool_observation {
+            "agent_tool"
+        } else {
+            classify_trace_event(event_type.as_deref(), tool_name.as_deref())
+        };
         *category_counts.entry(category.to_string()).or_default() += 1;
         if let Some(event_type) = event_type.clone() {
             trace_events.push(TraceEvent {
@@ -2642,7 +2659,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         }
         if matches!(event_type.as_deref(), Some("tool_start" | "tool_end")) {
             let event_type_value = event_type.clone().unwrap_or_else(|| "unknown".to_string());
-            let tool_name = tool_name.unwrap_or_else(|| "unknown".to_string());
+            let tool_name = tool_name.clone().unwrap_or_else(|| "unknown".to_string());
             let success = attr_bool(attrs, "agentic.tool.success");
             let stats = tool_stats.entry(tool_name.clone()).or_default();
             update_tool_trace_stats(stats, event_type.as_deref(), success);
@@ -2688,6 +2705,47 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                     success,
                 });
             }
+        }
+        if is_official_tool_observation {
+            let tool_name = tool_name.unwrap_or_else(|| "unknown".to_string());
+            let success = official_tool_observation_success(observation, attrs);
+            let stats = tool_stats.entry(tool_name.clone()).or_default();
+            record_completed_tool_observation(stats, success);
+            tool_events.push(ToolTraceEvent {
+                seq: event_seq,
+                sort_time: observation
+                    .get("startTime")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                sort_id: observation
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                event: "tool".to_string(),
+                tool_name: tool_name.clone(),
+                success,
+            });
+
+            let stats = agent_tool_stats.entry(tool_name.clone()).or_default();
+            record_completed_tool_observation(stats, success);
+            agent_tool_events.push(ToolTraceEvent {
+                seq: event_seq,
+                sort_time: observation
+                    .get("startTime")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                sort_id: observation
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                event: "tool".to_string(),
+                tool_name,
+                success,
+            });
         }
     }
 
@@ -3101,6 +3159,41 @@ fn update_tool_trace_stats(
         }
         _ => {}
     }
+}
+
+fn record_completed_tool_observation(stats: &mut ToolTraceStats, success: Option<bool>) {
+    stats.ends = stats.ends.saturating_add(1);
+    match success {
+        Some(true) => stats.successes = stats.successes.saturating_add(1),
+        Some(false) => stats.failures = stats.failures.saturating_add(1),
+        None => {}
+    }
+}
+
+fn langfuse_tool_observation_name(observation: &Value, attrs: Option<&Value>) -> String {
+    attr_string(attrs, "agentic.tool.name")
+        .or_else(|| {
+            observation
+                .get("name")
+                .and_then(Value::as_str)
+                .map(|name| name.strip_prefix("Tool: ").unwrap_or(name).to_string())
+        })
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn official_tool_observation_success(observation: &Value, attrs: Option<&Value>) -> Option<bool> {
+    attr_bool(attrs, "agentic.tool.success").or_else(|| {
+        let level = observation
+            .get("level")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if level.eq_ignore_ascii_case("ERROR") {
+            Some(false)
+        } else {
+            Some(true)
+        }
+    })
 }
 
 fn summarize_tool_trace_group(
@@ -4618,6 +4711,77 @@ mod cli_tests {
         assert_eq!(summary["agent_tools"]["success_count"], 1);
         assert_eq!(summary["agent_tools"]["failure_count"], 1);
         assert_eq!(summary["harness_tools"]["names"], json!([]));
+    }
+
+    #[test]
+    fn langfuse_trace_summary_counts_official_plugin_tool_observations() {
+        let response = json!({
+            "id": "trace-official-tools",
+            "name": "official plugin trace",
+            "sessionId": "session-1",
+            "environment": "local-test",
+            "observations": [
+                {
+                    "name": "Tool: Read",
+                    "id": "claude-tool",
+                    "startTime": "2026-07-08T19:10:20.000Z",
+                    "type": "TOOL",
+                    "level": "DEFAULT",
+                    "input": {"file_path": "README.md"},
+                    "output": "contents"
+                },
+                {
+                    "name": "exec_command",
+                    "id": "codex-tool",
+                    "startTime": "2026-07-08T19:10:21.000Z",
+                    "type": "TOOL",
+                    "input": {"cmd": "pwd"},
+                    "output": {"exit_code": 0}
+                },
+                {
+                    "name": "LLM Call 1",
+                    "id": "generation",
+                    "startTime": "2026-07-08T19:10:22.000Z",
+                    "type": "GENERATION",
+                    "model": "claude-sonnet-5",
+                    "promptTokens": 10,
+                    "completionTokens": 3,
+                    "totalTokens": 13,
+                    "calculatedTotalCost": 0.001
+                }
+            ]
+        });
+
+        let summary = summarize_langfuse_trace_response(&response);
+
+        assert_eq!(summary["observation_types"], json!(["GENERATION", "TOOL"]));
+        assert_eq!(
+            summary["events"]["category_counts"],
+            json!([
+                {"category": "agent_tool", "count": 2},
+                {"category": "other", "count": 1}
+            ])
+        );
+        assert_eq!(summary["events"]["sequence"][0]["event"], "tool");
+        assert_eq!(summary["events"]["sequence"][0]["category"], "agent_tool");
+        assert_eq!(summary["events"]["sequence"][0]["tool_name"], "Read");
+        assert_eq!(
+            summary["events"]["sequence"][1]["tool_name"],
+            "exec_command"
+        );
+        assert_eq!(summary["tools"]["names"], json!(["Read", "exec_command"]));
+        assert_eq!(summary["tools"]["start_count"], 0);
+        assert_eq!(summary["tools"]["end_count"], 2);
+        assert_eq!(summary["tools"]["success_count"], 2);
+        assert_eq!(summary["tools"]["failure_count"], 0);
+        assert_eq!(
+            summary["agent_tools"]["names"],
+            json!(["Read", "exec_command"])
+        );
+        assert_eq!(summary["agent_tools"]["start_count"], 0);
+        assert_eq!(summary["agent_tools"]["end_count"], 2);
+        assert_eq!(summary["agent_tools"]["success_count"], 2);
+        assert_eq!(summary["agent_tools"]["failure_count"], 0);
     }
 
     #[test]

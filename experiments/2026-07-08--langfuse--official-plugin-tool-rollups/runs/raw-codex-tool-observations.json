@@ -1,0 +1,24 @@
+[
+  {
+    "id": "8fa464a92c7ab19e",
+    "name": "exec_command",
+    "type": "TOOL",
+    "input_type": "object",
+    "output_type": "string",
+    "level": "DEFAULT",
+    "metadata": {
+      "codex.call_id": "call_osPzQbBnz0Fq6EJzIRZjSN0h",
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    }
+  }
+]
