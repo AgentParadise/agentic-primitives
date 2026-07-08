@@ -324,6 +324,90 @@ enum Cmd {
         #[arg(long, value_enum, default_value = "summary")]
         output: LangFuseTraceOutput,
     },
+    /// Create a LangFuse score for an exported trace so agents can write
+    /// learning-loop feedback next to the telemetry they inspect.
+    #[command(name = "langfuse-score")]
+    LangFuseScore {
+        /// Existing 32-hex LangFuse/OpenTelemetry trace id.
+        #[arg(long, conflicts_with = "run_id")]
+        trace_id: Option<String>,
+        /// `itmux` run id; the command derives the deterministic trace id used
+        /// by the exporter.
+        #[arg(long, conflicts_with = "trace_id")]
+        run_id: Option<String>,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Score name, for example agentic.learning_loop_probe.
+        #[arg(long)]
+        name: String,
+        /// Score value. Numeric/boolean values must parse as numbers; text and
+        /// categorical values are sent as strings.
+        #[arg(long)]
+        value: String,
+        /// LangFuse score data type.
+        #[arg(long, value_enum, default_value = "numeric")]
+        data_type: LangFuseScoreDataType,
+        /// Optional score comment.
+        #[arg(long)]
+        comment: Option<String>,
+        /// Optional JSON metadata object.
+        #[arg(long)]
+        metadata_json: Option<String>,
+        /// Optional LangFuse score id. Supplying one makes retries idempotent.
+        #[arg(long)]
+        score_id: Option<String>,
+        /// Optional LangFuse environment label for the score.
+        #[arg(long)]
+        environment: Option<String>,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
+    },
+    /// List LangFuse scores so agents can read learning-loop feedback.
+    #[command(name = "langfuse-scores")]
+    LangFuseScores {
+        /// Existing 32-hex LangFuse/OpenTelemetry trace id.
+        #[arg(long, conflicts_with = "run_id")]
+        trace_id: Option<String>,
+        /// `itmux` run id; the command derives the deterministic trace id used
+        /// by the exporter.
+        #[arg(long, conflicts_with = "trace_id")]
+        run_id: Option<String>,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Optional score id filter. Comma-separate multiple ids.
+        #[arg(long)]
+        score_ids: Option<String>,
+        /// Optional score name filter.
+        #[arg(long)]
+        name: Option<String>,
+        /// Optional data type filter.
+        #[arg(long, value_enum)]
+        data_type: Option<LangFuseScoreDataType>,
+        /// Maximum score rows to request.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+        /// 1-based LangFuse page number.
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
+    },
 }
 
 /// Clap value parser for `--timeout`: accept only a finite, strictly-positive
@@ -1289,6 +1373,47 @@ enum LangFuseTraceOutput {
     Full,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LangFuseScoreDataType {
+    Numeric,
+    Boolean,
+    Categorical,
+    Text,
+}
+
+impl LangFuseScoreDataType {
+    fn as_langfuse(self) -> &'static str {
+        match self {
+            Self::Numeric => "NUMERIC",
+            Self::Boolean => "BOOLEAN",
+            Self::Categorical => "CATEGORICAL",
+            Self::Text => "TEXT",
+        }
+    }
+
+    fn parse_value(self, value: &str) -> Result<Value, String> {
+        match self {
+            Self::Numeric => {
+                let number = value
+                    .parse::<f64>()
+                    .map_err(|_| "NUMERIC scores require a finite JSON number".to_string())?;
+                if !number.is_finite() {
+                    return Err("NUMERIC scores require a finite JSON number".to_string());
+                }
+                serde_json::Number::from_f64(number)
+                    .map(Value::Number)
+                    .ok_or_else(|| "NUMERIC scores require a finite JSON number".to_string())
+            }
+            Self::Boolean => match value {
+                "1" | "true" | "TRUE" | "True" => Ok(Value::Number(1.into())),
+                "0" | "false" | "FALSE" | "False" => Ok(Value::Number(0.into())),
+                _ => Err("BOOLEAN scores require one of true, false, 1, or 0".to_string()),
+            },
+            Self::Categorical | Self::Text => Ok(Value::String(value.to_string())),
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct LangFuseTraceQueryRequest {
     api: &'static str,
@@ -1315,6 +1440,35 @@ struct LangFuseTracesListRequest {
     model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     environment: Option<String>,
+}
+
+#[derive(Serialize)]
+struct LangFuseScoreCreateRequest {
+    endpoint: String,
+    trace_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
+    name: String,
+    data_type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct LangFuseScoresListRequest {
+    endpoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score_ids: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data_type: Option<&'static str>,
+    limit: u32,
+    page: u32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1547,6 +1701,371 @@ fn handle_langfuse_traces(
                 })
             });
             let summary = summarize_langfuse_traces_response(&parsed, &request);
+            let output = match output {
+                LangFuseTraceOutput::Summary => json!({
+                    "ok": true,
+                    "request": request,
+                    "summary": summary,
+                }),
+                LangFuseTraceOutput::Full => json!({
+                    "ok": true,
+                    "request": request,
+                    "summary": summary,
+                    "response": parsed,
+                }),
+            };
+            println!("{}", serde_json::to_string_pretty(&output).unwrap());
+            ExitCode::SUCCESS
+        }
+        Ok(response) => {
+            let status = response.status();
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(ureq::Error::Status(status, response)) => {
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "error": err.to_string(),
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_langfuse_score(
+    trace_id: Option<String>,
+    run_id: Option<String>,
+    base_url: Option<String>,
+    public_key_env: String,
+    secret_key_env: String,
+    name: String,
+    value: String,
+    data_type: LangFuseScoreDataType,
+    comment: Option<String>,
+    metadata_json: Option<String>,
+    score_id: Option<String>,
+    environment: Option<String>,
+    output: LangFuseTraceOutput,
+) -> ExitCode {
+    let Some(trace_id) = trace_id.or_else(|| run_id.as_deref().map(langfuse_trace_id_for_run))
+    else {
+        println!(
+            "{}",
+            json!({
+                "ok": false,
+                "error": "provide exactly one of --trace-id or --run-id"
+            })
+        );
+        return ExitCode::from(2);
+    };
+
+    let score_value = match data_type.parse_value(&value) {
+        Ok(value) => value,
+        Err(error) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "error": error,
+                }))
+                .unwrap()
+            );
+            return ExitCode::from(2);
+        }
+    };
+
+    let metadata = match metadata_json {
+        Some(raw) => match serde_json::from_str::<Value>(&raw) {
+            Ok(value @ Value::Object(_)) => Some(value),
+            Ok(_) => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "ok": false,
+                        "error": "--metadata-json must be a JSON object",
+                    }))
+                    .unwrap()
+                );
+                return ExitCode::from(2);
+            }
+            Err(err) => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "ok": false,
+                        "error": format!("invalid --metadata-json: {err}"),
+                    }))
+                    .unwrap()
+                );
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
+
+    let mut missing = Vec::new();
+    let base_url = base_url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| non_empty_env("LANGFUSE_BASE_URL"))
+        .unwrap_or_else(|| {
+            missing.push("LANGFUSE_BASE_URL".to_string());
+            String::new()
+        });
+    let public_key = non_empty_env(&public_key_env).unwrap_or_else(|| {
+        missing.push(public_key_env.clone());
+        String::new()
+    });
+    let secret_key = non_empty_env(&secret_key_env).unwrap_or_else(|| {
+        missing.push(secret_key_env.clone());
+        String::new()
+    });
+
+    if !missing.is_empty() {
+        println!(
+            "{}",
+            json!({
+                "ok": false,
+                "error": "missing required LangFuse query configuration",
+                "missing": missing,
+            })
+        );
+        return ExitCode::from(78);
+    }
+
+    let endpoint = build_langfuse_score_create_url(&base_url);
+    let request = LangFuseScoreCreateRequest {
+        endpoint: endpoint.clone(),
+        trace_id: trace_id.clone(),
+        run_id,
+        name: name.clone(),
+        data_type: data_type.as_langfuse(),
+        score_id: non_empty_string(score_id.clone()),
+    };
+
+    let mut body = json!({
+        "traceId": trace_id,
+        "name": name,
+        "value": score_value,
+        "dataType": data_type.as_langfuse(),
+    });
+    if let Some(body) = body.as_object_mut() {
+        if let Some(score_id) = non_empty_string(score_id) {
+            body.insert("id".to_string(), Value::String(score_id));
+        }
+        if let Some(comment) = non_empty_string(comment) {
+            body.insert("comment".to_string(), Value::String(comment));
+        }
+        if let Some(metadata) = metadata {
+            body.insert("metadata".to_string(), metadata);
+        }
+        if let Some(environment) = non_empty_string(environment) {
+            body.insert("environment".to_string(), Value::String(environment));
+        }
+    }
+
+    let body = serde_json::to_string(&body).unwrap();
+    let response = ureq::post(&endpoint)
+        .timeout(LANGFUSE_TRACE_QUERY_TIMEOUT)
+        .set("Content-Type", "application/json")
+        .set(
+            "Authorization",
+            &langfuse_basic_auth_header(&public_key, &secret_key),
+        )
+        .send_string(&body);
+
+    match response {
+        Ok(response) if (200..300).contains(&response.status()) => {
+            let body = response.into_string().unwrap_or_default();
+            let parsed = serde_json::from_str::<Value>(&body).unwrap_or_else(|err| {
+                json!({
+                    "parse_error": err.to_string(),
+                    "body": body,
+                })
+            });
+            let summary = summarize_langfuse_score_response(&parsed, &request);
+            let output = match output {
+                LangFuseTraceOutput::Summary => json!({
+                    "ok": true,
+                    "request": request,
+                    "summary": summary,
+                }),
+                LangFuseTraceOutput::Full => json!({
+                    "ok": true,
+                    "request": request,
+                    "summary": summary,
+                    "response": parsed,
+                }),
+            };
+            println!("{}", serde_json::to_string_pretty(&output).unwrap());
+            ExitCode::SUCCESS
+        }
+        Ok(response) => {
+            let status = response.status();
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(ureq::Error::Status(status, response)) => {
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "status": status,
+                    "status_text": status_text,
+                    "body": body,
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "ok": false,
+                    "request": request,
+                    "error": err.to_string(),
+                }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_langfuse_scores(
+    trace_id: Option<String>,
+    run_id: Option<String>,
+    base_url: Option<String>,
+    public_key_env: String,
+    secret_key_env: String,
+    score_ids: Option<String>,
+    name: Option<String>,
+    data_type: Option<LangFuseScoreDataType>,
+    limit: u32,
+    page: u32,
+    output: LangFuseTraceOutput,
+) -> ExitCode {
+    let trace_id = trace_id.or_else(|| run_id.as_deref().map(langfuse_trace_id_for_run));
+
+    let mut missing = Vec::new();
+    let base_url = base_url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| non_empty_env("LANGFUSE_BASE_URL"))
+        .unwrap_or_else(|| {
+            missing.push("LANGFUSE_BASE_URL".to_string());
+            String::new()
+        });
+    let public_key = non_empty_env(&public_key_env).unwrap_or_else(|| {
+        missing.push(public_key_env.clone());
+        String::new()
+    });
+    let secret_key = non_empty_env(&secret_key_env).unwrap_or_else(|| {
+        missing.push(secret_key_env.clone());
+        String::new()
+    });
+
+    if !missing.is_empty() {
+        println!(
+            "{}",
+            json!({
+                "ok": false,
+                "error": "missing required LangFuse query configuration",
+                "missing": missing,
+            })
+        );
+        return ExitCode::from(78);
+    }
+
+    let endpoint = build_langfuse_scores_list_url(
+        &base_url,
+        trace_id.as_deref(),
+        score_ids.as_deref(),
+        name.as_deref(),
+        data_type.map(LangFuseScoreDataType::as_langfuse),
+        limit,
+        page,
+    );
+    let request = LangFuseScoresListRequest {
+        endpoint: endpoint.clone(),
+        trace_id,
+        run_id,
+        score_ids: non_empty_string(score_ids),
+        name: non_empty_string(name),
+        data_type: data_type.map(LangFuseScoreDataType::as_langfuse),
+        limit,
+        page,
+    };
+
+    let response = ureq::get(&endpoint)
+        .timeout(LANGFUSE_TRACE_QUERY_TIMEOUT)
+        .set(
+            "Authorization",
+            &langfuse_basic_auth_header(&public_key, &secret_key),
+        )
+        .call();
+
+    match response {
+        Ok(response) if (200..300).contains(&response.status()) => {
+            let body = response.into_string().unwrap_or_default();
+            let parsed = serde_json::from_str::<Value>(&body).unwrap_or_else(|err| {
+                json!({
+                    "parse_error": err.to_string(),
+                    "body": body,
+                })
+            });
+            let summary = summarize_langfuse_scores_response(&parsed, &request);
             let output = match output {
                 LangFuseTraceOutput::Summary => json!({
                     "ok": true,
@@ -1874,6 +2393,71 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         "operations": operations,
         "agent_tools": agent_tools,
         "harness_tools": harness_tools,
+    })
+}
+
+fn summarize_langfuse_score_response(
+    response: &Value,
+    request: &LangFuseScoreCreateRequest,
+) -> Value {
+    json!({
+        "score_id": response.get("id").and_then(Value::as_str),
+        "trace_id": request.trace_id,
+        "run_id": request.run_id,
+        "name": request.name,
+        "data_type": request.data_type,
+        "created": response.get("id").and_then(Value::as_str).is_some(),
+    })
+}
+
+fn summarize_langfuse_scores_response(
+    response: &Value,
+    request: &LangFuseScoresListRequest,
+) -> Value {
+    let rows = response
+        .get("data")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let scores = rows
+        .iter()
+        .map(|score| {
+            let trace = score.get("trace");
+            json!({
+                "score_id": score.get("id").and_then(Value::as_str),
+                "trace_id": score.get("traceId").and_then(Value::as_str),
+                "observation_id": score.get("observationId").and_then(Value::as_str),
+                "name": score.get("name").and_then(Value::as_str),
+                "data_type": score.get("dataType").and_then(Value::as_str),
+                "value": score.get("value"),
+                "string_value": score.get("stringValue").and_then(Value::as_str),
+                "source": score.get("source").and_then(Value::as_str),
+                "environment": score.get("environment").and_then(Value::as_str),
+                "comment": score.get("comment").and_then(Value::as_str),
+                "metadata": score.get("metadata"),
+                "created_at": score.get("createdAt").and_then(Value::as_str),
+                "updated_at": score.get("updatedAt").and_then(Value::as_str),
+                "trace_environment": trace
+                    .and_then(|trace| trace.get("environment"))
+                    .and_then(Value::as_str),
+                "trace_tags": trace
+                    .and_then(|trace| trace.get("tags"))
+                    .and_then(Value::as_array),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "requested_trace_id": request.trace_id,
+        "requested_run_id": request.run_id,
+        "requested_name": request.name,
+        "requested_score_ids": request.score_ids,
+        "returned_count": scores.len(),
+        "total_items": response
+            .get("meta")
+            .and_then(|meta| meta.get("totalItems"))
+            .and_then(Value::as_u64),
+        "scores": scores,
     })
 }
 
@@ -2255,6 +2839,45 @@ fn build_langfuse_traces_list_url(base_url: &str, limit: u32, page: u32) -> Stri
     )
 }
 
+fn build_langfuse_score_create_url(base_url: &str) -> String {
+    let base = langfuse_api_base_url(base_url);
+    format!("{}/api/public/scores", base.trim_end_matches('/'))
+}
+
+fn build_langfuse_scores_list_url(
+    base_url: &str,
+    trace_id: Option<&str>,
+    score_ids: Option<&str>,
+    name: Option<&str>,
+    data_type: Option<&str>,
+    limit: u32,
+    page: u32,
+) -> String {
+    let base = langfuse_api_base_url(base_url);
+    let mut params = vec![format!("limit={limit}"), format!("page={page}")];
+    if let Some(trace_id) = non_empty_str(trace_id) {
+        params.push(format!("traceId={}", url_query_encode(trace_id)));
+    }
+    if let Some(score_ids) = non_empty_str(score_ids) {
+        params.push(format!("scoreIds={}", url_query_encode(score_ids)));
+    }
+    if let Some(name) = non_empty_str(name) {
+        params.push(format!("name={}", url_query_encode(name)));
+    }
+    if let Some(data_type) = non_empty_str(data_type) {
+        params.push(format!("dataType={}", url_query_encode(data_type)));
+    }
+    format!(
+        "{}/api/public/scores?{}",
+        base.trim_end_matches('/'),
+        params.join("&")
+    )
+}
+
+fn non_empty_str(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
 fn url_path_encode(value: &str) -> String {
     let mut out = String::new();
     for byte in value.bytes() {
@@ -2444,6 +3067,60 @@ fn main() -> ExitCode {
             provider,
             model,
             environment,
+            output,
+        ),
+        Cmd::LangFuseScore {
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            name,
+            value,
+            data_type,
+            comment,
+            metadata_json,
+            score_id,
+            environment,
+            output,
+        } => handle_langfuse_score(
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            name,
+            value,
+            data_type,
+            comment,
+            metadata_json,
+            score_id,
+            environment,
+            output,
+        ),
+        Cmd::LangFuseScores {
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            score_ids,
+            name,
+            data_type,
+            limit,
+            page,
+            output,
+        } => handle_langfuse_scores(
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            score_ids,
+            name,
+            data_type,
+            limit,
+            page,
             output,
         ),
     }
@@ -2661,6 +3338,120 @@ mod cli_tests {
         assert_eq!(limit, 5);
         assert_eq!(page, 1);
         assert_eq!(harness.as_deref(), Some("claude"));
+        assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_score_create_url_uses_public_scores_endpoint() {
+        let url = build_langfuse_score_create_url(
+            "https://langfuse.example.com/api/public/otel/v1/traces",
+        );
+
+        assert_eq!(url, "https://langfuse.example.com/api/public/scores");
+    }
+
+    #[test]
+    fn langfuse_score_value_parser_matches_public_api_contract() {
+        assert_eq!(
+            LangFuseScoreDataType::Numeric.parse_value("0.75").unwrap(),
+            json!(0.75)
+        );
+        assert_eq!(
+            LangFuseScoreDataType::Boolean.parse_value("true").unwrap(),
+            json!(1)
+        );
+        assert_eq!(
+            LangFuseScoreDataType::Categorical
+                .parse_value("useful")
+                .unwrap(),
+            json!("useful")
+        );
+        assert!(LangFuseScoreDataType::Numeric
+            .parse_value("useful")
+            .is_err());
+    }
+
+    #[test]
+    fn langfuse_score_cli_defaults_to_summary_output() {
+        let cli = Cli::try_parse_from([
+            "itmux",
+            "langfuse-score",
+            "--run-id",
+            "run-query",
+            "--name",
+            "agentic.learning_loop_probe",
+            "--value",
+            "1",
+        ])
+        .unwrap();
+
+        let Cmd::LangFuseScore {
+            run_id,
+            name,
+            data_type,
+            output,
+            ..
+        } = cli.cmd
+        else {
+            panic!("expected langfuse-score command");
+        };
+
+        assert_eq!(run_id.as_deref(), Some("run-query"));
+        assert_eq!(name, "agentic.learning_loop_probe");
+        assert!(matches!(data_type, LangFuseScoreDataType::Numeric));
+        assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_scores_list_url_filters_feedback_fields() {
+        let url = build_langfuse_scores_list_url(
+            "https://langfuse.example.com/api/public/otel/v1/traces",
+            Some("trace id/with spaces"),
+            Some("score-a,score-b"),
+            Some("agentic.learning_loop_probe"),
+            Some("BOOLEAN"),
+            10,
+            2,
+        );
+
+        assert_eq!(
+            url,
+            "https://langfuse.example.com/api/public/scores?limit=10&page=2&traceId=trace%20id%2Fwith%20spaces&scoreIds=score-a%2Cscore-b&name=agentic.learning_loop_probe&dataType=BOOLEAN"
+        );
+    }
+
+    #[test]
+    fn langfuse_scores_cli_defaults_to_summary_output() {
+        let cli = Cli::try_parse_from([
+            "itmux",
+            "langfuse-scores",
+            "--run-id",
+            "run-query",
+            "--score-ids",
+            "score-a",
+            "--name",
+            "agentic.learning_loop_probe",
+        ])
+        .unwrap();
+
+        let Cmd::LangFuseScores {
+            run_id,
+            score_ids,
+            name,
+            limit,
+            page,
+            output,
+            ..
+        } = cli.cmd
+        else {
+            panic!("expected langfuse-scores command");
+        };
+
+        assert_eq!(run_id.as_deref(), Some("run-query"));
+        assert_eq!(score_ids.as_deref(), Some("score-a"));
+        assert_eq!(name.as_deref(), Some("agentic.learning_loop_probe"));
+        assert_eq!(limit, 20);
+        assert_eq!(page, 1);
         assert!(matches!(output, LangFuseTraceOutput::Summary));
     }
 

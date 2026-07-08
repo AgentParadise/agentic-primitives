@@ -70,6 +70,9 @@ We will split agent observability into three layers:
    `AgentRunResult.observability` exporter reports.
 3. **Exporter fanout** sends normalized events to one or more destinations:
    file JSONL, LangFuse/OTEL, Syntropic137 collector, or future webhooks.
+4. **Agent-facing backend queries and feedback** let agents discover traces,
+   inspect compact summaries, and attach evaluator/operator scores back to the
+   same backend records.
 
 The architecture is:
 
@@ -95,6 +98,13 @@ For Rust and cross-language compatibility, the first LangFuse path is
 OTLP/OpenTelemetry to LangFuse's OTEL endpoint rather than a direct dependency
 on a Python or JS SDK. Direct SDK exporters can still be implemented where the
 runtime makes that cheaper.
+
+LangFuse also acts as a learning-loop store. `itmux langfuse-traces` gives
+agents a discovery path, `itmux langfuse-trace` gives compact trace summaries,
+and `itmux langfuse-score`/`itmux langfuse-scores` provide trace-scoped
+feedback write/read paths through the public scores API. Scores are not part of
+the exporter fanout; they are deliberate post-run annotations by evaluators,
+operators, or later agents.
 
 LangFuse's native OTEL integration accepts OTLP over HTTP/protobuf at
 `/api/public/otel`; gRPC should not be assumed for the first implementation.

@@ -227,6 +227,51 @@ Passing local criteria:
   provides model/usage metadata: model name, prompt/completion/total tokens,
   calculated cost, environment, and harness tags should be visible in the trace
   API and dashboard.
+- `itmux langfuse-score` can attach a trace-scoped score for evaluator or
+  operator feedback, and `itmux langfuse-scores` can read that score back for
+  the next agent loop.
+
+## Agent Trace and Feedback Queries
+
+Use compact trace summaries when an agent needs to inspect a run without
+loading the full LangFuse response:
+
+```bash
+itmux langfuse-trace \
+  --api legacy-trace \
+  --output summary \
+  --run-id run-f7ae62c8
+```
+
+Use trace discovery before drilling into a specific run:
+
+```bash
+itmux langfuse-traces --limit 10 --harness codex
+itmux langfuse-traces --limit 10 --harness claude
+```
+
+Use scores to write durable learning-loop feedback back onto a trace. Supplying
+`--score-id` makes retries idempotent:
+
+```bash
+itmux langfuse-score \
+  --run-id run-f7ae62c8 \
+  --score-id agentic-learning-loop-probe-run-f7ae62c8 \
+  --name agentic.learning_loop_probe \
+  --value 1 \
+  --data-type boolean \
+  --comment "local evaluator accepted trace"
+```
+
+Read the feedback back through the same primitive:
+
+```bash
+itmux langfuse-scores \
+  --run-id run-f7ae62c8 \
+  --score-ids agentic-learning-loop-probe-run-f7ae62c8 \
+  --name agentic.learning_loop_probe \
+  --data-type boolean
+```
 
 Passing backend criteria:
 

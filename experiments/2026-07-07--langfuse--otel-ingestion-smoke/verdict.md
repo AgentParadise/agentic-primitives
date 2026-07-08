@@ -1,8 +1,8 @@
 # Verdict
 
 **Go on local LangFuse backend export, queryability, trace-link resolution,
-live Codex usage/cost/model telemetry, and Claude transcript/workspace
-telemetry.**
+live Codex usage/cost/model telemetry, Claude transcript/workspace telemetry,
+and agent-facing feedback write-back.**
 
 The current `itmux` exporter path was run against a real local LangFuse Docker
 Compose backend on this MacBook. LangFuse accepted the OTLP HTTP/protobuf
@@ -37,6 +37,7 @@ evidence under `runs/real-backend-smoke/`.
 | Agents can query useful learning-loop summaries | `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness, provider, model, token totals, cost, tool counts by name, tool success/failure counts, a compact redacted tool sequence, a compact full event sequence ordered by `agentic.event.seq`, and separate `operations`, `agent_tools`, and `harness_tools` groups | correct for local self-host | `/tmp/langfuse-playwright/trace-rich-summary.json`; `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`; `runs/claude-transcript-langfuse/learning-loop-summary.txt`; `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json`; `runs/codex-live-real-langfuse-token-total-fixed/langfuse-trace-query-legacy.json`. |
 | Agents can request compact query output | `itmux langfuse-trace --api legacy-trace --output summary --run-id ...` queried both live Codex and Claude traces without explicit time-window arguments and returned only `{ok, request, summary}`; no raw backend `response` key was present | correct for local self-host | `runs/langfuse-trace-compact-summary/codex-summary.json`; `runs/langfuse-trace-compact-summary/claude-summary.json`; `runs/langfuse-trace-compact-summary/summary.txt`. |
 | Agents can discover recent traces | `itmux langfuse-traces` listed recent traces with run ids, harness/provider/model, costs, observation counts, environment, pagination metadata, and no raw backend `response`; `--harness codex` and `--harness claude` produced filtered discovery views | correct for local self-host | `runs/langfuse-traces-discovery/recent-summary.json`; `runs/langfuse-traces-discovery/codex-summary.json`; `runs/langfuse-traces-discovery/claude-summary.json`; `runs/langfuse-traces-discovery/summary.txt`. |
+| Agents can write and read feedback scores | `itmux langfuse-score` created a boolean `agentic.learning_loop_probe` score on live Codex run `run-f7ae62c8`; `itmux langfuse-scores` read the same score back by run id, score id, name, and data type, including trace tags and environment | correct for local self-host | `runs/langfuse-score-feedback/create-score.json`; `runs/langfuse-score-feedback/itmux-langfuse-scores-summary.json`. |
 | Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; local ignored env is not committed | correct | `run-smoke.sh`; `scripts/langfuse-local.sh`; `.agentic/` ignored. |
 
 ## Design Impact
@@ -88,7 +89,10 @@ evidence under `runs/real-backend-smoke/`.
   lookup does not require extra time-window arguments. `itmux langfuse-traces`
   now gives agents a discovery step before single-trace drilldown, returning
   recent run ids with harness/provider/model, cost, observation counts, and
-  optional harness/provider/model/environment filters.
+  optional harness/provider/model/environment filters. Agents can also write
+  trace-scoped learning-loop feedback with `itmux langfuse-score` and retrieve
+  it with `itmux langfuse-scores`, allowing post-run evaluators to attach
+  durable API scores to the same traces they inspect.
 - Mac Mini/VPS setup should use the same official Compose stack plus the
   agentic local override pattern: expose LangFuse web, keep backing stores
   internal unless explicitly needed.
