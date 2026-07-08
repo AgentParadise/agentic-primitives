@@ -102,53 +102,63 @@
       ],
       "sequence": [
         {
+          "seq": 0,
           "event": "tool_start",
           "tool_name": "provision",
           "success": null
         },
         {
-          "event": "tool_end",
-          "tool_name": "launch",
-          "success": true
-        },
-        {
-          "event": "tool_start",
-          "tool_name": "launch",
-          "success": null
-        },
-        {
+          "seq": 1,
           "event": "tool_end",
           "tool_name": "provision",
           "success": true
         },
         {
+          "seq": 2,
+          "event": "tool_start",
+          "tool_name": "launch",
+          "success": null
+        },
+        {
+          "seq": 3,
+          "event": "tool_end",
+          "tool_name": "launch",
+          "success": true
+        },
+        {
+          "seq": 4,
           "event": "tool_start",
           "tool_name": "submit",
           "success": null
         },
         {
-          "event": "tool_start",
-          "tool_name": "await",
-          "success": null
-        },
-        {
+          "seq": 5,
           "event": "tool_end",
           "tool_name": "submit",
           "success": true
         },
         {
+          "seq": 6,
+          "event": "tool_start",
+          "tool_name": "await",
+          "success": null
+        },
+        {
+          "seq": 11,
+          "event": "tool_end",
+          "tool_name": "await",
+          "success": true
+        },
+        {
+          "seq": 12,
           "event": "tool_start",
           "tool_name": "capture",
           "success": null
         },
         {
+          "seq": 13,
           "event": "tool_end",
           "tool_name": "capture",
-          "success": true
-        },
-        {
-          "event": "tool_end",
-          "tool_name": "await",
           "success": true
         }
       ],

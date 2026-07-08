@@ -1450,6 +1450,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                 _ => {}
             }
             tool_events.push(ToolTraceEvent {
+                seq: attr_u64(attrs, "agentic.event.seq"),
                 sort_time: observation
                     .get("startTime")
                     .and_then(Value::as_str)
@@ -1488,8 +1489,10 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         })
         .collect::<Vec<_>>();
     tool_events.sort_by(|a, b| {
-        a.sort_time
-            .cmp(&b.sort_time)
+        a.seq
+            .unwrap_or(u64::MAX)
+            .cmp(&b.seq.unwrap_or(u64::MAX))
+            .then_with(|| a.sort_time.cmp(&b.sort_time))
             .then_with(|| a.sort_id.cmp(&b.sort_id))
     });
     let tool_sequence_truncated = tool_events.len() > 100;
@@ -1498,6 +1501,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         .take(100)
         .map(|event| {
             json!({
+                "seq": event.seq,
                 "event": event.event,
                 "tool_name": event.tool_name,
                 "success": event.success,
@@ -1549,6 +1553,7 @@ struct ToolTraceStats {
 
 #[derive(Debug)]
 struct ToolTraceEvent {
+    seq: Option<u64>,
     sort_time: String,
     sort_id: String,
     event: String,
@@ -1580,6 +1585,14 @@ fn attr_bool(attrs: Option<&Value>, key: &str) -> Option<bool> {
             "false" => Some(false),
             _ => None,
         })
+    })
+}
+
+fn attr_u64(attrs: Option<&Value>, key: &str) -> Option<u64> {
+    attrs.and_then(|attrs| attrs.get(key)).and_then(|value| {
+        value
+            .as_u64()
+            .or_else(|| value.as_str()?.trim().parse().ok())
     })
 }
 
@@ -1954,10 +1967,13 @@ mod cli_tests {
                 },
                 {
                     "name": "tool_start",
+                    "id": "obs-3",
+                    "startTime": "2026-07-08T00:00:00.000Z",
                     "type": "SPAN",
                     "metadata": {
                         "attributes": {
                             "agentic.event.type": "tool_start",
+                            "agentic.event.seq": "3",
                             "agentic.tool.name": "Bash",
                             "agentic.tool.input_redacted": "true"
                         }
@@ -1965,23 +1981,29 @@ mod cli_tests {
                 },
                 {
                     "name": "tool_end",
+                    "id": "obs-5",
+                    "startTime": "2026-07-08T00:00:00.000Z",
                     "type": "SPAN",
                     "metadata": {
                         "attributes": {
                             "agentic.event.type": "tool_end",
-                            "agentic.tool.name": "Bash",
-                            "agentic.tool.success": "true"
+                            "agentic.event.seq": "5",
+                            "agentic.tool.name": "TodoWrite",
+                            "agentic.tool.success": "false"
                         }
                     }
                 },
                 {
                     "name": "tool_end",
+                    "id": "obs-4",
+                    "startTime": "2026-07-08T00:00:00.000Z",
                     "type": "SPAN",
                     "metadata": {
                         "attributes": {
                             "agentic.event.type": "tool_end",
-                            "agentic.tool.name": "TodoWrite",
-                            "agentic.tool.success": "false"
+                            "agentic.event.seq": 4,
+                            "agentic.tool.name": "Bash",
+                            "agentic.tool.success": "true"
                         }
                     }
                 }
@@ -2012,6 +2034,9 @@ mod cli_tests {
                 {"name": "TodoWrite", "starts": 0, "ends": 1, "successes": 0, "failures": 1}
             ])
         );
+        assert_eq!(summary["tools"]["sequence"][0]["seq"], 3);
+        assert_eq!(summary["tools"]["sequence"][1]["seq"], 4);
+        assert_eq!(summary["tools"]["sequence"][2]["seq"], 5);
         assert_eq!(summary["tools"]["sequence"][0]["tool_name"], "Bash");
         assert_eq!(summary["tools"]["sequence"][1]["success"], true);
         assert_eq!(summary["tools"]["sequence"][2]["success"], false);

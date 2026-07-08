@@ -111,7 +111,8 @@ evidence from `runs/claude-transcript-langfuse/learning-loop-summary.txt`:
 The full JSON summary in
 `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`
 includes `tools.by_name` counts and a compact `tools.sequence` sorted by
-observation timestamp/id. Tool inputs and outputs remain redacted in the
+`agentic.event.seq` when present, with observation timestamp/id only as a
+fallback for older traces. Tool inputs and outputs remain redacted in the
 underlying observations.
 
 ## Live Claude Workspace Smoke
@@ -159,6 +160,8 @@ Current key evidence from
 - Backend observation count: `16`
 - Observed events before `await` ended: `4`
 - Token usage events: `1`
+- Tool sequence source: `agentic.event.seq`
+- Tool sequence seqs: `0,1,2,3,4,5,6,11,12,13`
 - Observation types: `GENERATION`, `SPAN`
 - Model names: `claude-sonnet-4-6`
 - Native input tokens: `3`

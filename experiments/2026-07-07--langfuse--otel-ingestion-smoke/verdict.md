@@ -29,7 +29,7 @@ evidence under `runs/real-backend-smoke/`.
 | Claude transcript usage maps into the same backend contract | Observed two Claude `token_usage` generations, five tool-start spans, five tool-end spans, harness `claude`, provider `anthropic`, both Claude model names, 122272 total tokens, and calculated cost `0.09459785`; transcript-derived tool values are redacted in the committed evidence | correct for transcript export | `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json`; `runs/claude-transcript-langfuse/summary.txt`. |
 | Completed Claude workspace runs can export useful LangFuse traces | Live `itmux run` exported 15 events; LangFuse returned 16 observations with hook spans, tool spans, one `token_usage` generation, harness `claude`, provider `anthropic`, model `claude-sonnet-4-6`, 15737 total tokens, and calculated cost `0.000234` | correct for terminalization-time collection | `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json`; `runs/claude-live-itmux-run/summary.txt`. |
 | Claude workspace runs can stream observed events before await ends | Live `itmux run` exported hook events and one transcript-derived `token_usage` event before the `await` phase ended; LangFuse returned 16 observations, native `GENERATION` usage, model `claude-sonnet-4-6`, 15735 total tokens, and calculated cost `0.000219` | correct for poll-time hook/transcript delta collection | `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`; `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json`; `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`. |
-| Agents can query useful learning-loop summaries | `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness, provider, model, token totals, cost, tool counts by name, tool success/failure counts, and a compact redacted tool sequence | correct for local self-host | `/tmp/langfuse-playwright/trace-rich-summary.json`; `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`; `runs/claude-transcript-langfuse/learning-loop-summary.txt`. |
+| Agents can query useful learning-loop summaries | `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness, provider, model, token totals, cost, tool counts by name, tool success/failure counts, and a compact redacted tool sequence ordered by `agentic.event.seq` | correct for local self-host | `/tmp/langfuse-playwright/trace-rich-summary.json`; `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`; `runs/claude-transcript-langfuse/learning-loop-summary.txt`; `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json`. |
 | Repeatable runner captures the current setup state without leaking secrets | Redacted env/keychain evidence captured; local ignored env is not committed | correct | `run-smoke.sh`; `scripts/langfuse-local.sh`; `.agentic/` ignored. |
 
 ## Design Impact
@@ -60,8 +60,8 @@ evidence under `runs/real-backend-smoke/`.
   selected scalar metadata instead of raw hook event JSON.
 - `itmux langfuse-trace` now turns those redacted tool-span attributes into a
   machine-readable `tools` summary for learning loops: counts by tool name,
-  success/failure totals, and a compact sequence sorted by observation
-  timestamp/id.
+  success/failure totals, and a compact sequence sorted by `agentic.event.seq`
+  when present.
 - Mac Mini/VPS setup should use the same official Compose stack plus the
   agentic local override pattern: expose LangFuse web, keep backing stores
   internal unless explicitly needed.
