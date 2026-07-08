@@ -5,12 +5,11 @@ Full-spectrum agent observability — hooks every Claude Code lifecycle event an
 ## Agent LangFuse MCP server
 
 The plugin also exposes an MCP server named `agentic-langfuse` for learning-loop
-trace access. Agentic Primitives workspace images bake the required `itmux`
-binary, so Claude gets this through the plugin manifest there; Codex or any
-other MCP client can launch the same stdio server directly. The server is a thin
-wrapper around the proven `itmux langfuse-*` CLI commands, so it uses the same
-`LANGFUSE_*` environment variables, self-host compatibility path, compact
-summaries, score APIs, and secret handling.
+trace access. Claude gets this through the plugin manifest; Codex or any other
+MCP client can launch the same stdio server directly. The server prefers the
+proven `itmux langfuse-*` CLI commands when `itmux` is available, and falls back
+to direct LangFuse public API calls when packaged without the binary. Both paths
+use the same `LANGFUSE_*` environment variables and secret handling.
 
 Available MCP tools:
 
@@ -21,9 +20,9 @@ Available MCP tools:
 | `agentic_langfuse_scores` | Read trace-scoped feedback scores |
 | `agentic_langfuse_score_feedback` | Write durable trace-scoped feedback for evaluator loops |
 
-Set `ITMUX_BIN` if `itmux` is not on `PATH`, which is typical for local plugin
-installs outside the workspace images. The MCP server never talks to LangFuse
-directly; all backend access goes through `itmux`.
+Set `ITMUX_BIN` if `itmux` is not on `PATH` and you want the richer CLI-shaped
+summary path. Without `itmux`, the MCP server still supports trace discovery,
+trace fetch, score reads, and score write-back through LangFuse's public API.
 
 Codex MCP config example:
 

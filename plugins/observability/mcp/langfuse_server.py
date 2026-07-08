@@ -9,6 +9,7 @@ self-host compatibility, and compact summary shapes in one proven place.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import shutil
 import subprocess
 import sys
 from typing import Any
+from urllib import error, parse, request
 
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -326,13 +328,14 @@ class McpServer:
                 check=False,
             )
         except FileNotFoundError:
+            fallback = self._run_direct_langfuse(cmd[1:])
             return {
-                "ok": False,
+                "ok": bool(fallback.get("ok")),
                 "payload": {
-                    "ok": False,
-                    "error": f"itmux binary not found: {self.itmux_bin}",
-                    "hint": "Set ITMUX_BIN or put itmux on PATH.",
-                },
+                    "itmux_error": f"itmux binary not found: {self.itmux_bin}",
+                    "fallback": "direct-langfuse",
+                    **fallback,
+                }
             }
         except subprocess.TimeoutExpired as exc:
             return {
@@ -367,6 +370,129 @@ class McpServer:
                 }
             return {"ok": False, "payload": payload}
         return {"ok": True, "payload": payload}
+
+    def _run_direct_langfuse(self, args: list[str]) -> dict[str, Any]:
+        command = args[0] if args else ""
+        parsed = _parse_cli_args(args[1:])
+        try:
+            if command == "langfuse-trace":
+                return self._direct_langfuse_trace(parsed)
+            if command == "langfuse-traces":
+                return self._direct_langfuse_traces(parsed)
+            if command == "langfuse-scores":
+                return self._direct_langfuse_scores(parsed)
+            if command == "langfuse-score":
+                return self._direct_langfuse_score(parsed)
+            return {
+                "ok": False,
+                "error": f"direct LangFuse fallback does not support {command}",
+                "hint": "Set ITMUX_BIN or put itmux on PATH.",
+            }
+        except Exception as exc:
+            return {"ok": False, "error": _redact(str(exc)), "hint": "Set ITMUX_BIN or put itmux on PATH."}
+
+    def _direct_langfuse_trace(self, args: dict[str, Any]) -> dict[str, Any]:
+        trace_id, run_id = _direct_trace_selector(args)
+        include_scores = bool(args.get("include-scores"))
+        base_url = _langfuse_api_base_url(args.get("langfuse-base-url"))
+        endpoint = f"{base_url}/api/public/traces/{parse.quote(trace_id, safe='')}"
+        response = _langfuse_request("GET", endpoint)
+        summary = _basic_trace_summary(response, trace_id, run_id)
+        scores_response = None
+        if include_scores:
+            scores_response = self._direct_langfuse_scores(
+                {"trace-id": trace_id, "limit": args.get("score-limit") or 20}
+            )
+            summary["scores"] = scores_response.get("payload", scores_response)
+        return {
+            "ok": True,
+            "request": {
+                "api": args.get("api") or "legacy-trace",
+                "endpoint": endpoint,
+                "trace_id": trace_id,
+                "run_id": run_id,
+                "include_scores": include_scores,
+                "direct_fallback": True,
+            },
+            "summary": summary,
+            "response": response,
+            "scores_response": scores_response,
+        }
+
+    def _direct_langfuse_traces(self, args: dict[str, Any]) -> dict[str, Any]:
+        limit = int(args.get("limit") or 20)
+        page = int(args.get("page") or 1)
+        base_url = _langfuse_api_base_url(args.get("langfuse-base-url"))
+        query = parse.urlencode({"limit": limit, "page": page})
+        endpoint = f"{base_url}/api/public/traces?{query}"
+        response = _langfuse_request("GET", endpoint)
+        traces = _rows(response)
+        filters = {
+            "harness": args.get("harness"),
+            "provider": args.get("provider"),
+            "model": args.get("model"),
+            "environment": args.get("environment"),
+        }
+        filtered = [trace for trace in traces if _trace_matches(trace, filters)]
+        return {
+            "ok": True,
+            "request": {"endpoint": endpoint, "limit": limit, "page": page, **{k: v for k, v in filters.items() if v}},
+            "summary": {"returned_count": len(filtered), "traces": [_basic_trace_row(trace) for trace in filtered]},
+            "response": response,
+        }
+
+    def _direct_langfuse_scores(self, args: dict[str, Any]) -> dict[str, Any]:
+        trace_id = args.get("trace-id") or (langfuse_trace_id_for_run(args["run-id"]) if args.get("run-id") else None)
+        base_url = _langfuse_api_base_url(args.get("langfuse-base-url"))
+        params: dict[str, Any] = {"limit": int(args.get("limit") or 20), "page": 1}
+        if trace_id:
+            params["traceId"] = trace_id
+        if args.get("score-ids"):
+            params["scoreIds"] = args["score-ids"]
+        if args.get("name"):
+            params["name"] = args["name"]
+        if args.get("data-type"):
+            params["dataType"] = str(args["data-type"]).upper()
+        endpoint = f"{base_url}/api/public/scores?{parse.urlencode(params)}"
+        response = _langfuse_request("GET", endpoint)
+        scores = _rows(response)
+        return {
+            "ok": True,
+            "request": {"endpoint": endpoint, "trace_id": trace_id, "run_id": args.get("run-id")},
+            "summary": {"returned_count": len(scores), "scores": scores},
+            "response": response,
+        }
+
+    def _direct_langfuse_score(self, args: dict[str, Any]) -> dict[str, Any]:
+        trace_id, run_id = _direct_trace_selector(args)
+        base_url = _langfuse_api_base_url(args.get("langfuse-base-url"))
+        data_type = str(args.get("data-type") or "boolean").upper()
+        payload: dict[str, Any] = {
+            "traceId": trace_id,
+            "name": args["name"],
+            "value": _score_value(args.get("value"), data_type),
+            "dataType": data_type,
+        }
+        if args.get("score-id"):
+            payload["id"] = args["score-id"]
+        if args.get("comment"):
+            payload["comment"] = args["comment"]
+        if args.get("metadata"):
+            payload["metadata"] = args["metadata"]
+        endpoint = f"{base_url}/api/public/scores"
+        response = _langfuse_request("POST", endpoint, payload)
+        return {
+            "ok": True,
+            "request": {
+                "endpoint": endpoint,
+                "trace_id": trace_id,
+                "run_id": run_id,
+                "name": args["name"],
+                "data_type": data_type,
+            },
+            "summary": response,
+            "response": response,
+        }
 
     def _add_trace_selector(self, cmd: list[str], args: dict[str, Any]) -> None:
         run_id = args.get("run_id")
@@ -406,12 +532,187 @@ def _frame(payload: dict[str, Any]) -> bytes:
     return f"Content-Length: {len(data)}\r\n\r\n".encode("ascii") + data
 
 
+def _parse_cli_args(args: list[str]) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    index = 0
+    while index < len(args):
+        item = args[index]
+        if not item.startswith("--"):
+            index += 1
+            continue
+        key = item[2:]
+        if key == "include-scores":
+            parsed[key] = True
+            index += 1
+            continue
+        if index + 1 >= len(args):
+            parsed[key] = True
+            index += 1
+            continue
+        parsed[key] = args[index + 1]
+        index += 2
+    return parsed
+
+
+def _direct_trace_selector(args: dict[str, Any]) -> tuple[str, str | None]:
+    run_id = args.get("run-id")
+    trace_id = args.get("trace-id")
+    if bool(run_id) == bool(trace_id):
+        raise ValueError("provide exactly one of run_id or trace_id")
+    if run_id:
+        return langfuse_trace_id_for_run(str(run_id)), str(run_id)
+    return str(trace_id), None
+
+
+def langfuse_trace_id_for_run(run_id: str) -> str:
+    first = _stable_hash64("agentic-primitives.trace-id.0", run_id)
+    second = _stable_hash64("agentic-primitives.trace-id.1", run_id)
+    return f"{first:016x}{second:016x}" or "00000000000000000000000000000001"
+
+
+def _stable_hash64(domain: str, value: str) -> int:
+    hash_value = 0xCBF29CE484222325
+    for byte in domain.encode() + b"\0" + value.encode():
+        hash_value ^= byte
+        hash_value = (hash_value * 0x00000100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return hash_value
+
+
+def _langfuse_api_base_url(base_url: Any) -> str:
+    value = str(base_url or os.getenv("LANGFUSE_BASE_URL") or "").strip()
+    if not value:
+        raise ValueError("missing required LangFuse query configuration: LANGFUSE_BASE_URL")
+    for suffix in ("/api/public/otel/v1/traces", "/api/public/otel"):
+        if value.endswith(suffix):
+            value = value[: -len(suffix)]
+    return value.rstrip("/")
+
+
+def _langfuse_request(method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
+    public_key = (
+        os.getenv("LANGFUSE_PUBLIC_KEY")
+        or os.getenv("LANGFUSE_INIT_PROJECT_PUBLIC_KEY")
+        or ""
+    ).strip()
+    secret_key = (
+        os.getenv("LANGFUSE_SECRET_KEY")
+        or os.getenv("LANGFUSE_INIT_PROJECT_SECRET_KEY")
+        or ""
+    ).strip()
+    missing = [
+        name
+        for name, value in (
+            ("LANGFUSE_PUBLIC_KEY", public_key),
+            ("LANGFUSE_SECRET_KEY", secret_key),
+        )
+        if not value
+    ]
+    if missing:
+        raise ValueError(f"missing required LangFuse query configuration: {', '.join(missing)}")
+    body = None if payload is None else json.dumps(payload).encode()
+    headers = {
+        "Authorization": "Basic "
+        + base64.b64encode(f"{public_key}:{secret_key}".encode()).decode(),
+        "Accept": "application/json",
+    }
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    req = request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with request.urlopen(req, timeout=DEFAULT_TIMEOUT_S) as response:
+            raw = response.read().decode()
+    except error.HTTPError as exc:
+        raw = exc.read().decode(errors="replace")
+        raise RuntimeError(_redact(f"LangFuse HTTP {exc.code}: {raw}")) from exc
+    return json.loads(raw) if raw else {}
+
+
+def _rows(response: Any) -> list[Any]:
+    if isinstance(response, list):
+        return response
+    if not isinstance(response, dict):
+        return []
+    for key in ("data", "traces", "scores", "observations"):
+        value = response.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
+def _basic_trace_summary(response: Any, trace_id: str, run_id: str | None) -> dict[str, Any]:
+    row = response if isinstance(response, dict) else {}
+    return {
+        "trace_id": trace_id,
+        "session_id": run_id or _deep_get(row, ("metadata", "agentic.run_id")),
+        "trace_name": row.get("name"),
+        "environment": row.get("environment") or _deep_get(row, ("metadata", "agentic.environment")),
+        "harnesses": _compact_list([_deep_get(row, ("metadata", "agentic.harness"))]),
+        "providers": _compact_list([_deep_get(row, ("metadata", "agentic.provider"))]),
+        "models": _compact_list([_deep_get(row, ("metadata", "agentic.model"))]),
+        "usage": row.get("usage") or row.get("usageDetails") or {},
+        "direct_fallback": True,
+    }
+
+
+def _basic_trace_row(trace: Any) -> dict[str, Any]:
+    if not isinstance(trace, dict):
+        return {"raw": trace}
+    return {
+        "id": trace.get("id") or trace.get("traceId"),
+        "name": trace.get("name"),
+        "timestamp": trace.get("timestamp") or trace.get("createdAt"),
+        "environment": trace.get("environment") or _deep_get(trace, ("metadata", "agentic.environment")),
+        "harness": _deep_get(trace, ("metadata", "agentic.harness")),
+        "provider": _deep_get(trace, ("metadata", "agentic.provider")),
+        "model": _deep_get(trace, ("metadata", "agentic.model")),
+        "usage": trace.get("usage") or trace.get("usageDetails"),
+    }
+
+
+def _trace_matches(trace: Any, filters: dict[str, Any]) -> bool:
+    row = _basic_trace_row(trace)
+    for key, expected in filters.items():
+        if expected and str(row.get(key) or "").lower() != str(expected).lower():
+            return False
+    return True
+
+
+def _deep_get(value: Any, path: tuple[str, ...]) -> Any:
+    current = value
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _compact_list(items: list[Any]) -> list[Any]:
+    return [item for item in items if item not in (None, "")]
+
+
+def _score_value(value: Any, data_type: str) -> Any:
+    if data_type == "BOOLEAN":
+        if isinstance(value, bool):
+            return 1 if value else 0
+        if str(value).lower() in ("true", "1"):
+            return 1
+        if str(value).lower() in ("false", "0"):
+            return 0
+        raise ValueError("BOOLEAN scores require one of true, false, 1, or 0")
+    if data_type == "NUMERIC":
+        return float(value)
+    return str(value)
+
+
 def _redact(value: Any) -> Any:
     if not isinstance(value, str):
         return value
     redacted = value
     for pattern in SECRET_PATTERNS:
-        redacted = pattern.sub(lambda match: f"{match.group(1)}{REDACTION}" if match.lastindex else REDACTION, redacted)
+        redacted = pattern.sub(
+            lambda match: f"{match.group(1)}{REDACTION}" if match.lastindex else REDACTION,
+            redacted,
+        )
     return redacted
 
 
@@ -434,6 +735,8 @@ def _read_framed_payloads(data: bytes) -> list[dict[str, Any]]:
 
 def self_test() -> int:
     import tempfile
+
+    assert langfuse_trace_id_for_run("run-test") == "56e46cb6e46dc6d0ef3a439f691881dd"
 
     with tempfile.TemporaryDirectory() as tmp:
         fake = Path(tmp) / "itmux"

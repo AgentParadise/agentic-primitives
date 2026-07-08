@@ -306,13 +306,13 @@ itmux langfuse-scores \
 ## MCP Trace Tools
 
 The `observability` Claude plugin registers an `agentic-langfuse` MCP server for
-agents that should query traces as tools instead of shelling out. Agentic
-Primitives workspace images bake the required `itmux` binary for Claude plugin
-use, and Codex or other MCP clients can launch the same stdio server directly.
-It delegates to the same `itmux langfuse-*` commands documented above, so setup
-is the same: load `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and
+agents that should query traces as tools instead of shelling out. Codex or other
+MCP clients can launch the same stdio server directly. It prefers the same
+`itmux langfuse-*` commands documented above when `itmux` is available, and
+falls back to direct LangFuse public API calls when packaged without the binary.
+Setup is the same: load `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and
 `LANGFUSE_SECRET_KEY`, and set `ITMUX_BIN` if the `itmux` binary is not on
-`PATH`.
+`PATH` and you want the richer CLI-shaped summary path.
 
 MCP tools:
 

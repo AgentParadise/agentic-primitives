@@ -4,8 +4,8 @@
 - Added the `agentic-langfuse` MCP server, which exposes agent-facing LangFuse
   trace discovery, trace summaries, score reads, and score write-back by
   delegating to the proven `itmux langfuse-*` CLI commands
-- Workspace images that bake the observability plugin now include the `itmux`
-  binary required by the MCP server
+- The MCP server falls back to direct LangFuse public API calls when `itmux` is
+  not available in a packaged Claude/Codex environment
 - MCP command failures redact sensitive-looking stdout/stderr before returning
   tool errors
 
