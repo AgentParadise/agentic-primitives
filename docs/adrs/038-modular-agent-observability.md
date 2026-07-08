@@ -104,7 +104,9 @@ agents a discovery path, `itmux langfuse-trace` gives compact trace summaries,
 and `itmux langfuse-score`/`itmux langfuse-scores` provide trace-scoped
 feedback write/read paths through the public scores API. Scores are not part of
 the exporter fanout; they are deliberate post-run annotations by evaluators,
-operators, or later agents.
+operators, or later agents. `itmux langfuse-trace --include-scores` can fold
+those trace-scoped scores into the same compact trace summary when an agent
+needs a single retrospective payload.
 
 LangFuse's native OTEL integration accepts OTLP over HTTP/protobuf at
 `/api/public/otel`; gRPC should not be assumed for the first implementation.

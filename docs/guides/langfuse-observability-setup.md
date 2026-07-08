@@ -243,6 +243,17 @@ itmux langfuse-trace \
   --run-id run-f7ae62c8
 ```
 
+Include trace-scoped feedback scores in the same payload for a one-call
+retrospective:
+
+```bash
+itmux langfuse-trace \
+  --api legacy-trace \
+  --output summary \
+  --include-scores \
+  --run-id run-f7ae62c8
+```
+
 Use trace discovery before drilling into a specific run:
 
 ```bash

@@ -12,6 +12,7 @@
 | Compact agent query mode | `runs/langfuse-trace-compact-summary/summary.txt`, `runs/langfuse-trace-compact-summary/codex-summary.json`, `runs/langfuse-trace-compact-summary/claude-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-trace --api legacy-trace --output summary --run-id ...` works without explicit time bounds, omits the raw backend `response`, and returns the learning-loop summary for both Codex and Claude traces. |
 | Trace discovery mode | `runs/langfuse-traces-discovery/summary.txt`, `runs/langfuse-traces-discovery/recent-summary.json`, `runs/langfuse-traces-discovery/codex-summary.json`, `runs/langfuse-traces-discovery/claude-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-traces` lists recent traces without raw backend `response`, reports run ids, harness/provider/model, cost, observation counts, and supports harness filtering for Codex vs Claude. |
 | Feedback write-back | `runs/langfuse-score-feedback/create-score.json`, `runs/langfuse-score-feedback/itmux-langfuse-scores-summary.json` | Passed against local LangFuse Docker Compose: `itmux langfuse-score` created a boolean score on the live Codex trace, and `itmux langfuse-scores` read it back by run id, score id, name, and data type with trace environment/tags. |
+| Trace summary with feedback | `runs/langfuse-trace-with-scores/codex-trace-with-scores-summary.json`, `runs/langfuse-trace-with-scores/summary.txt` | Passed against local LangFuse Docker Compose: `itmux langfuse-trace --include-scores --output summary --run-id run-f7ae62c8` returned the Codex trace cost/tool/event summary plus the attached feedback score in one compact payload without raw backend `response`. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
 | Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
 | Live Claude poll-time streaming | `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`, `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`, `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: hook and transcript-derived token usage events streamed before `await` ended, message-level usage was deduplicated to one event, and LangFuse classified usage as `GENERATION` with model, token totals, and calculated cost. |
@@ -163,6 +164,16 @@ evidence from `runs/langfuse-score-feedback/`:
 - Read result: one score returned with value `1`, string value `True`,
   source `API`, score environment `local`, trace environment `local-macbook`,
   and trace tags `agentic-primitives`, `harness:codex`, `itmux`
+
+For single-call retrospectives, `itmux langfuse-trace --include-scores` now
+folds trace-scoped scores into the compact trace summary. Current evidence from
+`runs/langfuse-trace-with-scores/summary.txt`:
+
+- Command: `itmux langfuse-trace --api legacy-trace --output summary --include-scores --score-limit 10 --run-id run-f7ae62c8`
+- Result: no raw `response`, harness `codex`, total tokens `15932`,
+  calculated cost `0.07996`, one score returned,
+  score id `agentic-learning-loop-probe-run-f7ae62c8`, score name
+  `agentic.learning_loop_probe`
 
 ## Live Codex Exec Smoke
 

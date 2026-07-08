@@ -283,6 +283,12 @@ enum Cmd {
         /// Maximum observation rows to request.
         #[arg(long, default_value_t = 100)]
         limit: u32,
+        /// Include trace-scoped LangFuse scores in the summary.
+        #[arg(long, default_value_t = false)]
+        include_scores: bool,
+        /// Maximum score rows to request when --include-scores is set.
+        #[arg(long, default_value_t = 20)]
+        score_limit: u32,
         /// LangFuse read API to use.
         #[arg(long, value_enum, default_value = "observations-v2")]
         api: LangFuseTraceApi,
@@ -1418,11 +1424,15 @@ impl LangFuseScoreDataType {
 struct LangFuseTraceQueryRequest {
     api: &'static str,
     endpoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scores_endpoint: Option<String>,
     trace_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     run_id: Option<String>,
     fields: String,
     limit: u32,
+    include_scores: bool,
+    score_limit: u32,
     from_start_time: String,
     to_start_time: String,
 }
@@ -1482,6 +1492,8 @@ fn handle_langfuse_trace(
     to_start_time: String,
     fields: String,
     limit: u32,
+    include_scores: bool,
+    score_limit: u32,
     api: LangFuseTraceApi,
     output: LangFuseTraceOutput,
 ) -> ExitCode {
@@ -1536,13 +1548,19 @@ fn handle_langfuse_trace(
         &fields,
         limit,
     );
+    let scores_endpoint = include_scores.then(|| {
+        build_langfuse_scores_list_url(&base_url, Some(&trace_id), None, None, None, score_limit, 1)
+    });
     let request = LangFuseTraceQueryRequest {
         api: api.as_str(),
         endpoint: endpoint.clone(),
-        trace_id,
-        run_id,
+        scores_endpoint: scores_endpoint.clone(),
+        trace_id: trace_id.clone(),
+        run_id: run_id.clone(),
         fields,
         limit,
+        include_scores,
+        score_limit,
         from_start_time,
         to_start_time,
     };
@@ -1564,7 +1582,35 @@ fn handle_langfuse_trace(
                     "body": body,
                 })
             });
-            let summary = summarize_langfuse_trace_response(&parsed);
+            let mut summary = summarize_langfuse_trace_response(&parsed);
+            let mut scores_response = None;
+            if let Some(scores_endpoint) = scores_endpoint {
+                match query_langfuse_json(&scores_endpoint, &public_key, &secret_key) {
+                    Ok(score_payload) => {
+                        let scores_request = LangFuseScoresListRequest {
+                            endpoint: scores_endpoint,
+                            trace_id: Some(trace_id),
+                            run_id,
+                            score_ids: None,
+                            name: None,
+                            data_type: None,
+                            limit: score_limit,
+                            page: 1,
+                        };
+                        let score_summary =
+                            summarize_langfuse_scores_response(&score_payload, &scores_request);
+                        if let Some(summary) = summary.as_object_mut() {
+                            summary.insert("scores".to_string(), score_summary);
+                        }
+                        scores_response = Some(score_payload);
+                    }
+                    Err(error) => {
+                        if let Some(summary) = summary.as_object_mut() {
+                            summary.insert("scores_error".to_string(), error);
+                        }
+                    }
+                }
+            }
             let output = match output {
                 LangFuseTraceOutput::Summary => json!({
                     "ok": true,
@@ -1576,6 +1622,7 @@ fn handle_langfuse_trace(
                     "request": request,
                     "summary": summary,
                     "response": parsed,
+                    "scores_response": scores_response,
                 }),
             };
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
@@ -2135,6 +2182,50 @@ fn non_empty_env(key: &str) -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn query_langfuse_json(endpoint: &str, public_key: &str, secret_key: &str) -> Result<Value, Value> {
+    let response = ureq::get(endpoint)
+        .timeout(LANGFUSE_TRACE_QUERY_TIMEOUT)
+        .set(
+            "Authorization",
+            &langfuse_basic_auth_header(public_key, secret_key),
+        )
+        .call();
+
+    match response {
+        Ok(response) if (200..300).contains(&response.status()) => {
+            let body = response.into_string().unwrap_or_default();
+            Ok(serde_json::from_str::<Value>(&body).unwrap_or_else(|err| {
+                json!({
+                    "parse_error": err.to_string(),
+                    "body": body,
+                })
+            }))
+        }
+        Ok(response) => {
+            let status = response.status();
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            Err(json!({
+                "status": status,
+                "status_text": status_text,
+                "body": body,
+            }))
+        }
+        Err(ureq::Error::Status(status, response)) => {
+            let status_text = response.status_text().to_string();
+            let body = response.into_string().unwrap_or_default();
+            Err(json!({
+                "status": status,
+                "status_text": status_text,
+                "body": body,
+            }))
+        }
+        Err(err) => Err(json!({
+            "error": err.to_string(),
+        })),
+    }
 }
 
 fn summarize_langfuse_trace_response(response: &Value) -> Value {
@@ -3031,6 +3122,8 @@ fn main() -> ExitCode {
             to_start_time,
             fields,
             limit,
+            include_scores,
+            score_limit,
             api,
             output,
         } => handle_langfuse_trace(
@@ -3043,6 +3136,8 @@ fn main() -> ExitCode {
             to_start_time,
             fields,
             limit,
+            include_scores,
+            score_limit,
             api,
             output,
         ),
@@ -3295,6 +3390,36 @@ mod cli_tests {
         assert_eq!(run_id.as_deref(), Some("run-query"));
         assert_eq!(from_start_time, DEFAULT_LANGFUSE_QUERY_FROM_START_TIME);
         assert_eq!(to_start_time, DEFAULT_LANGFUSE_QUERY_TO_START_TIME);
+        assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_trace_cli_can_include_scores() {
+        let cli = Cli::try_parse_from([
+            "itmux",
+            "langfuse-trace",
+            "--run-id",
+            "run-query",
+            "--include-scores",
+            "--score-limit",
+            "7",
+            "--output",
+            "summary",
+        ])
+        .unwrap();
+
+        let Cmd::LangFuseTrace {
+            include_scores,
+            score_limit,
+            output,
+            ..
+        } = cli.cmd
+        else {
+            panic!("expected langfuse-trace command");
+        };
+
+        assert!(include_scores);
+        assert_eq!(score_limit, 7);
         assert!(matches!(output, LangFuseTraceOutput::Summary));
     }
 
