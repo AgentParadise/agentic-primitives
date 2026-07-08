@@ -1441,6 +1441,13 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
     let mut has_cost = false;
     let mut tool_stats: BTreeMap<String, ToolTraceStats> = BTreeMap::new();
     let mut tool_events = Vec::new();
+    let mut operation_stats: BTreeMap<String, ToolTraceStats> = BTreeMap::new();
+    let mut operation_events = Vec::new();
+    let mut agent_tool_stats: BTreeMap<String, ToolTraceStats> = BTreeMap::new();
+    let mut agent_tool_events = Vec::new();
+    let mut harness_tool_stats: BTreeMap<String, ToolTraceStats> = BTreeMap::new();
+    let mut harness_tool_events = Vec::new();
+    let mut category_counts: BTreeMap<String, u64> = BTreeMap::new();
     let mut trace_events = Vec::new();
 
     for observation in &observations {
@@ -1497,6 +1504,9 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                 .and_then(Value::as_str)
                 .map(str::to_string)
         });
+        let tool_name = attr_string(attrs, "agentic.tool.name");
+        let category = classify_trace_event(event_type.as_deref(), tool_name.as_deref());
+        *category_counts.entry(category.to_string()).or_default() += 1;
         if let Some(event_type) = event_type.clone() {
             trace_events.push(TraceEvent {
                 seq: attr_u64(attrs, "agentic.event.seq"),
@@ -1516,7 +1526,8 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string(),
-                tool_name: attr_string(attrs, "agentic.tool.name"),
+                category: category.to_string(),
+                tool_name: tool_name.clone(),
                 harness: attr_string(attrs, "agentic.harness"),
                 provider: attr_string(attrs, "agentic.provider"),
                 model: attr_string(attrs, "agentic.model").or_else(|| {
@@ -1532,21 +1543,11 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
             });
         }
         if matches!(event_type.as_deref(), Some("tool_start" | "tool_end")) {
-            let tool_name =
-                attr_string(attrs, "agentic.tool.name").unwrap_or_else(|| "unknown".to_string());
+            let event_type_value = event_type.clone().unwrap_or_else(|| "unknown".to_string());
+            let tool_name = tool_name.unwrap_or_else(|| "unknown".to_string());
+            let success = attr_bool(attrs, "agentic.tool.success");
             let stats = tool_stats.entry(tool_name.clone()).or_default();
-            match event_type.as_deref() {
-                Some("tool_start") => stats.starts = stats.starts.saturating_add(1),
-                Some("tool_end") => {
-                    stats.ends = stats.ends.saturating_add(1);
-                    match attr_bool(attrs, "agentic.tool.success") {
-                        Some(true) => stats.successes = stats.successes.saturating_add(1),
-                        Some(false) => stats.failures = stats.failures.saturating_add(1),
-                        None => {}
-                    }
-                }
-                _ => {}
-            }
+            update_tool_trace_stats(stats, event_type.as_deref(), success);
             tool_events.push(ToolTraceEvent {
                 seq: attr_u64(attrs, "agentic.event.seq"),
                 sort_time: observation
@@ -1559,30 +1560,45 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string(),
-                event: event_type.unwrap_or_else(|| "unknown".to_string()),
-                tool_name,
-                success: attr_bool(attrs, "agentic.tool.success"),
+                event: event_type_value.clone(),
+                tool_name: tool_name.clone(),
+                success,
             });
+            let category_group = match category {
+                "operation" => Some((&mut operation_stats, &mut operation_events)),
+                "agent_tool" => Some((&mut agent_tool_stats, &mut agent_tool_events)),
+                "harness_tool" => Some((&mut harness_tool_stats, &mut harness_tool_events)),
+                _ => None,
+            };
+            if let Some((stats_by_name, events)) = category_group {
+                let stats = stats_by_name.entry(tool_name.clone()).or_default();
+                update_tool_trace_stats(stats, event_type.as_deref(), success);
+                events.push(ToolTraceEvent {
+                    seq: attr_u64(attrs, "agentic.event.seq"),
+                    sort_time: observation
+                        .get("startTime")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    sort_id: observation
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    event: event_type_value,
+                    tool_name,
+                    success,
+                });
+            }
         }
     }
 
-    let tool_start_count = tool_stats.values().map(|stats| stats.starts).sum::<u64>();
-    let tool_end_count = tool_stats.values().map(|stats| stats.ends).sum::<u64>();
-    let tool_success_count = tool_stats
-        .values()
-        .map(|stats| stats.successes)
-        .sum::<u64>();
-    let tool_failure_count = tool_stats.values().map(|stats| stats.failures).sum::<u64>();
-    let tool_names = tool_stats.keys().cloned().collect::<Vec<_>>();
-    let tools_by_name = tool_stats
+    let category_counts = category_counts
         .into_iter()
-        .map(|(name, stats)| {
+        .map(|(category, count)| {
             json!({
-                "name": name,
-                "starts": stats.starts,
-                "ends": stats.ends,
-                "successes": stats.successes,
-                "failures": stats.failures,
+                "category": category,
+                "count": count,
             })
         })
         .collect::<Vec<_>>();
@@ -1607,6 +1623,7 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
                 "seq": event.seq,
                 "event": event.event,
                 "name": event.name,
+                "category": event.category,
                 "tool_name": event.tool_name,
                 "harness": event.harness,
                 "provider": event.provider,
@@ -1617,31 +1634,10 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
             })
         })
         .collect::<Vec<_>>();
-    let tool_sequence_source = if tool_events.iter().any(|event| event.seq.is_some()) {
-        Some("agentic.event.seq")
-    } else {
-        None
-    };
-    tool_events.sort_by(|a, b| {
-        a.seq
-            .unwrap_or(u64::MAX)
-            .cmp(&b.seq.unwrap_or(u64::MAX))
-            .then_with(|| a.sort_time.cmp(&b.sort_time))
-            .then_with(|| a.sort_id.cmp(&b.sort_id))
-    });
-    let tool_sequence_truncated = tool_events.len() > 100;
-    let tool_sequence = tool_events
-        .into_iter()
-        .take(100)
-        .map(|event| {
-            json!({
-                "seq": event.seq,
-                "event": event.event,
-                "tool_name": event.tool_name,
-                "success": event.success,
-            })
-        })
-        .collect::<Vec<_>>();
+    let tools = summarize_tool_trace_group(tool_stats, tool_events, 100);
+    let operations = summarize_tool_trace_group(operation_stats, operation_events, 100);
+    let agent_tools = summarize_tool_trace_group(agent_tool_stats, agent_tool_events, 100);
+    let harness_tools = summarize_tool_trace_group(harness_tool_stats, harness_tool_events, 100);
 
     json!({
         "trace_id": trace.get("id").and_then(Value::as_str),
@@ -1666,20 +1662,14 @@ fn summarize_langfuse_trace_response(response: &Value) -> Value {
         },
         "events": {
             "sequence_source": event_sequence_source,
+            "category_counts": category_counts,
             "sequence": event_sequence,
             "sequence_truncated": event_sequence_truncated,
         },
-        "tools": {
-            "start_count": tool_start_count,
-            "end_count": tool_end_count,
-            "success_count": tool_success_count,
-            "failure_count": tool_failure_count,
-            "names": tool_names,
-            "by_name": tools_by_name,
-            "sequence_source": tool_sequence_source,
-            "sequence": tool_sequence,
-            "sequence_truncated": tool_sequence_truncated,
-        },
+        "tools": tools,
+        "operations": operations,
+        "agent_tools": agent_tools,
+        "harness_tools": harness_tools,
     })
 }
 
@@ -1708,6 +1698,7 @@ struct TraceEvent {
     sort_id: String,
     event: String,
     name: String,
+    category: String,
     tool_name: Option<String>,
     harness: Option<String>,
     provider: Option<String>,
@@ -1715,6 +1706,113 @@ struct TraceEvent {
     success: Option<bool>,
     total_tokens: u64,
     calculated_total_cost: Option<f64>,
+}
+
+fn update_tool_trace_stats(
+    stats: &mut ToolTraceStats,
+    event_type: Option<&str>,
+    success: Option<bool>,
+) {
+    match event_type {
+        Some("tool_start") => stats.starts = stats.starts.saturating_add(1),
+        Some("tool_end") => {
+            stats.ends = stats.ends.saturating_add(1);
+            match success {
+                Some(true) => stats.successes = stats.successes.saturating_add(1),
+                Some(false) => stats.failures = stats.failures.saturating_add(1),
+                None => {}
+            }
+        }
+        _ => {}
+    }
+}
+
+fn summarize_tool_trace_group(
+    stats: BTreeMap<String, ToolTraceStats>,
+    mut events: Vec<ToolTraceEvent>,
+    limit: usize,
+) -> Value {
+    let start_count = stats.values().map(|stats| stats.starts).sum::<u64>();
+    let end_count = stats.values().map(|stats| stats.ends).sum::<u64>();
+    let success_count = stats.values().map(|stats| stats.successes).sum::<u64>();
+    let failure_count = stats.values().map(|stats| stats.failures).sum::<u64>();
+    let names = stats.keys().cloned().collect::<Vec<_>>();
+    let by_name = stats
+        .into_iter()
+        .map(|(name, stats)| {
+            json!({
+                "name": name,
+                "starts": stats.starts,
+                "ends": stats.ends,
+                "successes": stats.successes,
+                "failures": stats.failures,
+            })
+        })
+        .collect::<Vec<_>>();
+    let sequence_source = if events.iter().any(|event| event.seq.is_some()) {
+        Some("agentic.event.seq")
+    } else {
+        None
+    };
+    events.sort_by(|a, b| {
+        a.seq
+            .unwrap_or(u64::MAX)
+            .cmp(&b.seq.unwrap_or(u64::MAX))
+            .then_with(|| a.sort_time.cmp(&b.sort_time))
+            .then_with(|| a.sort_id.cmp(&b.sort_id))
+    });
+    let sequence_truncated = events.len() > limit;
+    let sequence = events
+        .into_iter()
+        .take(limit)
+        .map(|event| {
+            json!({
+                "seq": event.seq,
+                "event": event.event,
+                "tool_name": event.tool_name,
+                "success": event.success,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "start_count": start_count,
+        "end_count": end_count,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "names": names,
+        "by_name": by_name,
+        "sequence_source": sequence_source,
+        "sequence": sequence,
+        "sequence_truncated": sequence_truncated,
+    })
+}
+
+fn classify_trace_event(event_type: Option<&str>, tool_name: Option<&str>) -> &'static str {
+    match event_type {
+        Some("tool_start" | "tool_end") => classify_tool_event(tool_name),
+        Some("token_usage") => "usage",
+        Some("hook_event") => "hook",
+        Some("session_end") => "session",
+        Some("agentic_primitives.run") => "root",
+        Some(_) | None => "other",
+    }
+}
+
+fn classify_tool_event(tool_name: Option<&str>) -> &'static str {
+    match tool_name.unwrap_or_default() {
+        "provision" | "launch" | "submit" | "await" | "capture" => "operation",
+        name if name.starts_with("codex_exec.thread")
+            || name.starts_with("codex_exec.turn")
+            || name.starts_with("codex_exec.error")
+            || name.starts_with("claude_transcript.") =>
+        {
+            "harness_tool"
+        }
+        name if name.starts_with("codex_exec.item.") => "agent_tool",
+        "" | "unknown" => "other",
+        _ => "agent_tool",
+    }
 }
 
 fn insert_string(out: &mut BTreeSet<String>, value: Option<&Value>) {
@@ -2154,6 +2252,33 @@ mod cli_tests {
                 },
                 {
                     "name": "tool_start",
+                    "id": "obs-0",
+                    "startTime": "2026-07-07T23:59:59.000Z",
+                    "type": "SPAN",
+                    "metadata": {
+                        "attributes": {
+                            "agentic.event.type": "tool_start",
+                            "agentic.event.seq": "0",
+                            "agentic.tool.name": "provision"
+                        }
+                    }
+                },
+                {
+                    "name": "tool_end",
+                    "id": "obs-1",
+                    "startTime": "2026-07-07T23:59:59.000Z",
+                    "type": "SPAN",
+                    "metadata": {
+                        "attributes": {
+                            "agentic.event.type": "tool_end",
+                            "agentic.event.seq": "1",
+                            "agentic.tool.name": "provision",
+                            "agentic.tool.success": "true"
+                        }
+                    }
+                },
+                {
+                    "name": "tool_start",
                     "id": "obs-3",
                     "startTime": "2026-07-08T00:00:00.000Z",
                     "type": "SPAN",
@@ -2200,7 +2325,7 @@ mod cli_tests {
         let summary = summarize_langfuse_trace_response(&response);
 
         assert_eq!(summary["trace_id"], "trace-1");
-        assert_eq!(summary["observation_count"], 4);
+        assert_eq!(summary["observation_count"], 6);
         assert_eq!(summary["harnesses"], json!(["codex"]));
         assert_eq!(summary["providers"], json!(["openai"]));
         assert_eq!(summary["models"], json!(["gpt-4o-mini"]));
@@ -2210,36 +2335,64 @@ mod cli_tests {
         assert_eq!(summary["usage"]["total_tokens"], 13);
         assert_eq!(summary["cost"]["calculated_total_usd"], 0.0000033);
         assert_eq!(summary["events"]["sequence_source"], "agentic.event.seq");
-        assert_eq!(summary["events"]["sequence"][0]["seq"], 3);
-        assert_eq!(summary["events"]["sequence"][1]["seq"], 4);
-        assert_eq!(summary["events"]["sequence"][2]["seq"], 5);
-        assert_eq!(summary["events"]["sequence"][3]["event"], "token_usage");
-        assert_eq!(summary["events"]["sequence"][3]["total_tokens"], json!(13));
+        assert_eq!(summary["events"]["sequence"][0]["seq"], 0);
+        assert_eq!(summary["events"]["sequence"][0]["category"], "operation");
+        assert_eq!(summary["events"]["sequence"][2]["seq"], 3);
+        assert_eq!(summary["events"]["sequence"][2]["category"], "agent_tool");
+        assert_eq!(summary["events"]["sequence"][5]["event"], "token_usage");
+        assert_eq!(summary["events"]["sequence"][5]["category"], "usage");
+        assert_eq!(summary["events"]["sequence"][5]["total_tokens"], json!(13));
         assert_eq!(
-            summary["events"]["sequence"][3]["calculated_total_cost"],
+            summary["events"]["sequence"][5]["calculated_total_cost"],
             json!(0.0000033)
         );
+        assert_eq!(
+            summary["events"]["category_counts"],
+            json!([
+                {"category": "agent_tool", "count": 3},
+                {"category": "operation", "count": 2},
+                {"category": "usage", "count": 1}
+            ])
+        );
         assert_eq!(summary["events"]["sequence_truncated"], false);
-        assert_eq!(summary["tools"]["start_count"], 1);
-        assert_eq!(summary["tools"]["end_count"], 2);
-        assert_eq!(summary["tools"]["success_count"], 1);
+        assert_eq!(summary["tools"]["start_count"], 2);
+        assert_eq!(summary["tools"]["end_count"], 3);
+        assert_eq!(summary["tools"]["success_count"], 2);
         assert_eq!(summary["tools"]["failure_count"], 1);
-        assert_eq!(summary["tools"]["names"], json!(["Bash", "TodoWrite"]));
+        assert_eq!(
+            summary["tools"]["names"],
+            json!(["Bash", "TodoWrite", "provision"])
+        );
         assert_eq!(
             summary["tools"]["by_name"],
             json!([
                 {"name": "Bash", "starts": 1, "ends": 1, "successes": 1, "failures": 0},
-                {"name": "TodoWrite", "starts": 0, "ends": 1, "successes": 0, "failures": 1}
+                {"name": "TodoWrite", "starts": 0, "ends": 1, "successes": 0, "failures": 1},
+                {"name": "provision", "starts": 1, "ends": 1, "successes": 1, "failures": 0}
             ])
         );
         assert_eq!(summary["tools"]["sequence_source"], "agentic.event.seq");
-        assert_eq!(summary["tools"]["sequence"][0]["seq"], 3);
-        assert_eq!(summary["tools"]["sequence"][1]["seq"], 4);
-        assert_eq!(summary["tools"]["sequence"][2]["seq"], 5);
-        assert_eq!(summary["tools"]["sequence"][0]["tool_name"], "Bash");
-        assert_eq!(summary["tools"]["sequence"][1]["success"], true);
-        assert_eq!(summary["tools"]["sequence"][2]["success"], false);
+        assert_eq!(summary["tools"]["sequence"][0]["seq"], 0);
+        assert_eq!(summary["tools"]["sequence"][2]["seq"], 3);
+        assert_eq!(summary["tools"]["sequence"][3]["seq"], 4);
+        assert_eq!(summary["tools"]["sequence"][4]["seq"], 5);
+        assert_eq!(summary["tools"]["sequence"][2]["tool_name"], "Bash");
+        assert_eq!(summary["tools"]["sequence"][3]["success"], true);
+        assert_eq!(summary["tools"]["sequence"][4]["success"], false);
         assert_eq!(summary["tools"]["sequence_truncated"], false);
+        assert_eq!(summary["operations"]["names"], json!(["provision"]));
+        assert_eq!(summary["operations"]["start_count"], 1);
+        assert_eq!(summary["operations"]["end_count"], 1);
+        assert_eq!(summary["operations"]["success_count"], 1);
+        assert_eq!(
+            summary["agent_tools"]["names"],
+            json!(["Bash", "TodoWrite"])
+        );
+        assert_eq!(summary["agent_tools"]["start_count"], 1);
+        assert_eq!(summary["agent_tools"]["end_count"], 2);
+        assert_eq!(summary["agent_tools"]["success_count"], 1);
+        assert_eq!(summary["agent_tools"]["failure_count"], 1);
+        assert_eq!(summary["harness_tools"]["names"], json!([]));
     }
 
     #[test]

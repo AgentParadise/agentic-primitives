@@ -15,3 +15,7 @@ Token usage events: 1
 Tool sequence source: agentic.event.seq
 Tool sequence seqs: 0,1,2,3,4,5,6,11,12,13
 Result session_log: <redacted live Claude pane transcript>
+event_categories=hook:3,operation:10,root:1,session:1,usage:1
+operation_names=await,capture,launch,provision,submit
+agent_tool_names=
+harness_tool_names=

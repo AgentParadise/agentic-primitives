@@ -6,7 +6,7 @@
     "trace_id": "edc4d1b77ac6b59a530c5a0014a0707b",
     "run_id": "run-40ceea48",
     "fields": "core,basic,usage,trace_context",
-    "limit": 40,
+    "limit": 60,
     "from_start_time": "2020-01-01T00:00:00Z",
     "to_start_time": "2100-01-01T00:00:00Z"
   },
@@ -52,11 +52,34 @@
     },
     "events": {
       "sequence_source": "agentic.event.seq",
+      "category_counts": [
+        {
+          "category": "agent_tool",
+          "count": 1
+        },
+        {
+          "category": "harness_tool",
+          "count": 3
+        },
+        {
+          "category": "root",
+          "count": 1
+        },
+        {
+          "category": "session",
+          "count": 1
+        },
+        {
+          "category": "usage",
+          "count": 1
+        }
+      ],
       "sequence": [
         {
           "seq": 0,
           "event": "tool_start",
           "name": "tool_start",
+          "category": "harness_tool",
           "tool_name": "codex_exec.thread",
           "harness": null,
           "provider": null,
@@ -69,6 +92,7 @@
           "seq": 1,
           "event": "tool_start",
           "name": "tool_start",
+          "category": "harness_tool",
           "tool_name": "codex_exec.turn",
           "harness": null,
           "provider": null,
@@ -81,6 +105,7 @@
           "seq": 2,
           "event": "tool_end",
           "name": "tool_end",
+          "category": "agent_tool",
           "tool_name": "codex_exec.item.agent_message",
           "harness": null,
           "provider": null,
@@ -93,6 +118,7 @@
           "seq": 3,
           "event": "tool_end",
           "name": "tool_end",
+          "category": "harness_tool",
           "tool_name": "codex_exec.turn",
           "harness": null,
           "provider": null,
@@ -105,6 +131,7 @@
           "seq": 4,
           "event": "token_usage",
           "name": "token_usage",
+          "category": "usage",
           "tool_name": null,
           "harness": "codex",
           "provider": "openai",
@@ -117,6 +144,7 @@
           "seq": 5,
           "event": "session_end",
           "name": "session_end",
+          "category": "session",
           "tool_name": null,
           "harness": null,
           "provider": null,
@@ -129,6 +157,7 @@
           "seq": null,
           "event": "agentic_primitives.run",
           "name": "agentic_primitives.run",
+          "category": "root",
           "tool_name": null,
           "harness": null,
           "provider": null,
@@ -192,6 +221,93 @@
           "event": "tool_end",
           "tool_name": "codex_exec.item.agent_message",
           "success": true
+        },
+        {
+          "seq": 3,
+          "event": "tool_end",
+          "tool_name": "codex_exec.turn",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "operations": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "agent_tools": {
+      "start_count": 0,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "codex_exec.item.agent_message"
+      ],
+      "by_name": [
+        {
+          "name": "codex_exec.item.agent_message",
+          "starts": 0,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 2,
+          "event": "tool_end",
+          "tool_name": "codex_exec.item.agent_message",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "harness_tools": {
+      "start_count": 2,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "codex_exec.thread",
+        "codex_exec.turn"
+      ],
+      "by_name": [
+        {
+          "name": "codex_exec.thread",
+          "starts": 1,
+          "ends": 0,
+          "successes": 0,
+          "failures": 0
+        },
+        {
+          "name": "codex_exec.turn",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 0,
+          "event": "tool_start",
+          "tool_name": "codex_exec.thread",
+          "success": null
+        },
+        {
+          "seq": 1,
+          "event": "tool_start",
+          "tool_name": "codex_exec.turn",
+          "success": null
         },
         {
           "seq": 3,

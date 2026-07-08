@@ -7,8 +7,8 @@
 | Trace queryability | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `runs/real-backend-smoke/langfuse-trace-query-v2.json` | Passed through `itmux langfuse-trace --api legacy-trace`: trace returned with 7 observations. Observations v2 returns 404 on LangFuse v3 Docker Compose because it requires v4 write mode. |
 | Trace UI link | `runs/real-backend-smoke/trace-ui-response.txt`, `runs/real-backend-smoke/trace-ui.html` | Passed: trace URL returned HTTP 200. |
 | Native usage/cost/model fields | `runs/real-backend-smoke/summary.txt`, `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/dashboard-rich.har` | Passed: LangFuse classified `token_usage` as a `GENERATION`, set `model=gpt-4o-mini`, recorded 13 tokens, calculated `$0.000003299999`, and dashboard cost/model queries returned non-null values. |
-| Live Codex exec export | `runs/codex-live-real-langfuse-model-resolved/summary.txt`, `runs/codex-live-real-langfuse-model-resolved/events.jsonl`, `runs/codex-live-real-langfuse-model-resolved/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose with the real Codex CLI: model `gpt-5.5`, harness `codex`, provider `openai`, 26450 total tokens, calculated cost `0.084525`, and event/tool sequences ordered by `agentic.event.seq`. |
-| Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`, `runs/claude-transcript-langfuse/learning-loop-summary.txt`, `runs/codex-live-real-langfuse-model-resolved/langfuse-trace-query-legacy.json` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields, a redacted tool-call summary, and a compact full event sequence for learning loops. |
+| Live Codex exec export | `runs/codex-live-real-langfuse-model-resolved/summary.txt`, `runs/codex-live-real-langfuse-model-resolved/events.jsonl`, `runs/codex-live-real-langfuse-model-resolved/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose with the real Codex CLI: model `gpt-5.5`, harness `codex`, provider `openai`, 26450 total tokens, calculated cost `0.084525`, event/tool sequences ordered by `agentic.event.seq`, and `agent_tool` vs `harness_tool` grouping. |
+| Agent-facing trace summary | `runs/real-backend-smoke/langfuse-trace-query-legacy.json`, `/tmp/langfuse-playwright/trace-rich-summary.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`, `runs/claude-transcript-langfuse/learning-loop-summary.txt`, `runs/codex-live-real-langfuse-model-resolved/langfuse-trace-query-legacy.json` | Passed: `itmux langfuse-trace --api legacy-trace --run-id ...` reports harness/provider/model/token/cost summary fields, a redacted tool-call summary, a compact full event sequence, and separate `operations`, `agent_tools`, and `harness_tools` groups for learning loops. |
 | Claude transcript export | `runs/claude-transcript-langfuse/summary.txt`, `runs/claude-transcript-langfuse/events.jsonl`, `runs/claude-transcript-langfuse/result.json`, `runs/claude-transcript-langfuse/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: Claude transcript tool use became spans, model usage became `GENERATION` observations, and the agent-facing summary reports harness `claude`, provider `anthropic`, both Claude model names, token totals, and calculated cost. |
 | Live Claude `itmux run` export | `runs/claude-live-itmux-run/summary.txt`, `runs/claude-live-itmux-run/events.jsonl`, `runs/claude-live-itmux-run/result.json`, `runs/claude-live-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: a real Claude workspace run exported hooks, transcript-derived tool spans, transcript-derived token usage, and LangFuse classified usage as `GENERATION` with model `claude-sonnet-4-6`, token totals, and calculated cost. |
 | Live Claude poll-time streaming | `runs/claude-live-streaming-dedupe-itmux-run/summary.txt`, `runs/claude-live-streaming-dedupe-itmux-run/event-order.json`, `runs/claude-live-streaming-dedupe-itmux-run/langfuse-trace-query-legacy.json` | Passed against local LangFuse Docker Compose: hook and transcript-derived token usage events streamed before `await` ended, message-level usage was deduplicated to one event, and LangFuse classified usage as `GENERATION` with model, token totals, and calculated cost. |
@@ -113,8 +113,11 @@ The full JSON summary in
 `runs/claude-transcript-langfuse/langfuse-trace-query-learning-loop.json`
 includes `tools.by_name` counts, a compact `tools.sequence`, and a compact
 run-level `events.sequence` sorted by `agentic.event.seq` when present, with
-observation timestamp/id only as a fallback for older traces. Tool inputs and
-outputs remain redacted in the underlying observations.
+observation timestamp/id only as a fallback for older traces. It also separates
+the legacy `tools` view into `operations` for driver lifecycle phases,
+`agent_tools` for harness-observed agent work, and `harness_tools` for harness
+plumbing such as Codex thread/turn events. Tool inputs and outputs remain
+redacted in the underlying observations.
 
 ## Live Codex Exec Smoke
 
@@ -135,6 +138,10 @@ Current key evidence from
 - Event sequence seqs: `0,1,2,3,4,5`
 - Tool sequence source: `agentic.event.seq`
 - Tool sequence seqs: `0,1,2,3`
+- Event categories: `agent_tool:1`, `harness_tool:3`, `root:1`, `session:1`,
+  `usage:1`
+- Agent tool names: `codex_exec.item.agent_message`
+- Harness tool names: `codex_exec.thread`, `codex_exec.turn`
 - Model names: `gpt-5.5`
 - Native total tokens: `26450`
 - Calculated total cost: `0.084525`

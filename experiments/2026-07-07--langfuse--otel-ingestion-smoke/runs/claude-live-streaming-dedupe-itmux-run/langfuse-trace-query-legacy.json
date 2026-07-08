@@ -6,9 +6,9 @@
     "trace_id": "93268b3ab949a092fc5131ab224367ef",
     "run_id": "run-ab55ce30",
     "fields": "core,basic,usage,trace_context",
-    "limit": 80,
-    "from_start_time": "2026-07-08T00:00:00Z",
-    "to_start_time": "2026-07-09T00:00:00Z"
+    "limit": 60,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
   },
   "summary": {
     "trace_id": "93268b3ab949a092fc5131ab224367ef",
@@ -50,6 +50,242 @@
     },
     "cost": {
       "calculated_total_usd": 0.000219
+    },
+    "events": {
+      "sequence_source": "agentic.event.seq",
+      "category_counts": [
+        {
+          "category": "hook",
+          "count": 3
+        },
+        {
+          "category": "operation",
+          "count": 10
+        },
+        {
+          "category": "root",
+          "count": 1
+        },
+        {
+          "category": "session",
+          "count": 1
+        },
+        {
+          "category": "usage",
+          "count": 1
+        }
+      ],
+      "sequence": [
+        {
+          "seq": 0,
+          "event": "tool_start",
+          "name": "tool_start",
+          "category": "operation",
+          "tool_name": "provision",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 1,
+          "event": "tool_end",
+          "name": "tool_end",
+          "category": "operation",
+          "tool_name": "provision",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 2,
+          "event": "tool_start",
+          "name": "tool_start",
+          "category": "operation",
+          "tool_name": "launch",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 3,
+          "event": "tool_end",
+          "name": "tool_end",
+          "category": "operation",
+          "tool_name": "launch",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 4,
+          "event": "tool_start",
+          "name": "tool_start",
+          "category": "operation",
+          "tool_name": "submit",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 5,
+          "event": "tool_end",
+          "name": "tool_end",
+          "category": "operation",
+          "tool_name": "submit",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 6,
+          "event": "tool_start",
+          "name": "tool_start",
+          "category": "operation",
+          "tool_name": "await",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 7,
+          "event": "hook_event",
+          "name": "hook_event",
+          "category": "hook",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 8,
+          "event": "hook_event",
+          "name": "hook_event",
+          "category": "hook",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 9,
+          "event": "hook_event",
+          "name": "hook_event",
+          "category": "hook",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 10,
+          "event": "token_usage",
+          "name": "token_usage",
+          "category": "usage",
+          "tool_name": null,
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "success": null,
+          "total_tokens": 15735,
+          "calculated_total_cost": 0.000219
+        },
+        {
+          "seq": 11,
+          "event": "tool_end",
+          "name": "tool_end",
+          "category": "operation",
+          "tool_name": "await",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 12,
+          "event": "tool_start",
+          "name": "tool_start",
+          "category": "operation",
+          "tool_name": "capture",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 13,
+          "event": "tool_end",
+          "name": "tool_end",
+          "category": "operation",
+          "tool_name": "capture",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 14,
+          "event": "session_end",
+          "name": "session_end",
+          "category": "session",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "agentic_primitives.run",
+          "name": "agentic_primitives.run",
+          "category": "root",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        }
+      ],
+      "sequence_truncated": false
     },
     "tools": {
       "start_count": 5,
@@ -100,6 +336,7 @@
           "failures": 0
         }
       ],
+      "sequence_source": "agentic.event.seq",
       "sequence": [
         {
           "seq": 0,
@@ -162,6 +399,142 @@
           "success": true
         }
       ],
+      "sequence_truncated": false
+    },
+    "operations": {
+      "start_count": 5,
+      "end_count": 5,
+      "success_count": 5,
+      "failure_count": 0,
+      "names": [
+        "await",
+        "capture",
+        "launch",
+        "provision",
+        "submit"
+      ],
+      "by_name": [
+        {
+          "name": "await",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        },
+        {
+          "name": "capture",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        },
+        {
+          "name": "launch",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        },
+        {
+          "name": "provision",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        },
+        {
+          "name": "submit",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 0,
+          "event": "tool_start",
+          "tool_name": "provision",
+          "success": null
+        },
+        {
+          "seq": 1,
+          "event": "tool_end",
+          "tool_name": "provision",
+          "success": true
+        },
+        {
+          "seq": 2,
+          "event": "tool_start",
+          "tool_name": "launch",
+          "success": null
+        },
+        {
+          "seq": 3,
+          "event": "tool_end",
+          "tool_name": "launch",
+          "success": true
+        },
+        {
+          "seq": 4,
+          "event": "tool_start",
+          "tool_name": "submit",
+          "success": null
+        },
+        {
+          "seq": 5,
+          "event": "tool_end",
+          "tool_name": "submit",
+          "success": true
+        },
+        {
+          "seq": 6,
+          "event": "tool_start",
+          "tool_name": "await",
+          "success": null
+        },
+        {
+          "seq": 11,
+          "event": "tool_end",
+          "tool_name": "await",
+          "success": true
+        },
+        {
+          "seq": 12,
+          "event": "tool_start",
+          "tool_name": "capture",
+          "success": null
+        },
+        {
+          "seq": 13,
+          "event": "tool_end",
+          "tool_name": "capture",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "agent_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "harness_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
       "sequence_truncated": false
     }
   },

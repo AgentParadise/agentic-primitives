@@ -20,3 +20,7 @@ event_sequence_source=agentic.event.seq
 event_sequence_seqs=0,1,2,3,4,5,
 tool_sequence_source=agentic.event.seq
 tool_sequence_seqs=0,1,2,3
+event_categories=agent_tool:1,harness_tool:3,root:1,session:1,usage:1
+operation_names=
+agent_tool_names=codex_exec.item.agent_message
+harness_tool_names=codex_exec.thread,codex_exec.turn
