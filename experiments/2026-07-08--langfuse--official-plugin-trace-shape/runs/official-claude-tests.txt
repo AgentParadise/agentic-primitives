@@ -1,0 +1,19 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.0, pytest-8.4.2, pluggy-1.6.0
+rootdir: /private/tmp/langfuse-claude-plugin
+configfile: pyproject.toml
+testpaths: tests
+collected 48 items
+
+tests/integration/test_emit_new_turns_from_transcript.py ..              [  4%]
+tests/integration/test_emit_turn_observations.py ..                      [  8%]
+tests/unit/test_async_agent_deferral.py .................                [ 43%]
+tests/unit/test_hook_payload.py .....                                    [ 54%]
+tests/unit/test_langfuse_payload_builders.py .......                     [ 68%]
+tests/unit/test_subagent_discovery.py ...                                [ 75%]
+tests/unit/test_subagent_observations.py .                               [ 77%]
+tests/unit/test_task_notifications.py .....                              [ 87%]
+tests/unit/test_transcript_reader.py ...                                 [ 93%]
+tests/unit/test_turn_assembly.py ...                                     [100%]
+
+============================== 48 passed in 0.04s ==============================

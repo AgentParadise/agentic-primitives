@@ -2,7 +2,7 @@
 title: "ADR-038: Modular Agent Observability"
 status: proposed
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-07-08
 author: Neural
 tags: [architecture, observability, workspaces, langfuse, otel, plugins]
 ---
@@ -44,6 +44,11 @@ The source data is not uniform across harnesses:
 - Codex non-interactive execution has a stronger structured surface through
   `codex exec --json`, including usage on `turn.completed`; this should be a
   separate `codex_exec` observer from the `codex_tui` observer.
+- LangFuse now maintains official marketplace plugins for both Claude Code and
+  Codex. These plugins read each harness transcript/rollout and emit
+  LangFuse-native turn, generation, and tool observations. They are a better
+  primary path for rich LangFuse trace UX than replaying our normalized
+  low-level events as generic OTLP spans.
 - Future harnesses will have their own hook, log, transcript, or native OTEL
   surfaces.
 
@@ -93,11 +98,29 @@ The `itmux` Rust driver owns the first reusable fanout primitive:
 - The first exporter is `file`, which appends event JSONL to a configured path
   that can live on a Mac, VPS, or Docker-mounted filesystem.
 
-LangFuse support is a backend exporter layered onto the same fanout primitive.
-For Rust and cross-language compatibility, the first LangFuse path is
-OTLP/OpenTelemetry to LangFuse's OTEL endpoint rather than a direct dependency
-on a Python or JS SDK. Direct SDK exporters can still be implemented where the
-runtime makes that cheaper.
+LangFuse support has two tiers:
+
+1. **Canonical rich tracing for supported harnesses** uses the official
+   LangFuse marketplace plugins:
+   - Claude Code:
+     `langfuse/Claude-Observability-Plugin`
+   - Codex:
+     `langfuse/codex-observability-plugin`
+2. **Fallback and collector support** uses our Rust OTLP exporter over the same
+   normalized event fanout.
+
+The official plugins are canonical for Claude and Codex because they reconstruct
+the native harness transcript/rollout into LangFuse-native root turn/agent
+observations, generation observations, tool observations, token usage, timings,
+and session grouping. The Rust OTLP exporter remains valuable for unsupported
+harnesses, local backend smoke tests, generic OTEL collectors, and Syntropic137,
+but it must not be the default rich LangFuse path for Claude or Codex while the
+official plugins exist.
+
+This is a noise-control boundary. For any one run, at most one backend path
+should create rich LangFuse observations by default. JSONL can run in parallel
+as durable local evidence. Rust OTLP-to-LangFuse is explicit opt-in for
+Claude/Codex, or fallback for harnesses without official LangFuse support.
 
 LangFuse also acts as a learning-loop store. `itmux langfuse-traces` gives
 agents a discovery path, `itmux langfuse-trace` gives compact trace summaries,
@@ -165,8 +188,11 @@ future harness-specific LangFuse plugins.
 - Codex currently lacks the same plugin loading model, so the pattern does not
   generalize cleanly.
 
-**Reason for rejection**: LangFuse is the primary backend, but the primitive must
-support multiple collectors and execution places.
+**Reason for update**: We should not build and own duplicate rich LangFuse
+plugins for Claude and Codex now that official LangFuse plugins exist. The
+accepted variant is to wrap, configure, validate, and document the official
+plugins, while preserving JSONL and Rust OTLP for local durability, fallback,
+and Syntropic137/collector use.
 
 ### Alternative 2: Only Use OpenTelemetry Everywhere
 
@@ -423,16 +449,60 @@ Current status for `okrs-51p.9`:
     `itmux langfuse-*` so there is one implementation of LangFuse auth,
     endpoint compatibility, and summary shaping.
 
+## Experiment Results, 2026-07-08
+
+`experiments/2026-07-08--langfuse--official-plugin-trace-shape` validated the
+architecture pivot requested after LangFuse UI inspection.
+
+Findings:
+
+- The official Claude plugin is source- and test-proven locally. Its hook reads
+  transcript JSONL on `Stop`/`SessionEnd`, creates a root conversational-turn
+  observation with input/output, creates `generation` observations with model
+  and usage when present, and creates `tool` observations with semantic tool
+  names, input/output, and backdated timings. Its local test suite passed
+  48/48 tests.
+- The official Codex plugin is source-proven locally. It reads rollout JSONL
+  from a `Stop` hook, reconstructs turns/model steps/tool calls/subagents,
+  emits `Codex Turn` as an `agent` observation with input/output, emits
+  `generation` observations with model and `usageDetails`, emits `tool`
+  observations with actual tool names/input/output/error/timing, and uses a
+  sidecar file to avoid duplicate completed-turn uploads. Its local test suite
+  was not executed successfully in this `/tmp` shell because of a local
+  Node/pnpm/native-binding mismatch, so runtime test validation remains a
+  follow-up.
+- The current Rust OTLP exporter is useful but too low-level for default rich
+  LangFuse UX: root trace input/output is absent, child spans are named
+  `tool_start`, `tool_end`, `token_usage`, etc., tool start/end are unpaired
+  one-millisecond spans, and usage/cost is attached to a generic event span
+  rather than a LangFuse generation observation.
+
+Decision from this experiment:
+
+- Official LangFuse plugins are canonical for rich Claude/Codex traces.
+- JSONL fanout remains the portable local source of truth and the simplest
+  Syntropic137 input.
+- Rust OTLP remains explicit fallback, smoke-test, generic collector, and
+  Syntropic137 bridge.
+- Rust OTLP must not be enabled by default alongside official Claude/Codex
+  LangFuse plugins because it creates duplicate/noisy low-level observations.
+
 Remaining gate for production deployment:
 
-1. Move the same Compose/bootstrap pattern to the durable Mac Mini host with
+1. Validate the official Claude and Codex plugins end-to-end against the local
+   LangFuse stack and capture UI/API evidence for root input/output,
+   generations, tools, usage/cost, session/environment filters, and agent
+   queryability.
+2. Verify that enabling the official plugins does not also enable duplicate
+   Rust OTLP rich traces by default.
+3. Move the same Compose/bootstrap pattern to the durable Mac Mini host with
    persistent secrets, storage, backups, and upgrade policy.
-2. Decide whether `.9` closes on local real-backend proof or waits for the Mac
+4. Decide whether `.9` closes on local real-backend proof or waits for the Mac
    Mini deployment proof. The current smoke has satisfied backend acceptance,
    generated URL resolution, and `itmux langfuse-trace` queryability on this
    MacBook.
-4. Only after that, broaden run-event-to-span/generation mapping and richer
-   backend-specific discovery utilities.
+5. Only after that, broaden fallback run-event-to-span/generation mapping and
+   richer backend-specific discovery utilities.
 
 ## References
 
@@ -448,3 +518,5 @@ Remaining gate for production deployment:
 - `providers/workspaces/claude-cli/manifest.yaml`
 - LangFuse OpenTelemetry integration: https://langfuse.com/integrations/native/opentelemetry
 - LangFuse SDK overview: https://langfuse.com/docs/observability/sdk/overview
+- LangFuse Claude Code integration: https://langfuse.com/integrations/developer-tools/claude-code
+- LangFuse Codex integration: https://langfuse.com/integrations/developer-tools/codex
