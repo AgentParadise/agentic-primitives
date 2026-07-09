@@ -16,12 +16,9 @@ LangFuse credentials from env or Codex's `langfuse.json` config.
 
 This plugin remains the agentic-primitives observability layer for local JSONL
 events, git/workspace lifecycle events, Syntropic137/source-of-truth fanout,
-and the `agentic-langfuse` MCP query tools. Do not enable the Rust
-`--observability-langfuse` writer for the same Claude/Codex run that is already
-exported by an official LangFuse plugin unless you are deliberately debugging
-fallback OTLP behavior. The `itmux` CLI suppresses the fallback writer when
-`TRACE_TO_LANGFUSE=true`; use `--observability-langfuse-force` only for an
-intentional collector/Syntropic137/fallback smoke path.
+and the `agentic-langfuse` MCP query tools. `itmux` no longer exposes a direct
+LangFuse writer; rich traces should come from the official Claude/Codex
+plugins, and durable local evidence should use JSONL fanout.
 
 When Syntropic137 needs to consume `itmux` runs through its existing
 HookWatcher, use `--observability-syntropic-file` in addition to
@@ -36,9 +33,9 @@ scripts/langfuse-observability-doctor.sh
 ```
 
 It is read-only and secret-safe: it reports official Claude/Codex plugin
-prerequisites, `LANGFUSE_*` set/missing state, JSONL/Syntropic137 fanout
-support, and the focused runtime guard that keeps fallback Rust OTLP quiet when
-official plugin tracing is active.
+prerequisites, Claude plugin install/hook/config readiness, Codex plugin hook
+readiness, `LANGFUSE_*` set/missing state, JSONL/Syntropic137 fanout support,
+MCP query-tool presence, and focused packaging/readiness tests.
 Use `--json --no-tests` on minimal VPS or Docker shells that do not have Cargo.
 
 ## Agent LangFuse MCP server

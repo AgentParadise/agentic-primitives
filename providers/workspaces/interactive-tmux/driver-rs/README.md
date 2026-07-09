@@ -92,33 +92,24 @@ and `timestamp` JSONL records for Syntropic137's existing hook-file watcher.
 The canonical `--observability-file` remains the complete `AgentRunEvent`
 artifact.
 
-LangFuse fallback/collector export plugs into the same fanout layer through
-OTLP HTTP/protobuf:
+Rich LangFuse traces are produced by LangFuse's official Claude Code and Codex
+plugins. Keep `itmux` fanout focused on durable local evidence:
 
 ```bash
 itmux run \
   --recipe /path/to/recipe \
   --task "Implement the change" \
   --observability-file /tmp/itmux-run-events.jsonl \
-  --observability-langfuse \
+  --observability-syntropic-file /tmp/itmux-syntropic-events.jsonl \
   --result-file /tmp/itmux-run-result.json
 ```
 
-For rich Claude/Codex traces, prefer LangFuse's official Claude Code and Codex
-plugins. Load `LANGFUSE_*` from the operator's secret manager before running
-the fallback command. See
+Use the official LangFuse plugins for Claude/Codex model spans, tool calls,
+tokens, cost, and trace UX. Use `itmux langfuse-trace`, `itmux
+langfuse-traces`, `itmux langfuse-score`, and `itmux langfuse-scores` to read
+those traces back for learning loops. See
 [`docs/guides/langfuse-observability-setup.md`](../../../../docs/guides/langfuse-observability-setup.md)
-for the macOS Keychain, VPS, Docker, and real backend smoke procedure.
-
-When `TRACE_TO_LANGFUSE=true` indicates an official LangFuse plugin is active,
-the CLI suppresses the Rust OTLP writer to avoid duplicate/noisy LangFuse
-traces while preserving `--observability-file` JSONL fanout. Use
-`--observability-langfuse-force` only for deliberate fallback/collector smoke
-or Syntropic137 routing.
-
-If LangFuse config is missing or invalid, the run still completes and local
-file export still works; the LangFuse exporter reports `status:"failed"` in the
-final observability bundle.
+for the macOS Keychain, VPS, Docker, and local LangFuse setup procedure.
 
 For Codex recipes, `itmux run` defaults to the existing interactive TUI
 workspace mode. Use `--codex-mode exec` when the run needs structured Codex
@@ -130,7 +121,6 @@ itmux run \
   --task "Reply exactly: OK" \
   --codex-mode exec \
   --observability-file /tmp/codex-run-events.jsonl \
-  --observability-langfuse \
   --result-file /tmp/codex-run-result.json
 ```
 
@@ -151,7 +141,6 @@ exporters:
 itmux codex-exec \
   --prompt "Reply exactly: OK" \
   --observability-file /tmp/codex-exec-events.jsonl \
-  --observability-langfuse \
   --result-file /tmp/codex-exec-result.json
 ```
 

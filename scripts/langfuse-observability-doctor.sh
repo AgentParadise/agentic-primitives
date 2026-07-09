@@ -11,7 +11,7 @@ Usage: scripts/langfuse-observability-doctor.sh [--json] [--no-tests]
 
 Secret-safe preflight for agentic-primitives LangFuse observability setup.
 It does not install plugins, mutate config, or print LangFuse credential
-values. It reports set/missing state and runs the focused runtime guard test
+values. It reports set/missing state and runs focused packaging/readiness tests
 when cargo is available unless --no-tests is passed.
 EOF
 }
@@ -104,6 +104,14 @@ codex_config_paths() {
   printf '%s\n' "$ROOT/.codex/config.toml"
 }
 
+claude_installed_plugins_file() {
+  printf '%s\n' "$HOME/.claude/plugins/installed_plugins.json"
+}
+
+claude_settings_file() {
+  printf '%s\n' "$HOME/.claude/settings.json"
+}
+
 codex_config_paths_json() {
   local first="true"
   local path
@@ -171,6 +179,59 @@ codex_tracing_plugin_enabled() {
   printf 'false'
 }
 
+claude_langfuse_plugin_installed() {
+  local file
+  file="$(claude_installed_plugins_file)"
+  if [ -f "$file" ] && contains_pattern 'langfuse-observability@langfuse-observability|Claude-Observability-Plugin' "$file"; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
+claude_langfuse_plugin_cache_path() {
+  local file
+  file="$(claude_installed_plugins_file)"
+  if [ ! -f "$file" ]; then
+    return
+  fi
+  python3 - "$file" <<'PY' 2>/dev/null || true
+import json, sys
+data = json.load(open(sys.argv[1]))
+for name, installs in data.get("plugins", {}).items():
+    if "langfuse" not in name.lower():
+        continue
+    for install in installs:
+        path = install.get("installPath")
+        if path:
+            print(path)
+            raise SystemExit
+PY
+}
+
+claude_langfuse_hooks_present() {
+  local path
+  path="$(claude_langfuse_plugin_cache_path)"
+  if [ -n "$path" ] && [ -f "$path/hooks/hooks.json" ] && [ -f "$path/hooks/langfuse_hook.py" ]; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
+claude_langfuse_config_has() {
+  local key="$1"
+  local settings
+  settings="$(claude_settings_file)"
+  if [ -f "$settings" ] && contains_pattern "\"$key\"[[:space:]]*:" "$settings"; then
+    printf 'true'
+  elif [ "$(status_for_env "$key")" = "set" ]; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
 repo_has_file() {
   if [ -f "$ROOT/$1" ]; then
     printf 'true'
@@ -189,23 +250,23 @@ repo_has_text() {
   fi
 }
 
-guard_test_status="skipped"
-guard_test_detail="cargo not found"
+readiness_test_status="skipped"
+readiness_test_detail="cargo not found"
 if [ "$RUN_TESTS" = "false" ]; then
-  guard_test_detail="tests disabled by --no-tests"
+  readiness_test_detail="tests disabled by --no-tests"
 elif command -v cargo >/dev/null 2>&1; then
-  guard_output="$(mktemp "${TMPDIR:-/tmp}/agentic-langfuse-guard.XXXXXX")"
+  readiness_output="$(mktemp "${TMPDIR:-/tmp}/agentic-langfuse-readiness.XXXXXX")"
   if (
     cd "$ROOT"
     cargo test --manifest-path providers/workspaces/interactive-tmux/driver-rs/Cargo.toml cli_exporters -- --nocapture
-  ) >"$guard_output" 2>&1; then
-    guard_test_status="pass"
-    guard_test_detail="cli_exporters tests passed"
+  ) >"$readiness_output" 2>&1; then
+    readiness_test_status="pass"
+    readiness_test_detail="cli_exporters tests passed"
   else
-    guard_test_status="fail"
-    guard_test_detail="cli_exporters tests failed"
+    readiness_test_status="fail"
+    readiness_test_detail="cli_exporters tests failed"
   fi
-  rm -f "$guard_output"
+  rm -f "$readiness_output"
 fi
 
 generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -224,6 +285,21 @@ claude_runtime_ok="false"
 if [ -n "$uv_path" ] || [ -n "$python_path" ]; then
   claude_runtime_ok="true"
 fi
+claude_plugin_installed="$(claude_langfuse_plugin_installed)"
+claude_plugin_cache_path="$(claude_langfuse_plugin_cache_path)"
+claude_hooks_present="$(claude_langfuse_hooks_present)"
+claude_base_url_configured="$(claude_langfuse_config_has LANGFUSE_BASE_URL)"
+claude_public_key_configured="$(claude_langfuse_config_has LANGFUSE_PUBLIC_KEY)"
+claude_secret_key_available="$(status_for_env LANGFUSE_SECRET_KEY)"
+claude_official_ready="false"
+if [ "$claude_plugin_installed" = "true" ] &&
+  [ "$claude_hooks_present" = "true" ] &&
+  [ "$claude_runtime_ok" = "true" ] &&
+  [ "$claude_base_url_configured" = "true" ] &&
+  [ "$claude_public_key_configured" = "true" ] &&
+  [ "$claude_secret_key_available" = "set" ]; then
+  claude_official_ready="true"
+fi
 codex_hooks_enabled="$(codex_plugin_hooks_enabled)"
 codex_plugin_enabled="$(codex_tracing_plugin_enabled)"
 codex_config_exists="$(codex_config_any_exists)"
@@ -239,10 +315,14 @@ trace_to_langfuse_active="false"
 if [ "$trace_to_langfuse" = "true" ]; then
   trace_to_langfuse_active="true"
 fi
+codex_official_ready="false"
+if [ "$codex_hooks_enabled" = "true" ] && [ "$codex_plugin_enabled" = "true" ]; then
+  codex_official_ready="true"
+fi
 
 file_fanout_supported="$(repo_has_text 'observability-file' "$ROOT/providers/workspaces/interactive-tmux/driver-rs/src/main.rs" "$ROOT/providers/workspaces/interactive-tmux/driver-rs/README.md")"
 syntropic_fanout_supported="$(repo_has_text 'observability-syntropic-file|SyntropicJsonl|syntropic_jsonl' "$ROOT/providers/workspaces/interactive-tmux/driver-rs/src/main.rs" "$ROOT/providers/workspaces/interactive-tmux/driver-rs/README.md")"
-force_flag_supported="$(repo_has_text 'observability-langfuse-force' "$ROOT/providers/workspaces/interactive-tmux/driver-rs/src/main.rs" "$ROOT/providers/workspaces/interactive-tmux/driver-rs/README.md")"
+direct_langfuse_writer_present="$(repo_has_text 'observability.langfuse|langfuse.otlp' "$ROOT/providers/workspaces/interactive-tmux/driver-rs/src/main.rs" "$ROOT/providers/workspaces/interactive-tmux/driver-rs/docs/contract/agent-run-spec.schema.json")"
 mcp_server_present="$(repo_has_file 'plugins/observability/mcp/langfuse_server.py')"
 
 if [ "$OUTPUT" = "json" ]; then
@@ -262,8 +342,20 @@ if [ "$OUTPUT" = "json" ]; then
     "claude": {
       "command_present": $(json_bool "$([ -n "$claude_path" ] && printf true || printf false)"),
       "runtime_ok": $(json_bool "$claude_runtime_ok"),
+      "plugin_installed": $(json_bool "$claude_plugin_installed"),
+      "hooks_present": $(json_bool "$claude_hooks_present"),
+      "config": {
+        "installed_plugins_file": $(json_string "$(claude_installed_plugins_file)"),
+        "settings_file": $(json_string "$(claude_settings_file)"),
+        "cache_path": $(json_string "$claude_plugin_cache_path"),
+        "base_url_configured": $(json_bool "$claude_base_url_configured"),
+        "public_key_configured": $(json_bool "$claude_public_key_configured"),
+        "secret_key_available_via_env": $(json_bool "$([ "$claude_secret_key_available" = "set" ] && printf true || printf false)"),
+        "ready": $(json_bool "$claude_official_ready"),
+        "remediation": "install langfuse/Claude-Observability-Plugin, configure LANGFUSE_BASE_URL and LANGFUSE_PUBLIC_KEY, and provide LANGFUSE_SECRET_KEY via Claude sensitive config or environment for smoke runs"
+      },
       "expected_plugin": "langfuse/Claude-Observability-Plugin",
-      "config_note": "use claude plugin install/configure; secrets are not inspected by this doctor"
+      "config_note": "secret values are never printed; keychain-backed Claude sensitive config is not read directly"
     },
     "codex": {
       "command_present": $(json_bool "$([ -n "$codex_path" ] && printf true || printf false)"),
@@ -276,7 +368,7 @@ if [ "$OUTPUT" = "json" ]; then
         "plugin_hooks_required": true,
         "plugin_hooks_found": $(json_bool "$codex_hooks_enabled"),
         "tracing_plugin_found": $(json_bool "$codex_plugin_enabled"),
-        "ready": $(json_bool "$([ "$codex_hooks_enabled" = "true" ] && [ "$codex_plugin_enabled" = "true" ] && printf true || printf false)"),
+        "ready": $(json_bool "$codex_official_ready"),
         "remediation": $(json_string "$codex_hooks_remediation")
       },
       "expected_plugin": "langfuse/codex-observability-plugin"
@@ -295,13 +387,12 @@ if [ "$OUTPUT" = "json" ]; then
   "fanout": {
     "file_jsonl_supported": $(json_bool "$file_fanout_supported"),
     "syntropic_jsonl_supported": $(json_bool "$syntropic_fanout_supported"),
-    "mcp_server_present": $(json_bool "$mcp_server_present")
+    "mcp_server_present": $(json_bool "$mcp_server_present"),
+    "direct_langfuse_writer_removed": $(json_bool "$([ "$direct_langfuse_writer_present" = "true" ] && printf false || printf true)")
   },
-  "otlp_noise_guard": {
-    "trace_to_langfuse_suppression_supported": $(json_bool "$force_flag_supported"),
-    "force_flag_supported": $(json_bool "$force_flag_supported"),
-    "focused_test_status": $(json_string "$guard_test_status"),
-    "focused_test_detail": $(json_string "$guard_test_detail")
+  "readiness_tests": {
+    "focused_test_status": $(json_string "$readiness_test_status"),
+    "focused_test_detail": $(json_string "$readiness_test_detail")
   }
 }
 EOF
@@ -316,6 +407,12 @@ repo: $ROOT
 Official rich trace path:
   Claude command: $([ -n "$claude_path" ] && printf 'present' || printf 'missing')
   Claude runtime: $([ "$claude_runtime_ok" = "true" ] && printf 'ok' || printf 'missing uv/python3')
+  Claude plugin installed: $claude_plugin_installed
+  Claude plugin hooks present: $claude_hooks_present
+  Claude plugin cache: ${claude_plugin_cache_path:-missing}
+  Claude config base URL/public key: $claude_base_url_configured/$claude_public_key_configured
+  Claude secret available via env: $claude_secret_key_available
+  Claude ready for env-backed smoke: $claude_official_ready
   Codex command: $([ -n "$codex_path" ] && printf 'present' || printf 'missing')
   Codex Node 22+: $([ "$node22_plus" = "true" ] && printf 'ok' || printf 'missing')
   Codex plugin_hooks: $codex_hooks_enabled
@@ -336,8 +433,8 @@ Fanout:
   file JSONL supported: $file_fanout_supported
   Syntropic137 JSONL supported: $syntropic_fanout_supported
   MCP server present: $mcp_server_present
+  direct LangFuse writer removed: $([ "$direct_langfuse_writer_present" = "true" ] && printf 'false' || printf 'true')
 
-OTLP noise guard:
-  fallback suppression/force flag supported: $force_flag_supported
-  focused cli_exporters test: $guard_test_status ($guard_test_detail)
+Readiness tests:
+  focused cli_exporters test: $readiness_test_status ($readiness_test_detail)
 EOF

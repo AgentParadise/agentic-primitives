@@ -14,10 +14,10 @@ Usage: scripts/langfuse-local.sh <command>
 
 Commands:
   init      Clone the official LangFuse repository under .agentic/langfuse/
-  start     Run docker compose up -d from the cloned LangFuse repository
-  stop      Run docker compose down from the cloned LangFuse repository
+  start|up  Run docker compose up -d from the cloned LangFuse repository
+  stop|down Run docker compose down from the cloned LangFuse repository
   status    Run docker compose ps from the cloned LangFuse repository
-  smoke     Run the agentic-primitives LangFuse smoke against LANGFUSE_BASE_URL
+  smoke     Run the official-plugin setup/readiness check against local env
 
 Environment:
   LANGFUSE_HOME      Defaults to .agentic/langfuse/langfuse
@@ -87,7 +87,7 @@ EOF
     user_password="$(random_hex 18)"
     umask 077
     cat >"$LANGFUSE_ENV_FILE" <<EOF
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=$LANGFUSE_BASE_URL
 NEXTAUTH_SECRET=$nextauth_secret
 SALT=$salt
 ENCRYPTION_KEY=$encryption_key
@@ -147,15 +147,16 @@ Next:
   1. Review the official docker-compose.yml and generated ignored .env there.
   2. Run: scripts/langfuse-local.sh start
   3. Open: $LANGFUSE_BASE_URL
-  4. Run: scripts/langfuse-local.sh smoke
+  4. Export local keys from $LANGFUSE_ENV_FILE or your secret store.
+  5. Run: scripts/langfuse-local.sh smoke
 EOF
     ;;
-  start)
+  start|up)
     ensure_local_files
     compose_run up -d
     printf 'LangFuse starting at %s. Wait for the web container to become ready.\n' "$LANGFUSE_BASE_URL"
     ;;
-  stop)
+  stop|down)
     compose_run down
     ;;
   status)
@@ -164,7 +165,7 @@ EOF
   smoke)
     ensure_local_files
     load_local_env
-    "$ROOT/experiments/2026-07-07--langfuse--otel-ingestion-smoke/run-smoke.sh"
+    "$ROOT/scripts/langfuse-observability-doctor.sh" --json
     ;;
   ""|-h|--help|help)
     usage

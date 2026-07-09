@@ -194,37 +194,6 @@ fn observability_syntropic_jsonl_exporter_round_trips_with_typed_config() {
 }
 
 #[test]
-fn observability_langfuse_otlp_exporter_round_trips_with_env_refs() {
-    let exporter = ObservabilityExporter::LangFuseOtlp {
-        base_url: Some("https://cloud.langfuse.com".to_string()),
-        public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
-        secret_key_env: "LANGFUSE_SECRET_KEY".to_string(),
-        environment_env: "LANGFUSE_TRACING_ENVIRONMENT".to_string(),
-        project_id: Some("project-123".to_string()),
-        project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
-        service_name: "agentic-primitives".to_string(),
-        label: Some("LangFuse trace".to_string()),
-    };
-    roundtrip(&exporter);
-
-    let json = r#"{"kind":"langfuse_otlp"}"#;
-    let parsed: ObservabilityExporter = serde_json::from_str(json).expect("defaults deserialize");
-    assert_eq!(
-        parsed,
-        ObservabilityExporter::LangFuseOtlp {
-            base_url: None,
-            public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
-            secret_key_env: "LANGFUSE_SECRET_KEY".to_string(),
-            environment_env: "LANGFUSE_TRACING_ENVIRONMENT".to_string(),
-            project_id: None,
-            project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
-            service_name: "agentic-primitives".to_string(),
-            label: None,
-        }
-    );
-}
-
-#[test]
 fn observability_bundle_reports_exporter_status_and_links() {
     let bundle = ObservabilityBundle {
         exporters: vec![ObservabilityExportReport {

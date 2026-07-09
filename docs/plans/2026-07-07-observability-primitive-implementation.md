@@ -7,6 +7,11 @@ ADR: `docs/adrs/038-modular-agent-observability.md`
 Completion audit:
 `docs/plans/2026-07-07-observability-primitive-completion-audit.md`
 
+Historical note (2026-07-08): ADR-039 supersedes this plan's direct
+Rust OTLP-to-LangFuse implementation path. The current implementation removes
+that public writer path and packages official Claude/Codex LangFuse plugins as
+the rich-trace producers, with JSONL/Syntropic fanout retained locally.
+
 ## Empirical Inputs
 
 - `experiments/2026-07-07--observability--claude-hook-file-fanout`
@@ -70,11 +75,12 @@ Completion audit:
 - `experiments/2026-07-07--observability--stock-itmux-hook-sink` passed:
   the stock interactive-tmux provider image now contains the observability
   plugin/runtime and emits the same normalized hook events.
-- Real LangFuse backend export is now validated against the local Docker
-  Compose stack on this MacBook. The `.9` implementation has the typed
-  `langfuse_otlp` exporter, fail-fast config validation, local-receiver-proven
+- Real LangFuse backend access is now validated against the local Docker
+  Compose stack on this MacBook. The historical `.9` Rust OTLP implementation
+  had typed exporter config, fail-fast validation, local-receiver-proven
   HTTP/protobuf transport, real-backend trace-query evidence, trace-link
-  reporting, and CLI setup flags.
+  reporting, and CLI setup flags; ADR-039 superseded that public writer path in
+  favor of official Claude/Codex plugins for rich traces.
 - Agent-facing trace query is now available through both CLI and MCP. The
   `observability` plugin's `agentic-langfuse` MCP server delegates to the
   proven `itmux langfuse-*` commands and has local-backend proof for compact
@@ -82,13 +88,11 @@ Completion audit:
 - The 2026-07-08 official-plugin trace-shape experiment changed the LangFuse
   product boundary. Official LangFuse Claude/Codex marketplace plugins are the
   canonical rich trace integrations for those harnesses. JSONL fanout remains
-  the durable local/source-of-truth path. Rust OTLP remains explicit fallback,
-  smoke-test, generic collector, and Syntropic137 bridge.
-- The current Rust OTLP exporter should not be enabled by default alongside
-  official Claude/Codex LangFuse plugins. Its current trace shape is useful but
-  noisy in LangFuse: generic event spans, missing root input/output, unpaired
-  tool start/end spans, and token usage as a generic event rather than a
-  generation observation.
+  the durable local/source-of-truth path. The direct Rust OTLP writer is
+  historical evidence only and has been removed from the active public run
+  contract because its trace shape was noisy in LangFuse: generic event spans,
+  missing root input/output, unpaired tool start/end spans, and token usage as
+  a generic event rather than a generation observation.
 - The official-plugin E2E local experiment passed against the local LangFuse
   stack. The official Claude hook exported root input/output, two generation
   observations, and `Tool: Read`. The official Codex hook exported a
@@ -103,11 +107,9 @@ Completion audit:
   and `local-macbook` environment, without the Rust OTLP writer. Caveat:
   Claude install-time `--config` reported values unset, so that run used the
   official hook's env fallback.
-- The single-rich-exporter guard experiment passed. `itmux` now suppresses the
-  Rust `langfuse_otlp` writer when `TRACE_TO_LANGFUSE=true` indicates an
-  official LangFuse plugin is already tracing, preserves file JSONL, and
-  exposes `--observability-langfuse-force` for deliberate fallback/collector or
-  Syntropic137 routing.
+- The single-rich-exporter guard experiment is superseded by a cleaner public
+  surface: the direct Rust LangFuse writer flags and schema variant have been
+  removed, so official-plugin traces are not duplicated by `itmux`.
 - The Syntropic137 JSONL compatibility experiment proved current
   `AgentRunEvent` file JSONL is not directly consumed by Syntropic137's
   HookWatcher. `syntropic_jsonl` now provides a separate projection exporter
@@ -116,22 +118,22 @@ Completion audit:
   ingestion while preserving the canonical `file` exporter. Current
   Syntropic137 HookWatcher still skips `token_usage`; token/cost remains on its
   transcript/OTLP lane until that map is extended.
-- The refreshed
-  `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol now tests
-  both minimal OTLP ingestion and the current
-  `itmux codex-exec --observability-langfuse` exporter path. Current evidence
-  shows `scripts/langfuse-local.sh smoke` exporting to local LangFuse v3,
-  querying it back via `itmux langfuse-trace --api legacy-trace`, and resolving
-  the emitted trace URL.
+- The refreshed historical
+  `experiments/2026-07-07--langfuse--otel-ingestion-smoke` protocol tested both
+  minimal OTLP ingestion and the old direct writer path. Current evidence uses
+  `scripts/langfuse-local.sh smoke` as a setup/readiness doctor and validates
+  rich LangFuse behavior through official Claude/Codex plugin traces plus
+  `itmux langfuse-*` query tools.
 - `docs/guides/langfuse-observability-setup.md` documents the secret-safe setup
   path for MacBooks, Mac Minis, VPS hosts, and Docker workspaces, plus the real
   backend smoke criteria for `.9`.
 - `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` passed locally:
   endpoint/auth/header/attribute construction is proven against a local receiver,
   and the later real-backend smoke validated LangFuse ingestion.
-- `experiments/2026-07-07--langfuse--exporter-config-failfast` passed:
-  `ObservabilityExporter::LangFuseOtlp` config round-trips, the schema includes
-  `langfuse_otlp`, and missing env produces a failed exporter report.
+- `experiments/2026-07-07--langfuse--exporter-config-failfast` passed for the
+  historical direct writer path. That result remains design evidence, but the
+  `ObservabilityExporter::LangFuseOtlp` variant and public schema entry are no
+  longer active.
 - `experiments/2026-07-07--langfuse--otlp-transport-local-receiver` passed:
   the actual Rust exporter sends OTLP HTTP/protobuf to a local receiver and
   reports `ok` on a 2xx response.
@@ -139,15 +141,11 @@ Completion audit:
   the LangFuse exporter accepts optional project id metadata and reports a
   human-facing `/project/<project_id>/traces/<32_hex_trace_id>` link after a
   successful local receiver export.
-- `experiments/2026-07-07--langfuse--cli-setup-path` passed:
-  `itmux run` and `itmux codex-exec` both expose `--observability-langfuse`
-  plus base-url, project-id, and label flags, and the shared CLI builder maps
-  them to the typed LangFuse exporter with env-only secret references.
-- `experiments/2026-07-07--langfuse--cli-runtime-failfast` passed:
-  with real LangFuse env absent, `itmux codex-exec --observability-langfuse`
-  still completed a synthetic successful run, kept stdout as valid
-  `AgentRunEvent` JSONL, and reported `langfuse_otlp` as a failed exporter in
-  the final result with a clear missing `LANGFUSE_BASE_URL` error.
+- `experiments/2026-07-07--langfuse--cli-setup-path` and
+  `experiments/2026-07-07--langfuse--cli-runtime-failfast` passed for the
+  historical direct writer path. Their acceptance criteria are superseded by
+  ADR-039 and replaced by official-plugin setup, readiness doctor checks,
+  local JSONL/Syntropic fanout, and `itmux langfuse-*` query tools.
 - `experiments/2026-07-07--observability--mixed-exporter-isolation` passed:
   with both file and LangFuse exporters enabled and real LangFuse env absent,
   `itmux codex-exec` reported the file exporter as `ok` with all 6 events while
@@ -231,53 +229,41 @@ Completion audit:
      smoke tests, and learning-loop query tools around those plugins.
 3. Use `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` as local
    regression coverage for endpoint/auth/header/attribute construction.
-4. Add typed exporter config: **done for config/fail-fast slice**.
-   - `ObservabilityExporter::LangFuseOtlp`.
-   - explicit config validation and redacted error reporting.
-   - OTLP HTTP/protobuf, not gRPC, for first LangFuse path.
-5. Keep Rust OTLP as fallback/collector support:
-   **local-receiver-proven and real-backend-proven against local Docker
-   Compose**, but no longer the default rich LangFuse path for Claude/Codex
-   while official plugins exist.
-5a. Keep Syntropic137 support on a separate local projection path:
+4. Historical typed Rust OTLP exporter config: **superseded by ADR-039**.
+   - This was useful evidence for endpoint/auth/fail-fast behavior.
+   - The public `LangFuseOtlp` variant and direct writer flags are no longer
+     active in the run contract.
+5. Do not keep Rust OTLP in the public Claude/Codex rich-trace path:
+   **current implementation removes it**. Official plugins own LangFuse rich
+   traces; JSONL/Syntropic fanout remains local and backend-independent.
+6. Keep Syntropic137 support on a separate local projection path:
    **done for `syntropic_jsonl` and `--observability-syntropic-file`**.
    This avoids using noisy LangFuse fallback traces as the Syntropic137
    integration point and avoids changing the canonical `AgentRunEvent` file.
-6. Rerun `experiments/2026-07-07--langfuse--otel-ingestion-smoke` against a
-   reachable LangFuse deployment: **done against local Docker Compose**.
-7. Map normalized run events to fallback spans only when Rust OTLP is explicitly
-   selected or when no official plugin exists:
-   - one root trace per run.
-   - child observations for provision, launch, submit, await, capture.
-   - resource/span attributes for `session.id`, `service.name`,
-     `langfuse.environment`, `langfuse.session.id`, `langfuse.trace.name`.
-   - before marketing this as rich LangFuse support, add root input/output,
-     observation input/output, semantic observation types, and paired tool
-     spans.
-8. Emit a trace link in `ObservabilityBundle`:
-   **proven with optional `LANGFUSE_PROJECT_ID`; URL returned HTTP 200 against
-   local Docker Compose**.
-9. Expose setup through CLI flags:
-   **done for `itmux run --observability-langfuse` and
-   `itmux codex-exec --observability-langfuse`**.
-10. Validate CLI runtime fail-fast for missing LangFuse setup:
-   **done for `itmux codex-exec --observability-langfuse` with absent env**.
-11. Validate mixed exporter isolation:
-   **done for file exporter ok plus LangFuse failed in one `itmux codex-exec`
-   run**.
-12. Rerun `experiments/2026-07-07--observability--langfuse-otel-export`:
-   **done against current CLI/exporter path; real backend proof captured in the
-   LangFuse ingestion smoke**.
-13. Expose MCP trace tools for agent learning loops:
+7. Preserve historical OTLP experiments as rationale only:
+   `experiments/2026-07-07--langfuse--otel-ingestion-smoke`,
+   `experiments/2026-07-07--langfuse--trace-link-reporting`, and related
+   direct-writer experiments are not current acceptance gates.
+8. Validate the current setup path instead:
+   **done locally** through official Claude/Codex plugin traces, the setup
+   doctor, local JSONL/Syntropic fanout, and `itmux langfuse-*` query tools.
+9. Expose setup through docs/scripts, not direct writer flags:
+   **done** in `docs/guides/langfuse-observability-setup.md`,
+   `docs/runbooks/langfuse-observability.md`, `scripts/langfuse-local.sh`, and
+   `scripts/langfuse-observability-doctor.sh`.
+10. Validate file/Syntropic exporter isolation:
+   **done** for backend-independent local evidence paths.
+11. Expose MCP trace tools for agent learning loops:
    **done through `plugins/observability/mcp/langfuse_server.py`; local
    LangFuse proof captured in `runs/langfuse-mcp-trace-query`**.
-14. Run the official-plugin E2E experiment:
+12. Run the official-plugin E2E experiment:
    **done through direct official hook invocation and through real marketplace
    installed Claude/Codex sessions against local LangFuse**. Follow-up is
    durability and agent-query polish, not proof of trace shape:
    - resolve/re-test the Claude stored-config caveat;
    - make setup repeatable across MacBook, VPS, and Docker workspace paths;
-   - keep Rust OTLP off by default when those official plugins are enabled.
+   - keep the removed direct Rust writer out of the public Claude/Codex rich
+     trace path.
 
 ## `.9` Exit Criteria
 
@@ -290,17 +276,16 @@ Completion audit:
   grouping:
   **satisfied for local real-session validation; direct Claude fixture has zero
   usage/cost because it carries no nonzero usage fields**.
-- Final result includes a human-usable trace link.
-- Missing or invalid credentials produce a failed exporter report, not silent
-  success and not stdout corruption.
-- Mixed file+LangFuse export preserves local JSONL observability when LangFuse
-  is absent or misconfigured.
+- LangFuse dashboard links are available through the official plugin traces and
+  agent query/discovery tooling.
+- Missing or invalid credentials are caught by setup/readiness checks and final
+  trace smoke, without printing secret values.
+- Local JSONL/Syntropic fanout remains usable independently of LangFuse setup.
 - Agents can pull compact trace summaries through both CLI and MCP, using the
   same LangFuse query implementation.
-- Rust OTLP fallback does not create duplicate/noisy LangFuse traces by default
-  for Claude/Codex official-plugin runs:
-  **satisfied for `itmux` CLI exporter construction by
-  `experiments/2026-07-08--langfuse--single-rich-exporter-guard`**.
+- Rust OTLP fallback does not create duplicate/noisy LangFuse traces for
+  Claude/Codex official-plugin runs:
+  **satisfied by removing the direct writer from the public run path**.
 - Syntropic137 can consume local session/tool observability without enabling
   fallback LangFuse OTLP:
   **satisfied for `syntropic_jsonl` exporter shape by

@@ -186,25 +186,6 @@ enum Cmd {
         /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
         #[arg(long)]
         observability_syntropic_file: Option<PathBuf>,
-        /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
-        /// credentials. Prefer official LangFuse Claude/Codex plugins for
-        /// rich Claude/Codex trace UX.
-        #[arg(long)]
-        observability_langfuse: bool,
-        /// Force fallback LangFuse OTLP export even when TRACE_TO_LANGFUSE
-        /// indicates an official LangFuse plugin is already tracing.
-        #[arg(long)]
-        observability_langfuse_force: bool,
-        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
-        #[arg(long)]
-        langfuse_base_url: Option<String>,
-        /// LangFuse project id used to report UI trace links. Defaults to
-        /// LANGFUSE_PROJECT_ID when set.
-        #[arg(long)]
-        langfuse_project_id: Option<String>,
-        /// Label for the LangFuse observability link in AgentRunResult.
-        #[arg(long)]
-        langfuse_label: Option<String>,
     },
     /// Run `codex exec --json`, normalize its event stream, and fan it out to
     /// observability exporters. This is the first runnable harness-observer
@@ -237,25 +218,6 @@ enum Cmd {
         /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
         #[arg(long)]
         observability_syntropic_file: Option<PathBuf>,
-        /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
-        /// credentials. Prefer official LangFuse Claude/Codex plugins for
-        /// rich Claude/Codex trace UX.
-        #[arg(long)]
-        observability_langfuse: bool,
-        /// Force fallback LangFuse OTLP export even when TRACE_TO_LANGFUSE
-        /// indicates an official LangFuse plugin is already tracing.
-        #[arg(long)]
-        observability_langfuse_force: bool,
-        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
-        #[arg(long)]
-        langfuse_base_url: Option<String>,
-        /// LangFuse project id used to report UI trace links. Defaults to
-        /// LANGFUSE_PROJECT_ID when set.
-        #[arg(long)]
-        langfuse_project_id: Option<String>,
-        /// Label for the LangFuse observability link in AgentRunResult.
-        #[arg(long)]
-        langfuse_label: Option<String>,
     },
     /// Read Claude Code transcript JSONL, normalize tool/usage events, and fan
     /// them out to observability exporters.
@@ -281,25 +243,6 @@ enum Cmd {
         /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
         #[arg(long)]
         observability_syntropic_file: Option<PathBuf>,
-        /// Enable fallback/collector LangFuse OTLP export using LANGFUSE_*
-        /// credentials. Prefer official LangFuse Claude/Codex plugins for
-        /// rich Claude/Codex trace UX.
-        #[arg(long)]
-        observability_langfuse: bool,
-        /// Force fallback LangFuse OTLP export even when TRACE_TO_LANGFUSE
-        /// indicates an official LangFuse plugin is already tracing.
-        #[arg(long)]
-        observability_langfuse_force: bool,
-        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
-        #[arg(long)]
-        langfuse_base_url: Option<String>,
-        /// LangFuse project id used to report UI trace links. Defaults to
-        /// LANGFUSE_PROJECT_ID when set.
-        #[arg(long)]
-        langfuse_project_id: Option<String>,
-        /// Label for the LangFuse observability link in AgentRunResult.
-        #[arg(long)]
-        langfuse_label: Option<String>,
     },
     /// Query LangFuse observations for an exported trace. This is the first
     /// agent-facing read path for inspecting traces after export.
@@ -838,21 +781,10 @@ fn install_signal_watcher(
     Some((handle, join))
 }
 
-#[derive(Debug, Clone, Default)]
-struct LangFuseCliOptions {
-    enabled: bool,
-    force: bool,
-    official_plugin_tracing_active: bool,
-    base_url: Option<String>,
-    project_id: Option<String>,
-    label: Option<String>,
-}
-
 fn build_observability_exporters(
     observability_file: Option<PathBuf>,
     observability_syntropic_file: Option<PathBuf>,
     file_label: &str,
-    langfuse: LangFuseCliOptions,
 ) -> Vec<ObservabilityExporter> {
     let mut exporters: Vec<_> = observability_file
         .map(|path| ObservabilityExporter::File {
@@ -869,38 +801,7 @@ fn build_observability_exporters(
         });
     }
 
-    if langfuse.enabled && (!langfuse.official_plugin_tracing_active || langfuse.force) {
-        exporters.push(ObservabilityExporter::LangFuseOtlp {
-            base_url: langfuse.base_url,
-            public_key_env: "LANGFUSE_PUBLIC_KEY".to_string(),
-            secret_key_env: "LANGFUSE_SECRET_KEY".to_string(),
-            environment_env: "LANGFUSE_TRACING_ENVIRONMENT".to_string(),
-            project_id: langfuse.project_id,
-            project_id_env: "LANGFUSE_PROJECT_ID".to_string(),
-            service_name: "agentic-primitives".to_string(),
-            label: langfuse
-                .label
-                .or_else(|| Some("LangFuse trace".to_string())),
-        });
-    }
-
     exporters
-}
-
-fn official_langfuse_plugin_tracing_active() -> bool {
-    truthy_env("TRACE_TO_LANGFUSE")
-}
-
-fn truthy_env(name: &str) -> bool {
-    std::env::var(name)
-        .ok()
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
 }
 
 fn resolve_codex_exec_model(explicit_model: Option<String>) -> Option<String> {
@@ -996,7 +897,6 @@ fn handle_run(
     allow_host_auth_fallback: bool,
     observability_file: Option<PathBuf>,
     observability_syntropic_file: Option<PathBuf>,
-    langfuse: LangFuseCliOptions,
 ) -> ExitCode {
     let credentials = match itmux::run::secret_env::load_credentials(env_file.as_deref()) {
         Ok(credentials) => credentials,
@@ -1009,7 +909,6 @@ fn handle_run(
         observability_file,
         observability_syntropic_file,
         "itmux run events",
-        langfuse,
     );
     let spec_recipe = recipe.clone();
     let mut spec = build_run_spec(recipe, task, timeout);
@@ -1169,13 +1068,11 @@ fn handle_codex_exec(
     result_file: Option<PathBuf>,
     observability_file: Option<PathBuf>,
     observability_syntropic_file: Option<PathBuf>,
-    langfuse: LangFuseCliOptions,
 ) -> ExitCode {
     let exporters = build_observability_exporters(
         observability_file,
         observability_syntropic_file,
         "codex exec events",
-        langfuse,
     );
     handle_codex_exec_with_exporters(CodexExecRunOptions {
         prompt,
@@ -1397,13 +1294,11 @@ fn handle_claude_transcript(
     result_file: Option<PathBuf>,
     observability_file: Option<PathBuf>,
     observability_syntropic_file: Option<PathBuf>,
-    langfuse: LangFuseCliOptions,
 ) -> ExitCode {
     let exporters = build_observability_exporters(
         observability_file,
         observability_syntropic_file,
         "claude transcript events",
-        langfuse,
     );
     let mut fanout = ObservabilityFanout::new(&exporters);
     let mut observer = ClaudeTranscriptObserver::new();
@@ -3694,11 +3589,6 @@ fn main() -> ExitCode {
             allow_host_auth_fallback,
             observability_file,
             observability_syntropic_file,
-            observability_langfuse,
-            observability_langfuse_force,
-            langfuse_base_url,
-            langfuse_project_id,
-            langfuse_label,
         } => handle_run(
             recipe,
             task,
@@ -3713,14 +3603,6 @@ fn main() -> ExitCode {
             allow_host_auth_fallback,
             observability_file,
             observability_syntropic_file,
-            LangFuseCliOptions {
-                enabled: observability_langfuse,
-                force: observability_langfuse_force,
-                official_plugin_tracing_active: official_langfuse_plugin_tracing_active(),
-                base_url: langfuse_base_url,
-                project_id: langfuse_project_id,
-                label: langfuse_label,
-            },
         ),
         Cmd::CodexExec {
             prompt,
@@ -3731,11 +3613,6 @@ fn main() -> ExitCode {
             result_file,
             observability_file,
             observability_syntropic_file,
-            observability_langfuse,
-            observability_langfuse_force,
-            langfuse_base_url,
-            langfuse_project_id,
-            langfuse_label,
         } => handle_codex_exec(
             prompt,
             codex_bin,
@@ -3745,14 +3622,6 @@ fn main() -> ExitCode {
             result_file,
             observability_file,
             observability_syntropic_file,
-            LangFuseCliOptions {
-                enabled: observability_langfuse,
-                force: observability_langfuse_force,
-                official_plugin_tracing_active: official_langfuse_plugin_tracing_active(),
-                base_url: langfuse_base_url,
-                project_id: langfuse_project_id,
-                label: langfuse_label,
-            },
         ),
         Cmd::ClaudeTranscript {
             transcript,
@@ -3761,11 +3630,6 @@ fn main() -> ExitCode {
             result_file,
             observability_file,
             observability_syntropic_file,
-            observability_langfuse,
-            observability_langfuse_force,
-            langfuse_base_url,
-            langfuse_project_id,
-            langfuse_label,
         } => handle_claude_transcript(
             transcript,
             run_id,
@@ -3773,14 +3637,6 @@ fn main() -> ExitCode {
             result_file,
             observability_file,
             observability_syntropic_file,
-            LangFuseCliOptions {
-                enabled: observability_langfuse,
-                force: observability_langfuse_force,
-                official_plugin_tracing_active: official_langfuse_plugin_tracing_active(),
-                base_url: langfuse_base_url,
-                project_id: langfuse_project_id,
-                label: langfuse_label,
-            },
         ),
         Cmd::LangFuseTrace {
             trace_id,
@@ -3896,127 +3752,15 @@ mod cli_tests {
     use super::*;
 
     #[test]
-    fn cli_exporters_include_file_and_langfuse_when_enabled() {
+    fn cli_exporters_include_file_when_configured() {
         let exporters = build_observability_exporters(
             Some(PathBuf::from("/tmp/events.jsonl")),
             None,
             "local events",
-            LangFuseCliOptions {
-                enabled: true,
-                force: false,
-                official_plugin_tracing_active: false,
-                base_url: Some("https://cloud.langfuse.com".to_string()),
-                project_id: Some("project-123".to_string()),
-                label: Some("trace view".to_string()),
-            },
-        );
-
-        assert_eq!(exporters.len(), 2);
-        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
-        match &exporters[1] {
-            ObservabilityExporter::LangFuseOtlp {
-                base_url,
-                public_key_env,
-                secret_key_env,
-                environment_env,
-                project_id,
-                project_id_env,
-                service_name,
-                label,
-            } => {
-                assert_eq!(base_url.as_deref(), Some("https://cloud.langfuse.com"));
-                assert_eq!(public_key_env, "LANGFUSE_PUBLIC_KEY");
-                assert_eq!(secret_key_env, "LANGFUSE_SECRET_KEY");
-                assert_eq!(environment_env, "LANGFUSE_TRACING_ENVIRONMENT");
-                assert_eq!(project_id.as_deref(), Some("project-123"));
-                assert_eq!(project_id_env, "LANGFUSE_PROJECT_ID");
-                assert_eq!(service_name, "agentic-primitives");
-                assert_eq!(label.as_deref(), Some("trace view"));
-            }
-            ObservabilityExporter::File { .. } | ObservabilityExporter::SyntropicJsonl { .. } => {
-                panic!("expected LangFuse exporter")
-            }
-        }
-    }
-
-    #[test]
-    fn cli_exporters_do_not_require_langfuse_project_id() {
-        let exporters = build_observability_exporters(
-            None,
-            None,
-            "local events",
-            LangFuseCliOptions {
-                enabled: true,
-                force: false,
-                official_plugin_tracing_active: false,
-                base_url: None,
-                project_id: None,
-                label: None,
-            },
-        );
-
-        assert_eq!(exporters.len(), 1);
-        match &exporters[0] {
-            ObservabilityExporter::LangFuseOtlp {
-                base_url,
-                project_id,
-                project_id_env,
-                label,
-                ..
-            } => {
-                assert!(base_url.is_none());
-                assert!(project_id.is_none());
-                assert_eq!(project_id_env, "LANGFUSE_PROJECT_ID");
-                assert_eq!(label.as_deref(), Some("LangFuse trace"));
-            }
-            ObservabilityExporter::File { .. } | ObservabilityExporter::SyntropicJsonl { .. } => {
-                panic!("expected LangFuse exporter")
-            }
-        }
-    }
-
-    #[test]
-    fn cli_exporters_suppress_langfuse_when_official_plugin_tracing_is_active() {
-        let exporters = build_observability_exporters(
-            Some(PathBuf::from("/tmp/events.jsonl")),
-            None,
-            "local events",
-            LangFuseCliOptions {
-                enabled: true,
-                force: false,
-                official_plugin_tracing_active: true,
-                base_url: Some("http://localhost:3000".to_string()),
-                project_id: None,
-                label: None,
-            },
         );
 
         assert_eq!(exporters.len(), 1);
         assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
-    }
-
-    #[test]
-    fn cli_exporters_can_force_langfuse_when_official_plugin_tracing_is_active() {
-        let exporters = build_observability_exporters(
-            Some(PathBuf::from("/tmp/events.jsonl")),
-            None,
-            "local events",
-            LangFuseCliOptions {
-                enabled: true,
-                force: true,
-                official_plugin_tracing_active: true,
-                base_url: Some("http://localhost:3000".to_string()),
-                project_id: None,
-                label: None,
-            },
-        );
-
-        assert_eq!(exporters.len(), 2);
-        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
-        assert!(matches!(
-            exporters[1],
-            ObservabilityExporter::LangFuseOtlp { .. }
-        ));
     }
 
     #[test]
@@ -4025,7 +3769,6 @@ mod cli_tests {
             Some(PathBuf::from("/tmp/events.jsonl")),
             Some(PathBuf::from("/tmp/syntropic-events.jsonl")),
             "local events",
-            LangFuseCliOptions::default(),
         );
 
         assert_eq!(exporters.len(), 2);
@@ -4035,9 +3778,7 @@ mod cli_tests {
                 assert_eq!(path, &PathBuf::from("/tmp/syntropic-events.jsonl"));
                 assert_eq!(label.as_deref(), Some("Syntropic137 events"));
             }
-            ObservabilityExporter::File { .. } | ObservabilityExporter::LangFuseOtlp { .. } => {
-                panic!("expected Syntropic137 exporter")
-            }
+            ObservabilityExporter::File { .. } => panic!("expected Syntropic137 exporter"),
         }
     }
 

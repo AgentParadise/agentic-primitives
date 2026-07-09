@@ -60,6 +60,24 @@ debugging, test evidence, replay, and Syntropic137. Syntropic137 still needs a
 HookWatcher-compatible JSONL projection. Those are separate from rich LangFuse
 trace ownership.
 
+## Experiment Evidence
+
+The detailed experiment folders remain the audit trail. This ADR distills the
+decision-driving results:
+
+| Evidence | Result | Decision Impact |
+|---|---|---|
+| Rust OTLP writer to local LangFuse | Accepted by backend, but produced generic `agentic_primitives.run`, `tool_start`, `tool_end`, and `token_usage` observations with weak input/output and tool semantics | Remove from rich-trace path; keep only historical evidence |
+| Official Claude plugin real run | Trace `0e553fc833c71639acd03be9807eb616` showed native Claude generation/tool shape, usage/cost, and `telemetry.sdk.language=python` | Use official Claude plugin as canonical Claude producer |
+| Official Codex plugin real run | Trace `b3d2561d7c0557c12fd427c02a16e2f3` showed native Codex turn/tool shape, usage/cost, and `telemetry.sdk.language=nodejs` | Use official Codex plugin as canonical Codex producer |
+| Fresh direct Codex plugin invocation | Trace `b928a86e0c44784896a2224778c339c4` confirmed rich trace upload against the local LangFuse backend | Treat remaining Codex work as hook/config readiness, not exporter design |
+| JSONL/Syntropic fanout experiments | Local `AgentRunEvent` JSONL and Syntropic137 HookWatcher-style JSONL both worked independently of LangFuse | Keep backend-independent evidence and Syntropic bridge |
+
+The Claude run evidence confirms that seeing
+`telemetry.sdk.language=python` on Claude traces is accurate. It identifies the
+SDK implementation used by LangFuse's official plugin, not the language of the
+Claude harness itself.
+
 ## Decision
 
 We will make official LangFuse plugins the only canonical rich trace path for

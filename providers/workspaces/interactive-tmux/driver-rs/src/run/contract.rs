@@ -146,36 +146,6 @@ pub enum ObservabilityExporter {
         #[serde(default)]
         label: Option<String>,
     },
-    /// Export run events to LangFuse's OTLP HTTP traces endpoint.
-    ///
-    /// Secrets are intentionally referenced by environment variable names, not
-    /// embedded in the run spec. `base_url` may be either the LangFuse origin
-    /// (`https://cloud.langfuse.com`), the OTLP base endpoint
-    /// (`.../api/public/otel`), or the signal-specific traces endpoint
-    /// (`.../api/public/otel/v1/traces`).
-    #[serde(rename = "langfuse_otlp")]
-    LangFuseOtlp {
-        #[serde(default)]
-        base_url: Option<String>,
-        #[serde(default = "default_langfuse_public_key_env")]
-        public_key_env: String,
-        #[serde(default = "default_langfuse_secret_key_env")]
-        secret_key_env: String,
-        #[serde(default = "default_langfuse_environment_env")]
-        environment_env: String,
-        /// Optional LangFuse project id used only to build human trace links.
-        /// Export still succeeds without this value.
-        #[serde(default)]
-        project_id: Option<String>,
-        /// Environment variable that may contain the LangFuse project id. Missing
-        /// or empty values are ignored because the OTLP ingest path does not need it.
-        #[serde(default = "default_langfuse_project_id_env")]
-        project_id_env: String,
-        #[serde(default = "default_langfuse_service_name")]
-        service_name: String,
-        #[serde(default)]
-        label: Option<String>,
-    },
 }
 
 impl ObservabilityExporter {
@@ -183,29 +153,8 @@ impl ObservabilityExporter {
         match self {
             Self::File { .. } => "file",
             Self::SyntropicJsonl { .. } => "syntropic_jsonl",
-            Self::LangFuseOtlp { .. } => "langfuse_otlp",
         }
     }
-}
-
-fn default_langfuse_public_key_env() -> String {
-    "LANGFUSE_PUBLIC_KEY".to_string()
-}
-
-fn default_langfuse_secret_key_env() -> String {
-    "LANGFUSE_SECRET_KEY".to_string()
-}
-
-fn default_langfuse_environment_env() -> String {
-    "LANGFUSE_TRACING_ENVIRONMENT".to_string()
-}
-
-fn default_langfuse_project_id_env() -> String {
-    "LANGFUSE_PROJECT_ID".to_string()
-}
-
-fn default_langfuse_service_name() -> String {
-    "agentic-primitives".to_string()
 }
 
 /// Aggregated observability export status attached to the final result.
