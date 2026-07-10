@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/scores",
+    "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+    "name": "agentic.learning_loop_trace_quality",
+    "data_type": "NUMERIC"
+  },
+  "summary": {
+    "score_id": "3c5a719f-844d-4837-971a-3bfd4bef7652",
+    "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+    "run_id": null,
+    "name": "agentic.learning_loop_trace_quality",
+    "data_type": "NUMERIC",
+    "created": true
+  }
+}

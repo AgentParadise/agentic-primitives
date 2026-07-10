@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/scores?limit=20&page=1&name=agentic.learning_loop_trace_quality",
+    "name": "agentic.learning_loop_trace_quality",
+    "limit": 20,
+    "page": 1
+  },
+  "summary": {
+    "requested_trace_id": null,
+    "requested_run_id": null,
+    "requested_name": "agentic.learning_loop_trace_quality",
+    "requested_score_ids": null,
+    "returned_count": 2,
+    "total_items": 2,
+    "scores": [
+      {
+        "score_id": "3c5a719f-844d-4837-971a-3bfd4bef7652",
+        "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+        "observation_id": null,
+        "name": "agentic.learning_loop_trace_quality",
+        "data_type": "NUMERIC",
+        "value": 0.85,
+        "string_value": null,
+        "source": "API",
+        "environment": "default",
+        "comment": "Claude official plugin trace is rich enough for learning loops: model/tokens/cost and agent tools present; trace-list model null and end-only tools remain normalization gaps.",
+        "metadata": {
+          "experiment": "2026-07-10--langfuse--learning-loop-current-traces",
+          "harness": "claude",
+          "finding": "rich_with_normalization_gaps"
+        },
+        "created_at": "2026-07-10T15:21:38.177Z",
+        "updated_at": "2026-07-10T15:21:43.234Z",
+        "trace_environment": "default",
+        "trace_tags": [
+          "claude-code"
+        ]
+      },
+      {
+        "score_id": "20e41eaf-6464-4d0f-be38-dba101301369",
+        "trace_id": "b928a86e0c44784896a2224778c339c4",
+        "observation_id": null,
+        "name": "agentic.learning_loop_trace_quality",
+        "data_type": "NUMERIC",
+        "value": 0.8,
+        "string_value": null,
+        "source": "API",
+        "environment": "default",
+        "comment": "Codex official plugin trace is usable for learning loops: model/tokens/cost/tool name present; trace-list model null and tool start/end pairing still need normalization.",
+        "metadata": {
+          "experiment": "2026-07-10--langfuse--learning-loop-current-traces",
+          "harness": "codex",
+          "finding": "usable_with_normalization_gaps"
+        },
+        "created_at": "2026-07-10T15:21:38.161Z",
+        "updated_at": "2026-07-10T15:21:43.234Z",
+        "trace_environment": "local-macbook",
+        "trace_tags": []
+      }
+    ]
+  }
+}

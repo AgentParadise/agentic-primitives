@@ -1,0 +1,872 @@
+{
+  "ok": true,
+  "request": {
+    "api": "legacy_trace",
+    "endpoint": "http://localhost:3000/api/public/traces/53a78022e53d9abd2ef5de95c9add4f3",
+    "scores_endpoint": "http://localhost:3000/api/public/scores?limit=20&page=1&traceId=53a78022e53d9abd2ef5de95c9add4f3",
+    "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 100,
+    "include_scores": true,
+    "score_limit": 20,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
+  },
+  "summary": {
+    "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+    "trace_name": "Claude Code - Turn 7 (be8a5505)",
+    "session_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+    "environment": "default",
+    "observation_count": 24,
+    "observation_names": [
+      "Conversational Turn",
+      "LLM Call 1",
+      "LLM Call 10",
+      "LLM Call 11",
+      "LLM Call 12",
+      "LLM Call 2",
+      "LLM Call 3",
+      "LLM Call 4",
+      "LLM Call 5",
+      "LLM Call 6",
+      "LLM Call 7",
+      "LLM Call 8",
+      "LLM Call 9",
+      "Tool: AskUserQuestion",
+      "Tool: Bash"
+    ],
+    "observation_types": [
+      "GENERATION",
+      "SPAN",
+      "TOOL"
+    ],
+    "environments": [
+      "default"
+    ],
+    "harnesses": [
+      "claude"
+    ],
+    "providers": [
+      "anthropic"
+    ],
+    "models": [
+      "claude-sonnet-5"
+    ],
+    "model_ids": [
+      "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+    ],
+    "usage": {
+      "input_tokens": 169,
+      "output_tokens": 7791,
+      "total_tokens": 1348312
+    },
+    "cost": {
+      "calculated_total_usd": 0.395195699999
+    },
+    "events": {
+      "sequence_source": null,
+      "category_counts": [
+        {
+          "category": "agent_tool",
+          "count": 11
+        },
+        {
+          "category": "other",
+          "count": 13
+        }
+      ],
+      "sequence": [
+        {
+          "seq": null,
+          "event": "LLM Call 1",
+          "name": "LLM Call 1",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 99233,
+          "calculated_total_cost": 0.0226146
+        },
+        {
+          "seq": null,
+          "event": "Conversational Turn",
+          "name": "Conversational Turn",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 2",
+          "name": "LLM Call 2",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 103081,
+          "calculated_total_cost": 0.0354791
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 3",
+          "name": "LLM Call 3",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 106649,
+          "calculated_total_cost": 0.0360985
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 4",
+          "name": "LLM Call 4",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 110736,
+          "calculated_total_cost": 0.0385976
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 5",
+          "name": "LLM Call 5",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 111179,
+          "calculated_total_cost": 0.0265955
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 6",
+          "name": "LLM Call 6",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 112582,
+          "calculated_total_cost": 0.0313748
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 7",
+          "name": "LLM Call 7",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 114017,
+          "calculated_total_cost": 0.0364803
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: AskUserQuestion",
+          "category": "agent_tool",
+          "tool_name": "AskUserQuestion",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 8",
+          "name": "LLM Call 8",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 115081,
+          "calculated_total_cost": 0.0344694
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: AskUserQuestion",
+          "category": "agent_tool",
+          "tool_name": "AskUserQuestion",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 9",
+          "name": "LLM Call 9",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 115626,
+          "calculated_total_cost": 0.0297026
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 10",
+          "name": "LLM Call 10",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 118795,
+          "calculated_total_cost": 0.0347932
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 11",
+          "name": "LLM Call 11",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 119663,
+          "calculated_total_cost": 0.028230599999
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "Tool: Bash",
+          "category": "agent_tool",
+          "tool_name": "Bash",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "LLM Call 12",
+          "name": "LLM Call 12",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "claude-sonnet-5",
+          "success": null,
+          "total_tokens": 121670,
+          "calculated_total_cost": 0.0407595
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "tools": {
+      "start_count": 0,
+      "end_count": 11,
+      "success_count": 11,
+      "failure_count": 0,
+      "names": [
+        "AskUserQuestion",
+        "Bash"
+      ],
+      "by_name": [
+        {
+          "name": "AskUserQuestion",
+          "starts": 0,
+          "ends": 2,
+          "successes": 2,
+          "failures": 0
+        },
+        {
+          "name": "Bash",
+          "starts": 0,
+          "ends": 9,
+          "successes": 9,
+          "failures": 0
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "AskUserQuestion",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "AskUserQuestion",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "operations": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "agent_tools": {
+      "start_count": 0,
+      "end_count": 11,
+      "success_count": 11,
+      "failure_count": 0,
+      "names": [
+        "AskUserQuestion",
+        "Bash"
+      ],
+      "by_name": [
+        {
+          "name": "AskUserQuestion",
+          "starts": 0,
+          "ends": 2,
+          "successes": 2,
+          "failures": 0
+        },
+        {
+          "name": "Bash",
+          "starts": 0,
+          "ends": 9,
+          "successes": 9,
+          "failures": 0
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "AskUserQuestion",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "AskUserQuestion",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "Bash",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "harness_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "generations": {
+      "count": 12,
+      "input_tokens": 169,
+      "output_tokens": 7791,
+      "total_tokens": 1348312,
+      "calculated_total_usd": 0.395195699999,
+      "by_model": [
+        {
+          "model": "claude-sonnet-5",
+          "model_ids": [
+            "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+          ],
+          "providers": [],
+          "harnesses": [],
+          "count": 12,
+          "input_tokens": 169,
+          "output_tokens": 7791,
+          "total_tokens": 1348312,
+          "calculated_total_usd": 0.395195699999
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "observation_id": "2ae3d938ac553543",
+          "name": "LLM Call 1",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 268,
+          "total_tokens": 99233,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00268,
+          "calculated_total_cost_usd": 0.0226146,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "faa16c09a0ffbc34",
+          "name": "LLM Call 2",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 719,
+          "total_tokens": 103081,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00719,
+          "calculated_total_cost_usd": 0.0354791,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "d4e60319a35e22f1",
+          "name": "LLM Call 3",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 654,
+          "total_tokens": 106649,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00654,
+          "calculated_total_cost_usd": 0.0360985,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "f68623e1b4bd7b17",
+          "name": "LLM Call 4",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 739,
+          "total_tokens": 110736,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00739,
+          "calculated_total_cost_usd": 0.0385976,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "43697e84714e9295",
+          "name": "LLM Call 5",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 147,
+          "output_tokens": 228,
+          "total_tokens": 111179,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.000294,
+          "calculated_output_cost_usd": 0.00228,
+          "calculated_total_cost_usd": 0.0265955,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "bdc0fbdca797c28d",
+          "name": "LLM Call 6",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 636,
+          "total_tokens": 112582,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00636,
+          "calculated_total_cost_usd": 0.0313748,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "eabf84af9cab5067",
+          "name": "LLM Call 7",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 1188,
+          "total_tokens": 114017,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.01188,
+          "calculated_total_cost_usd": 0.0364803,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "b4b63e11aed53263",
+          "name": "LLM Call 8",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 836,
+          "total_tokens": 115081,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00836,
+          "calculated_total_cost_usd": 0.0344694,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "5eca9a9b77b90fc9",
+          "name": "LLM Call 9",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 453,
+          "total_tokens": 115626,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00453,
+          "calculated_total_cost_usd": 0.0297026,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "6e199769fee6d9ab",
+          "name": "LLM Call 10",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 360,
+          "total_tokens": 118795,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.0036,
+          "calculated_total_cost_usd": 0.0347932,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "f3bdb17c505b165f",
+          "name": "LLM Call 11",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 196,
+          "total_tokens": 119663,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.00196,
+          "calculated_total_cost_usd": 0.028230599999,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "0476d36de7883f58",
+          "name": "LLM Call 12",
+          "model": "claude-sonnet-5",
+          "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 2,
+          "output_tokens": 1514,
+          "total_tokens": 121670,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 4e-6,
+          "calculated_output_cost_usd": 0.01514,
+          "calculated_total_cost_usd": 0.0407595,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "scores": {
+      "requested_trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+      "requested_run_id": null,
+      "requested_name": null,
+      "requested_score_ids": null,
+      "returned_count": 0,
+      "total_items": 1,
+      "scores": []
+    }
+  }
+}

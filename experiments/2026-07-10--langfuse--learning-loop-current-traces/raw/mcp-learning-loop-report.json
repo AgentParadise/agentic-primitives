@@ -1,0 +1,1921 @@
+{
+  "ok": true,
+  "payload": {
+    "ok": true,
+    "request": {
+      "include_insights": true,
+      "include_scores": true,
+      "limit": 20,
+      "page": 1,
+      "score_limit": 20,
+      "trace_limit": 8
+    },
+    "summary": {
+      "agent_tools": {
+        "end_count": 61,
+        "failure_count": 0,
+        "start_count": 0,
+        "success_count": 61
+      },
+      "backend_total_items": 36,
+      "cost": {
+        "calculated_total_usd": 1.6889991999860001
+      },
+      "errors": [],
+      "generations": {
+        "count": 59
+      },
+      "harnesses": [
+        "claude"
+      ],
+      "insights": {
+        "failed_tool_traces": [],
+        "missing_cost_traces": [],
+        "missing_model_traces": [],
+        "recommendations": [
+          {
+            "calculated_total_usd": 0.732671299994,
+            "code": "cost_hotspot",
+            "message": "This trace is the highest-cost trace in the report window; review generations.sequence for cost drivers.",
+            "run_id": "06006eda-3249-4dc8-a5a0-e0d3b828324c",
+            "severity": "info",
+            "trace_id": "4cbfce7cab007d5b2cef2a1d84802984"
+          },
+          {
+            "code": "missing_feedback_scores",
+            "message": "Some traces have no feedback scores yet; attach evaluator scores before treating them as durable examples.",
+            "severity": "info",
+            "trace_count": 7
+          }
+        ],
+        "top_cost_trace": {
+          "calculated_total_usd": 0.732671299994,
+          "run_id": "06006eda-3249-4dc8-a5a0-e0d3b828324c",
+          "trace_id": "4cbfce7cab007d5b2cef2a1d84802984"
+        },
+        "top_token_trace": {
+          "run_id": "06006eda-3249-4dc8-a5a0-e0d3b828324c",
+          "total_tokens": 1651168,
+          "trace_id": "4cbfce7cab007d5b2cef2a1d84802984"
+        },
+        "unscored_traces": [
+          {
+            "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+            "trace_id": "fe639ad0df5fe3a6d926eea79eaffd29"
+          },
+          {
+            "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+            "trace_id": "7f756975e1034b980b02f7abd378a983"
+          },
+          {
+            "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+            "trace_id": "74ebfcdffa8999838520cc9120ba700b"
+          },
+          {
+            "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+            "trace_id": "5594be5c2887f6ebef89abfa91aaf315"
+          },
+          {
+            "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+            "trace_id": "2cdcb1ff4842f8ca34fc5cb97a0292e0"
+          },
+          {
+            "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+            "trace_id": "fc85eea0798d15290b533d6d4fb959fb"
+          },
+          {
+            "run_id": "06006eda-3249-4dc8-a5a0-e0d3b828324c",
+            "trace_id": "4cbfce7cab007d5b2cef2a1d84802984"
+          }
+        ]
+      },
+      "models": [
+        "claude-sonnet-5"
+      ],
+      "providers": [
+        "anthropic"
+      ],
+      "trace_count": 8,
+      "traces": [
+        {
+          "agent_tools": {
+            "by_name": [
+              {
+                "ends": 2,
+                "failures": 0,
+                "name": "AskUserQuestion",
+                "starts": 0,
+                "successes": 2
+              },
+              {
+                "ends": 9,
+                "failures": 0,
+                "name": "Bash",
+                "starts": 0,
+                "successes": 9
+              }
+            ],
+            "end_count": 11,
+            "failure_count": 0,
+            "names": [
+              "AskUserQuestion",
+              "Bash"
+            ],
+            "start_count": 0,
+            "success_count": 11
+          },
+          "cost": {
+            "calculated_total_usd": 0.395195699999
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.395195699999,
+                "count": 12,
+                "harnesses": [],
+                "input_tokens": 169,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 7791,
+                "providers": [],
+                "total_tokens": 1348312
+              }
+            ],
+            "calculated_total_usd": 0.395195699999,
+            "count": 12,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00268,
+                "calculated_total_cost_usd": 0.0226146,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "2ae3d938ac553543",
+                "output_tokens": 268,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 99233,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00719,
+                "calculated_total_cost_usd": 0.0354791,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 2",
+                "observation_id": "faa16c09a0ffbc34",
+                "output_tokens": 719,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 103081,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00654,
+                "calculated_total_cost_usd": 0.0360985,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 3",
+                "observation_id": "d4e60319a35e22f1",
+                "output_tokens": 654,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 106649,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00739,
+                "calculated_total_cost_usd": 0.0385976,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 4",
+                "observation_id": "f68623e1b4bd7b17",
+                "output_tokens": 739,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 110736,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 0.000294,
+                "calculated_output_cost_usd": 0.00228,
+                "calculated_total_cost_usd": 0.0265955,
+                "harness": null,
+                "input_tokens": 147,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 5",
+                "observation_id": "43697e84714e9295",
+                "output_tokens": 228,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 111179,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00636,
+                "calculated_total_cost_usd": 0.0313748,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 6",
+                "observation_id": "bdc0fbdca797c28d",
+                "output_tokens": 636,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 112582,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.01188,
+                "calculated_total_cost_usd": 0.0364803,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 7",
+                "observation_id": "eabf84af9cab5067",
+                "output_tokens": 1188,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 114017,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00836,
+                "calculated_total_cost_usd": 0.0344694,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 8",
+                "observation_id": "b4b63e11aed53263",
+                "output_tokens": 836,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 115081,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00453,
+                "calculated_total_cost_usd": 0.0297026,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 9",
+                "observation_id": "5eca9a9b77b90fc9",
+                "output_tokens": 453,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 115626,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.0036,
+                "calculated_total_cost_usd": 0.0347932,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 10",
+                "observation_id": "6e199769fee6d9ab",
+                "output_tokens": 360,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 118795,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00196,
+                "calculated_total_cost_usd": 0.028230599999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 11",
+                "observation_id": "f3bdb17c505b165f",
+                "output_tokens": 196,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 119663,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.01514,
+                "calculated_total_cost_usd": 0.0407595,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 12",
+                "observation_id": "0476d36de7883f58",
+                "output_tokens": 1514,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 121670,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 1348312
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+            "returned_count": 1,
+            "scores": [
+              {
+                "comment": "Claude official plugin trace is rich enough for learning loops: model/tokens/cost and agent tools present; trace-list model null and end-only tools remain normalization gaps.",
+                "created_at": "2026-07-10T15:21:38.177Z",
+                "data_type": "NUMERIC",
+                "environment": "default",
+                "metadata": {
+                  "experiment": "2026-07-10--langfuse--learning-loop-current-traces",
+                  "finding": "rich_with_normalization_gaps",
+                  "harness": "claude"
+                },
+                "name": "agentic.learning_loop_trace_quality",
+                "observation_id": null,
+                "score_id": "3c5a719f-844d-4837-971a-3bfd4bef7652",
+                "source": "API",
+                "string_value": null,
+                "trace_environment": "default",
+                "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+                "trace_tags": [
+                  "claude-code"
+                ],
+                "updated_at": "2026-07-10T15:21:43.234Z",
+                "value": 0.85
+              }
+            ],
+            "total_items": 3
+          },
+          "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+          "usage": {
+            "input_tokens": 169,
+            "output_tokens": 7791,
+            "total_tokens": 1348312
+          }
+        },
+        {
+          "agent_tools": {
+            "by_name": [
+              {
+                "ends": 2,
+                "failures": 0,
+                "name": "Bash",
+                "starts": 0,
+                "successes": 2
+              },
+              {
+                "ends": 1,
+                "failures": 0,
+                "name": "Skill",
+                "starts": 0,
+                "successes": 1
+              }
+            ],
+            "end_count": 3,
+            "failure_count": 0,
+            "names": [
+              "Bash",
+              "Skill"
+            ],
+            "start_count": 0,
+            "success_count": 3
+          },
+          "cost": {
+            "calculated_total_usd": 0.119006199999
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.119006199999,
+                "count": 4,
+                "harnesses": [],
+                "input_tokens": 8,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 1388,
+                "providers": [],
+                "total_tokens": 363555
+              }
+            ],
+            "calculated_total_usd": 0.119006199999,
+            "count": 4,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00578,
+                "calculated_total_cost_usd": 0.0230968,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "ccb028e38444effa",
+                "output_tokens": 578,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 85051,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00237,
+                "calculated_total_cost_usd": 0.0297032,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 2",
+                "observation_id": "1f0921543c8fdeaa",
+                "output_tokens": 237,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 88884,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00167,
+                "calculated_total_cost_usd": 0.0241555,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 3",
+                "observation_id": "a04c62ad4159a067",
+                "output_tokens": 167,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 90715,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00406,
+                "calculated_total_cost_usd": 0.042050699999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 4",
+                "observation_id": "5fd5dc6e18f700f7",
+                "output_tokens": 406,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 98905,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 363555
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "fe639ad0df5fe3a6d926eea79eaffd29",
+            "returned_count": 0,
+            "scores": [],
+            "total_items": 3
+          },
+          "trace_id": "fe639ad0df5fe3a6d926eea79eaffd29",
+          "usage": {
+            "input_tokens": 8,
+            "output_tokens": 1388,
+            "total_tokens": 363555
+          }
+        },
+        {
+          "agent_tools": {
+            "by_name": [
+              {
+                "ends": 1,
+                "failures": 0,
+                "name": "Bash",
+                "starts": 0,
+                "successes": 1
+              }
+            ],
+            "end_count": 1,
+            "failure_count": 0,
+            "names": [
+              "Bash"
+            ],
+            "start_count": 0,
+            "success_count": 1
+          },
+          "cost": {
+            "calculated_total_usd": 0.036529599998
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.036529599998,
+                "count": 2,
+                "harnesses": [],
+                "input_tokens": 149,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 206,
+                "providers": [],
+                "total_tokens": 168729
+              }
+            ],
+            "calculated_total_usd": 0.036529599998,
+            "count": 2,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.0019,
+                "calculated_total_cost_usd": 0.018748599999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "0dad778b1b6dd486",
+                "output_tokens": 190,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 84277,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 0.000294,
+                "calculated_output_cost_usd": 0.00016,
+                "calculated_total_cost_usd": 0.017780999999,
+                "harness": null,
+                "input_tokens": 147,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 2",
+                "observation_id": "3d3d2b30c1c75875",
+                "output_tokens": 16,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 84452,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 168729
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "7f756975e1034b980b02f7abd378a983",
+            "returned_count": 0,
+            "scores": [],
+            "total_items": 3
+          },
+          "trace_id": "7f756975e1034b980b02f7abd378a983",
+          "usage": {
+            "input_tokens": 149,
+            "output_tokens": 206,
+            "total_tokens": 168729
+          }
+        },
+        {
+          "agent_tools": {
+            "by_name": [
+              {
+                "ends": 1,
+                "failures": 0,
+                "name": "Bash",
+                "starts": 0,
+                "successes": 1
+              }
+            ],
+            "end_count": 1,
+            "failure_count": 0,
+            "names": [
+              "Bash"
+            ],
+            "start_count": 0,
+            "success_count": 1
+          },
+          "cost": {
+            "calculated_total_usd": 0.046392199999999995
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.046392199999999995,
+                "count": 2,
+                "harnesses": [],
+                "input_tokens": 4,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 1212,
+                "providers": [],
+                "total_tokens": 167224
+              }
+            ],
+            "calculated_total_usd": 0.046392199999999995,
+            "count": 2,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00352,
+                "calculated_total_cost_usd": 0.0201842,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "e325e750f147ffc6",
+                "output_tokens": 352,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 83149,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.0086,
+                "calculated_total_cost_usd": 0.026208,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 2",
+                "observation_id": "ee42dbff266b6603",
+                "output_tokens": 860,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 84075,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 167224
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "74ebfcdffa8999838520cc9120ba700b",
+            "returned_count": 0,
+            "scores": [],
+            "total_items": 3
+          },
+          "trace_id": "74ebfcdffa8999838520cc9120ba700b",
+          "usage": {
+            "input_tokens": 4,
+            "output_tokens": 1212,
+            "total_tokens": 167224
+          }
+        },
+        {
+          "agent_tools": {
+            "by_name": [
+              {
+                "ends": 4,
+                "failures": 0,
+                "name": "Bash",
+                "starts": 0,
+                "successes": 4
+              }
+            ],
+            "end_count": 4,
+            "failure_count": 0,
+            "names": [
+              "Bash"
+            ],
+            "start_count": 0,
+            "success_count": 4
+          },
+          "cost": {
+            "calculated_total_usd": 0.112946099998
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.112946099998,
+                "count": 5,
+                "harnesses": [],
+                "input_tokens": 10,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 2401,
+                "providers": [],
+                "total_tokens": 403326
+              }
+            ],
+            "calculated_total_usd": 0.112946099998,
+            "count": 5,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00281,
+                "calculated_total_cost_usd": 0.0185887,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "b3389c60d6ff13b5",
+                "output_tokens": 281,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 78961,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00529,
+                "calculated_total_cost_usd": 0.022079599999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 2",
+                "observation_id": "207e24a87ce4b934",
+                "output_tokens": 529,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 79629,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00266,
+                "calculated_total_cost_usd": 0.0198236,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 3",
+                "observation_id": "519fc45968954942",
+                "output_tokens": 266,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 79902,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.01032,
+                "calculated_total_cost_usd": 0.0297833,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 4",
+                "observation_id": "d67bf0cece0f7a00",
+                "output_tokens": 1032,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 82081,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00293,
+                "calculated_total_cost_usd": 0.022670899999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 5",
+                "observation_id": "4a53c1b8e541f66b",
+                "output_tokens": 293,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 82753,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 403326
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "5594be5c2887f6ebef89abfa91aaf315",
+            "returned_count": 0,
+            "scores": [],
+            "total_items": 3
+          },
+          "trace_id": "5594be5c2887f6ebef89abfa91aaf315",
+          "usage": {
+            "input_tokens": 10,
+            "output_tokens": 2401,
+            "total_tokens": 403326
+          }
+        },
+        {
+          "agent_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "cost": {
+            "calculated_total_usd": 0.0186125
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.0186125,
+                "count": 1,
+                "harnesses": [],
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 545,
+                "providers": [],
+                "total_tokens": 66029
+              }
+            ],
+            "calculated_total_usd": 0.0186125,
+            "count": 1,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00545,
+                "calculated_total_cost_usd": 0.0186125,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "577a62aeaf75c0f3",
+                "output_tokens": 545,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 66029,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 66029
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "2cdcb1ff4842f8ca34fc5cb97a0292e0",
+            "returned_count": 0,
+            "scores": [],
+            "total_items": 3
+          },
+          "trace_id": "2cdcb1ff4842f8ca34fc5cb97a0292e0",
+          "usage": {
+            "input_tokens": 2,
+            "output_tokens": 545,
+            "total_tokens": 66029
+          }
+        },
+        {
+          "agent_tools": {
+            "by_name": [
+              {
+                "ends": 3,
+                "failures": 0,
+                "name": "Agent",
+                "starts": 0,
+                "successes": 3
+              },
+              {
+                "ends": 6,
+                "failures": 0,
+                "name": "Bash",
+                "starts": 0,
+                "successes": 6
+              },
+              {
+                "ends": 1,
+                "failures": 0,
+                "name": "Skill",
+                "starts": 0,
+                "successes": 1
+              }
+            ],
+            "end_count": 10,
+            "failure_count": 0,
+            "names": [
+              "Agent",
+              "Bash",
+              "Skill"
+            ],
+            "start_count": 0,
+            "success_count": 10
+          },
+          "cost": {
+            "calculated_total_usd": 0.22764559999799996
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.22764559999799996,
+                "count": 7,
+                "harnesses": [],
+                "input_tokens": 13750,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 5223,
+                "providers": [],
+                "total_tokens": 376912
+              }
+            ],
+            "calculated_total_usd": 0.22764559999799996,
+            "count": 7,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 0.027186,
+                "calculated_output_cost_usd": 0.00085,
+                "calculated_total_cost_usd": 0.0528378,
+                "harness": null,
+                "input_tokens": 13593,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "04384efe1db4b312",
+                "output_tokens": 85,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 48723,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00212,
+                "calculated_total_cost_usd": 0.044150499999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 2",
+                "observation_id": "19aac1ec925e1bf1",
+                "output_tokens": 212,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 49266,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00354,
+                "calculated_total_cost_usd": 0.0221069,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 3",
+                "observation_id": "5e4cf031bf052679",
+                "output_tokens": 354,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 52909,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00231,
+                "calculated_total_cost_usd": 0.0140071,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 4",
+                "observation_id": "bfd284c71dde145f",
+                "output_tokens": 231,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 53259,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00173,
+                "calculated_total_cost_usd": 0.0131942,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 5",
+                "observation_id": "0618dfc80e340bfa",
+                "output_tokens": 173,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 53543,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.04019,
+                "calculated_total_cost_usd": 0.053447599999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 6",
+                "observation_id": "7f8db129af15f51a",
+                "output_tokens": 4019,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 58421,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 0.000294,
+                "calculated_output_cost_usd": 0.00149,
+                "calculated_total_cost_usd": 0.0279015,
+                "harness": null,
+                "input_tokens": 147,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 7",
+                "observation_id": "71156d6e2f2c5d3f",
+                "output_tokens": 149,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 60791,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 376912
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "be8a5505-2307-4a79-b0ef-fdc78f1cd8f4",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "fc85eea0798d15290b533d6d4fb959fb",
+            "returned_count": 0,
+            "scores": [],
+            "total_items": 3
+          },
+          "trace_id": "fc85eea0798d15290b533d6d4fb959fb",
+          "usage": {
+            "input_tokens": 13750,
+            "output_tokens": 5223,
+            "total_tokens": 376912
+          }
+        },
+        {
+          "agent_tools": {
+            "by_name": [
+              {
+                "ends": 1,
+                "failures": 0,
+                "name": "Agent",
+                "starts": 0,
+                "successes": 1
+              },
+              {
+                "ends": 23,
+                "failures": 0,
+                "name": "Bash",
+                "starts": 0,
+                "successes": 23
+              },
+              {
+                "ends": 6,
+                "failures": 0,
+                "name": "Read",
+                "starts": 0,
+                "successes": 6
+              },
+              {
+                "ends": 1,
+                "failures": 0,
+                "name": "Skill",
+                "starts": 0,
+                "successes": 1
+              }
+            ],
+            "end_count": 31,
+            "failure_count": 0,
+            "names": [
+              "Agent",
+              "Bash",
+              "Read",
+              "Skill"
+            ],
+            "start_count": 0,
+            "success_count": 31
+          },
+          "cost": {
+            "calculated_total_usd": 0.732671299994
+          },
+          "generations": {
+            "by_model": [
+              {
+                "calculated_total_usd": 0.732671299994,
+                "count": 26,
+                "harnesses": [],
+                "input_tokens": 25798,
+                "model": "claude-sonnet-5",
+                "model_ids": [
+                  "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+                ],
+                "output_tokens": 10803,
+                "providers": [],
+                "total_tokens": 1651168
+              }
+            ],
+            "calculated_total_usd": 0.732671299994,
+            "count": 26,
+            "sequence": [
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 0.026834,
+                "calculated_output_cost_usd": 0.00319,
+                "calculated_total_cost_usd": 0.0362032,
+                "harness": null,
+                "input_tokens": 13417,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 1",
+                "observation_id": "ff6cff1600f5788e",
+                "output_tokens": 319,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 44632,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 9e-05,
+                "calculated_output_cost_usd": 0.00311,
+                "calculated_total_cost_usd": 0.045019199999,
+                "harness": null,
+                "input_tokens": 45,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 2",
+                "observation_id": "23bba2dac3224616",
+                "output_tokens": 311,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 45508,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 9.6e-05,
+                "calculated_output_cost_usd": 0.00294,
+                "calculated_total_cost_usd": 0.0211539,
+                "harness": null,
+                "input_tokens": 48,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 3",
+                "observation_id": "8259c61d3bf25840",
+                "output_tokens": 294,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 49129,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 9.6e-05,
+                "calculated_output_cost_usd": 0.00208,
+                "calculated_total_cost_usd": 0.0129334,
+                "harness": null,
+                "input_tokens": 48,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 4",
+                "observation_id": "4c25fb0ba4eb3863",
+                "output_tokens": 208,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 49443,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 9.6e-05,
+                "calculated_output_cost_usd": 0.0021,
+                "calculated_total_cost_usd": 0.013028399999,
+                "harness": null,
+                "input_tokens": 48,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 5",
+                "observation_id": "b0fb42eccc7a456e",
+                "output_tokens": 210,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 49843,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 9.6e-05,
+                "calculated_output_cost_usd": 0.02247,
+                "calculated_total_cost_usd": 0.034735499999,
+                "harness": null,
+                "input_tokens": 48,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "LLM Call 6",
+                "observation_id": "659e1aa22f012f12",
+                "output_tokens": 2247,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 52781,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 0.021966,
+                "calculated_output_cost_usd": 0.00309,
+                "calculated_total_cost_usd": 0.0643835,
+                "harness": null,
+                "input_tokens": 10983,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 1",
+                "observation_id": "d3245f7d48f946e2",
+                "output_tokens": 309,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 27023,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 0.00225,
+                "calculated_output_cost_usd": 0.0036,
+                "calculated_total_cost_usd": 0.0390862,
+                "harness": null,
+                "input_tokens": 1125,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 2",
+                "observation_id": "824fcc8d399cbe80",
+                "output_tokens": 360,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 29252,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.0006,
+                "calculated_total_cost_usd": 0.0098674,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 3",
+                "observation_id": "a9f5b262c843296b",
+                "output_tokens": 60,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 29313,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00422,
+                "calculated_total_cost_usd": 0.0445042,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 4",
+                "observation_id": "68d3a5a8edc6e90f",
+                "output_tokens": 422,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 43447,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00449,
+                "calculated_total_cost_usd": 0.0372086,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 5",
+                "observation_id": "bdcf6111128707fb",
+                "output_tokens": 449,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 53118,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00056,
+                "calculated_total_cost_usd": 0.0123324,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 6",
+                "observation_id": "fdfcd65ba7ea9a86",
+                "output_tokens": 56,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 53219,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.02326,
+                "calculated_total_cost_usd": 0.0573087,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 7",
+                "observation_id": "21f8584962cee222",
+                "output_tokens": 2326,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 64854,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 2e-05,
+                "calculated_total_cost_usd": 0.0199242,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 8",
+                "observation_id": "19ded725bd477893",
+                "output_tokens": 2,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 65488,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00281,
+                "calculated_total_cost_usd": 0.0165558,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 9",
+                "observation_id": "88ea6ecdb589991b",
+                "output_tokens": 281,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 66025,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00193,
+                "calculated_total_cost_usd": 0.030747399999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 10",
+                "observation_id": "d979031de96095af",
+                "output_tokens": 193,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 72203,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00454,
+                "calculated_total_cost_usd": 0.0369931,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 11",
+                "observation_id": "b4f9364ed31eddce",
+                "output_tokens": 454,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 79683,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00208,
+                "calculated_total_cost_usd": 0.023429399999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 12",
+                "observation_id": "129530aa676197c2",
+                "output_tokens": 208,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 81637,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 6e-05,
+                "calculated_total_cost_usd": 0.018671899999,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 13",
+                "observation_id": "a64b46afb42e3f3f",
+                "output_tokens": 6,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 82364,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00235,
+                "calculated_total_cost_usd": 0.0246452,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 14",
+                "observation_id": "2e31d727f0e731fa",
+                "output_tokens": 235,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 84921,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00329,
+                "calculated_total_cost_usd": 0.0229808,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 15",
+                "observation_id": "e7d2ca9eee112eec",
+                "output_tokens": 329,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 86115,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00378,
+                "calculated_total_cost_usd": 0.0218008,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 16",
+                "observation_id": "34eac8afbba1924f",
+                "output_tokens": 378,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 86508,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00459,
+                "calculated_total_cost_usd": 0.0247471,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 17",
+                "observation_id": "190fd5916f095d20",
+                "output_tokens": 459,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 87760,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00244,
+                "calculated_total_cost_usd": 0.0225638,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 18",
+                "observation_id": "20418f15aa9bb871",
+                "output_tokens": 244,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 88609,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00221,
+                "calculated_total_cost_usd": 0.0206866,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 19",
+                "observation_id": "bcc73cff0a265e0e",
+                "output_tokens": 221,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 88906,
+                "unit": "TOKENS"
+              },
+              {
+                "cached_input_tokens": null,
+                "calculated_input_cost_usd": 4e-06,
+                "calculated_output_cost_usd": 0.00222,
+                "calculated_total_cost_usd": 0.0211606,
+                "harness": null,
+                "input_tokens": 2,
+                "model": "claude-sonnet-5",
+                "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+                "name": "Subagent LLM Call 20",
+                "observation_id": "db3dcf908083f543",
+                "output_tokens": 222,
+                "pricing_tier": "Standard",
+                "provider": null,
+                "reasoning_output_tokens": null,
+                "seq": null,
+                "total_tokens": 89387,
+                "unit": "TOKENS"
+              }
+            ],
+            "total_tokens": 1651168
+          },
+          "harness_tools": {
+            "by_name": {},
+            "end_count": 0,
+            "failure_count": 0,
+            "names": [],
+            "start_count": 0,
+            "success_count": 0
+          },
+          "harnesses": [
+            "claude"
+          ],
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "providers": [
+            "anthropic"
+          ],
+          "run_id": "06006eda-3249-4dc8-a5a0-e0d3b828324c",
+          "scores": {
+            "requested_name": null,
+            "requested_run_id": null,
+            "requested_score_ids": null,
+            "requested_trace_id": "4cbfce7cab007d5b2cef2a1d84802984",
+            "returned_count": 0,
+            "scores": [],
+            "total_items": 3
+          },
+          "trace_id": "4cbfce7cab007d5b2cef2a1d84802984",
+          "usage": {
+            "input_tokens": 25798,
+            "output_tokens": 10803,
+            "total_tokens": 1651168
+          }
+        }
+      ],
+      "usage": {
+        "total_tokens": 4545255
+      }
+    }
+  }
+}

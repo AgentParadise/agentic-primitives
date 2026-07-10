@@ -1,0 +1,105 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/traces?limit=20&page=1",
+    "limit": 20,
+    "page": 1,
+    "harness": "codex"
+  },
+  "summary": {
+    "page": 1,
+    "limit": 20,
+    "returned_count": 4,
+    "backend_total_items": 36,
+    "backend_total_pages": 2,
+    "filters": {
+      "harness": "codex",
+      "provider": null,
+      "model": null,
+      "environment": null
+    },
+    "harnesses": [
+      "codex"
+    ],
+    "providers": [
+      "openai"
+    ],
+    "models": [
+      "gpt-5.5"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "total_cost": 0.506575,
+    "traces": [
+      {
+        "trace_id": "b928a86e0c44784896a2224778c339c4",
+        "run_id": "019f4370-6474-74a3-825b-2c70d782f3a5",
+        "session_id": "019f4370-6474-74a3-825b-2c70d782f3a5",
+        "name": "Codex Turn",
+        "timestamp": "2026-07-08T20:34:27.233Z",
+        "created_at": "2026-07-08T20:36:51.956Z",
+        "updated_at": "2026-07-08T20:36:51.968Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": null,
+        "total_cost": 0.171775,
+        "latency_s": 5.167,
+        "observation_count": 4,
+        "html_path": "/project/agentic-primitives-local-project/traces/b928a86e0c44784896a2224778c339c4"
+      },
+      {
+        "trace_id": "b3d2561d7c0557c12fd427c02a16e2f3",
+        "run_id": "019f4324-c997-72c1-bae9-9eae62d84fc8",
+        "session_id": "019f4324-c997-72c1-bae9-9eae62d84fc8",
+        "name": "Codex Turn",
+        "timestamp": "2026-07-08T19:11:52.386Z",
+        "created_at": "2026-07-08T19:11:58.027Z",
+        "updated_at": "2026-07-08T19:11:58.036Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": null,
+        "total_cost": 0.174825,
+        "latency_s": 5.533,
+        "observation_count": 4,
+        "html_path": "/project/agentic-primitives-local-project/traces/b3d2561d7c0557c12fd427c02a16e2f3"
+      },
+      {
+        "trace_id": "37f5920448612df0be0a2228a671a055",
+        "run_id": "run-88868068",
+        "session_id": "run-88868068",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T04:54:34.000Z",
+        "created_at": "2026-07-08T04:54:41.572Z",
+        "updated_at": "2026-07-08T04:54:41.582Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "total_cost": 0.080015,
+        "latency_s": 7.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/37f5920448612df0be0a2228a671a055"
+      },
+      {
+        "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+        "run_id": "run-f7ae62c8",
+        "session_id": "run-f7ae62c8",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:26:12.000Z",
+        "created_at": "2026-07-08T03:26:14.571Z",
+        "updated_at": "2026-07-08T03:26:14.584Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "total_cost": 0.07996,
+        "latency_s": 2.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/fe7564993ed4fa5634428123b0f44ccf"
+      }
+    ]
+  }
+}
