@@ -569,13 +569,16 @@ class McpServer:
         trace_id = args.get("trace-id") or (langfuse_trace_id_for_run(args["run-id"]) if args.get("run-id") else None)
         base_url = _langfuse_api_base_url(args.get("langfuse-base-url"))
         params: dict[str, Any] = {"limit": int(args.get("limit") or 20), "page": 1}
-        if trace_id:
-            params["traceId"] = trace_id
+        # LangFuse self-host score list filters can under-return when several
+        # filters are combined. Query with one narrowing backend filter and
+        # enforce the full request below in _filter_score_rows.
         if args.get("score-ids"):
             params["scoreIds"] = args["score-ids"]
-        if args.get("name"):
+        elif trace_id:
+            params["traceId"] = trace_id
+        elif args.get("name"):
             params["name"] = args["name"]
-        if args.get("data-type"):
+        elif args.get("data-type"):
             params["dataType"] = str(args["data-type"]).upper()
         endpoint = f"{base_url}/api/public/scores?{parse.urlencode(params)}"
         response = _langfuse_request("GET", endpoint)

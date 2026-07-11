@@ -17,6 +17,7 @@ Commands:
   start|up  Run docker compose up -d from the cloned LangFuse repository
   stop|down Run docker compose down from the cloned LangFuse repository
   status    Run docker compose ps from the cloned LangFuse repository
+  health    Check the configured LangFuse public health endpoint
   smoke     Run the official-plugin setup/readiness check against local env
 
 Environment:
@@ -161,6 +162,11 @@ EOF
     ;;
   status)
     compose_run ps
+    ;;
+  health)
+    load_local_env
+    curl -fsS "$LANGFUSE_BASE_URL/api/public/health"
+    printf '\nLangFuse health check passed for %s\n' "$LANGFUSE_BASE_URL"
     ;;
   smoke)
     ensure_local_files

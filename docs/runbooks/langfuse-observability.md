@@ -157,6 +157,42 @@ tailscale up
 tailscale status
 ```
 
+Recommended tailnet policy pattern, matching the HomeLab per-service tag
+convention:
+
+```jsonc
+{
+  "tagOwners": {
+    "tag:langfuse": ["autogroup:owner"],
+    "tag:agents": ["autogroup:owner"]
+  },
+  "grants": [
+    {
+      "src": ["tag:agents"],
+      "dst": ["tag:langfuse"],
+      "ip": ["tcp:3000"]
+    },
+    {
+      "src": ["autogroup:admin"],
+      "dst": ["tag:langfuse"],
+      "ip": ["tcp:3000"]
+    }
+  ]
+}
+```
+
+If the Mac mini already wears other service tags, add `tag:langfuse` to the
+same device. Owner-managed devices can self-advertise this tag when
+`autogroup:owner` is listed in `tagOwners`:
+
+```bash
+sudo tailscale up --advertise-tags=tag:langfuse
+```
+
+Agent VPSs or long-lived agent hosts should wear `tag:agents` if they are not
+operator-admin devices. That keeps LangFuse reachable to agent infrastructure
+without opening the rest of the Mac mini.
+
 Pick one stable address for `LANGFUSE_BASE_URL`:
 
 - MagicDNS name, for example `http://mac-mini.tailnet-name.ts.net:3000`
@@ -171,6 +207,13 @@ reverse proxy and use:
 
 ```bash
 export LANGFUSE_BASE_URL=https://langfuse.example.com
+```
+
+Reachability check from each client:
+
+```bash
+LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:3000 \
+  scripts/langfuse-local.sh health
 ```
 
 ## Client Setup

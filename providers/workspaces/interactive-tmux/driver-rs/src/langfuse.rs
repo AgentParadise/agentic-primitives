@@ -2075,16 +2075,16 @@ fn build_langfuse_scores_list_url(
 ) -> String {
     let base = langfuse_api_base_url(base_url);
     let mut params = vec![format!("limit={limit}"), format!("page={page}")];
-    if let Some(trace_id) = non_empty_str(trace_id) {
-        params.push(format!("traceId={}", url_query_encode(trace_id)));
-    }
+    // LangFuse self-host score list filters can under-return when several
+    // filters are combined. Send one narrowing filter to the backend, then
+    // enforce every requested filter in summarize_langfuse_scores_response.
     if let Some(score_ids) = non_empty_str(score_ids) {
         params.push(format!("scoreIds={}", url_query_encode(score_ids)));
-    }
-    if let Some(name) = non_empty_str(name) {
+    } else if let Some(trace_id) = non_empty_str(trace_id) {
+        params.push(format!("traceId={}", url_query_encode(trace_id)));
+    } else if let Some(name) = non_empty_str(name) {
         params.push(format!("name={}", url_query_encode(name)));
-    }
-    if let Some(data_type) = non_empty_str(data_type) {
+    } else if let Some(data_type) = non_empty_str(data_type) {
         params.push(format!("dataType={}", url_query_encode(data_type)));
     }
     format!(
@@ -2347,7 +2347,38 @@ mod tests {
 
         assert_eq!(
             url,
-            "https://langfuse.example.com/api/public/scores?limit=10&page=2&traceId=trace%20id%2Fwith%20spaces&scoreIds=score-a%2Cscore-b&name=agentic.learning_loop_probe&dataType=BOOLEAN"
+            "https://langfuse.example.com/api/public/scores?limit=10&page=2&scoreIds=score-a%2Cscore-b"
+        );
+    }
+
+    #[test]
+    fn langfuse_scores_list_url_uses_single_backend_filter_then_local_filtering() {
+        let trace_and_name = build_langfuse_scores_list_url(
+            "https://langfuse.example.com",
+            Some("trace-wanted"),
+            None,
+            Some("agentic.learning_loop_probe"),
+            Some("BOOLEAN"),
+            20,
+            1,
+        );
+        assert_eq!(
+            trace_and_name,
+            "https://langfuse.example.com/api/public/scores?limit=20&page=1&traceId=trace-wanted"
+        );
+
+        let name_and_type = build_langfuse_scores_list_url(
+            "https://langfuse.example.com",
+            None,
+            None,
+            Some("agentic.learning_loop_probe"),
+            Some("BOOLEAN"),
+            20,
+            1,
+        );
+        assert_eq!(
+            name_and_type,
+            "https://langfuse.example.com/api/public/scores?limit=20&page=1&name=agentic.learning_loop_probe"
         );
     }
 
