@@ -34,8 +34,19 @@ infra/langfuse/self-hosted/deploy.sh health
 
 Before `serve`, add the reviewed snippet in
 `tailscale/langfuse-acl-snippet.jsonc` to the tailnet's canonical policy. The
-The LangFuse host needs `tag:langfuse`; agent hosts need `tag:agents` only when
+LangFuse host needs `tag:langfuse`; agent hosts need `tag:agents` only when
 they are not operator-admin devices.
+
+On a new host, set the tag explicitly before serving:
+
+```bash
+export TAILSCALE_ADVERTISE_TAGS=tag:langfuse
+```
+
+On a host already carrying service tags, provide the complete desired list,
+for example `tag:hindsight,tag:seshmagic,tag:langfuse`. The wrapper leaves tags
+unchanged when this variable is omitted, so it cannot accidentally remove
+existing service identity.
 
 Use `https://$LANGFUSE_TAILSCALE_HOST` for `LANGFUSE_BASE_URL`. Do not send
 clients to Docker port 3000 and do not expose it on the public internet.

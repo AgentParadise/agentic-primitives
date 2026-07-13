@@ -25,6 +25,7 @@ Optional:
   LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net
   LANGFUSE_REF=reviewed-upstream-git-ref
   LANGFUSE_BACKUP_DIR=/Volumes/Backup/langfuse
+  TAILSCALE_ADVERTISE_TAGS=tag:existing-service,tag:langfuse
 
 The host can be a Mac mini, VPS, or other Docker-capable machine. The script
 never writes credentials into this repository. init creates the
@@ -65,7 +66,11 @@ case "${1:-}" in
   serve)
     require_host
     command -v tailscale >/dev/null || { echo 'tailscale is required' >&2; exit 69; }
-    sudo tailscale up --advertise-tags=tag:langfuse
+    if [ -n "${TAILSCALE_ADVERTISE_TAGS:-}" ]; then
+      sudo tailscale up --advertise-tags="$TAILSCALE_ADVERTISE_TAGS"
+    else
+      printf 'Leaving existing Tailscale tags unchanged. Set TAILSCALE_ADVERTISE_TAGS to the full desired tag list to change them.\n'
+    fi
     sudo tailscale serve --https=443 http://127.0.0.1:3000
     printf 'LangFuse is served privately at %s\n' "$LANGFUSE_BASE_URL"
     ;;
