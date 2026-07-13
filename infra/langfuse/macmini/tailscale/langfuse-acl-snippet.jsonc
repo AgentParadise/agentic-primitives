@@ -1,0 +1,20 @@
+// Paste these additions into the canonical tailnet policy.
+// The Mac mini advertises tag:langfuse; agent hosts advertise tag:agents.
+// Tailscale Serve terminates HTTPS on 443 and proxies only to 127.0.0.1:3000.
+{
+  "tagOwners": {
+    "tag:langfuse": ["autogroup:owner"]
+  },
+  "grants": [
+    {
+      "src": ["tag:agents"],
+      "dst": ["tag:langfuse"],
+      "ip": ["tcp:443"]
+    },
+    {
+      "src": ["autogroup:admin"],
+      "dst": ["tag:langfuse"],
+      "ip": ["tcp:443"]
+    }
+  ]
+}

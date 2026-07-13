@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LANGFUSE_HOME="${LANGFUSE_HOME:-$ROOT/.agentic/langfuse/langfuse}"
 LANGFUSE_REPO="${LANGFUSE_REPO:-https://github.com/langfuse/langfuse.git}"
+LANGFUSE_REF="${LANGFUSE_REF:-9b9cb4a1853082fd89ea46b6fe25a3df50fa8391}"
 LANGFUSE_BASE_URL="${LANGFUSE_BASE_URL:-http://localhost:3000}"
 LANGFUSE_COMPOSE_OVERRIDE="${LANGFUSE_COMPOSE_OVERRIDE:-$LANGFUSE_HOME/docker-compose.agentic-local.yml}"
 LANGFUSE_ENV_FILE="${LANGFUSE_ENV_FILE:-$LANGFUSE_HOME/.env}"
@@ -23,6 +24,7 @@ Commands:
 Environment:
   LANGFUSE_HOME      Defaults to .agentic/langfuse/langfuse
   LANGFUSE_REPO      Defaults to https://github.com/langfuse/langfuse.git
+  LANGFUSE_REF       Pinned upstream Git ref (override deliberately for upgrades)
   LANGFUSE_BASE_URL  Defaults to http://localhost:3000
   LANGFUSE_ENV_FILE  Defaults to .agentic/langfuse/langfuse/.env
 
@@ -43,7 +45,7 @@ require_compose_dir() {
 compose_args() {
   printf '%s\n' -f docker-compose.yml
   if [ -f "$LANGFUSE_COMPOSE_OVERRIDE" ]; then
-    printf '%s\n' -f "$(basename "$LANGFUSE_COMPOSE_OVERRIDE")"
+    printf '%s\n' -f "$LANGFUSE_COMPOSE_OVERRIDE"
   fi
 }
 
@@ -138,7 +140,10 @@ case "${1:-}" in
       exit 0
     fi
     mkdir -p "$(dirname "$LANGFUSE_HOME")"
-    git clone --depth 1 "$LANGFUSE_REPO" "$LANGFUSE_HOME"
+    git init "$LANGFUSE_HOME"
+    git -C "$LANGFUSE_HOME" remote add origin "$LANGFUSE_REPO"
+    git -C "$LANGFUSE_HOME" fetch --depth 1 origin "$LANGFUSE_REF"
+    git -C "$LANGFUSE_HOME" checkout --detach FETCH_HEAD
     ensure_local_files
     cat <<EOF
 LangFuse repository cloned to:

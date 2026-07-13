@@ -106,24 +106,26 @@ production/staging separation requires it.
 
 These steps work for a Mac mini or VPS with Docker installed.
 
-Choose the URL that clients will use before the first `init`. For a Mac mini
-reachable over Tailscale, that can be the MagicDNS name or the Tailscale IP:
+For the Mac mini, use the tracked IaC package. It pins the upstream LangFuse
+revision, limits Docker ingress to loopback, and uses Tailscale Serve for
+private HTTPS. Choose the MagicDNS name clients will use before the first
+`init`:
 
 ```bash
-export LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:3000
-# or:
-export LANGFUSE_BASE_URL=http://100.x.y.z:3000
+export LANGFUSE_TAILSCALE_HOST=mac-mini.tailnet-name.ts.net
+just langfuse-macmini-init
+just langfuse-macmini-up
+just langfuse-macmini-serve
+just langfuse-macmini-health
 ```
 
-Then bootstrap and start:
+The package lives at:
 
-```bash
-scripts/langfuse-local.sh init
-scripts/langfuse-local.sh up
-scripts/langfuse-local.sh status
+```text
+infra/langfuse/macmini/
 ```
 
-`scripts/langfuse-local.sh init` writes `NEXTAUTH_URL=$LANGFUSE_BASE_URL` into
+It writes `NEXTAUTH_URL=https://$LANGFUSE_TAILSCALE_HOST` into
 the generated `.env` on first creation. Set `LANGFUSE_BASE_URL` first so login
 links, callbacks, and absolute URLs match the address used by clients.
 
@@ -137,8 +139,8 @@ If the `.env` already existed before changing the URL, edit only the
 Then restart:
 
 ```bash
-scripts/langfuse-local.sh down
-scripts/langfuse-local.sh up
+infra/langfuse/macmini/macmini.sh down
+infra/langfuse/macmini/macmini.sh up
 ```
 
 If the database was already initialized, changing `LANGFUSE_INIT_*` values does
@@ -170,12 +172,12 @@ convention:
     {
       "src": ["tag:agents"],
       "dst": ["tag:langfuse"],
-      "ip": ["tcp:3000"]
+      "ip": ["tcp:443"]
     },
     {
       "src": ["autogroup:admin"],
       "dst": ["tag:langfuse"],
-      "ip": ["tcp:3000"]
+      "ip": ["tcp:443"]
     }
   ]
 }
@@ -193,13 +195,11 @@ Agent VPSs or long-lived agent hosts should wear `tag:agents` if they are not
 operator-admin devices. That keeps LangFuse reachable to agent infrastructure
 without opening the rest of the Mac mini.
 
-Pick one stable address for `LANGFUSE_BASE_URL`:
-
-- MagicDNS name, for example `http://mac-mini.tailnet-name.ts.net:3000`
-- Tailscale IP, for example `http://100.x.y.z:3000`
-
-Use the MagicDNS name when it resolves reliably from every client. Use the
-Tailscale IP when Docker or a VPS cannot resolve the MagicDNS name.
+Use the stable HTTPS MagicDNS address for `LANGFUSE_BASE_URL`, for example
+`https://mac-mini.tailnet-name.ts.net`. The Docker port remains loopback-only;
+clients reach Tailscale Serve on TCP 443. If MagicDNS does not resolve from a
+client, fix that client DNS configuration rather than bypassing the private
+ingress with port 3000.
 
 Do not expose port `3000` publicly without a reverse proxy, TLS, and a clear
 auth story. For public internet access, put LangFuse behind a normal HTTPS
@@ -212,7 +212,7 @@ export LANGFUSE_BASE_URL=https://langfuse.example.com
 Reachability check from each client:
 
 ```bash
-LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:3000 \
+LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net \
   scripts/langfuse-local.sh health
 ```
 
@@ -224,7 +224,7 @@ host that should emit traces.
 Export the shared server URL and project keys:
 
 ```bash
-export LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:3000
+export LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net
 export LANGFUSE_PUBLIC_KEY=pk-lf-...
 export LANGFUSE_SECRET_KEY=sk-lf-...
 export LANGFUSE_TRACING_ENVIRONMENT=local-macbook
@@ -304,7 +304,7 @@ Pass the shared values at launch time:
 
 ```bash
 docker run --rm \
-  -e LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:3000 \
+  -e LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net \
   -e LANGFUSE_PUBLIC_KEY \
   -e LANGFUSE_SECRET_KEY \
   -e LANGFUSE_TRACING_ENVIRONMENT=docker-workspace \

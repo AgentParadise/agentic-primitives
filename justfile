@@ -256,6 +256,26 @@ langfuse-stop:
 langfuse-smoke:
     scripts/langfuse-local.sh smoke
 
+# Initialize the private Mac mini LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-macmini-init:
+    infra/langfuse/macmini/macmini.sh init
+
+# Start the private Mac mini LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-macmini-up:
+    infra/langfuse/macmini/macmini.sh up
+
+# Configure Tailscale Serve for the private Mac mini LangFuse deployment
+[group('observability')]
+langfuse-macmini-serve:
+    infra/langfuse/macmini/macmini.sh serve
+
+# Check the Mac mini LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-macmini-health:
+    infra/langfuse/macmini/macmini.sh health
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOCKER / WORKSPACE IMAGES
 # ═══════════════════════════════════════════════════════════════════════════════
