@@ -108,9 +108,10 @@ These steps work for a Mac mini or VPS with Docker installed.
 
 For a centralized host, use the tracked self-hosted IaC package. It pins the
 upstream LangFuse revision, limits Docker ingress to loopback, and uses
-Tailscale Serve for private HTTPS. The Mac mini is the initial deployment
-target, but the package also supports a VPS or another Docker host. Choose the
-MagicDNS name clients will use before the first `init`:
+Tailscale HTTP Serve for private WireGuard-encrypted transport without issuing
+a public HTTPS certificate. The Mac mini is the initial deployment target, but
+the package also supports a VPS or another Docker host. Choose the MagicDNS name
+clients will use before the first `init`:
 
 ```bash
 export LANGFUSE_TAILSCALE_HOST=mac-mini.tailnet-name.ts.net
@@ -126,7 +127,7 @@ The package lives at:
 infra/langfuse/self-hosted/
 ```
 
-It writes `NEXTAUTH_URL=https://$LANGFUSE_TAILSCALE_HOST` into
+It writes `NEXTAUTH_URL=http://$LANGFUSE_TAILSCALE_HOST:19431` into
 the generated `.env` on first creation. Set `LANGFUSE_BASE_URL` first so login
 links, callbacks, and absolute URLs match the address used by clients.
 
@@ -198,7 +199,7 @@ operator-admin devices. That keeps LangFuse reachable to agent infrastructure
 without opening the rest of the Mac mini.
 
 Use the stable HTTPS MagicDNS address and the reserved LangFuse port for
-`LANGFUSE_BASE_URL`, for example `https://mac-mini.tailnet-name.ts.net:19431`.
+`LANGFUSE_BASE_URL`, for example `http://mac-mini.tailnet-name.ts.net:19431`.
 The Docker port remains loopback-only; clients reach Tailscale Serve on TCP
 19431. If MagicDNS does not resolve from a client, fix that client DNS
 configuration rather than bypassing the private ingress with port 3000.
@@ -214,7 +215,7 @@ export LANGFUSE_BASE_URL=https://langfuse.example.com
 Reachability check from each client:
 
 ```bash
-LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431 \
+LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:19431 \
   scripts/langfuse-local.sh health
 ```
 
@@ -226,7 +227,7 @@ host that should emit traces.
 Export the shared server URL and project keys:
 
 ```bash
-export LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431
+export LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:19431
 export LANGFUSE_PUBLIC_KEY=pk-lf-...
 export LANGFUSE_SECRET_KEY=sk-lf-...
 export LANGFUSE_TRACING_ENVIRONMENT=local-macbook
@@ -306,7 +307,7 @@ Pass the shared values at launch time:
 
 ```bash
 docker run --rm \
-  -e LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431 \
+  -e LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:19431 \
   -e LANGFUSE_PUBLIC_KEY \
   -e LANGFUSE_SECRET_KEY \
   -e LANGFUSE_TRACING_ENVIRONMENT=docker-workspace \

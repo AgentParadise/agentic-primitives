@@ -23,7 +23,7 @@ Required for init/up/serve:
 
 Optional:
   LANGFUSE_HOME=/opt/agentic-primitives/langfuse
-  LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431
+  LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:19431
   LANGFUSE_TAILSCALE_PORT=19431
   LANGFUSE_REF=reviewed-upstream-git-ref
   LANGFUSE_BACKUP_DIR=/Volumes/Backup/langfuse
@@ -41,7 +41,7 @@ require_host() {
     exit 64
   fi
   if [ -z "$LANGFUSE_BASE_URL" ]; then
-    LANGFUSE_BASE_URL="https://$LANGFUSE_TAILSCALE_HOST:$LANGFUSE_TAILSCALE_PORT"
+    LANGFUSE_BASE_URL="http://$LANGFUSE_TAILSCALE_HOST:$LANGFUSE_TAILSCALE_PORT"
   fi
   export LANGFUSE_HOME LANGFUSE_BASE_URL LANGFUSE_COMPOSE_OVERRIDE LANGFUSE_REF LANGFUSE_TAILSCALE_PORT
 }
@@ -73,7 +73,7 @@ case "${1:-}" in
     else
       printf 'Leaving existing Tailscale tags unchanged. Set TAILSCALE_ADVERTISE_TAGS to the full desired tag list to change them.\n'
     fi
-    sudo tailscale serve --https="$LANGFUSE_TAILSCALE_PORT" "http://127.0.0.1:$LANGFUSE_TAILSCALE_PORT"
+    tailscale serve --bg --http="$LANGFUSE_TAILSCALE_PORT" "http://127.0.0.1:$LANGFUSE_TAILSCALE_PORT"
     printf 'LangFuse is served privately at %s\n' "$LANGFUSE_BASE_URL"
     ;;
   backup)

@@ -3,9 +3,10 @@
 This package deploys the canonical LangFuse backend for Agentic Primitives on
 any Docker-capable host. The initial target is the Mac mini, but no file or
 runtime contract is tied to that machine. The server is intentionally private:
-Docker binds the LangFuse web service to `127.0.0.1:19431`, and Tailscale Serve
-publishes HTTPS on tailnet port `19431`. Claude, Codex, VPS hosts, and isolated
-workspaces use that HTTPS URL as `LANGFUSE_BASE_URL`.
+Docker binds the LangFuse web service to `127.0.0.1:19431`, and Tailscale HTTP
+Serve publishes it privately on tailnet port `19431`. Tailnet transport remains
+WireGuard-encrypted without issuing a public HTTPS certificate. Claude, Codex,
+VPS hosts, and isolated workspaces use that HTTP URL as `LANGFUSE_BASE_URL`.
 
 ## What Is Tracked
 
@@ -50,7 +51,7 @@ for example `tag:hindsight,tag:seshmagic,tag:langfuse`. The wrapper leaves tags
 unchanged when this variable is omitted, so it cannot accidentally remove
 existing service identity.
 
-Use `https://$LANGFUSE_TAILSCALE_HOST:$LANGFUSE_TAILSCALE_PORT` for
+Use `http://$LANGFUSE_TAILSCALE_HOST:$LANGFUSE_TAILSCALE_PORT` for
 `LANGFUSE_BASE_URL`. Do not send
 clients to Docker port 3000 and do not expose it on the public internet.
 

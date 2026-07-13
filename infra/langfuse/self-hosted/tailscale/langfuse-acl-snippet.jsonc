@@ -1,6 +1,7 @@
 // Paste these additions into the canonical tailnet policy.
 // The LangFuse host advertises tag:langfuse; agent hosts advertise tag:agents.
-// Tailscale Serve terminates HTTPS on 19431 and proxies only to 127.0.0.1:19431.
+// Tailscale HTTP Serve proxies only to 127.0.0.1:19431. Tailnet transport is
+// WireGuard-encrypted; this avoids issuing a public HTTPS certificate.
 {
   "tagOwners": {
     "tag:langfuse": ["autogroup:owner"]
