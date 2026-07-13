@@ -372,7 +372,14 @@ After any setup change, prove both harnesses.
    itmux langfuse-traces --limit 20 --output summary
    itmux langfuse-traces --harness codex --environment local-macbook
    itmux langfuse-trace --trace-id <trace-id> --include-scores --output summary
+   itmux langfuse-sessions --harness codex --environment local-macbook
    ```
+
+   `langfuse-sessions` groups the per-turn traces emitted by the official
+   plugins using LangFuse `session_id` and returns turn, token, cost, tool, and
+   score rollups. `session_id` is the bridge to the separate raw session-log
+   and replay store; it is not a replacement for those artifacts, and it is
+   not assumed to equal an `itmux` run id.
 
 6. Write one feedback score:
 

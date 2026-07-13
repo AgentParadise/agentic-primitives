@@ -112,6 +112,50 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "agentic_langfuse_session_report",
+        "description": (
+            "Group LangFuse per-turn traces by session_id and return session-level "
+            "turn, cost, token, tool, and optional score rollups. A session_id is "
+            "the cross-turn grouping key; it is not an itmux run_id or raw log store."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20,
+                    "description": "Maximum trace rows to discover and group on this page.",
+                },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "1-based LangFuse trace discovery page number.",
+                },
+                "harness": _text_schema("Optional harness filter, for example codex or claude."),
+                "provider": _text_schema("Optional provider filter, for example openai or anthropic."),
+                "model": _text_schema("Optional model filter."),
+                "environment": _text_schema("Optional LangFuse environment filter."),
+                "include_scores": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include trace-scoped scores in each session report.",
+                },
+                "score_limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "default": 20,
+                    "description": "Maximum score rows to request for each trace.",
+                },
+                "langfuse_base_url": _text_schema("Optional LangFuse origin override."),
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "agentic_langfuse_scores",
         "description": "Read trace-scoped LangFuse scores for learning-loop feedback.",
         "inputSchema": {
@@ -312,6 +356,8 @@ class McpServer:
             return self._tool_result(request_id, self._langfuse_trace(args))
         if name == "agentic_langfuse_trace_discovery":
             return self._tool_result(request_id, self._langfuse_traces(args))
+        if name == "agentic_langfuse_session_report":
+            return self._tool_result(request_id, self._langfuse_sessions(args))
         if name == "agentic_langfuse_scores":
             return self._tool_result(request_id, self._langfuse_scores(args))
         if name == "agentic_langfuse_score_feedback":
@@ -349,6 +395,23 @@ class McpServer:
         cmd = [self.itmux_bin, "langfuse-traces"]
         for flag in ("limit", "page", "harness", "provider", "model", "environment"):
             self._add_option(cmd, f"--{flag.replace('_', '-')}", args.get(flag))
+        self._add_option(cmd, "--langfuse-base-url", args.get("langfuse_base_url"))
+        return self._run_itmux(cmd)
+
+    def _langfuse_sessions(self, args: dict[str, Any]) -> dict[str, Any]:
+        cmd = [self.itmux_bin, "langfuse-sessions"]
+        for flag in (
+            "limit",
+            "page",
+            "harness",
+            "provider",
+            "model",
+            "environment",
+            "score_limit",
+        ):
+            self._add_option(cmd, f"--{flag.replace('_', '-')}", args.get(flag))
+        if args.get("include_scores") is False:
+            cmd.append("--include-scores=false")
         self._add_option(cmd, "--langfuse-base-url", args.get("langfuse_base_url"))
         return self._run_itmux(cmd)
 
@@ -503,6 +566,12 @@ class McpServer:
                 return self._direct_langfuse_trace(parsed)
             if command == "langfuse-traces":
                 return self._direct_langfuse_traces(parsed)
+            if command == "langfuse-sessions":
+                return {
+                    "ok": False,
+                    "error": "session reports require itmux; direct fallback only supports raw trace reads",
+                    "hint": "Set ITMUX_BIN or put itmux on PATH.",
+                }
             if command == "langfuse-scores":
                 return self._direct_langfuse_scores(parsed)
             if command == "langfuse-score":
@@ -1192,6 +1261,9 @@ def self_test() -> int:
             "if cmd == 'langfuse-traces':\n"
             "    print(json.dumps({'ok': True, 'argv': argv, 'summary': {'returned_count': 1, 'backend_total_items': 1, 'traces': [{'trace_id': '1' * 32, 'run_id': 'run-test', 'harnesses': ['codex'], 'providers': ['openai'], 'models': ['gpt-5.5'], 'cost': {'calculated_total_usd': 0.25}, 'usage': {'total_tokens': 100}}]}}))\n"
             "    raise SystemExit(0)\n"
+            "if cmd == 'langfuse-sessions':\n"
+            "    print(json.dumps({'ok': True, 'argv': argv, 'summary': {'session_count': 1, 'sessions': [{'session_id': 'session-test', 'turn_count': 2, 'usage': {'total_tokens': 100}, 'cost': {'calculated_total_usd': 0.25}}]}}))\n"
+            "    raise SystemExit(0)\n"
             "if cmd == 'langfuse-trace':\n"
             "    print(json.dumps({'ok': True, 'argv': argv, 'summary': {'trace_id': '1' * 32, 'run_id': 'run-test', 'harnesses': ['codex'], 'providers': ['openai'], 'models': ['gpt-5.5'], 'usage': {'total_tokens': 100}, 'cost': {'calculated_total_usd': 0.25}, 'generations': {'count': 1, 'total_tokens': 100, 'calculated_total_usd': 0.25, 'by_model': {'gpt-5.5': {'count': 1}}, 'sequence': [{'seq': 2, 'model': 'gpt-5.5'}]}, 'agent_tools': {'names': ['Bash'], 'start_count': 1, 'end_count': 1, 'success_count': 1, 'failure_count': 0, 'by_name': {'Bash': {'success_count': 1}}}, 'harness_tools': {'names': ['codex_exec.turn'], 'start_count': 1, 'end_count': 1, 'success_count': 1, 'failure_count': 0}, 'scores': {'returned_count': 1, 'scores': [{'trace_id': '1' * 32, 'name': 'agentic.learning_loop_probe', 'value': 1}]}}}))\n"
             "    raise SystemExit(0)\n"
@@ -1212,6 +1284,17 @@ def self_test() -> int:
                         "params": {
                             "name": "agentic_langfuse_trace_summary",
                             "arguments": {"run_id": "run-test", "include_scores": True},
+                        },
+                    }
+                )
+                + _frame(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 9,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "agentic_langfuse_session_report",
+                            "arguments": {"harness": "codex", "limit": 3},
                         },
                     }
                 )
@@ -1282,21 +1365,25 @@ def self_test() -> int:
         assert payloads[0]["result"]["serverInfo"]["name"] == "agentic-primitives-langfuse"
         tool_names = {tool["name"] for tool in payloads[1]["result"]["tools"]}
         assert "agentic_langfuse_trace_summary" in tool_names
+        assert "agentic_langfuse_session_report" in tool_names
         text = payloads[2]["result"]["content"][0]["text"]
         called = json.loads(text)["argv"]
         assert called[:3] == ["langfuse-trace", "--output", "summary"]
         assert "--run-id" in called and "run-test" in called
         assert "--include-scores" in called
-        discovery = json.loads(payloads[3]["result"]["content"][0]["text"])["argv"]
+        session_report = json.loads(payloads[3]["result"]["content"][0]["text"])
+        assert session_report["summary"]["session_count"] == 1
+        assert "langfuse-sessions" in session_report["argv"]
+        discovery = json.loads(payloads[4]["result"]["content"][0]["text"])["argv"]
         assert discovery[:1] == ["langfuse-traces"]
         assert "--harness" in discovery and "codex" in discovery
-        scores = json.loads(payloads[4]["result"]["content"][0]["text"])["argv"]
+        scores = json.loads(payloads[5]["result"]["content"][0]["text"])["argv"]
         assert scores[:1] == ["langfuse-scores"]
         assert "--trace-id" in scores and "0" * 32 in scores
-        score = json.loads(payloads[5]["result"]["content"][0]["text"])["argv"]
+        score = json.loads(payloads[6]["result"]["content"][0]["text"])["argv"]
         assert score[:1] == ["langfuse-score"]
         assert "--data-type" in score and "boolean" in score
-        report = json.loads(payloads[6]["result"]["content"][0]["text"])
+        report = json.loads(payloads[7]["result"]["content"][0]["text"])
         assert report["summary"]["trace_count"] == 1
         assert report["summary"]["usage"]["total_tokens"] == 100
         assert report["summary"]["cost"]["calculated_total_usd"] == 0.25
@@ -1332,8 +1419,8 @@ def self_test() -> int:
             "missing_model",
             "missing_token_usage",
         } <= recommendation_codes
-        failed = json.loads(payloads[7]["result"]["content"][0]["text"])
-        assert payloads[7]["result"]["isError"] is True
+        failed = json.loads(payloads[8]["result"]["content"][0]["text"])
+        assert payloads[8]["result"]["isError"] is True
         assert REDACTION in failed["raw_stdout"]
         assert "Author" + "ization: Basic [REDACTED]" in failed["stderr"]
         assert "sk" + "-lf-test-secret" not in failed["raw_stdout"]

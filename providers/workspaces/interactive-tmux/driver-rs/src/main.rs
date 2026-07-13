@@ -15,8 +15,8 @@ use serde_json::{json, Value};
 mod langfuse;
 
 use crate::langfuse::{
-    handle_langfuse_score, handle_langfuse_scores, handle_langfuse_trace, handle_langfuse_traces,
-    LangFuseScoreDataType, LangFuseTraceApi, LangFuseTraceOutput,
+    handle_langfuse_score, handle_langfuse_scores, handle_langfuse_sessions, handle_langfuse_trace,
+    handle_langfuse_traces, LangFuseScoreDataType, LangFuseTraceApi, LangFuseTraceOutput,
     DEFAULT_LANGFUSE_QUERY_FROM_START_TIME, DEFAULT_LANGFUSE_QUERY_TO_START_TIME,
 };
 use itmux::adapter::{Agent, AGENTS};
@@ -318,6 +318,46 @@ enum Cmd {
         /// Keep only traces for this LangFuse environment.
         #[arg(long)]
         environment: Option<String>,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
+    },
+    /// Group LangFuse per-turn traces into session-level learning-loop reports.
+    #[command(name = "langfuse-sessions")]
+    LangFuseSessions {
+        /// LangFuse origin. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Maximum trace rows to discover and group on this page.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+        /// 1-based LangFuse trace discovery page number.
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Keep only sessions containing traces for this harness.
+        #[arg(long)]
+        harness: Option<String>,
+        /// Keep only sessions containing traces for this provider.
+        #[arg(long)]
+        provider: Option<String>,
+        /// Keep only sessions containing traces for this model.
+        #[arg(long)]
+        model: Option<String>,
+        /// Keep only sessions containing traces for this LangFuse environment.
+        #[arg(long)]
+        environment: Option<String>,
+        /// Include trace-scoped LangFuse scores in each session report.
+        #[arg(long, default_value_t = true)]
+        include_scores: bool,
+        /// Maximum score rows to request for each trace.
+        #[arg(long, default_value_t = 20)]
+        score_limit: u32,
         /// Response shape for agents: compact summary or full backend response.
         #[arg(long, value_enum, default_value = "summary")]
         output: LangFuseTraceOutput,
@@ -1588,6 +1628,33 @@ fn main() -> ExitCode {
             provider,
             model,
             environment,
+            output,
+        ),
+        Cmd::LangFuseSessions {
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
+            include_scores,
+            score_limit,
+            output,
+        } => handle_langfuse_sessions(
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
+            include_scores,
+            score_limit,
             output,
         ),
         Cmd::LangFuseScore {

@@ -1,5 +1,11 @@
 # Changelog — observability plugin
 
+## 0.3.3
+- Added `agentic_langfuse_session_report`, which groups the canonical
+  per-turn LangFuse traces by `session_id` and returns turn, token, cost, tool,
+  and score rollups for Claude and Codex learning loops
+- Added MCP self-test coverage for the session-report command path
+
 ## 0.3.2
 - Added default learning-loop insights to
   `agentic_langfuse_learning_loop_report`, including cost hotspots, token

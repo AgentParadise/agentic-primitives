@@ -113,6 +113,23 @@ struct LangFuseTracesListRequest {
 }
 
 #[derive(Serialize)]
+struct LangFuseSessionsListRequest {
+    endpoint: String,
+    limit: u32,
+    page: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    environment: Option<String>,
+    include_scores: bool,
+    score_limit: u32,
+}
+
+#[derive(Serialize)]
 struct LangFuseScoreCreateRequest {
     endpoint: String,
     trace_id: String,
@@ -476,6 +493,101 @@ pub(crate) fn handle_langfuse_traces(
                     "request": request,
                     "error": err.to_string(),
                 }))
+                .unwrap()
+            );
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn handle_langfuse_sessions(
+    base_url: Option<String>,
+    public_key_env: String,
+    secret_key_env: String,
+    limit: u32,
+    page: u32,
+    harness: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    environment: Option<String>,
+    include_scores: bool,
+    score_limit: u32,
+    output: LangFuseTraceOutput,
+) -> ExitCode {
+    let mut missing = Vec::new();
+    let base_url = base_url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| non_empty_env("LANGFUSE_BASE_URL"))
+        .unwrap_or_else(|| {
+            missing.push("LANGFUSE_BASE_URL".to_string());
+            String::new()
+        });
+    let public_key = non_empty_env(&public_key_env).unwrap_or_else(|| {
+        missing.push(public_key_env.clone());
+        String::new()
+    });
+    let secret_key = non_empty_env(&secret_key_env).unwrap_or_else(|| {
+        missing.push(secret_key_env.clone());
+        String::new()
+    });
+    if !missing.is_empty() {
+        println!(
+            "{}",
+            json!({"ok": false, "error": "missing required LangFuse query configuration", "missing": missing})
+        );
+        return ExitCode::from(78);
+    }
+
+    let endpoint = build_langfuse_traces_list_url(&base_url, limit, page);
+    let request = LangFuseSessionsListRequest {
+        endpoint: endpoint.clone(),
+        limit,
+        page,
+        harness: non_empty_string(harness),
+        provider: non_empty_string(provider),
+        model: non_empty_string(model),
+        environment: non_empty_string(environment),
+        include_scores,
+        score_limit,
+    };
+    match query_langfuse_json(&endpoint, &public_key, &secret_key) {
+        Ok(response) => {
+            let trace_request = LangFuseTracesListRequest {
+                endpoint: endpoint.clone(),
+                limit,
+                page,
+                harness: request.harness.clone(),
+                provider: request.provider.clone(),
+                model: request.model.clone(),
+                environment: request.environment.clone(),
+            };
+            let discovery = summarize_langfuse_traces_response(&response, &trace_request);
+            let summary = summarize_langfuse_sessions_response(
+                &discovery,
+                &base_url,
+                &public_key,
+                &secret_key,
+                &request,
+            );
+            let result = match output {
+                LangFuseTraceOutput::Summary => {
+                    json!({"ok": true, "request": request, "summary": summary})
+                }
+                LangFuseTraceOutput::Full => {
+                    json!({"ok": true, "request": request, "summary": summary, "response": response})
+                }
+            };
+            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &json!({"ok": false, "request": request, "error": error})
+                )
                 .unwrap()
             );
             ExitCode::from(1)
@@ -1560,6 +1672,216 @@ fn summarize_langfuse_traces_response(
     })
 }
 
+fn summarize_langfuse_sessions_response(
+    discovery: &Value,
+    base_url: &str,
+    public_key: &str,
+    secret_key: &str,
+    request: &LangFuseSessionsListRequest,
+) -> Value {
+    let traces = discovery
+        .get("traces")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut sessions: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    let mut unscoped_trace_count = 0_u64;
+    let mut errors = Vec::new();
+
+    for row in &traces {
+        let Some(trace_id) = row.get("trace_id").and_then(Value::as_str) else {
+            errors.push(json!({"trace": row, "error": "trace discovery row has no trace_id"}));
+            continue;
+        };
+        let Some(session_id) = row.get("session_id").and_then(Value::as_str) else {
+            unscoped_trace_count = unscoped_trace_count.saturating_add(1);
+            continue;
+        };
+        let endpoint = build_langfuse_trace_query_url(
+            LangFuseTraceApi::LegacyTrace,
+            base_url,
+            trace_id,
+            DEFAULT_LANGFUSE_QUERY_FROM_START_TIME,
+            DEFAULT_LANGFUSE_QUERY_TO_START_TIME,
+            "core,basic,usage,trace_context",
+            500,
+        );
+        let mut detail = match query_langfuse_json(&endpoint, public_key, secret_key) {
+            Ok(payload) => summarize_langfuse_trace_response(&payload),
+            Err(error) => {
+                errors.push(json!({"trace_id": trace_id, "error": error}));
+                continue;
+            }
+        };
+        if request.include_scores {
+            let scores_endpoint = build_langfuse_scores_list_url(
+                base_url,
+                Some(trace_id),
+                None,
+                None,
+                None,
+                request.score_limit,
+                1,
+            );
+            match query_langfuse_json(&scores_endpoint, public_key, secret_key) {
+                Ok(payload) => {
+                    let score_request = LangFuseScoresListRequest {
+                        endpoint: scores_endpoint,
+                        trace_id: Some(trace_id.to_string()),
+                        run_id: None,
+                        score_ids: None,
+                        name: None,
+                        data_type: None,
+                        limit: request.score_limit,
+                        page: 1,
+                    };
+                    detail["scores"] = summarize_langfuse_scores_response(&payload, &score_request);
+                }
+                Err(error) => detail["scores_error"] = error,
+            }
+        }
+        detail["timestamp"] = row.get("timestamp").cloned().unwrap_or(Value::Null);
+        detail["html_path"] = row.get("html_path").cloned().unwrap_or(Value::Null);
+        sessions
+            .entry(session_id.to_string())
+            .or_default()
+            .push(detail);
+    }
+
+    let sessions = sessions
+        .into_iter()
+        .map(|(session_id, details)| {
+            summarize_langfuse_session(&session_id, details, request.include_scores)
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "page": request.page,
+        "limit": request.limit,
+        "filters": {
+            "harness": request.harness,
+            "provider": request.provider,
+            "model": request.model,
+            "environment": request.environment,
+        },
+        "session_count": sessions.len(),
+        "unscoped_trace_count": unscoped_trace_count,
+        "backend_total_trace_items": discovery.get("backend_total_items"),
+        "sessions": sessions,
+        "errors": errors,
+    })
+}
+
+fn summarize_langfuse_session(
+    session_id: &str,
+    details: Vec<Value>,
+    include_scores: bool,
+) -> Value {
+    let mut trace_ids = Vec::new();
+    let mut harnesses = BTreeSet::new();
+    let mut providers = BTreeSet::new();
+    let mut models = BTreeSet::new();
+    let mut environments = BTreeSet::new();
+    let mut tool_names = BTreeSet::new();
+    let mut total_tokens = 0_u64;
+    let mut total_cost = 0.0_f64;
+    let mut has_cost = false;
+    let mut tool_count = 0_u64;
+    let mut tool_success_count = 0_u64;
+    let mut tool_failure_count = 0_u64;
+    let mut scores = Vec::new();
+    let mut trace_rows = Vec::new();
+
+    for detail in details {
+        if let Some(trace_id) = detail.get("trace_id").and_then(Value::as_str) {
+            trace_ids.push(trace_id.to_string());
+        }
+        for (key, target) in [
+            ("harnesses", &mut harnesses),
+            ("providers", &mut providers),
+            ("models", &mut models),
+            ("environments", &mut environments),
+        ] {
+            if let Some(values) = detail.get(key).and_then(Value::as_array) {
+                for value in values.iter().filter_map(Value::as_str) {
+                    target.insert(value.to_string());
+                }
+            }
+        }
+        total_tokens = total_tokens.saturating_add(
+            detail
+                .pointer("/usage/total_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+        );
+        if let Some(cost) = detail
+            .pointer("/cost/calculated_total_usd")
+            .and_then(|value| number_f64(Some(value)))
+        {
+            total_cost += cost;
+            has_cost = true;
+        }
+        if let Some(agent_tools) = detail.get("agent_tools") {
+            tool_count = tool_count.saturating_add(
+                agent_tools
+                    .get("end_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+            );
+            tool_success_count = tool_success_count.saturating_add(
+                agent_tools
+                    .get("success_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+            );
+            tool_failure_count = tool_failure_count.saturating_add(
+                agent_tools
+                    .get("failure_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+            );
+            if let Some(names) = agent_tools.get("names").and_then(Value::as_array) {
+                for name in names.iter().filter_map(Value::as_str) {
+                    tool_names.insert(name.to_string());
+                }
+            }
+        }
+        if include_scores {
+            if let Some(values) = detail.pointer("/scores/scores").and_then(Value::as_array) {
+                scores.extend(values.iter().cloned());
+            }
+        }
+        trace_rows.push(json!({
+            "trace_id": detail.get("trace_id"),
+            "trace_name": detail.get("trace_name"),
+            "timestamp": detail.get("timestamp"),
+            "html_path": detail.get("html_path"),
+            "usage": detail.get("usage"),
+            "cost": detail.get("cost"),
+            "agent_tools": detail.get("agent_tools"),
+        }));
+    }
+
+    json!({
+        "session_id": session_id,
+        "turn_count": trace_rows.len(),
+        "trace_ids": trace_ids,
+        "harnesses": harnesses.into_iter().collect::<Vec<_>>(),
+        "providers": providers.into_iter().collect::<Vec<_>>(),
+        "models": models.into_iter().collect::<Vec<_>>(),
+        "environments": environments.into_iter().collect::<Vec<_>>(),
+        "usage": {"total_tokens": total_tokens},
+        "cost": {"calculated_total_usd": if has_cost { Some(total_cost) } else { None }},
+        "tools": {
+            "count": tool_count,
+            "success_count": tool_success_count,
+            "failure_count": tool_failure_count,
+            "names": tool_names.into_iter().collect::<Vec<_>>(),
+        },
+        "scores": if include_scores { Some(scores) } else { None },
+        "traces": trace_rows,
+    })
+}
+
 #[derive(Debug, Clone, Copy)]
 struct OfficialPluginTraceInference {
     harness: &'static str,
@@ -2270,6 +2592,80 @@ mod tests {
         assert_eq!(page, 1);
         assert_eq!(harness.as_deref(), Some("claude"));
         assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_sessions_cli_groups_turns_and_includes_scores_by_default() {
+        let cli = Cli::try_parse_from([
+            "itmux",
+            "langfuse-sessions",
+            "--limit",
+            "5",
+            "--harness",
+            "codex",
+        ])
+        .unwrap();
+
+        let Cmd::LangFuseSessions {
+            limit,
+            page,
+            harness,
+            include_scores,
+            output,
+            ..
+        } = cli.cmd
+        else {
+            panic!("expected langfuse-sessions command");
+        };
+
+        assert_eq!(limit, 5);
+        assert_eq!(page, 1);
+        assert_eq!(harness.as_deref(), Some("codex"));
+        assert!(include_scores);
+        assert!(matches!(output, LangFuseTraceOutput::Summary));
+    }
+
+    #[test]
+    fn langfuse_session_summary_rolls_up_turn_cost_tools_and_scores() {
+        let summary = summarize_langfuse_session(
+            "session-1",
+            vec![
+                json!({
+                    "trace_id": "trace-1",
+                    "trace_name": "Codex Turn 1",
+                    "timestamp": "2026-07-13T00:00:00Z",
+                    "harnesses": ["codex"],
+                    "providers": ["openai"],
+                    "models": ["gpt-5.6"],
+                    "environments": ["local-macbook"],
+                    "usage": {"total_tokens": 100},
+                    "cost": {"calculated_total_usd": 0.25},
+                    "agent_tools": {"end_count": 2, "success_count": 1, "failure_count": 1, "names": ["exec_command"]},
+                    "scores": {"scores": [{"score_id": "score-1", "value": 1}]}
+                }),
+                json!({
+                    "trace_id": "trace-2",
+                    "trace_name": "Codex Turn 2",
+                    "harnesses": ["codex"],
+                    "providers": ["openai"],
+                    "models": ["gpt-5.6"],
+                    "environments": ["local-macbook"],
+                    "usage": {"total_tokens": 40},
+                    "cost": {"calculated_total_usd": 0.10},
+                    "agent_tools": {"end_count": 1, "success_count": 1, "failure_count": 0, "names": ["read_file"]},
+                    "scores": {"scores": []}
+                }),
+            ],
+            true,
+        );
+
+        assert_eq!(summary["session_id"], "session-1");
+        assert_eq!(summary["turn_count"], 2);
+        assert_eq!(summary["usage"]["total_tokens"], 140);
+        assert_eq!(summary["cost"]["calculated_total_usd"], json!(0.35));
+        assert_eq!(summary["tools"]["count"], 3);
+        assert_eq!(summary["tools"]["failure_count"], 1);
+        assert_eq!(summary["scores"][0]["score_id"], "score-1");
     }
 
     #[test]

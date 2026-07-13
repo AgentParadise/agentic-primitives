@@ -106,8 +106,10 @@ itmux run \
 
 Use the official LangFuse plugins for Claude/Codex model spans, tool calls,
 tokens, cost, and trace UX. Use `itmux langfuse-trace`, `itmux
-langfuse-traces`, `itmux langfuse-score`, and `itmux langfuse-scores` to read
-those traces back for learning loops. See
+langfuse-traces`, `itmux langfuse-sessions`, `itmux langfuse-score`, and
+`itmux langfuse-scores` to read those traces back for learning loops. The
+session command groups per-turn traces by LangFuse `session_id`; it does not
+replace the raw session-log store. See
 [`docs/guides/langfuse-observability-setup.md`](../../../../docs/guides/langfuse-observability-setup.md)
 for the macOS Keychain, VPS, Docker, and local LangFuse setup procedure.
 
