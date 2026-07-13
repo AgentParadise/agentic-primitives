@@ -1,6 +1,6 @@
 // Paste these additions into the canonical tailnet policy.
 // The LangFuse host advertises tag:langfuse; agent hosts advertise tag:agents.
-// Tailscale Serve terminates HTTPS on 443 and proxies only to 127.0.0.1:3000.
+// Tailscale Serve terminates HTTPS on 19431 and proxies only to 127.0.0.1:19431.
 {
   "tagOwners": {
     "tag:langfuse": ["autogroup:owner"]
@@ -9,12 +9,12 @@
     {
       "src": ["tag:agents"],
       "dst": ["tag:langfuse"],
-      "ip": ["tcp:443"]
+      "ip": ["tcp:19431"]
     },
     {
       "src": ["autogroup:admin"],
       "dst": ["tag:langfuse"],
-      "ip": ["tcp:443"]
+      "ip": ["tcp:19431"]
     }
   ]
 }

@@ -9,6 +9,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DEPLOY_DIR="$ROOT/infra/langfuse/self-hosted"
 LANGFUSE_HOME="${LANGFUSE_HOME:-/opt/agentic-primitives/langfuse}"
 LANGFUSE_TAILSCALE_HOST="${LANGFUSE_TAILSCALE_HOST:-}"
+LANGFUSE_TAILSCALE_PORT="${LANGFUSE_TAILSCALE_PORT:-19431}"
 LANGFUSE_BASE_URL="${LANGFUSE_BASE_URL:-}"
 LANGFUSE_COMPOSE_OVERRIDE="$DEPLOY_DIR/compose.private.yaml"
 LANGFUSE_REF="${LANGFUSE_REF:-9b9cb4a1853082fd89ea46b6fe25a3df50fa8391}"
@@ -22,7 +23,8 @@ Required for init/up/serve:
 
 Optional:
   LANGFUSE_HOME=/opt/agentic-primitives/langfuse
-  LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net
+  LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431
+  LANGFUSE_TAILSCALE_PORT=19431
   LANGFUSE_REF=reviewed-upstream-git-ref
   LANGFUSE_BACKUP_DIR=/Volumes/Backup/langfuse
   TAILSCALE_ADVERTISE_TAGS=tag:existing-service,tag:langfuse
@@ -39,9 +41,9 @@ require_host() {
     exit 64
   fi
   if [ -z "$LANGFUSE_BASE_URL" ]; then
-    LANGFUSE_BASE_URL="https://$LANGFUSE_TAILSCALE_HOST"
+    LANGFUSE_BASE_URL="https://$LANGFUSE_TAILSCALE_HOST:$LANGFUSE_TAILSCALE_PORT"
   fi
-  export LANGFUSE_HOME LANGFUSE_BASE_URL LANGFUSE_COMPOSE_OVERRIDE LANGFUSE_REF
+  export LANGFUSE_HOME LANGFUSE_BASE_URL LANGFUSE_COMPOSE_OVERRIDE LANGFUSE_REF LANGFUSE_TAILSCALE_PORT
 }
 
 shared() {
@@ -71,7 +73,7 @@ case "${1:-}" in
     else
       printf 'Leaving existing Tailscale tags unchanged. Set TAILSCALE_ADVERTISE_TAGS to the full desired tag list to change them.\n'
     fi
-    sudo tailscale serve --https=443 http://127.0.0.1:3000
+    sudo tailscale serve --https="$LANGFUSE_TAILSCALE_PORT" "http://127.0.0.1:$LANGFUSE_TAILSCALE_PORT"
     printf 'LangFuse is served privately at %s\n' "$LANGFUSE_BASE_URL"
     ;;
   backup)

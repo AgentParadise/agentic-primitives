@@ -173,34 +173,35 @@ convention:
     {
       "src": ["tag:agents"],
       "dst": ["tag:langfuse"],
-      "ip": ["tcp:443"]
+      "ip": ["tcp:19431"]
     },
     {
       "src": ["autogroup:admin"],
       "dst": ["tag:langfuse"],
-      "ip": ["tcp:443"]
+      "ip": ["tcp:19431"]
     }
   ]
 }
 ```
 
-If the Mac mini already wears other service tags, add `tag:langfuse` to the
-same device. Owner-managed devices can self-advertise this tag when
-`autogroup:owner` is listed in `tagOwners`:
+If the host already wears other service tags, add `tag:langfuse` to the same
+device. `tailscale up --advertise-tags` replaces its full tag set, so pass the
+complete desired list rather than only the new tag:
 
 ```bash
-sudo tailscale up --advertise-tags=tag:langfuse
+export TAILSCALE_ADVERTISE_TAGS=tag:existing-service,tag:langfuse
+infra/langfuse/self-hosted/deploy.sh serve
 ```
 
 Agent VPSs or long-lived agent hosts should wear `tag:agents` if they are not
 operator-admin devices. That keeps LangFuse reachable to agent infrastructure
 without opening the rest of the Mac mini.
 
-Use the stable HTTPS MagicDNS address for `LANGFUSE_BASE_URL`, for example
-`https://mac-mini.tailnet-name.ts.net`. The Docker port remains loopback-only;
-clients reach Tailscale Serve on TCP 443. If MagicDNS does not resolve from a
-client, fix that client DNS configuration rather than bypassing the private
-ingress with port 3000.
+Use the stable HTTPS MagicDNS address and the reserved LangFuse port for
+`LANGFUSE_BASE_URL`, for example `https://mac-mini.tailnet-name.ts.net:19431`.
+The Docker port remains loopback-only; clients reach Tailscale Serve on TCP
+19431. If MagicDNS does not resolve from a client, fix that client DNS
+configuration rather than bypassing the private ingress with port 3000.
 
 Do not expose port `3000` publicly without a reverse proxy, TLS, and a clear
 auth story. For public internet access, put LangFuse behind a normal HTTPS
@@ -213,7 +214,7 @@ export LANGFUSE_BASE_URL=https://langfuse.example.com
 Reachability check from each client:
 
 ```bash
-LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net \
+LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431 \
   scripts/langfuse-local.sh health
 ```
 
@@ -225,7 +226,7 @@ host that should emit traces.
 Export the shared server URL and project keys:
 
 ```bash
-export LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net
+export LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431
 export LANGFUSE_PUBLIC_KEY=pk-lf-...
 export LANGFUSE_SECRET_KEY=sk-lf-...
 export LANGFUSE_TRACING_ENVIRONMENT=local-macbook
@@ -305,7 +306,7 @@ Pass the shared values at launch time:
 
 ```bash
 docker run --rm \
-  -e LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net \
+  -e LANGFUSE_BASE_URL=https://mac-mini.tailnet-name.ts.net:19431 \
   -e LANGFUSE_PUBLIC_KEY \
   -e LANGFUSE_SECRET_KEY \
   -e LANGFUSE_TRACING_ENVIRONMENT=docker-workspace \
