@@ -256,25 +256,25 @@ langfuse-stop:
 langfuse-smoke:
     scripts/langfuse-local.sh smoke
 
-# Initialize the private Mac mini LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+# Initialize the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
 [group('observability')]
-langfuse-macmini-init:
-    infra/langfuse/macmini/macmini.sh init
+langfuse-self-hosted-init:
+    infra/langfuse/self-hosted/deploy.sh init
 
-# Start the private Mac mini LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+# Start the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
 [group('observability')]
-langfuse-macmini-up:
-    infra/langfuse/macmini/macmini.sh up
+langfuse-self-hosted-up:
+    infra/langfuse/self-hosted/deploy.sh up
 
-# Configure Tailscale Serve for the private Mac mini LangFuse deployment
+# Configure Tailscale Serve for the private self-hosted LangFuse deployment
 [group('observability')]
-langfuse-macmini-serve:
-    infra/langfuse/macmini/macmini.sh serve
+langfuse-self-hosted-serve:
+    infra/langfuse/self-hosted/deploy.sh serve
 
-# Check the Mac mini LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+# Check the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
 [group('observability')]
-langfuse-macmini-health:
-    infra/langfuse/macmini/macmini.sh health
+langfuse-self-hosted-health:
+    infra/langfuse/self-hosted/deploy.sh health
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOCKER / WORKSPACE IMAGES

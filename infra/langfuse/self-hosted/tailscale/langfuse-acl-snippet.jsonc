@@ -1,5 +1,5 @@
 // Paste these additions into the canonical tailnet policy.
-// The Mac mini advertises tag:langfuse; agent hosts advertise tag:agents.
+// The LangFuse host advertises tag:langfuse; agent hosts advertise tag:agents.
 // Tailscale Serve terminates HTTPS on 443 and proxies only to 127.0.0.1:3000.
 {
   "tagOwners": {

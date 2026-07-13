@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Operator entrypoint for a private, durable LangFuse server on a Mac mini.
+# Operator entrypoint for a private, durable LangFuse server on any Docker host.
 # Upstream LangFuse Compose is pinned by scripts/langfuse-local.sh; this file
 # supplies only host policy, not credentials.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-DEPLOY_DIR="$ROOT/infra/langfuse/macmini"
+DEPLOY_DIR="$ROOT/infra/langfuse/self-hosted"
 LANGFUSE_HOME="${LANGFUSE_HOME:-/opt/agentic-primitives/langfuse}"
 LANGFUSE_TAILSCALE_HOST="${LANGFUSE_TAILSCALE_HOST:-}"
 LANGFUSE_BASE_URL="${LANGFUSE_BASE_URL:-}"
-LANGFUSE_COMPOSE_OVERRIDE="$DEPLOY_DIR/compose.macmini.yaml"
+LANGFUSE_COMPOSE_OVERRIDE="$DEPLOY_DIR/compose.private.yaml"
 LANGFUSE_REF="${LANGFUSE_REF:-9b9cb4a1853082fd89ea46b6fe25a3df50fa8391}"
 
 usage() {
   cat <<'EOF'
-Usage: infra/langfuse/macmini/macmini.sh <init|up|down|status|health|serve|backup>
+Usage: infra/langfuse/self-hosted/deploy.sh <init|up|down|status|health|serve|backup>
 
 Required for init/up/serve:
   LANGFUSE_TAILSCALE_HOST=mac-mini.tailnet-name.ts.net
@@ -26,7 +26,8 @@ Optional:
   LANGFUSE_REF=reviewed-upstream-git-ref
   LANGFUSE_BACKUP_DIR=/Volumes/Backup/langfuse
 
-The script never writes credentials into this repository. init creates the
+The host can be a Mac mini, VPS, or other Docker-capable machine. The script
+never writes credentials into this repository. init creates the
 ignored $LANGFUSE_HOME/.env through the shared bootstrap.
 EOF
 }

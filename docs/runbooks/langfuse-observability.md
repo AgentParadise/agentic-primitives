@@ -106,23 +106,24 @@ production/staging separation requires it.
 
 These steps work for a Mac mini or VPS with Docker installed.
 
-For the Mac mini, use the tracked IaC package. It pins the upstream LangFuse
-revision, limits Docker ingress to loopback, and uses Tailscale Serve for
-private HTTPS. Choose the MagicDNS name clients will use before the first
-`init`:
+For a centralized host, use the tracked self-hosted IaC package. It pins the
+upstream LangFuse revision, limits Docker ingress to loopback, and uses
+Tailscale Serve for private HTTPS. The Mac mini is the initial deployment
+target, but the package also supports a VPS or another Docker host. Choose the
+MagicDNS name clients will use before the first `init`:
 
 ```bash
 export LANGFUSE_TAILSCALE_HOST=mac-mini.tailnet-name.ts.net
-just langfuse-macmini-init
-just langfuse-macmini-up
-just langfuse-macmini-serve
-just langfuse-macmini-health
+just langfuse-self-hosted-init
+just langfuse-self-hosted-up
+just langfuse-self-hosted-serve
+just langfuse-self-hosted-health
 ```
 
 The package lives at:
 
 ```text
-infra/langfuse/macmini/
+infra/langfuse/self-hosted/
 ```
 
 It writes `NEXTAUTH_URL=https://$LANGFUSE_TAILSCALE_HOST` into
@@ -139,8 +140,8 @@ If the `.env` already existed before changing the URL, edit only the
 Then restart:
 
 ```bash
-infra/langfuse/macmini/macmini.sh down
-infra/langfuse/macmini/macmini.sh up
+infra/langfuse/self-hosted/deploy.sh down
+infra/langfuse/self-hosted/deploy.sh up
 ```
 
 If the database was already initialized, changing `LANGFUSE_INIT_*` values does
