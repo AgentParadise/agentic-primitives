@@ -106,13 +106,24 @@ codex plugin add tracing@codex-observability-plugin
 Do not re-send existing observation IDs. LangFuse warns that this creates
 duplicates and inflates metrics. Repair only after the fixed-plugin smoke test:
 
-1. Export a manifest containing each affected Codex trace ID, session ID, raw
-   rollout path, source ledger path, and pre-repair token totals.
-2. Delete one bounded batch of affected LangFuse traces.
-3. Move only that batch's `.langfuse` ledgers to an audit backup.
-4. Re-import the raw rollout files with the corrected official plugin.
-5. Compare trace count, session ID, usage buckets, and calculated cost before
-   continuing.
+The guarded repair utility implements that sequence for a narrow, reproducible
+case: a rollout whose only model is `gpt-5.5`. It excludes mixed-model
+rollouts and `gpt-5.3-codex-spark`, creates a local audit manifest and a copy
+of the affected `.langfuse` ledger, then verifies that a priced replacement
+generation reached LangFuse.
+
+```bash
+# Inspect the exact session and trace count first.
+scripts/langfuse-repair-codex-costs.sh --limit 1
+
+# Delete and re-import one reviewed candidate.
+scripts/langfuse-repair-codex-costs.sh --limit 1 --apply --confirm
+```
+
+The command refuses to mutate data unless the installed plugin contains the
+verified exclusive-bucket correction and LangFuse has the tracked `gpt-5.5`
+model definition. Its records and ledger backups live at
+`~/.local/state/agentic-primitives/langfuse-cost-repair/`.
 
 Raw rollout JSONL is the source of truth. Preserve the manifest and sidecar
 backup so each repair is resumable and auditable.
