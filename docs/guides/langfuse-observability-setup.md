@@ -45,7 +45,7 @@ Required values for query tools and official plugin setup:
 Recommended values:
 
 - `LANGFUSE_TRACING_ENVIRONMENT`, for example `local-macbook`, `mac-mini`,
-  `vps`, or `docker-workspace`
+  `flywheel-vps`, or `docker-workspace`
 - `LANGFUSE_PROJECT_ID`, useful for dashboard URLs and operator references
 - `TRACE_TO_LANGFUSE=true`, used by official plugins to opt into tracing
 
@@ -156,13 +156,30 @@ Install and configure LangFuse's official Claude Code plugin using Claude's
 plugin flow:
 
 ```bash
-claude plugin install langfuse/Claude-Observability-Plugin
+claude plugin marketplace add langfuse/Claude-Observability-Plugin
+claude plugin install langfuse-observability@langfuse-observability
 ```
 
 Use Claude's plugin configuration flow for the secret key so credentials live
 in the OS secret store rather than the repo. For local shell-driven runs, also
 export the shared `LANGFUSE_*` values so query tools and the doctor can verify
 readiness.
+
+## Agent Learning-Loop Access
+
+Install Agentic Primitives' observability plugin when Claude agents need trace
+discovery, session reports, aggregate learning-loop reports, and feedback
+scores through the `agentic-langfuse` MCP server:
+
+```bash
+claude plugin marketplace add AgentParadise/agentic-primitives
+claude plugin install observability@agentic-primitives --scope user
+```
+
+The MCP server is launched through `uv run --script`, so `uv` is required on
+each client host. It uses the same protected `LANGFUSE_*` configuration as the
+harness plugins. Codex and other MCP clients can use the `uv` configuration in
+`plugins/observability/README.md`.
 
 Expected LangFuse trace shape:
 
