@@ -74,6 +74,33 @@ The command is idempotent for existing model names and will not update or
 delete a definition. Tracked definitions live under
 `infra/langfuse/model-definitions/`.
 
+### Temporary Codex Plugin Patch
+
+Until the official plugin release containing the cost fix is available, a
+host may pin the tested fork branch. This is a temporary replacement for the
+official marketplace source, not a second tracing plugin: two active tracing
+plugins would upload duplicate traces.
+
+```bash
+codex plugin remove tracing@codex-observability-plugin
+codex plugin marketplace remove codex-observability-plugin
+codex plugin marketplace add NeuralEmpowerment/codex-observability-plugin \
+  --ref fix/normalize-langfuse-usage-buckets
+codex plugin add tracing@codex-observability-plugin
+```
+
+Start a new Codex session after the swap. Verify the installed bundle includes
+`cache_read_input_tokens` and `output_reasoning_tokens`, then validate a real
+trace before enabling model pricing. When upstream releases the fix, replace
+the fork with the official marketplace source and remove the temporary pin:
+
+```bash
+codex plugin remove tracing@codex-observability-plugin
+codex plugin marketplace remove codex-observability-plugin
+codex plugin marketplace add langfuse/codex-observability-plugin
+codex plugin add tracing@codex-observability-plugin
+```
+
 ### Historical Cost Repair
 
 Do not re-send existing observation IDs. LangFuse warns that this creates
