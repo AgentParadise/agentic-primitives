@@ -1,5 +1,9 @@
 # Changelog — observability plugin
 
+## 0.3.4
+- Launch the packaged `agentic-langfuse` MCP server through `uv run --script`
+  rather than a host `python3` command
+
 ## 0.3.3
 - Added `agentic_langfuse_session_report`, which groups the canonical
   per-turn LangFuse traces by `session_id` and returns turn, token, cost, tool,

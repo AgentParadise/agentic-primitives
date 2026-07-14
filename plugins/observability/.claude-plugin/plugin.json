@@ -1,13 +1,15 @@
 {
   "name": "observability",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Full-spectrum agent observability — hooks every Claude Code lifecycle event and emits structured JSONL events via agentic_events. Composable with other plugins.",
   "author": {"name": "NeuralEmpowerment"},
   "repository": "https://github.com/AgentParadise/agentic-primitives",
   "mcpServers": {
     "agentic-langfuse": {
-      "command": "python3",
+      "command": "uv",
       "args": [
+        "run",
+        "--script",
         "${CLAUDE_PLUGIN_ROOT}/mcp/langfuse_server.py"
       ]
     }

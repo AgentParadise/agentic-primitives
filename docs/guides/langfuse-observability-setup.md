@@ -250,7 +250,8 @@ itmux langfuse-scores --trace-id <trace-id>
 ```
 
 The `agentic-langfuse` MCP server wraps the same query and score flows for
-Claude, Codex, or other MCP clients.
+Claude, Codex, or other MCP clients. It is launched through `uv run --script`;
+install `uv` on every host that uses the observability plugin.
 
 ## Final Smoke
 

@@ -41,8 +41,9 @@ Use `--json --no-tests` on minimal VPS or Docker shells that do not have Cargo.
 ## Agent LangFuse MCP server
 
 The plugin also exposes an MCP server named `agentic-langfuse` for learning-loop
-trace access. Claude gets this through the plugin manifest; Codex or any other
-MCP client can launch the same stdio server directly. The server prefers the
+trace access. It requires [`uv`](https://docs.astral.sh/uv/) and Claude gets it
+through the plugin manifest; Codex or any other MCP client can launch the same
+stdio server directly. The server prefers the
 proven `itmux langfuse-*` CLI commands when `itmux` is available, and falls back
 to direct LangFuse public API calls when packaged without the binary. Both paths
 use the same `LANGFUSE_*` environment variables and secret handling.
@@ -72,8 +73,8 @@ Codex MCP config example:
 
 ```toml
 [mcp_servers.agentic-langfuse]
-command = "python3"
-args = ["/path/to/agentic-primitives/plugins/observability/mcp/langfuse_server.py"]
+command = "uv"
+args = ["run", "--script", "/path/to/agentic-primitives/plugins/observability/mcp/langfuse_server.py"]
 env = { ITMUX_BIN = "/path/to/agentic-primitives/providers/workspaces/interactive-tmux/driver-rs/target/release/itmux" }
 ```
 
