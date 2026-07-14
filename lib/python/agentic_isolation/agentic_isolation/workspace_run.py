@@ -37,17 +37,16 @@ Known gaps (documented rather than papered over):
   fields rather than silently half-applying them.
 - Cancellation races a background `asyncio.to_thread` call against a
   cancel signal at each orchestration boundary. Python threads cannot
-  be killed, so a `hard` cancel that fires *while* a blocking itmux
-  subprocess call is in flight does not interrupt that subprocess call
-  early - it only stops `run()` from waiting on or acting on its
-  result, and skips all subsequent steps. The workspace is always
-  torn down via `client.stop()` in a `finally` once `client.start()`
-  has actually completed.
+  be killed, so a `hard` cancel that fires while an itmux call is in
+  flight does not interrupt that subprocess early. `run()` drains an
+  in-flight `start` before calling `stop`, preventing a late container
+  registration from being orphaned.
 """
 
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Callable
 from typing import TypeVar, cast
@@ -183,21 +182,38 @@ class CancelToken:
     def __init__(self) -> None:
         self._event = asyncio.Event()
         self._mode: AgentRunCancelMode | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._lock = threading.Lock()
 
     def request(self, mode: AgentRunCancelMode) -> None:
-        if self._mode == "hard":
-            return
-        self._mode = mode
-        self._event.set()
+        with self._lock:
+            if self._mode == "hard":
+                return
+            self._mode = mode
+            loop = self._loop
+
+        if loop is None:
+            # No waiter has bound the token to an event loop yet. There are no
+            # Event waiters to wake, so setting it directly is safe.
+            self._event.set()
+        else:
+            loop.call_soon_threadsafe(self._event.set)
 
     @property
     def mode(self) -> AgentRunCancelMode | None:
-        return self._mode
+        with self._lock:
+            return self._mode
 
     async def wait(self) -> AgentRunCancelMode:
+        with self._lock:
+            self._loop = asyncio.get_running_loop()
+            requested = self._mode is not None
+        if requested:
+            self._event.set()
         await self._event.wait()
-        assert self._mode is not None
-        return self._mode
+        with self._lock:
+            assert self._mode is not None
+            return self._mode
 
 
 class _HardCancelRequested(Exception):

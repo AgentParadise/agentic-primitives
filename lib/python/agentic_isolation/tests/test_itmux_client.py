@@ -359,12 +359,18 @@ class TestAwaitReady:
         assert result.ready is False
         assert result.timed_out is True
 
-    def test_exit_code_1_raises(self) -> None:
-        runner = FakeRunner(stdout="", stderr="await_completion failed", returncode=1)
+    def test_exit_code_1_preserves_stdout(self) -> None:
+        runner = FakeRunner(
+            stdout='{"reason":"unregistered_workspace"}',
+            stderr="await_completion failed",
+            returncode=1,
+        )
         client = make_client(runner)
 
-        with pytest.raises(ItmuxError):
+        with pytest.raises(ItmuxError) as exc_info:
             client.await_ready("itmuxdbg-60524", "claude", timeout_s=60.0)
+
+        assert exc_info.value.stdout == '{"reason":"unregistered_workspace"}'
 
     def test_parses_when_pane_key_absent(self) -> None:
         # The real `itmux await` strips `pane` from its printed JSON

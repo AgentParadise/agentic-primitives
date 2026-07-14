@@ -359,7 +359,7 @@ class ItmuxClient:
         # error) for a valid AwaitResult; any other non-zero code is a
         # real failure (e.g. unregistered workspace).
         if returncode not in (0, 2):
-            raise ItmuxError(argv, returncode, stderr)
+            raise ItmuxError(argv, returncode, stderr, stdout)
         return AwaitResult.model_validate_json(stdout)
 
     def capture(self, name: str, agent: str) -> str:
