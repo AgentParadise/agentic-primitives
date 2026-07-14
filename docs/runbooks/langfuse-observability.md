@@ -398,6 +398,39 @@ Like Claude, an already-running Codex session does not gain tracing
 retroactively. Start a new session after enabling the plugin or changing its
 configuration.
 
+## Historical Backfill
+
+LangFuse cannot reconstruct traces that were never emitted, but the original
+Claude and Codex JSONL files can be imported after observability is installed.
+Use the backfill command rather than copying data into LangFuse directly: it
+invokes the official plugins and preserves their trace, tool, usage, and
+session semantics.
+
+Preview a bounded batch first:
+
+```bash
+scripts/langfuse-backfill.sh --harness all --limit 10 --newest
+```
+
+Submit that batch only after reviewing the paths:
+
+```bash
+scripts/langfuse-backfill.sh --harness all --limit 10 --newest --apply
+```
+
+For an older archive, use `--oldest`; use `--limit 0 --apply` only after a
+small batch has been verified in LangFuse. The default `--max-turns 100`
+prevents a small number of long conversations from unexpectedly creating a
+large import; increase it deliberately or use `0` for no turn cap. Codex
+backfill supports rollout files containing both a `session_meta` record and a
+`task_started` event; older Codex rollout schemas are skipped and need a
+format adapter before they can be imported. Preview also excludes sources
+already recorded by the official plugin state. Codex records completed source turns in a neighbouring
+`.langfuse` ledger and Claude records per-transcript offsets. The command also
+appends a local submission manifest at
+`~/.local/state/agentic-primitives/langfuse-backfill.jsonl`. Preserve those
+files to make repeated runs resumable rather than duplicate historical traces.
+
 Expected trace shape:
 
 - `Codex Turn` observations
