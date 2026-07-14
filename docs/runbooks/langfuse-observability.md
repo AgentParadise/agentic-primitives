@@ -33,6 +33,63 @@ Agentic Primitives keeps these local pieces:
 The direct Rust OTLP writer is intentionally out of the active run path. It
 created low-value spans compared with the official Claude and Codex plugins.
 
+## Codex Cost Accuracy
+
+LangFuse calculates inferred generation cost when it ingests the event. Cost
+requires a matching model definition and mutually exclusive usage buckets: a
+cached input or reasoning output count must be excluded from the corresponding
+plain `input` or `output` count.
+
+The official Codex plugin correction is tracked in
+`https://github.com/langfuse/codex-observability-plugin/pull/28`. Do not
+configure Codex model prices or repair existing Codex traces until that fix (or
+a release containing it) is installed and a fresh trace shows these usage
+keys:
+
+```json
+{
+  "input": "uncached tokens only",
+  "cache_read_input_tokens": "cached tokens",
+  "output": "non-reasoning output only",
+  "output_reasoning_tokens": "reasoning output tokens"
+}
+```
+
+After validation, configure the tracked standard API-equivalent `gpt-5.5`
+definition. The definition uses the OpenAI published standard rates per token:
+input `$5/M`, cached input `$0.50/M`, and output/reasoning output `$30/M`.
+It intentionally has no long-context tier until an authoritative threshold is
+available, and it does not define `gpt-5.3-codex-spark` because that model's
+research-preview rates are not final.
+
+```bash
+export LANGFUSE_BASE_URL=http://macmini.tailnet-name.ts.net:19431
+export LANGFUSE_PUBLIC_KEY="..."
+export LANGFUSE_SECRET_KEY="..."
+scripts/langfuse-model-pricing.sh
+scripts/langfuse-model-pricing.sh --apply
+```
+
+The command is idempotent for existing model names and will not update or
+delete a definition. Tracked definitions live under
+`infra/langfuse/model-definitions/`.
+
+### Historical Cost Repair
+
+Do not re-send existing observation IDs. LangFuse warns that this creates
+duplicates and inflates metrics. Repair only after the fixed-plugin smoke test:
+
+1. Export a manifest containing each affected Codex trace ID, session ID, raw
+   rollout path, source ledger path, and pre-repair token totals.
+2. Delete one bounded batch of affected LangFuse traces.
+3. Move only that batch's `.langfuse` ledgers to an audit backup.
+4. Re-import the raw rollout files with the corrected official plugin.
+5. Compare trace count, session ID, usage buckets, and calculated cost before
+   continuing.
+
+Raw rollout JSONL is the source of truth. Preserve the manifest and sidecar
+backup so each repair is resumable and auditable.
+
 ## Topologies
 
 ### Single-Machine Setup
