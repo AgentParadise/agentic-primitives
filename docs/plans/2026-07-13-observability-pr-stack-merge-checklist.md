@@ -24,8 +24,14 @@ implementation dependency.
 
 ## Priority 0: Review and CI Gates
 
-- [ ] Inspect and resolve every actionable Copilot review thread on #240.
-- [ ] Inspect and resolve every actionable Copilot review thread on #243.
+- [ ] Resolve #240 Copilot: hard cancellation while workspace start is in
+      flight can orphan a workspace.
+- [ ] Resolve #240 Copilot: cross-thread `CancelToken.request()` uses
+      `asyncio.Event.set()` unsafely; wake the owning event loop safely.
+- [ ] Resolve #240 Copilot: preserve `stdout` in unexpected `await_ready()`
+      errors. (Two review threads report this same issue.)
+- [ ] Resolve #243 Copilot: `wait_bounded` timeout cleanup must not reintroduce
+      an unbounded wait through `Command::output()`.
 - [ ] Obtain an independent final review for #247 and #256 after their final
       rebases. #256 has prior Claude Code review evidence, but needs a review
       of the merge-ready head.
