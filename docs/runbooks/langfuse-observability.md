@@ -271,8 +271,11 @@ export LANGFUSE_TRACING_ENVIRONMENT=flywheel-vps
 export LANGFUSE_TRACING_ENVIRONMENT=docker-workspace
 ```
 
-The official plugins use harness-specific variables for tags. Export the
-appropriate variables in the wrapper that launches each harness:
+The official plugins use harness-specific variables for tags. A wrapper can
+set them for a one-off invocation, but do not make wrappers the primary
+installation mechanism: agents launched from tmux, a scheduler, or another
+agent commonly invoke `codex` or `claude` directly. Configure each official
+plugin persistently as described below.
 
 ```bash
 # Codex
@@ -301,16 +304,36 @@ scripts/langfuse-observability-doctor.sh --json --no-tests
 
 ## Claude Code
 
-Install the official plugin:
+Install the official plugin at **user** scope, not a project or local scope.
+Project/local installation observes only sessions in that project and leaves
+the rest of the machine uninstrumented:
 
 ```bash
 claude plugin marketplace add langfuse/Claude-Observability-Plugin
-claude plugin install langfuse-observability@langfuse-observability
+claude plugin install langfuse-observability@langfuse-observability --scope user \
+  --config LANGFUSE_SECRET_KEY=sk-lf-... \
+  --config LANGFUSE_PUBLIC_KEY=pk-lf-... \
+  --config LANGFUSE_BASE_URL=http://mac-mini.tailnet-name.ts.net:19431 \
+  --config LANGFUSE_USER_ID=neuralempowerment
 ```
 
-Configure the plugin using Claude's plugin flow or secret store. For
-deterministic shell and workspace runs, also make the shared `LANGFUSE_*`
-environment available to the process that launches Claude.
+Use Claude's plugin configuration flow for the key material. Set the
+non-secret machine identity in the user settings environment so all new Claude
+sessions receive it:
+
+```json
+{
+  "env": {
+    "LANGFUSE_TRACING_ENVIRONMENT": "flywheel-vps",
+    "CC_LANGFUSE_TAGS": "harness:claude,host:flywheel-vps"
+  }
+}
+```
+
+Existing Claude sessions cannot load a plugin installed later. Start a new
+session after installing or changing the configuration. A launcher wrapper may
+still override these values for an isolated workspace, but it is not required
+for ordinary terminal, tmux, or delegated sessions.
 
 For a host-specific wrapper, set `LANGFUSE_BASE_URL`,
 `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_USER_ID`,
@@ -340,7 +363,40 @@ enabled = true
 ```
 
 Place that in `~/.codex/config.toml` or a project `.codex/config.toml`, then
-make sure the Codex process can read the shared `LANGFUSE_*` environment.
+persist the tracing plugin's configuration in `~/.codex/langfuse.json`. The
+official plugin reads this file on every Stop hook, so direct Codex invocations
+do not depend on a shell wrapper:
+
+```json
+{
+  "enabled": true,
+  "public_key": "pk-lf-...",
+  "secret_key": "sk-lf-...",
+  "base_url": "http://mac-mini.tailnet-name.ts.net:19431",
+  "environment": "flywheel-vps",
+  "user_id": "neuralempowerment",
+  "tags": ["harness:codex", "host:flywheel-vps"],
+  "metadata": {"host": "flywheel-vps", "deployment": "flywheel-vps"},
+  "fail_on_error": false
+}
+```
+
+Restrict the file to its owner (`chmod 600 ~/.codex/langfuse.json`). This
+plugin configuration format stores project credentials, so on macOS generate
+it from Keychain and on a VPS generate it from the protected host secret file.
+Do not commit it or put it in a workspace image.
+
+On the first install, Codex requires the Stop hook to be trusted. Confirm the
+hook through the normal Codex prompt, then verify a state entry exists in
+`~/.codex/config.toml` for
+`tracing@codex-observability-plugin:hooks/hooks.json:stop:0:0`. An installed
+plugin without that trusted hook state produces no traces. Keep
+`plugin_hooks = true` under `[features]`; a root-level `plugin_hooks` setting
+is ignored by current Codex releases.
+
+Like Claude, an already-running Codex session does not gain tracing
+retroactively. Start a new session after enabling the plugin or changing its
+configuration.
 
 Expected trace shape:
 
