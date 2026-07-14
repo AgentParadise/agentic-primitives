@@ -69,7 +69,11 @@ pub fn wait_bounded(child: Child, timeout: Duration) -> Result<Output> {
             // deadlocking on a full pipe buffer), so killing by pid via
             // the `kill` utility is the only std-only, `unsafe`-free way
             // to reach it from this side.
-            let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            let _ = Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
             Err(Error::new(
                 ErrorKind::TimedOut,
                 format!("command timed out after {timeout:?}"),

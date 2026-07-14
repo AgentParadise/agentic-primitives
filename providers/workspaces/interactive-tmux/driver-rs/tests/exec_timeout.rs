@@ -29,8 +29,8 @@ fn run_bounded_kills_and_errors_on_timeout_without_blocking() {
     );
 
     // The whole point: we must NOT have waited out the 5s sleep. Give a
-    // generous margin for the kill round-trip (spawning `kill -9` is
-    // itself a subprocess) but this must stay well under 1s.
+    // generous scheduler margin, but this must stay well under 1s. Timeout
+    // cleanup dispatches `kill -9` without waiting for that subprocess.
     assert!(
         elapsed < Duration::from_secs(1),
         "run_bounded blocked for {elapsed:?}, expected well under 1s (child should have been killed)"
