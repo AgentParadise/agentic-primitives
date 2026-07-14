@@ -1,5 +1,12 @@
 # Changelog — observability plugin
 
+## 0.3.5
+- Added the `langfuse-learning-loops` agent skill, documenting the project API
+  and MCP query path, trace/session analysis workflow, and score feedback
+- Documented the LangFuse dashboard API boundary: reusable observation widgets
+  can be created programmatically, but dashboard-grid placement and absolute
+  trace/session widgets remain UI-managed
+
 ## 0.3.4
 - Launch the packaged `agentic-langfuse` MCP server through `uv run --script`
   rather than a host `python3` command

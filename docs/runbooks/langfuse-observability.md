@@ -33,6 +33,33 @@ Agentic Primitives keeps these local pieces:
 The direct Rust OTLP writer is intentionally out of the active run path. It
 created low-value spans compared with the official Claude and Codex plugins.
 
+## Agent Data Plane And Dashboard Boundary
+
+Agents do not need a LangFuse browser login to run learning loops. The
+`agentic-langfuse` MCP server and `itmux langfuse-*` commands authenticate to
+the project API with `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and
+`LANGFUSE_SECRET_KEY`. They support bounded trace discovery, trace inspection,
+session rollups, and trace-scoped score feedback. The observability plugin's
+`langfuse-learning-loops` skill is the concise agent instruction for this
+workflow.
+
+Use MCP/CLI for automation and the browser UI for human visual composition.
+Do not solve a browser-login problem by scraping or transferring cookies.
+
+LangFuse v3.212 exposes an unstable public endpoint that can create reusable
+dashboard widgets, but it explicitly cannot place a widget on a dashboard
+grid. It also supports only observation and score views, not absolute trace or
+session counts. Therefore these must remain UI-managed (or live in an external
+metrics view) until LangFuse adds supported dashboard-grid and trace/session
+metric APIs:
+
+- total sessions, absolute value;
+- total traces, absolute value; and
+- a harness-by-host matrix derived from separate tags.
+
+This limitation does not affect agent learning loops: trace/session cohorts
+and score feedback are available through MCP/CLI today.
+
 ## Codex Cost Accuracy
 
 LangFuse calculates inferred generation cost when it ingests the event. Cost

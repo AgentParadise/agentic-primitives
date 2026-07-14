@@ -69,6 +69,15 @@ consumer needs only aggregate rollups. The default insights identify cost/token
 hotspots, missing token/cost/model coverage, unscored traces, and failed
 agent-visible tool calls.
 
+The plugin's `langfuse-learning-loops` skill is the operational contract for
+agents performing retrospectives, experiments, or evaluations. It makes the
+important boundary explicit: project API keys authenticate MCP/CLI trace and
+session queries without a browser login. LangFuse v3.212's public API can
+create reusable observation widgets, but cannot place them on a dashboard grid
+or create faithful absolute trace/session widgets. Use MCP/CLI for automated
+learning loops and the LangFuse UI for human dashboard composition; never
+scrape or transfer browser cookies.
+
 Codex MCP config example:
 
 ```toml
