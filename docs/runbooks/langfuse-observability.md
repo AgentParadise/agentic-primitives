@@ -95,12 +95,41 @@ Recommended initial project layout:
 
 - one LangFuse organization
 - one LangFuse project for Agentic Primitives
-- separate `LANGFUSE_TRACING_ENVIRONMENT` values per source, for example
-  `local-macbook`, `mac-mini`, `vps`, and `docker-workspace`
-- tags or metadata for harness names such as `claude` and `codex`
+- one stable trace identity for every host and harness, defined below
 
 Split into multiple LangFuse projects only when access control, retention, or
 production/staging separation requires it.
+
+## Trace Identity Contract
+
+Every trace emitted to the shared project must carry an environment and two
+tags. This makes host and harness filtering reliable without creating a project
+per machine.
+
+| Field | Required value | Purpose |
+| --- | --- | --- |
+| Environment | A stable deployment identifier | Filters all activity from one machine or workspace class. |
+| `harness:<name>` | `harness:claude` or `harness:codex` | Separates the agent harnesses. |
+| `host:<name>` | A stable host identifier | Separates machines sharing an environment class. |
+
+Use lowercase, hyphenated identifiers. Do not use a personal email address or
+other personal identifier in an environment, tag, user ID, trace name, or
+metadata field.
+
+The initial fleet uses this exact mapping:
+
+| Emitter | Environment | Required tags |
+| --- | --- | --- |
+| MacBook Claude | `local-macbook` | `harness:claude`, `host:macbook` |
+| MacBook Codex | `local-macbook` | `harness:codex`, `host:macbook` |
+| Flywheel VPS Claude | `flywheel-vps` | `harness:claude`, `host:flywheel-vps` |
+| Flywheel VPS Codex | `flywheel-vps` | `harness:codex`, `host:flywheel-vps` |
+| Isolated Docker workspace | `docker-workspace` | harness tag plus `host:<launcher-host>` |
+
+For a new machine, choose a new environment such as `build-vps` or
+`mac-mini`, and use the same suffix in its `host:` tag. Keep this mapping in
+the machine's deployment configuration and do not reuse an existing host
+identifier.
 
 ## Server Setup
 
@@ -234,13 +263,29 @@ export LANGFUSE_TRACING_ENVIRONMENT=local-macbook
 export TRACE_TO_LANGFUSE=true
 ```
 
-Use a different `LANGFUSE_TRACING_ENVIRONMENT` on each source:
+Set a unique environment per host or workspace class. Follow the trace identity
+contract above rather than generic values such as `vps`:
 
 ```bash
-export LANGFUSE_TRACING_ENVIRONMENT=mac-mini
-export LANGFUSE_TRACING_ENVIRONMENT=vps
+export LANGFUSE_TRACING_ENVIRONMENT=flywheel-vps
 export LANGFUSE_TRACING_ENVIRONMENT=docker-workspace
 ```
+
+The official plugins use harness-specific variables for tags. Export the
+appropriate variables in the wrapper that launches each harness:
+
+```bash
+# Codex
+export LANGFUSE_CODEX_ENVIRONMENT="$LANGFUSE_TRACING_ENVIRONMENT"
+export LANGFUSE_CODEX_TAGS="harness:codex,host:flywheel-vps"
+
+# Claude Code
+export CC_LANGFUSE_TAGS="harness:claude,host:flywheel-vps"
+```
+
+Set `LANGFUSE_USER_ID` only when it is needed for a non-personal, stable actor
+identifier. The initial local setup uses `neuralempowerment`, not an email
+address.
 
 Check readiness:
 
@@ -259,12 +304,19 @@ scripts/langfuse-observability-doctor.sh --json --no-tests
 Install the official plugin:
 
 ```bash
-claude plugin install langfuse/Claude-Observability-Plugin
+claude plugin marketplace add langfuse/Claude-Observability-Plugin
+claude plugin install langfuse-observability@langfuse-observability
 ```
 
 Configure the plugin using Claude's plugin flow or secret store. For
 deterministic shell and workspace runs, also make the shared `LANGFUSE_*`
 environment available to the process that launches Claude.
+
+For a host-specific wrapper, set `LANGFUSE_BASE_URL`,
+`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_USER_ID`,
+`LANGFUSE_TRACING_ENVIRONMENT`, and `CC_LANGFUSE_TAGS`. The wrapper's explicit
+environment must take precedence over stale plugin defaults so a machine does
+not accidentally send traces to a previous LangFuse server.
 
 Expected trace shape:
 
@@ -367,7 +419,7 @@ After any setup change, prove both harnesses.
    - named tool observations
    - input/output or metadata sufficient to understand the run
    - model, usage, and cost data when the provider reports it
-   - the expected `Environment`
+   - the expected `Environment`, `harness:<name>`, and `host:<name>` tags
 
 5. Query the traces from Agentic Primitives:
 
