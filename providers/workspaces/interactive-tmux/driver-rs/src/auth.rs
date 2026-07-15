@@ -112,8 +112,7 @@ fn copy_file(src: &Path, dst: &Path) -> Result<()> {
 /// Copy only the top-level regular files of `src` whose names are in
 /// `allow_names` into `dst`. Directories and any other entries are ignored.
 ///
-/// This is the allowlist counterpart to `copy_tree`'s denylist: for agents
-/// whose home directory mixes a tiny auth/config surface with hundreds of
+/// For agents whose home directory mixes a tiny auth/config surface with hundreds of
 /// megabytes of operational state (caches, session transcripts, sqlite
 /// journals), an allowlist is the only stable way to keep credential staging
 /// from crawling. New bloat directories can appear at any release without
@@ -540,6 +539,18 @@ fn run_exec_step(container: &str, step: &ExecStep, timeout: Duration) -> Result<
     Ok(())
 }
 
+fn staging_step_timeout(deadline: Instant, now: Instant) -> Result<Duration> {
+    deadline
+        .checked_duration_since(now)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::TimedOut,
+                "credential staging exceeded the 60s total deadline",
+            )
+        })
+        .map(|remaining| remaining.min(Duration::from_secs_f64(tmux::DEFAULT_EXEC_TIMEOUT_S)))
+}
+
 /// Push every staged path in `prepared` into `container`'s filesystem over
 /// `docker exec` and lock down ownership/permissions in-container.
 ///
@@ -556,19 +567,8 @@ pub fn stage_into_container(container: &str, prepared: &PreparedAuth) -> Result<
     let deadline = Instant::now() + STAGING_TIMEOUT;
     for staged in prepared.iter() {
         for step in plan_for_staged_path(staged)? {
-            let remaining = deadline
-                .checked_duration_since(Instant::now())
-                .ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::TimedOut,
-                        "credential staging exceeded the 60s total deadline",
-                    )
-                })?;
-            run_exec_step(
-                container,
-                &step,
-                remaining.min(Duration::from_secs_f64(tmux::DEFAULT_EXEC_TIMEOUT_S)),
-            )?;
+            let timeout = staging_step_timeout(deadline, Instant::now())?;
+            run_exec_step(container, &step, timeout)?;
         }
     }
     Ok(())
@@ -576,7 +576,9 @@ pub fn stage_into_container(container: &str, prepared: &PreparedAuth) -> Result<
 
 #[cfg(test)]
 mod base64_tests {
-    use super::base64_encode;
+    use super::{base64_encode, staging_step_timeout};
+    use std::io::ErrorKind;
+    use std::time::{Duration, Instant};
 
     // RFC 4648 section 10 test vectors, plus high-bit bytes to guard the
     // std-only encoder against sign/padding regressions (the whole credential
@@ -605,5 +607,16 @@ mod base64_tests {
                 "base64_encode({input:?}) mismatch"
             );
         }
+    }
+
+    #[test]
+    fn staging_timeout_caps_each_step_and_rejects_an_expired_deadline() {
+        let start = Instant::now();
+        assert_eq!(
+            staging_step_timeout(start + Duration::from_secs(60), start).unwrap(),
+            Duration::from_secs(15)
+        );
+        let err = staging_step_timeout(start, start + Duration::from_nanos(1)).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::TimedOut);
     }
 }

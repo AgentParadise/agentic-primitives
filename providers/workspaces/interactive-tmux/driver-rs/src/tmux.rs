@@ -312,18 +312,16 @@ pub fn plan_send_literal(pane: &str, text: &str) -> SendLiteralPlan {
 ///
 /// The `-l` flag tells tmux to deliver the bytes literally (no special-key
 /// interpretation) - the canonical pattern for the body of a user message.
-pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
-    let target = format!("{TMUX_SESSION}:{window}");
-    let plan = plan_send_literal(&target, text);
-    match &plan {
+fn run_send_literal_plan<F>(plan: &SendLiteralPlan, mut exec: F) -> Result<()>
+where
+    F: FnMut(&[&str], Option<&[u8]>) -> Result<()>,
+{
+    match plan {
         SendLiteralPlan::SendKeys { pane, text } => {
             // `--` ends option parsing so a prompt beginning with `-` (e.g.
             // "-R", "--help") is treated as literal text, not a tmux
             // send-keys flag.
-            docker_exec(
-                container,
-                &["tmux", "send-keys", "-t", pane, "-l", "--", text],
-            )?;
+            exec(&["tmux", "send-keys", "-t", pane, "-l", "--", text], None)?;
         }
         SendLiteralPlan::PasteBuffer {
             pane,
@@ -333,27 +331,32 @@ pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
             // `load-buffer -b <name> -` reads the buffer contents from
             // stdin (which `docker_exec_with_stdin` already pipes in - no
             // container-side temp file needed) into a unique named buffer.
-            docker_exec_with_stdin(
-                container,
-                &["tmux", "load-buffer", "-b", buffer, "-"],
-                payload,
-            )?;
+            exec(&["tmux", "load-buffer", "-b", buffer, "-"], Some(payload))?;
             // `-p` = bracketed paste (atomic multiline); `-d` deletes the
             // named buffer afterwards so large sends don't accumulate stale
             // buffers and can't leak payload bytes into a later paste.
-            if let Err(error) = docker_exec(
-                container,
+            if let Err(error) = exec(
                 &["tmux", "paste-buffer", "-p", "-b", buffer, "-d", "-t", pane],
+                None,
             ) {
                 // `-d` only cleans up after a successful paste. If the paste
                 // command itself fails, remove the named buffer best-effort so
                 // its prompt payload cannot remain readable in the container.
-                let _ = docker_exec(container, &["tmux", "delete-buffer", "-b", buffer]);
+                let _ = exec(&["tmux", "delete-buffer", "-b", buffer], None);
                 return Err(error);
             }
         }
     }
     Ok(())
+}
+
+pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
+    let target = format!("{TMUX_SESSION}:{window}");
+    let plan = plan_send_literal(&target, text);
+    run_send_literal_plan(&plan, |args, stdin| match stdin {
+        Some(payload) => docker_exec_with_stdin(container, args, payload).map(|_| ()),
+        None => docker_exec(container, args).map(|_| ()),
+    })
 }
 
 /// Capture the full pane buffer including scrollback.
@@ -463,5 +466,30 @@ mod tests {
     fn redact_args_leaves_non_literal_commands_intact() {
         let args = ["tmux", "capture-pane", "-p", "-t", "agents:claude"];
         assert_eq!(redact_args(&args), "tmux capture-pane -p -t agents:claude");
+    }
+
+    #[test]
+    fn failed_paste_buffer_is_followed_by_best_effort_delete() {
+        let plan = plan_send_literal("agents:0", &"x".repeat(TMUX_SEND_KEYS_MAX_BYTES + 1));
+        let mut calls = Vec::new();
+        let err = run_send_literal_plan(&plan, |args, _stdin| {
+            calls.push(
+                args.iter()
+                    .map(|arg| (*arg).to_string())
+                    .collect::<Vec<_>>(),
+            );
+            if args.get(1) == Some(&"paste-buffer") {
+                return Err(Error::other("paste failed"));
+            }
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Other);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0][1], "load-buffer");
+        assert_eq!(calls[1][1], "paste-buffer");
+        assert_eq!(calls[2][0..3], ["tmux", "delete-buffer", "-b"]);
+        assert_eq!(calls[2][3], calls[1][4]);
     }
 }
