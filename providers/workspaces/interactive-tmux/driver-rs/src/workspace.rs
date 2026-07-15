@@ -10,7 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::adapter::{self, Agent};
-use crate::auth::{self, AuthContext, Mount};
+use crate::auth::{self, AuthContext, PreparedAuth};
 use crate::registry::{self, WorkspaceRecord};
 use crate::result::AwaitResult;
 use crate::tmux;
@@ -84,7 +84,7 @@ pub struct Workspace {
 
 fn random_suffix() -> String {
     // 8 hex chars from a non-crypto seed mix (no `rand` dep). Mirrors the
-    // Python `uuid.uuid4().hex[:8]` slot — used only for container naming.
+    // Python `uuid.uuid4().hex[:8]` slot - used only for container naming.
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -96,8 +96,117 @@ fn random_suffix() -> String {
     format!("{low:08x}")
 }
 
-fn run_capture(cmd: &mut Command, what: &str) -> Result<Output> {
-    let out = cmd.output()?;
+/// Build the `docker run` argv for a bare, credential-free container:
+/// `docker run -d --name <c> --workdir <wd> <image> sleep infinity`.
+///
+/// Deliberately carries NO `-v` flags for credentials (docker-out-of-docker
+/// fix): a sibling `-v host:container` bind mount is resolved by the OUTER
+/// daemon against its own filesystem, which cannot see this driver's own
+/// staging dir when the driver itself runs inside a container. Credentials
+/// are pushed in afterwards over `docker exec` - see
+/// `auth::stage_into_container`. Pure (no I/O) so it can be asserted on
+/// without a docker daemon; see `tests/cred_transfer.rs`.
+pub fn build_docker_run_argv(container: &str, workdir: &str, image: &str) -> Vec<String> {
+    vec![
+        "run".to_string(),
+        "-d".to_string(),
+        "--name".to_string(),
+        container.to_string(),
+        "--workdir".to_string(),
+        workdir.to_string(),
+        image.to_string(),
+        "sleep".to_string(),
+        "infinity".to_string(),
+    ]
+}
+
+/// Substrings docker/tmux emit when the workspace target itself is GONE
+/// (OOM-killed, `docker rm`'d, stopped, tmux session vanished) rather than a
+/// transient capture hiccup while the container is still alive. Matched
+/// case-insensitively against a failed exec's error message so the readiness
+/// pollers can break out immediately instead of spinning the full
+/// startup/await deadline and then reporting a misleading generic timeout (a
+/// "degraded" workspace that actually masks a hard container death).
+///
+/// Deliberately EXCLUDED: "cannot connect to the Docker daemon" / generic
+/// "error connecting to" - those signal a transient daemon or socket outage,
+/// NOT a dead container (the container is very likely still running once the
+/// daemon recovers). Treating them as death would abort a live workspace on
+/// a blip; they stay on the retry path and are bounded by the overall
+/// deadline. Mirrors Python's `_CONTAINER_DEAD_STDERR_MARKERS` (PY:1637-1652).
+const CONTAINER_DEAD_STDERR_MARKERS: &[&str] = &[
+    "no such container",
+    "is not running",
+    "no server running", // tmux daemon gone
+    "no such session",   // tmux session vanished
+    "can't find session",
+];
+
+/// Return a human-readable reason if `err` indicates the workspace target is
+/// GONE, else `None`. Mirrors Python's `_container_death_reason`
+/// (PY:1653-1666).
+///
+/// A timed-out capture (`run_bounded`'s `ErrorKind::TimedOut`, mirroring
+/// Python's `TimeoutExpired`) is always treated as transient - the container
+/// may just be slow this once. Only a failed exec whose error text names a
+/// dead container / tmux server / tmux session counts as death. This lets
+/// the readiness pollers distinguish "one failed capture while still alive"
+/// (keep retrying) from "the container died" (stop now, surface the real
+/// error) instead of blindly polling until the deadline.
+fn container_death_reason(err: &Error) -> Option<String> {
+    if err.kind() == ErrorKind::TimedOut {
+        return None;
+    }
+    let msg = err.to_string();
+    let low = msg.to_lowercase();
+    for marker in CONTAINER_DEAD_STDERR_MARKERS {
+        if low.contains(marker) {
+            let trimmed = msg.trim();
+            return Some(if trimmed.is_empty() {
+                (*marker).to_string()
+            } else {
+                trimmed.to_string()
+            });
+        }
+    }
+    None
+}
+
+/// Outcome of classifying a single poll's pane-capture attempt. Pure (no
+/// I/O, no sleeping) so the await/startup poll loops' resilience logic can
+/// be unit tested without a docker daemon - see `tests/poll_resilience.rs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PollStep {
+    /// Capture succeeded; caller evaluates readiness against this pane text.
+    Captured(String),
+    /// Capture failed but looks transient (container still alive) - keep
+    /// polling within the overall deadline instead of aborting.
+    Retry,
+    /// Capture failed because the workspace target itself is gone.
+    Dead(String),
+}
+
+/// Classify one `tmux::capture_pane` result into a `PollStep`. Mirrors the
+/// try/except branch structure of Python's `_wait_for_started`/
+/// `await_completion` (PY:1962-1987, PY:2110-2138): success -> `Captured`,
+/// a death marker -> `Dead`, anything else (including a timed-out capture)
+/// -> `Retry`.
+pub fn classify_poll(capture: Result<String>) -> PollStep {
+    match capture {
+        Ok(pane) => PollStep::Captured(pane),
+        Err(e) => match container_death_reason(&e) {
+            Some(reason) => PollStep::Dead(reason),
+            None => PollStep::Retry,
+        },
+    }
+}
+
+/// Run `cmd` bounded by `DEFAULT_RUN_TIMEOUT_S` (PY:87) - used for `docker
+/// run` / `docker rm -f`, which get a longer bound than the 15s exec/tmux
+/// default since image pulls and container teardown can legitimately take
+/// longer than a single `docker exec`.
+fn run_capture(cmd: Command, what: &str) -> Result<Output> {
+    let out = tmux::run_bounded(cmd, Duration::from_secs_f64(tmux::DEFAULT_RUN_TIMEOUT_S))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         return Err(Error::other(format!(
@@ -150,9 +259,9 @@ impl Workspace {
         // must clean up the staged credential copies on failure; otherwise
         // a failed `docker run` (or a bad host auth dir) leaks auth
         // material under the temp dir.
-        let docker_run = (|| -> Result<Vec<Agent>> {
+        let provision = (|| -> Result<Vec<Agent>> {
             let mut enabled: Vec<Agent> = Vec::new();
-            let mut mounts: Vec<Mount> = Vec::new();
+            let mut prepared_by_agent: Vec<PreparedAuth> = Vec::new();
             for agent in adapter::AGENTS {
                 let Some(Some(src)) = opts.host_auth.get(&agent) else {
                     continue;
@@ -162,7 +271,7 @@ impl Workspace {
                     continue;
                 }
                 enabled.push(agent);
-                mounts.extend(prepared);
+                prepared_by_agent.push(prepared);
             }
 
             if enabled.is_empty() {
@@ -172,31 +281,33 @@ impl Workspace {
                 ));
             }
 
-            // docker run -d --name <c> --workdir <wd> [-v host:container ...] <image> sleep infinity
+            // Provision a bare, credential-free container (docker-out-of-
+            // docker fix - see `build_docker_run_argv` and module docs on
+            // `auth::stage_into_container`).
+            let argv = build_docker_run_argv(&container, &opts.workdir, &opts.image);
             let mut run = Command::new("docker");
-            run.args([
-                "run",
-                "-d",
-                "--name",
-                &container,
-                "--workdir",
-                &opts.workdir,
-            ]);
-            for m in &mounts {
-                run.arg("-v").arg(m.as_docker_arg());
+            run.args(&argv);
+            run_capture(run, "docker run")?;
+
+            // Container is up; push each agent's staged credentials into it
+            // over `docker exec` and lock down ownership/permissions
+            // in-container (PY:1850-1869, PY:1566-1583).
+            for prepared in &prepared_by_agent {
+                auth::stage_into_container(&container, prepared)?;
             }
-            run.arg(&opts.image).args(["sleep", "infinity"]);
-            run_capture(&mut run, "docker run")?;
             Ok(enabled)
         })();
-        let enabled = match docker_run {
+        let enabled = match provision {
             Ok(enabled) => enabled,
             Err(e) => {
-                // Best-effort: `docker run -d` can fail after the container
-                // is created (e.g. start failure), so remove it too.
-                let _ = Command::new("docker")
-                    .args(["rm", "-f", &container])
-                    .output();
+                // Best-effort: `docker run -d` (or the credential transfer
+                // that follows it) can fail after the container is
+                // created, so remove it too. Bounded by
+                // `DEFAULT_RUN_TIMEOUT_S` like every other docker/tmux
+                // shell-out - cleanup must not be able to hang forever.
+                let mut rm = Command::new("docker");
+                rm.args(["rm", "-f", &container]);
+                let _ = tmux::run_bounded(rm, Duration::from_secs_f64(tmux::DEFAULT_RUN_TIMEOUT_S));
                 let _ = fs::remove_dir_all(&throwaway);
                 return Err(e);
             }
@@ -262,8 +373,8 @@ impl Workspace {
         let deadline = start + Duration::from_secs_f64(timeout_s);
         let mut pane = String::new();
         while Instant::now() < deadline {
-            match tmux::capture_pane(&self.container, agent.window()) {
-                Ok(p) => {
+            match classify_poll(tmux::capture_pane(&self.container, agent.window())) {
+                PollStep::Captured(p) => {
                     // D-block-2 fix (Syntropic137 stress): predicate runs
                     // against the bottom-of-pane tail so historical text
                     // in the now-included scrollback can't fool absence
@@ -275,9 +386,14 @@ impl Workspace {
                     }
                     pane = p;
                 }
-                Err(e) => {
+                PollStep::Dead(reason) => {
                     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                    return AwaitResult::error(elapsed, pane, e.to_string());
+                    return AwaitResult::container_dead(elapsed, 0, pane, reason);
+                }
+                PollStep::Retry => {
+                    // Phase 3 (PY:1962-1987): a single wedged/failed capture
+                    // while the container is still alive must not abort the
+                    // whole wait - keep polling until the overall deadline.
                 }
             }
             thread::sleep(Duration::from_millis(500));
@@ -327,7 +443,7 @@ impl Workspace {
         // D-block-2 + D-block-3 fix (Syntropic137 stress): the readiness
         // predicate AND the stability comparison both operate on the
         // bottom-of-pane tail. Stability on the full scrollback buffer
-        // would fail forever — any new response token appended changes
+        // would fail forever - any new response token appended changes
         // the buffer, even when the live TUI window has settled.
         // Comparing tails matches the pre-fix "visible window" semantics
         // on the full-history capture introduced by `-S - -E -`.
@@ -336,23 +452,48 @@ impl Workspace {
         let mut ever_ready = false;
         let mut pane = String::new();
         while Instant::now() < deadline {
-            pane = tmux::capture_pane(&self.container, agent.window())?;
-            let tail = tmux::pane_tail(&pane, self.tmux_size.1 as usize);
-            if adapter::is_ready(agent, &tail) {
-                ever_ready = true;
-                if last_tail.as_deref() == Some(&tail) {
-                    consecutive_stable_ready += 1;
-                    if consecutive_stable_ready >= stable_polls {
-                        let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                        return Ok(AwaitResult::ready(elapsed, consecutive_stable_ready, pane));
+            match classify_poll(tmux::capture_pane(&self.container, agent.window())) {
+                PollStep::Captured(p) => {
+                    pane = p;
+                    let tail = tmux::pane_tail(&pane, self.tmux_size.1 as usize);
+                    if adapter::is_ready(agent, &tail) {
+                        ever_ready = true;
+                        if last_tail.as_deref() == Some(&tail) {
+                            consecutive_stable_ready += 1;
+                            if consecutive_stable_ready >= stable_polls {
+                                let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                                return Ok(AwaitResult::ready(
+                                    elapsed,
+                                    consecutive_stable_ready,
+                                    pane,
+                                ));
+                            }
+                        } else {
+                            consecutive_stable_ready = 0;
+                        }
+                    } else {
+                        consecutive_stable_ready = 0;
                     }
-                } else {
-                    consecutive_stable_ready = 0;
+                    last_tail = Some(tail);
                 }
-            } else {
-                consecutive_stable_ready = 0;
+                PollStep::Dead(reason) => {
+                    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                    return Ok(AwaitResult::container_dead(
+                        elapsed,
+                        consecutive_stable_ready,
+                        pane,
+                        reason,
+                    ));
+                }
+                PollStep::Retry => {
+                    // Phase 3 (PY:2110-2138): a single failed/wedged poll
+                    // (container still alive) must not abort the whole
+                    // await - treat it as "not ready this round" and keep
+                    // polling until the overall deadline above.
+                    consecutive_stable_ready = 0;
+                    last_tail = None;
+                }
             }
-            last_tail = Some(tail);
             thread::sleep(Duration::from_secs_f64(poll_interval));
         }
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
@@ -383,10 +524,11 @@ impl Workspace {
 
     pub fn stop(&self) -> Result<()> {
         // Best-effort `docker rm -f` + rm of throwaway dir. Matches Python's
-        // `subprocess.run(check=False)` semantics.
-        let _ = Command::new("docker")
-            .args(["rm", "-f", &self.container])
-            .output();
+        // `subprocess.run(check=False)` semantics, bounded by
+        // `DEFAULT_RUN_TIMEOUT_S` like every other docker/tmux shell-out.
+        let mut rm = Command::new("docker");
+        rm.args(["rm", "-f", &self.container]);
+        let _ = tmux::run_bounded(rm, Duration::from_secs_f64(tmux::DEFAULT_RUN_TIMEOUT_S));
         let _ = fs::remove_dir_all(&self.host_throwaway_dir);
         Ok(())
     }
