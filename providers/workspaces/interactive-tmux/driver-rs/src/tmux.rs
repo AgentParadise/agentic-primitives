@@ -117,14 +117,22 @@ fn redact_args(args: &[&str]) -> String {
 
 /// Run `docker exec <container> <args...>` and return its `Output`, bounded
 /// by `DEFAULT_EXEC_TIMEOUT_S` (PY:86) so a wedged exec can't hang forever.
-pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
+pub fn docker_exec_timeout(container: &str, args: &[&str], timeout: Duration) -> Result<Output> {
     let mut cmd = Command::new("docker");
     cmd.arg("exec").arg(container);
     cmd.args(args);
-    let out = run_bounded(cmd, Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S))?;
+    let out = run_bounded(cmd, timeout)?;
     check_output(
         out,
         &format!("docker exec {container} {}", redact_args(args)),
+    )
+}
+
+pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
+    docker_exec_timeout(
+        container,
+        args,
+        Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S),
     )
 }
 
@@ -135,7 +143,12 @@ pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
 /// bytes / base64 payloads into the container without ever putting them in
 /// argv (PY:1506-1517) - argv is world-readable via `ps` /
 /// `/proc/<pid>/cmdline` for the lifetime of the exec; stdin is not.
-pub fn docker_exec_with_stdin(container: &str, args: &[&str], stdin_data: &[u8]) -> Result<Output> {
+pub fn docker_exec_with_stdin_timeout(
+    container: &str,
+    args: &[&str],
+    stdin_data: &[u8],
+    timeout: Duration,
+) -> Result<Output> {
     let mut cmd = Command::new("docker");
     cmd.arg("exec").arg("-i").arg(container);
     cmd.args(args);
@@ -157,13 +170,22 @@ pub fn docker_exec_with_stdin(container: &str, args: &[&str], stdin_data: &[u8])
     // returns immediately and the writer thread is left detached - once the
     // killed child's stdin pipe closes its `write_all` fails fast and the
     // thread exits on its own; there is nothing useful left to join.
-    let out = wait_bounded(child, Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S))?;
+    let out = wait_bounded(child, timeout)?;
     writer
         .join()
         .map_err(|_| Error::other("stdin-writer thread panicked"))??;
     check_output(
         out,
         &format!("docker exec -i {container} {}", redact_args(args)),
+    )
+}
+
+pub fn docker_exec_with_stdin(container: &str, args: &[&str], stdin_data: &[u8]) -> Result<Output> {
+    docker_exec_with_stdin_timeout(
+        container,
+        args,
+        stdin_data,
+        Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S),
     )
 }
 
@@ -319,10 +341,16 @@ pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
             // `-p` = bracketed paste (atomic multiline); `-d` deletes the
             // named buffer afterwards so large sends don't accumulate stale
             // buffers and can't leak payload bytes into a later paste.
-            docker_exec(
+            if let Err(error) = docker_exec(
                 container,
                 &["tmux", "paste-buffer", "-p", "-b", buffer, "-d", "-t", pane],
-            )?;
+            ) {
+                // `-d` only cleans up after a successful paste. If the paste
+                // command itself fails, remove the named buffer best-effort so
+                // its prompt payload cannot remain readable in the container.
+                let _ = docker_exec(container, &["tmux", "delete-buffer", "-b", buffer]);
+                return Err(error);
+            }
         }
     }
     Ok(())

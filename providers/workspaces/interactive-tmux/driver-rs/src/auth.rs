@@ -32,6 +32,7 @@ use std::fs;
 use std::io::{Error, ErrorKind, Result};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
 
@@ -140,32 +141,6 @@ fn copy_named_files(src: &Path, dst: &Path, allow_names: &[&str]) -> Result<()> 
         if fs::metadata(&path).map(|m| m.is_file()).unwrap_or(false) {
             fs::copy(&path, dst.join(&name))?;
         }
-    }
-    Ok(())
-}
-
-fn copy_tree(src: &Path, dst: &Path, skip_names: &[&str]) -> Result<()> {
-    if !src.exists() {
-        return Ok(());
-    }
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if skip_names.iter().any(|s| **s == *name.to_string_lossy()) {
-            continue;
-        }
-        let kind = entry.file_type()?;
-        let src_path = entry.path();
-        let dst_path = dst.join(&name);
-        if kind.is_dir() {
-            copy_tree(&src_path, &dst_path, &[])?;
-        } else if kind.is_file() {
-            fs::copy(&src_path, &dst_path)?;
-        }
-        // Ignore unsupported entries (symlinks to vanished files, sockets):
-        // the Python adapter does the same - the auth surface is regular
-        // files in practice.
     }
     Ok(())
 }
@@ -312,6 +287,22 @@ pub fn prepare_codex(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth>
 // ---------------------------------------------------------------------------
 // Gemini - EXP-03
 
+/// Gemini's durable authentication/configuration surface. Session recordings,
+/// temporary files and caches are recreated by the CLI and must not turn
+/// workspace startup into a per-file Docker transfer crawl.
+///
+/// `oauth_creds.json` holds OAuth refresh credentials; `settings.json`
+/// selects the auth mode and is patched below; `google_accounts.json` and
+/// `projects.json` preserve the selected account/project for Code Assist;
+/// `user_id` is Gemini's stable local installation identity.
+const GEMINI_AUTH_FILES: [&str; 5] = [
+    "oauth_creds.json",
+    "settings.json",
+    "google_accounts.json",
+    "projects.json",
+    "user_id",
+];
+
 pub fn prepare_gemini(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth> {
     if !host_src.is_dir() {
         return Err(Error::new(
@@ -320,7 +311,7 @@ pub fn prepare_gemini(host_src: &Path, ctx: &AuthContext) -> Result<PreparedAuth
         ));
     }
     let dst_dir = ctx.throwaway_dir.join("gemini.dir");
-    copy_tree(host_src, &dst_dir, &[])?;
+    copy_named_files(host_src, &dst_dir, &GEMINI_AUTH_FILES)?;
     // Patch settings.json with security.folderTrust.enabled = false (EXP-03).
     let settings_path = dst_dir.join("settings.json");
     let mut settings: Value = if settings_path.is_file() {
@@ -536,14 +527,14 @@ pub fn plan_for_staged_path(staged: &StagedPath) -> Result<Vec<ExecStep>> {
     Ok(steps)
 }
 
-fn run_exec_step(container: &str, step: &ExecStep) -> Result<()> {
+fn run_exec_step(container: &str, step: &ExecStep, timeout: Duration) -> Result<()> {
     let argv_refs: Vec<&str> = step.argv.iter().map(String::as_str).collect();
     match &step.stdin {
         Some(bytes) => {
-            tmux::docker_exec_with_stdin(container, &argv_refs, bytes)?;
+            tmux::docker_exec_with_stdin_timeout(container, &argv_refs, bytes, timeout)?;
         }
         None => {
-            tmux::docker_exec(container, &argv_refs)?;
+            tmux::docker_exec_timeout(container, &argv_refs, timeout)?;
         }
     }
     Ok(())
@@ -557,9 +548,27 @@ fn run_exec_step(container: &str, step: &ExecStep) -> Result<()> {
 /// This is the "PUSHES credential files ... then secures them in-container"
 /// half of the docker-out-of-docker fix (PY:1850-1869).
 pub fn stage_into_container(container: &str, prepared: &PreparedAuth) -> Result<()> {
+    // Per-command bounds prevent a wedged Docker operation; this aggregate
+    // deadline prevents a large (or accidentally unbounded) credential tree
+    // from converting startup into an unbounded sequence of otherwise-valid
+    // transfers. Each command receives only the remaining budget.
+    const STAGING_TIMEOUT: Duration = Duration::from_secs(60);
+    let deadline = Instant::now() + STAGING_TIMEOUT;
     for staged in prepared.iter() {
         for step in plan_for_staged_path(staged)? {
-            run_exec_step(container, &step)?;
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::TimedOut,
+                        "credential staging exceeded the 60s total deadline",
+                    )
+                })?;
+            run_exec_step(
+                container,
+                &step,
+                remaining.min(Duration::from_secs_f64(tmux::DEFAULT_EXEC_TIMEOUT_S)),
+            )?;
         }
     }
     Ok(())

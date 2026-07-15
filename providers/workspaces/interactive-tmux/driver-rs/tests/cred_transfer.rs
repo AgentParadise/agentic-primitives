@@ -11,7 +11,10 @@
 use std::fs;
 use std::path::PathBuf;
 
-use itmux::auth::{prepare, secure_path_plan, stage_into_container, write_bytes_plan, AuthContext};
+use itmux::auth::{
+    plan_for_staged_path, prepare, secure_path_plan, stage_into_container, write_bytes_plan,
+    AuthContext,
+};
 use itmux::workspace::build_docker_run_argv;
 use itmux::Agent;
 
@@ -188,4 +191,38 @@ fn stage_into_container_without_docker_fails_cleanly_not_via_v_mount() {
     // exist (nonzero exit) - both surface as Err, never a silent Ok that
     // would mean credentials were dropped via some other, unaudited path.
     assert!(result.is_err());
+}
+
+#[test]
+fn gemini_stages_only_durable_auth_and_config_files() {
+    let host_root = tmp("gemini-host-root");
+    let gemini_dir = host_root.join(".gemini");
+    fs::create_dir_all(gemini_dir.join("tmp/session-1")).unwrap();
+    fs::create_dir_all(gemini_dir.join("cache")).unwrap();
+    for name in [
+        "oauth_creds.json",
+        "settings.json",
+        "google_accounts.json",
+        "projects.json",
+        "user_id",
+    ] {
+        fs::write(gemini_dir.join(name), b"{}").unwrap();
+    }
+    fs::write(gemini_dir.join("tmp/session-1/chat.json"), b"history").unwrap();
+    fs::write(gemini_dir.join("cache/blob"), b"cache").unwrap();
+
+    let ctx = AuthContext {
+        workdir: "/workspace".to_string(),
+        throwaway_dir: tmp("gemini-throwaway"),
+        host_claude_dotjson: None,
+    };
+    let prepared = prepare(Agent::Gemini, &gemini_dir, &ctx).unwrap();
+    let staged = prepared.first().expect("Gemini has one staged directory");
+    assert!(staged.host.join("oauth_creds.json").is_file());
+    assert!(staged.host.join("settings.json").is_file());
+    assert!(!staged.host.join("tmp").exists());
+    assert!(!staged.host.join("cache").exists());
+
+    let plan = plan_for_staged_path(staged).unwrap();
+    assert!(plan.len() < 20, "only durable Gemini files are transferred");
 }
