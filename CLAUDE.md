@@ -5,7 +5,9 @@ alwaysApply: true
 ---
 # Agentic Primitives
 
-Atomic building blocks for AI agent systems. Claude Code plugins + Python libraries for reusable agent capabilities (SDLC, research, workspace management, observability, notifications).
+Atomic building blocks for AI agent systems: a Rust workspace-execution substrate (`itmux`) + Claude Code plugins + supporting libraries for reusable agent capabilities (SDLC, research, workspace management, observability, notifications).
+
+**Language policy (ADR-038):** the workspace execution substrate, the `AgentRunSpec -> AgentRunResult` contract + orchestration, recipe loading/validation, and hot-path tooling are **Rust-first**. Python is retained only as thin consumer glue and for Claude hook plugins. New substrate/contract/recipe/hot-path work is Rust unless there is a concrete reason it must be Python.
 
 > **For fresh agent sessions:** The workspace contract is documented at
 > [`docs/workspace.md`](docs/workspace.md). It describes how the workspace
