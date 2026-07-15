@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
-use itmux::run::contract::{AgentRunEvent, AgentRunSpec};
+use itmux::run::contract::{AgentRunEvent, AgentRunLimits, AgentRunSpec};
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
@@ -124,7 +124,51 @@ enum Cmd {
         /// `type:"result"` line on stdout.
         #[arg(long)]
         result_file: Option<PathBuf>,
+        /// Wall-clock timeout, in seconds, for the whole run. Maps to
+        /// `AgentRunSpec.limits.timeout_s`. When omitted, the orchestrator's
+        /// default await bound applies (behaviour unchanged from before this
+        /// flag existed). Must be a finite, strictly-positive number - a
+        /// non-finite or non-positive value is rejected with a clean CLI error
+        /// (never a downstream `Duration::from_secs_f64` panic).
+        #[arg(long, value_parser = parse_positive_timeout)]
+        timeout: Option<f64>,
     },
+}
+
+/// Clap value parser for `--timeout`: accept only a finite, strictly-positive
+/// number of seconds. Rejects `<= 0.0` (an instant/zero timeout is meaningless)
+/// and non-finite values (`NaN`, `inf`) with a message clap renders as a clean
+/// CLI error - this is what keeps `Duration::from_secs_f64` from ever seeing a
+/// value that would panic.
+fn parse_positive_timeout(raw: &str) -> Result<f64, String> {
+    let value: f64 = raw
+        .parse()
+        .map_err(|_| format!("'{raw}' is not a number"))?;
+    if !value.is_finite() {
+        return Err(format!("timeout must be a finite number, got '{raw}'"));
+    }
+    if value <= 0.0 {
+        return Err(format!("timeout must be greater than 0, got '{raw}'"));
+    }
+    Ok(value)
+}
+
+/// Build the `AgentRunSpec` for `itmux run` from the CLI inputs. Pure so the
+/// `--timeout -> limits.timeout_s` mapping is unit-testable without spawning a
+/// run. When `timeout` is `None`, `limits` stays `None` so the default await
+/// bound is unchanged (R6: additive, no behaviour change when omitted).
+fn build_run_spec(recipe: PathBuf, task: String, timeout: Option<f64>) -> AgentRunSpec {
+    AgentRunSpec {
+        recipe,
+        task,
+        input_artifacts: Vec::new(),
+        credentials: Default::default(),
+        observability: Vec::new(),
+        limits: timeout.map(|timeout_s| AgentRunLimits {
+            timeout_s: Some(timeout_s),
+            token_budget: None,
+        }),
+    }
 }
 
 fn parse_agent(s: &str) -> Result<Agent, String> {
@@ -469,15 +513,9 @@ fn handle_run(
     image: String,
     json: bool,
     result_file: Option<PathBuf>,
+    timeout: Option<f64>,
 ) -> ExitCode {
-    let spec = AgentRunSpec {
-        recipe,
-        task,
-        input_artifacts: Vec::new(),
-        credentials: Default::default(),
-        observability: Vec::new(),
-        limits: None,
-    };
+    let spec = build_run_spec(recipe, task, timeout);
     let run_id = generate_run_id();
     let cancel = CancelToken::new();
 
@@ -607,6 +645,54 @@ fn main() -> ExitCode {
             image,
             json,
             result_file,
-        } => handle_run(recipe, task, image, json, result_file),
+            timeout,
+        } => handle_run(recipe, task, image, json, result_file, timeout),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_run_spec_maps_timeout_to_limits_timeout_s() {
+        let spec = build_run_spec(
+            PathBuf::from("/recipes/hello"),
+            "do the thing".to_string(),
+            Some(12.5),
+        );
+        let limits = spec.limits.expect("timeout should populate limits");
+        assert_eq!(limits.timeout_s, Some(12.5));
+        // Only the timeout is set; the token budget stays unset.
+        assert_eq!(limits.token_budget, None);
+    }
+
+    #[test]
+    fn parse_positive_timeout_accepts_a_finite_positive_value() {
+        assert_eq!(parse_positive_timeout("2.5"), Ok(2.5));
+    }
+
+    #[test]
+    fn parse_positive_timeout_rejects_non_positive_and_non_finite() {
+        // Each of these would reach Duration::from_secs_f64 and panic if it
+        // slipped through - the parser must reject them cleanly instead.
+        for bad in ["-1", "0", "NaN", "inf", "-inf", "not-a-number"] {
+            assert!(
+                parse_positive_timeout(bad).is_err(),
+                "expected {bad:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn build_run_spec_without_timeout_leaves_limits_none() {
+        // Omitting --timeout must not change existing behaviour: no limits, so
+        // the orchestrator's default await bound applies.
+        let spec = build_run_spec(
+            PathBuf::from("/recipes/hello"),
+            "do the thing".to_string(),
+            None,
+        );
+        assert!(spec.limits.is_none());
     }
 }

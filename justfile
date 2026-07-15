@@ -145,6 +145,15 @@ rust-fmt:
     cd providers/workspaces/interactive-tmux/driver-rs && cargo fmt
     @echo '{{ GREEN }}✓ itmux Rust formatting complete{{ NORMAL }}'
 
+# Run the LIVE itmux run acceptance battery (E1-E7). Needs docker + valid host
+# credentials (~/.claude/.credentials.json, ~/.codex/auth.json). These cases
+# are gated out of `cargo test`; this is the only entry point that runs them.
+[group('rust')]
+eval-live:
+    @echo '{{ YELLOW }}Running LIVE itmux run acceptance battery (docker + token required)...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && AGENTIC_LIVE_EVAL=1 cargo test --test live_eval -- --ignored --test-threads=1 --nocapture
+    @echo '{{ GREEN }}✓ itmux live acceptance battery complete{{ NORMAL }}'
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMBINED OPERATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
