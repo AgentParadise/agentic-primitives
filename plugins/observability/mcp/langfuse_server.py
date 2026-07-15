@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from pathlib import Path
@@ -149,6 +150,45 @@ TOOLS: list[dict[str, Any]] = [
                     "maximum": 500,
                     "default": 20,
                     "description": "Maximum score rows to request for each trace.",
+                },
+                "langfuse_base_url": _text_schema("Optional LangFuse origin override."),
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "agentic_langfuse_session_index",
+        "description": (
+            "Build a session-discovery index from LangFuse traces. Unlike the native "
+            "Sessions UI, each row includes derived harness, host, environment, "
+            "project/repository, turn, cost, token, tool, score, and trace-link rollups."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20,
+                    "description": "Maximum matching trace rows to inspect and group. Filtered requests scan bounded candidate pages first.",
+                },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "1-based LangFuse trace discovery page number.",
+                },
+                "harness": _text_schema("Optional harness filter, for example codex or claude."),
+                "provider": _text_schema("Optional provider filter, for example openai or anthropic."),
+                "model": _text_schema("Optional model filter."),
+                "environment": _text_schema("Optional LangFuse environment filter."),
+                "scan_pages": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "default": 5,
+                    "description": "Maximum 100-trace candidate pages to scan for a filtered cohort.",
                 },
                 "langfuse_base_url": _text_schema("Optional LangFuse origin override."),
             },
@@ -358,6 +398,8 @@ class McpServer:
             return self._tool_result(request_id, self._langfuse_traces(args))
         if name == "agentic_langfuse_session_report":
             return self._tool_result(request_id, self._langfuse_sessions(args))
+        if name == "agentic_langfuse_session_index":
+            return self._tool_result(request_id, self._langfuse_session_index(args))
         if name == "agentic_langfuse_scores":
             return self._tool_result(request_id, self._langfuse_scores(args))
         if name == "agentic_langfuse_score_feedback":
@@ -414,6 +456,21 @@ class McpServer:
             cmd.append("--include-scores=false")
         self._add_option(cmd, "--langfuse-base-url", args.get("langfuse_base_url"))
         return self._run_itmux(cmd)
+
+    def _langfuse_session_index(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Use direct trace reads so this works without itmux in every package host."""
+        direct_args = {
+            "limit": args.get("limit", 20),
+            "page": args.get("page", 1),
+            "harness": args.get("harness"),
+            "provider": args.get("provider"),
+            "model": args.get("model"),
+            "environment": args.get("environment"),
+            "scan-pages": args.get("scan_pages"),
+            "langfuse-base-url": args.get("langfuse_base_url"),
+        }
+        result = self._direct_langfuse_session_index(direct_args)
+        return {"ok": bool(result.get("ok")), "payload": result}
 
     def _langfuse_scores(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = [self.itmux_bin, "langfuse-scores"]
@@ -567,11 +624,7 @@ class McpServer:
             if command == "langfuse-traces":
                 return self._direct_langfuse_traces(parsed)
             if command == "langfuse-sessions":
-                return {
-                    "ok": False,
-                    "error": "session reports require itmux; direct fallback only supports raw trace reads",
-                    "hint": "Set ITMUX_BIN or put itmux on PATH.",
-                }
+                return self._direct_langfuse_session_index(parsed)
             if command == "langfuse-scores":
                 return self._direct_langfuse_scores(parsed)
             if command == "langfuse-score":
@@ -632,6 +685,74 @@ class McpServer:
             "request": {"endpoint": endpoint, "limit": limit, "page": page, **{k: v for k, v in filters.items() if v}},
             "summary": {"returned_count": len(filtered), "traces": [_basic_trace_row(trace) for trace in filtered]},
             "response": response,
+        }
+
+    def _direct_langfuse_session_index(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Derive session rows from detailed traces rather than the sparse Sessions API."""
+        requested_limit = int(args.get("limit") or 20)
+        filters = {
+            "harness": args.get("harness"),
+            "provider": args.get("provider"),
+            "model": args.get("model"),
+            "environment": args.get("environment"),
+        }
+        # The v3 list endpoint does not reliably filter official-plugin tags.
+        # Scan bounded candidate pages when filtering, then cap selected traces
+        # locally. This makes `harness=claude` useful during Codex-heavy periods
+        # without unbounded API paging.
+        candidate_limit = 100 if any(filters.values()) else requested_limit
+        scan_pages = max(1, min(int(args.get("scan-pages") or 5), 20)) if any(filters.values()) else 1
+        start_page = int(args.get("page") or 1)
+        candidate_pages_scanned = 0
+        matching: list[Any] = []
+        for page in range(start_page, start_page + scan_pages):
+            discovery = self._direct_langfuse_traces({**args, "limit": candidate_limit, "page": page})
+            if not discovery.get("ok"):
+                return discovery
+            page_rows = _rows(discovery.get("response"))
+            candidate_pages_scanned += 1
+            matching.extend(row for row in page_rows if _trace_matches(row, filters))
+            if len(matching) >= requested_limit or len(page_rows) < candidate_limit:
+                break
+        traces = matching[:requested_limit]
+        base_url = _langfuse_api_base_url(args.get("langfuse-base-url"))
+        details: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        endpoints: dict[Any, str] = {}
+        for trace in traces:
+            if not isinstance(trace, dict):
+                continue
+            trace_id = trace.get("id") or trace.get("traceId")
+            if not trace_id:
+                errors.append({"trace": _basic_trace_row(trace), "error": "trace row has no id"})
+                continue
+            endpoints[trace_id] = f"{base_url}/api/public/traces/{parse.quote(str(trace_id), safe='')}"
+
+        # Detail reads contain cost, usage, observations, scores, and htmlPath.
+        # Bound concurrency to keep slow self-hosted LangFuse instances usable.
+        with ThreadPoolExecutor(max_workers=min(8, max(1, len(endpoints)))) as executor:
+            futures = {executor.submit(_langfuse_request, "GET", endpoint): trace_id for trace_id, endpoint in endpoints.items()}
+            for future in as_completed(futures):
+                trace_id = futures[future]
+                try:
+                    detail = future.result()
+                except Exception as exc:
+                    errors.append({"trace_id": trace_id, "error": _redact(str(exc))})
+                    continue
+                if isinstance(detail, dict):
+                    details.append(detail)
+        return {
+            "ok": True,
+            "request": {
+                "endpoint": f"{base_url}/api/public/traces",
+                "limit": requested_limit,
+                "candidate_trace_limit": candidate_limit,
+                "page": start_page,
+                "candidate_pages_scanned": candidate_pages_scanned,
+                **{key: value for key, value in filters.items() if value},
+                "direct_fallback": True,
+            },
+            "summary": _session_index_summary(details, base_url=base_url, errors=errors),
         }
 
     def _direct_langfuse_scores(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -863,13 +984,137 @@ def _basic_trace_row(trace: Any) -> dict[str, Any]:
     official = _infer_official_plugin_trace(trace)
     return {
         "id": trace.get("id") or trace.get("traceId"),
+        "session_id": trace.get("sessionId") or _deep_get(trace, ("metadata", "session_id")),
         "name": trace.get("name"),
         "timestamp": trace.get("timestamp") or trace.get("createdAt"),
         "environment": trace.get("environment") or _deep_get(trace, ("metadata", "agentic.environment")),
         "harness": _deep_get(trace, ("metadata", "agentic.harness")) or official.get("harness"),
         "provider": _deep_get(trace, ("metadata", "agentic.provider")) or official.get("provider"),
-        "model": _deep_get(trace, ("metadata", "agentic.model")),
+        "model": (
+            _deep_get(trace, ("metadata", "agentic.model"))
+            or _deep_get(trace, ("metadata", "codex.model"))
+            or _deep_get(trace, ("metadata", "model"))
+        ),
         "usage": trace.get("usage") or trace.get("usageDetails"),
+    }
+
+
+def _session_index_summary(
+    traces: list[dict[str, Any]], *, base_url: str, errors: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Aggregate detailed trace facts into a portable, non-PII session index."""
+    sessions: dict[str, dict[str, Any]] = {}
+    for trace in traces:
+        session_id = trace.get("sessionId") or _deep_get(trace, ("metadata", "session_id"))
+        if not isinstance(session_id, str) or not session_id:
+            # A trace without a session cannot be safely grouped with another.
+            session_id = f"trace:{trace.get('id') or 'unknown'}"
+        metadata = trace.get("metadata") if isinstance(trace.get("metadata"), dict) else {}
+        tags = [str(tag) for tag in _as_list(trace.get("tags")) if isinstance(tag, str)]
+        inferred = _infer_official_plugin_trace(trace)
+        harnesses = _compact_list(
+            [
+                _deep_get(metadata, ("agentic.harness",)),
+                next((tag.removeprefix("harness:") for tag in tags if tag.startswith("harness:")), None),
+                inferred.get("harness"),
+            ]
+        )
+        hosts = _compact_list(
+            [
+                metadata.get("host"),
+                next((tag.removeprefix("host:") for tag in tags if tag.startswith("host:")), None),
+            ]
+        )
+        projects = _compact_list(
+            [
+                metadata.get("project"),
+                metadata.get("repository"),
+                metadata.get("repo"),
+                trace.get("projectId"),
+            ]
+        )
+        observations = [row for row in _as_list(trace.get("observations")) if isinstance(row, dict)]
+        usage = trace.get("usage") or trace.get("usageDetails") or {}
+        total_tokens = _number(_deep_get(usage, ("total",))) or 0
+        if not total_tokens:
+            total_tokens = sum(
+                _number(_deep_get(row, ("usageDetails", "total"))) or 0 for row in observations
+            )
+        tool_rows = [row for row in observations if str(row.get("type") or "").upper() == "TOOL"]
+        score_rows = [row for row in _as_list(trace.get("scores")) if isinstance(row, dict)]
+        trace_id = str(trace.get("id") or trace.get("traceId") or "")
+        html_path = trace.get("htmlPath")
+        if isinstance(html_path, str) and html_path.startswith("/"):
+            trace_link = f"{base_url}{html_path}"
+        elif trace_id and trace.get("projectId"):
+            trace_link = f"{base_url}/project/{trace['projectId']}/traces/{trace_id}"
+        else:
+            trace_link = None
+        session = sessions.setdefault(
+            session_id,
+            {
+                "session_id": session_id,
+                "harnesses": set(),
+                "hosts": set(),
+                "environments": set(),
+                "projects": set(),
+                "turn_count_in_window": 0,
+                "cost": {"total_usd": 0.0},
+                "usage": {"total_tokens": 0},
+                "tools": {"count": 0, "names": set()},
+                "scores": {"count": 0, "names": set()},
+                "trace_ids": [],
+                "trace_links": [],
+                "first_timestamp": None,
+                "last_timestamp": None,
+            },
+        )
+        session["harnesses"].update(str(value) for value in harnesses)
+        session["hosts"].update(str(value) for value in hosts)
+        if trace.get("environment"):
+            session["environments"].add(str(trace["environment"]))
+        session["projects"].update(str(value) for value in projects)
+        session["turn_count_in_window"] += 1
+        session["cost"]["total_usd"] += _number(trace.get("totalCost")) or 0.0
+        session["usage"]["total_tokens"] += int(total_tokens)
+        session["tools"]["count"] += len(tool_rows)
+        session["tools"]["names"].update(str(row.get("name")) for row in tool_rows if row.get("name"))
+        session["scores"]["count"] += len(score_rows)
+        session["scores"]["names"].update(str(row.get("name")) for row in score_rows if row.get("name"))
+        if trace_id:
+            session["trace_ids"].append(trace_id)
+        if trace_link:
+            session["trace_links"].append(trace_link)
+        timestamp = trace.get("timestamp") or trace.get("createdAt")
+        if isinstance(timestamp, str):
+            if session["first_timestamp"] is None or timestamp < session["first_timestamp"]:
+                session["first_timestamp"] = timestamp
+            if session["last_timestamp"] is None or timestamp > session["last_timestamp"]:
+                session["last_timestamp"] = timestamp
+
+    rows = []
+    for session in sessions.values():
+        rows.append(
+            {
+                **{key: value for key, value in session.items() if key not in {"harnesses", "hosts", "environments", "projects"}},
+                "harnesses": sorted(session["harnesses"]),
+                "hosts": sorted(session["hosts"]),
+                "environments": sorted(session["environments"]),
+                "projects": sorted(session["projects"]),
+                "tools": {**session["tools"], "names": sorted(session["tools"]["names"])},
+                "scores": {**session["scores"], "names": sorted(session["scores"]["names"])},
+            }
+        )
+    rows.sort(key=lambda row: row.get("last_timestamp") or "", reverse=True)
+    return {
+        "session_count": len(rows),
+        "coverage": {
+            "kind": "bounded_trace_page",
+            "detail": "turn, cost, token, tool, and score totals cover only traces in this query window",
+            "traces_inspected": len(traces),
+        },
+        "sessions": rows,
+        "errors": errors,
     }
 
 
@@ -1245,6 +1490,107 @@ def self_test() -> int:
     assert _trace_selector_from_row({"trace_id": "1" * 32, "run_id": "run-test"}) == {"trace_id": "1" * 32}
     assert _basic_trace_row({"id": "2" * 32, "name": "Codex Turn"})["harness"] == "codex"
     assert _basic_trace_row({"id": "3" * 32, "name": "Claude Code - Turn 1 (abcd1234)"})["provider"] == "anthropic"
+    index_fixture = _session_index_summary(
+        [
+            {
+                "id": "4" * 32,
+                "sessionId": "session-test",
+                "name": "Codex Turn",
+                "timestamp": "2026-07-15T00:00:00.000Z",
+                "environment": "flywheel-vps",
+                "tags": ["harness:codex", "host:flywheel-vps"],
+                "projectId": "agentic-primitives-local-project",
+                "htmlPath": "/project/agentic-primitives-local-project/traces/" + "4" * 32,
+                "totalCost": 0.25,
+                "observations": [
+                    {"type": "GENERATION", "usageDetails": {"total": 100}},
+                    {"type": "TOOL", "name": "exec"},
+                ],
+                "scores": [{"name": "learning-loop-quality", "value": 1}],
+            },
+            {
+                "id": "5" * 32,
+                "sessionId": "session-test",
+                "name": "Codex Turn",
+                "timestamp": "2026-07-15T00:01:00.000Z",
+                "environment": "flywheel-vps",
+                "tags": ["harness:codex", "host:flywheel-vps"],
+                "projectId": "agentic-primitives-local-project",
+                "totalCost": 0.50,
+                "observations": [{"type": "GENERATION", "usageDetails": {"total": 50}}],
+                "scores": [],
+            },
+        ],
+        base_url="http://langfuse.test",
+        errors=[],
+    )
+    assert index_fixture["session_count"] == 1
+    indexed = index_fixture["sessions"][0]
+    assert indexed["harnesses"] == ["codex"] and indexed["hosts"] == ["flywheel-vps"]
+    assert indexed["turn_count_in_window"] == 2 and indexed["usage"]["total_tokens"] == 150
+    assert indexed["cost"]["total_usd"] == 0.75 and indexed["tools"]["names"] == ["exec"]
+    assert indexed["trace_links"] == [
+        "http://langfuse.test/project/agentic-primitives-local-project/traces/" + "4" * 32,
+        "http://langfuse.test/project/agentic-primitives-local-project/traces/" + "5" * 32,
+    ]
+    assert indexed["projects"] == ["agentic-primitives-local-project"]
+
+    original_request = _langfuse_request
+    original_base_url = os.environ.get("LANGFUSE_BASE_URL")
+    direct_trace_id = "6" * 32
+
+    def fake_langfuse_request(method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
+        assert method == "GET" and payload is None
+        if url.startswith("http://langfuse.test/api/public/traces?"):
+            return {
+                "data": [
+                    {
+                        "id": direct_trace_id,
+                        "name": "Codex Turn",
+                        "sessionId": "direct-session",
+                        "environment": "flywheel-vps",
+                        "tags": ["harness:codex", "host:flywheel-vps"],
+                        "metadata": {"codex.model": "gpt-5.6-terra"},
+                    }
+                ]
+            }
+        assert url == f"http://langfuse.test/api/public/traces/{direct_trace_id}"
+        return {
+            "id": direct_trace_id,
+            "name": "Codex Turn",
+            "sessionId": "direct-session",
+            "environment": "flywheel-vps",
+            "tags": ["harness:codex", "host:flywheel-vps"],
+            "projectId": "agentic-primitives-local-project",
+            "metadata": {"cwd": "/Users/private-person/Code/private-project"},
+            "totalCost": 0.5,
+            "observations": [
+                {"type": "GENERATION", "usageDetails": {"total": 42}},
+                {"type": "TOOL", "name": "exec"},
+            ],
+            "scores": [{"name": "evaluation.pass", "value": 1}],
+        }
+
+    globals()["_langfuse_request"] = fake_langfuse_request
+    os.environ["LANGFUSE_BASE_URL"] = "http://langfuse.test"
+    try:
+        direct_index = McpServer(itmux_bin="/missing/itmux")._langfuse_session_index(
+            {"limit": 2, "harness": "codex"}
+        )
+        direct_summary = direct_index["payload"]["summary"]
+        direct_session = direct_summary["sessions"][0]
+        assert direct_summary["coverage"]["traces_inspected"] == 1
+        assert direct_session["projects"] == ["agentic-primitives-local-project"]
+        assert direct_session["trace_links"] == [
+            f"http://langfuse.test/project/agentic-primitives-local-project/traces/{direct_trace_id}"
+        ]
+        assert "private-person" not in json.dumps(direct_session)
+    finally:
+        globals()["_langfuse_request"] = original_request
+        if original_base_url is None:
+            os.environ.pop("LANGFUSE_BASE_URL", None)
+        else:
+            os.environ["LANGFUSE_BASE_URL"] = original_base_url
 
     with tempfile.TemporaryDirectory() as tmp:
         fake = Path(tmp) / "itmux"
@@ -1366,6 +1712,7 @@ def self_test() -> int:
         tool_names = {tool["name"] for tool in payloads[1]["result"]["tools"]}
         assert "agentic_langfuse_trace_summary" in tool_names
         assert "agentic_langfuse_session_report" in tool_names
+        assert "agentic_langfuse_session_index" in tool_names
         text = payloads[2]["result"]["content"][0]["text"]
         called = json.loads(text)["argv"]
         assert called[:3] == ["langfuse-trace", "--output", "summary"]

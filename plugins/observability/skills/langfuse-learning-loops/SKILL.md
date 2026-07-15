@@ -27,7 +27,8 @@ Start with a bounded cohort, then drill down:
 1. Discover recent traces by harness and environment.
 2. Inspect trace summaries for model, cost, token, tool, error, and score
    signals.
-3. Group related per-turn traces into a session report.
+3. Use the session index to discover sessions by harness, host, environment,
+   project, cost, and score coverage; then drill into the relevant session.
 4. Write a trace-scoped score only when the criterion and evidence are clear.
 5. Record the trace/session IDs in the experiment or retrospective artifact.
 
@@ -36,6 +37,7 @@ The `agentic-langfuse` MCP server provides:
 - `agentic_langfuse_trace_discovery`
 - `agentic_langfuse_trace_summary`
 - `agentic_langfuse_session_report`
+- `agentic_langfuse_session_index`
 - `agentic_langfuse_scores`
 - `agentic_langfuse_score_feedback`
 - `agentic_langfuse_learning_loop_report`
@@ -74,6 +76,17 @@ work; use the dashboard UI for human-operated visual composition.
 
 - A LangFuse session groups per-turn traces. It is not the raw transcript or
   replay store.
+- The native Sessions UI is intentionally sparse. Use
+  `agentic_langfuse_session_index` for the operational view of which harness
+  and host produced a session; it derives those dimensions from canonical
+  trace tags and metadata without changing native session IDs.
+- Session-index rollups are bounded to the requested trace page. Use a narrow
+  cohort for discovery, then inspect the session's trace links before treating
+  a rollup as a complete historical session total.
+- When filtering by harness, environment, provider, or model, the index
+  scans up to five bounded 100-trace candidate pages before applying the
+  requested result cap. Increase `scan_pages` (maximum 20) or page through
+  older cohorts when the desired harness is absent.
 - Missing cost can mean a missing model definition or unfinalized model rate,
   not missing trace telemetry.
 - Compare like with like: filter on environment and harness before comparing

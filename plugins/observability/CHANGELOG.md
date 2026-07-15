@@ -1,5 +1,11 @@
 # Changelog — observability plugin
 
+## 0.3.7
+- Added `agentic_langfuse_session_index`, a direct-API session discovery view
+  that derives harness, host, environment, project, turn, cost, token, tool,
+  score, and trace-link rollups from detailed traces. It works without `itmux`
+  and does not depend on LangFuse's sparse native Sessions UI.
+
 ## 0.3.6
 - Added a `uv`-run, chunked Claude historical replay utility to the LangFuse
   runbook. It feeds the official Claude exporter bounded, verbatim source-turn

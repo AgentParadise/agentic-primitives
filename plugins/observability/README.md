@@ -61,6 +61,7 @@ Available MCP tools:
 | `agentic_langfuse_trace_summary` | Return `itmux langfuse-trace --output summary` for one run/trace, optionally including scores |
 | `agentic_langfuse_trace_discovery` | List recent traces with harness/provider/model/environment filters |
 | `agentic_langfuse_session_report` | Group per-turn traces by `session_id` with turn, cost, token, tool, and score rollups |
+| `agentic_langfuse_session_index` | Derive a harness/host/environment/project session index with trace links, even without `itmux`; rollups are explicitly bounded to the selected trace page |
 | `agentic_langfuse_scores` | Read trace-scoped feedback scores |
 | `agentic_langfuse_score_feedback` | Write durable trace-scoped feedback for evaluator loops |
 | `agentic_langfuse_learning_loop_report` | Discover recent traces, drill into the top rows, and return aggregate cost/token/tool/score rollups plus default learning-loop recommendations for agent retrospectives |
