@@ -553,6 +553,36 @@ appends a local submission manifest at
 `~/.local/state/agentic-primitives/langfuse-backfill.jsonl`. Preserve those
 files to make repeated runs resumable rather than duplicate historical traces.
 
+### Long Claude sessions
+
+The standard command intentionally skips a Claude transcript that exceeds the
+batch turn budget. Do not raise the budget for a very long transcript: the
+official hook exports asynchronously and a large one-shot import can exceed
+the LangFuse SDK queue. Use the packaged, source-preserving chunked replay
+instead. It makes a private append-only copy under the local state directory,
+uses isolated official-hook state, and invokes the official hook once per
+bounded set of source turns:
+
+```bash
+uv run --script plugins/observability/scripts/langfuse-backfill-claude-chunked.py \
+  --source ~/.claude/projects/<project>/<session>.jsonl \
+  --chunk-turns 10 \
+  --max-turns 100
+
+# After reviewing the source, turn ranges, and replay-state location:
+uv run --script plugins/observability/scripts/langfuse-backfill-claude-chunked.py \
+  --source ~/.claude/projects/<project>/<session>.jsonl \
+  --chunk-turns 10 \
+  --max-turns 100 \
+  --apply
+```
+
+The wrapper retains the original Claude `session_id` for LangFuse grouping but
+the internal replay path appears in trace metadata. Its manifest is the
+resumption authority: do not remove it or use `--reset-replay` unless an
+operator has explicitly decided to re-import that source. It copies raw JSONL
+rows only; it does not infer or generate turns.
+
 Expected trace shape:
 
 - `Codex Turn` observations

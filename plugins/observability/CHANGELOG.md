@@ -1,5 +1,10 @@
 # Changelog — observability plugin
 
+## 0.3.6
+- Added a `uv`-run, chunked Claude historical replay utility to the LangFuse
+  runbook. It feeds the official Claude exporter bounded, verbatim source-turn
+  batches through isolated state and records a resumable submission manifest.
+
 ## 0.3.5
 - Added the `langfuse-learning-loops` agent skill, documenting the project API
   and MCP query path, trace/session analysis workflow, and score feedback

@@ -20,6 +20,12 @@ and the `agentic-langfuse` MCP query tools. `itmux` no longer exposes a direct
 LangFuse writer; rich traces should come from the official Claude/Codex
 plugins, and durable local evidence should use JSONL fanout.
 
+For historical Claude sessions, the plugin packages
+`scripts/langfuse-backfill-claude-chunked.py`. Run it with `uv run --script`
+after reviewing `docs/runbooks/langfuse-observability.md`; it replays only raw
+source JSONL through the official Claude exporter in bounded, resumable chunks.
+Do not use a one-shot import for a long transcript.
+
 When Syntropic137 needs to consume `itmux` runs through its existing
 HookWatcher, use `--observability-syntropic-file` in addition to
 `--observability-file`. The former emits hook-style session/tool JSONL; the
