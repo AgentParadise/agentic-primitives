@@ -1,0 +1,225 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentRunEvent",
+  "description": "One line of the `itmux run` event stream (R6): `run_id`/`seq`/`ts` plus a `type`-tagged payload, flattened into a single JSON object so each line is exactly one event. `seq` is monotonic from 0, no gaps; exactly one `session_end` is emitted per run, always last (enforced by the orchestrator, a later Plan B task - not by this struct).",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "tool_name",
+        "type"
+      ],
+      "properties": {
+        "tool_input": {
+          "default": null
+        },
+        "tool_name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "tool_start"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "tool_name",
+        "type"
+      ],
+      "properties": {
+        "output_summary": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "success": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tool_name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "tool_end"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "input_tokens",
+        "output_tokens",
+        "type"
+      ],
+      "properties": {
+        "cost_usd": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "token_usage"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Terminal LIFECYCLE event - the last lifecycle event of a run, carrying the terminal outcome (mirrors `AgentRunResult.result`).",
+      "type": "object",
+      "required": [
+        "outcome",
+        "type"
+      ],
+      "properties": {
+        "outcome": {
+          "$ref": "#/definitions/AgentRunOutcome"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "session_end"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Final-result DELIVERY envelope. Carries the full [`AgentRunResult`] as a valid `AgentRunEvent` so a consumer reading the stdout stream can treat EVERY line as an `AgentRunEvent` (R6: stdout is pure event JSONL). Emitted once, after `session_end`, only when the CLI is not writing the result to a `--result-file`. Boxed to keep the enum small.",
+      "type": "object",
+      "required": [
+        "result",
+        "type"
+      ],
+      "properties": {
+        "result": {
+          "$ref": "#/definitions/AgentRunResult"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "result"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "required": [
+    "run_id",
+    "seq",
+    "ts"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "seq": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "ts": {
+      "description": "RFC3339 timestamp.",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "AgentRunOutcome": {
+      "description": "The success/failure verdict for a run (also carried by the terminal `session_end` event - see `AgentRunEventPayload::SessionEnd`).",
+      "type": "object",
+      "required": [
+        "success",
+        "summary"
+      ],
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AgentRunResult": {
+      "description": "Terminal result of `itmux run`, emitted once after the run finishes (success, failure, timeout, or cancellation).",
+      "type": "object",
+      "required": [
+        "result",
+        "session_log"
+      ],
+      "properties": {
+        "observability": {
+          "description": "Plan 3 placeholder: aggregated observability data for the run.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ObservabilityBundle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_artifacts": {
+          "description": "Paths to output artifacts collected from the workspace.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "result": {
+          "$ref": "#/definitions/AgentRunOutcome"
+        },
+        "session_log": {
+          "description": "The captured pane / session transcript.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilityBundle": {
+      "description": "Plan 3 placeholder: aggregated observability data attached to the final `AgentRunResult`. Minimal until Plan 3 defines the real bundle shape.",
+      "type": "object",
+      "properties": {
+        "data": {
+          "default": null
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

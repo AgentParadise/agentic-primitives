@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentRunSpec",
+  "description": "Request to `itmux run`: run a recipe's default agent against `task`.\n\nR4 (authoritative): `recipe` is always a directory path in v1 - loaded via the Plan A recipe-directory schema by a later Plan B task. There is no inline-recipe variant; adding one is a future contract version with its own schema and compatibility tests.",
+  "type": "object",
+  "required": [
+    "recipe",
+    "task"
+  ],
+  "properties": {
+    "credentials": {
+      "description": "Per-harness credentials. Empty by default (no credentials configured).",
+      "default": {
+        "claude": null,
+        "codex": null
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/AgentRunCredentials"
+        }
+      ]
+    },
+    "input_artifacts": {
+      "description": "Paths to input artifacts to stage into the workspace before the run.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limits": {
+      "description": "Optional run limits (timeout, token budget).",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AgentRunLimits"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "observability": {
+      "description": "Plan 3 observability exporters to fan telemetry out to. Empty by default.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ObservabilityExporter"
+      }
+    },
+    "recipe": {
+      "description": "Path to a recipe directory (Plan A shape). NOT an inline recipe.",
+      "type": "string"
+    },
+    "task": {
+      "description": "The task text handed to the default agent.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AgentRunCredentials": {
+      "description": "Per-harness credentials for the run. All fields optional - only the harnesses actually exercised by the recipe need credentials supplied.",
+      "type": "object",
+      "properties": {
+        "claude": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ClaudeCredentials"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "codex": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CodexCredentials"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AgentRunLimits": {
+      "description": "Run limits enforced by the orchestrator (a later Plan B task).",
+      "type": "object",
+      "properties": {
+        "timeout_s": {
+          "description": "Wall-clock timeout, in seconds, for the whole run.",
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "token_budget": {
+          "description": "Soft token budget for the run. Enforcement is a later Plan B task.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "ClaudeCredentials": {
+      "description": "Claude Code credentials. `oauth_token` is the token CONTENTS, not a path.",
+      "type": "object",
+      "required": [
+        "oauth_token"
+      ],
+      "properties": {
+        "oauth_token": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CodexCredentials": {
+      "description": "Codex CLI credentials. `auth_json` is the CONTENTS of `auth.json`, not a filesystem path - the caller supplies the credential material inline so the contract has no dependency on the host filesystem layout.",
+      "type": "object",
+      "required": [
+        "auth_json"
+      ],
+      "properties": {
+        "auth_json": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilityExporter": {
+      "description": "Plan 3 placeholder: an observability sink to fan run telemetry out to. The shape is intentionally minimal (`name` + opaque `config`) until Plan 3 defines concrete exporter configs (OTel, file, webhook, ...).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "config": {
+          "description": "Opaque, exporter-specific configuration. Untyped by design - Plan 3 will introduce a typed config per exporter kind.",
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

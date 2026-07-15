@@ -47,6 +47,12 @@ pub struct StartOptions {
     /// injection is silently ignored by the TUI; the CLI flag is the only
     /// mechanism that actually loads plugins.
     pub claude_plugin_dirs: Vec<PathBuf>,
+    /// Explicit container name. When `None` (the default), `start` generates
+    /// `interactive-tmux-<name>-<random>`. Callers that must know the container
+    /// name BEFORE `start` returns (e.g. `itmux run` needs a deterministic name
+    /// to best-effort reap an orphan on hard-cancel, #248) set this to a
+    /// pre-computed unique name. It MUST be unique per workspace.
+    pub container_name: Option<String>,
 }
 
 impl StartOptions {
@@ -61,6 +67,7 @@ impl StartOptions {
             host_auth: HashMap::new(),
             host_claude_dotjson: None,
             claude_plugin_dirs: Vec::new(),
+            container_name: None,
         }
     }
 }
@@ -227,7 +234,10 @@ impl Workspace {
             ));
         }
 
-        let container = format!("interactive-tmux-{}-{}", opts.name, random_suffix());
+        let container = opts
+            .container_name
+            .clone()
+            .unwrap_or_else(|| format!("interactive-tmux-{}-{}", opts.name, random_suffix()));
         let throwaway = {
             let base = std::env::temp_dir();
             let mut path = base.join(format!(
