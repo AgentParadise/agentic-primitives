@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentRunResult",
+  "description": "Terminal result of `itmux run`, emitted once after the run finishes (success, failure, timeout, or cancellation).",
+  "type": "object",
+  "required": [
+    "result",
+    "session_log"
+  ],
+  "properties": {
+    "observability": {
+      "description": "Plan 3 placeholder: aggregated observability data for the run.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ObservabilityBundle"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "output_artifacts": {
+      "description": "Paths to output artifacts collected from the workspace.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result": {
+      "$ref": "#/definitions/AgentRunOutcome"
+    },
+    "session_log": {
+      "description": "The captured pane / session transcript.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AgentRunOutcome": {
+      "description": "The success/failure verdict for a run (also carried by the terminal `session_end` event - see `AgentRunEventPayload::SessionEnd`).",
+      "type": "object",
+      "required": [
+        "success",
+        "summary"
+      ],
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilityBundle": {
+      "description": "Plan 3 placeholder: aggregated observability data attached to the final `AgentRunResult`. Minimal until Plan 3 defines the real bundle shape.",
+      "type": "object",
+      "properties": {
+        "data": {
+          "default": null
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

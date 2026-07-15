@@ -1,0 +1,13 @@
+name: main
+agent: claude
+model:
+  name: anthropic/claude-opus-4-8
+  effort: high
+skills:
+  - container-skill
+system_instructions:
+  mode: append
+  content: |
+    Focus exclusively on correctness and security issues.
+subagents:
+  - reviewer

@@ -14,6 +14,11 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
+use itmux::run::contract::{AgentRunEvent, AgentRunSpec};
+use itmux::run::orchestrator::CancelToken;
+#[cfg(unix)]
+use itmux::run::orchestrator::{CancelEscalator, SignalKind};
+use itmux::run::workspace_executor::{generate_run_id, now_rfc3339, run as run_orchestrated};
 use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
     DEFAULT_TMUX_ROWS, DEFAULT_WORKDIR,
@@ -98,6 +103,27 @@ enum Cmd {
     Stop {
         #[arg(long)]
         name: String,
+    },
+    /// Run a recipe end-to-end: provision -> submit -> await -> capture ->
+    /// stop, streaming R6 event JSONL on stdout and emitting a final result.
+    Run {
+        /// Path to a recipe directory (EXP-0005 shape).
+        #[arg(long)]
+        recipe: PathBuf,
+        /// The task text handed to the recipe's default agent.
+        #[arg(long)]
+        task: String,
+        /// Container image. Defaults to the interactive-tmux workspace image.
+        #[arg(long, default_value = DEFAULT_IMAGE)]
+        image: String,
+        /// Emit event JSONL on stdout (on by default). `--json false`
+        /// suppresses the event stream and prints only a human result summary.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        json: bool,
+        /// Write the final `AgentRunResult` JSON to this file instead of a
+        /// `type:"result"` line on stdout.
+        #[arg(long)]
+        result_file: Option<PathBuf>,
     },
 }
 
@@ -400,6 +426,147 @@ fn handle_stop(name: String) -> ExitCode {
     }
 }
 
+/// Install a SIGINT/SIGTERM watcher that folds signals into `cancel` via the
+/// two-tier [`CancelEscalator`]. Returns the signal handle + the watcher thread
+/// so the caller can stop and join it after the run.
+///
+/// Signal safety: `signal_hook::iterator::Signals` registers an
+/// async-signal-safe handler (a self-pipe write) inside the crate; the closure
+/// below runs on an ORDINARY thread draining that pipe, so it may safely call
+/// into the `CancelToken`. No `unsafe` and no work in handler context.
+#[cfg(unix)]
+fn install_signal_watcher(
+    cancel: CancelToken,
+) -> Option<(signal_hook::iterator::Handle, std::thread::JoinHandle<()>)> {
+    use signal_hook::consts::{SIGINT, SIGTERM};
+    use signal_hook::iterator::Signals;
+
+    let mut signals = match Signals::new([SIGINT, SIGTERM]) {
+        Ok(signals) => signals,
+        Err(err) => {
+            eprintln!("[itmux run] could not install signal handler (run is uncancellable): {err}");
+            return None;
+        }
+    };
+    let handle = signals.handle();
+    let join = std::thread::spawn(move || {
+        let mut escalator = CancelEscalator::new();
+        for signal in signals.forever() {
+            let kind = if signal == SIGTERM {
+                SignalKind::Terminate
+            } else {
+                SignalKind::Interrupt
+            };
+            escalator.on_signal(kind, &cancel);
+        }
+    });
+    Some((handle, join))
+}
+
+fn handle_run(
+    recipe: PathBuf,
+    task: String,
+    image: String,
+    json: bool,
+    result_file: Option<PathBuf>,
+) -> ExitCode {
+    let spec = AgentRunSpec {
+        recipe,
+        task,
+        input_artifacts: Vec::new(),
+        credentials: Default::default(),
+        observability: Vec::new(),
+        limits: None,
+    };
+    let run_id = generate_run_id();
+    let cancel = CancelToken::new();
+
+    // Wire OS signals to the two-tier cancellation (Task 6): first Ctrl-C ->
+    // graceful, second Ctrl-C or SIGTERM -> hard. On any signal path the
+    // orchestrator's single terminalization still tears the workspace down
+    // exactly once, so there is no orphaned container even on Ctrl-C. The
+    // watcher runs on a normal thread (unix only); non-unix builds skip it.
+    #[cfg(unix)]
+    let signal_watcher = install_signal_watcher(cancel.clone());
+
+    // Emit each event as one JSON line on stdout (R6: stdout is PURE
+    // AgentRunEvent JSONL; stderr stays human-only). Count events so the final
+    // result event (below) continues the monotonic `seq`.
+    let event_seq = std::cell::Cell::new(0u64);
+    let mut emit = |event: &AgentRunEvent| {
+        event_seq.set(event_seq.get().max(event.seq + 1));
+        if json {
+            match serde_json::to_string(event) {
+                Ok(line) => println!("{line}"),
+                Err(err) => eprintln!("[itmux run] failed to serialize event: {err}"),
+            }
+        }
+    };
+
+    let run_result = run_orchestrated(&spec, &image, &run_id, &cancel, &mut emit);
+
+    // Stop the signal watcher before handling the result (best-effort).
+    #[cfg(unix)]
+    if let Some((handle, join)) = signal_watcher {
+        handle.close();
+        let _ = join.join();
+    }
+
+    let result = match run_result {
+        Ok(result) => result,
+        Err(err) => {
+            // Precondition failure (e.g. the recipe failed to load) before any
+            // workspace was provisioned - nothing to tear down.
+            eprintln!("[itmux run] {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let success = result.result.success;
+
+    // Deliver the final result. When a result file is given, write it THERE and
+    // keep stdout as pure event JSONL. Otherwise, in JSON mode, emit the result
+    // as a real AgentRunEvent (`type:"result"`) so EVERY stdout line still
+    // parses as an AgentRunEvent (Fix 4 / R6 stdout purity).
+    match result_file {
+        Some(path) => match serde_json::to_vec_pretty(&result) {
+            Ok(bytes) => {
+                if let Err(err) = std::fs::write(&path, bytes) {
+                    eprintln!(
+                        "[itmux run] failed to write result file {}: {err}",
+                        path.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("[itmux run] failed to serialize result: {err}");
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            if json {
+                let event = AgentRunEvent::result(&run_id, event_seq.get(), now_rfc3339(), result);
+                match serde_json::to_string(&event) {
+                    Ok(line) => println!("{line}"),
+                    Err(err) => eprintln!("[itmux run] failed to serialize result: {err}"),
+                }
+            } else {
+                println!(
+                    "run {}: success={} - {}",
+                    run_id, result.result.success, result.result.summary
+                );
+            }
+        }
+    }
+
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(3)
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.cmd {
@@ -434,5 +601,12 @@ fn main() -> ExitCode {
         Cmd::Capture { name, agent } => handle_capture(name, agent),
         Cmd::Exec { name, argv } => handle_exec(name, argv),
         Cmd::Stop { name } => handle_stop(name),
+        Cmd::Run {
+            recipe,
+            task,
+            image,
+            json,
+            result_file,
+        } => handle_run(recipe, task, image, json, result_file),
     }
 }
