@@ -2,7 +2,10 @@
 name = "itmux"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.74"
+# The released APSS Agent Recipe Standard inherits its MSRV from the APSS
+# workspace. Keep the executable's declared MSRV truthful to the recipe
+# contract it compiles and validates against.
+rust-version = "1.85"
 description = "Rust port of the interactive-tmux workspace driver (Python parity)."
 license = "MIT OR Apache-2.0"
 publish = false
@@ -16,13 +19,13 @@ name = "itmux"
 path = "src/lib.rs"
 
 [dependencies]
-# Recipe-directory schema/loader (EXP-0005). Pinned to APSS `main` at the #89
-# merge commit (caef354), which carries the full recipe-directory standard
-# incl. the Copilot-review fixes. Cargo still PRINTS non-fatal
+# Recipe-directory schema/loader (EXP-V1-0005). Pin the released v0.2.0 tag,
+# rather than a moving APSS branch or PR merge commit, so recipes accepted by
+# `itmux run` have a stable, published contract. Cargo still PRINTS non-fatal
 # `invalid character '{' in package name: '{{slug}}'` diagnostics for the
 # excluded template Cargo.tomls while scanning the git-source workspace - they
 # are printed-but-non-fatal (the build and tests succeed).
-agent_recipe = { git = "https://github.com/AgentParadise/agent-paradise-standards-system", rev = "caef354dd3782ae4f485c5ef875d7ceb647f0f97", package = "apss-v1-0005-agent-recipe" }
+agent_recipe = { git = "https://github.com/AgentParadise/agent-paradise-standards-system", rev = "c34c848e7cc1f41ab06bdae0c880c638b9baf610", package = "apss-v1-0005-agent-recipe" }
 clap = { version = "4", features = ["derive"] }
 regex = "1"
 schemars = "0.8"

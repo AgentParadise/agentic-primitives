@@ -2,12 +2,14 @@
 //!
 //! Fixture `tests/fixtures/recipe-pr-reviewer/` is VENDORED verbatim from the
 //! APSS crate `apss-v1-0005-agent-recipe`, from `examples/valid/pr-reviewer/`
-//! at rev 4819b38745aaf8d2742d74479a9e728283e09271. It BUNDLES a skill
+//! from the released `EXP-V1-0005-agent-recipe-v0.2.0` tag
+//! (`c34c848e7cc1f41ab06bdae0c880c638b9baf610`). It BUNDLES a skill
 //! (`skills/code-review/`), so it now exercises the bundled-skill fail-fast
 //! guard. The success-path mapping tests use `recipe-plain/` (a local fixture
 //! with a container-relative skill ref and no bundled skills dir).
 //!
-//! Re-copy the vendored fixture if that rev's example changes.
+//! Re-copy the vendored fixture when intentionally upgrading the APSS release
+//! pin in `Cargo.toml`; the release fixture must remain byte-for-byte identical.
 
 use std::path::PathBuf;
 
