@@ -1843,4 +1843,32 @@ mod cli_tests {
             RunDispatch::WorkspaceTui
         );
     }
+
+    #[test]
+    fn run_cli_timeout_maps_to_the_contract_limit() {
+        let cli = Cli::parse_from([
+            "itmux",
+            "run",
+            "--recipe",
+            "/tmp/recipe",
+            "--task",
+            "hello",
+            "--timeout",
+            "12.5",
+        ]);
+        match cli.cmd {
+            Cmd::Run { timeout, .. } => assert_eq!(timeout, Some(12.5)),
+            other => panic!("expected run command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_positive_timeout_rejects_non_positive_and_non_finite() {
+        for bad in ["-1", "0", "NaN", "inf", "-inf", "not-a-number"] {
+            assert!(
+                parse_positive_timeout(bad).is_err(),
+                "expected {bad:?} to be rejected"
+            );
+        }
+    }
 }
