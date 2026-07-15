@@ -218,6 +218,7 @@ fn gemini_stages_only_durable_auth_and_config_files() {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("gemini-throwaway"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let prepared = prepare(Agent::Gemini, &gemini_dir, &ctx).unwrap();
     let staged = prepared.first().expect("Gemini has one staged directory");
