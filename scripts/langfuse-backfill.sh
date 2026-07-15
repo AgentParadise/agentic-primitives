@@ -247,7 +247,10 @@ run_harness() {
       continue
     fi
     turns="$(estimated_turns "$harness" "$file")"
-    if [ "$MAX_TURNS" -ne 0 ] && [ "$estimated" -gt 0 ] && [ $((estimated + turns)) -gt "$MAX_TURNS" ]; then
+    # Apply the aggregate limit to the first candidate too. Without this,
+    # a large first transcript could bypass the guard merely because the
+    # running total starts at zero.
+    if [ "$MAX_TURNS" -ne 0 ] && [ $((estimated + turns)) -gt "$MAX_TURNS" ]; then
       printf 'skip turn budget (%s + %s > %s): %s\n' "$estimated" "$turns" "$MAX_TURNS" "$file"
       skipped=$((skipped + 1))
       continue
