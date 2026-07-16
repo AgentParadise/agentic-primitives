@@ -520,6 +520,7 @@ fn install_signal_watcher(
     Some((handle, join))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_run(
     recipe: PathBuf,
     task: String,
