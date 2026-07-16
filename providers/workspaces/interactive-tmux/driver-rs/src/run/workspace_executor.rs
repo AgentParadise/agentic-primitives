@@ -6,7 +6,7 @@
 //! here: mapping the recipe's default agent onto `StartOptions`, materialising
 //! per-harness credentials, and the (placeholder) outcome detection.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -18,6 +18,7 @@ use crate::result::AwaitResult;
 use crate::run::contract::{AgentRunEvent, AgentRunOutcome, AgentRunResult, AgentRunSpec};
 use crate::run::orchestrator::{run_core, CancelToken, RunExecutor};
 use crate::run::recipe_loader::{load_execution_plan, RecipeExecutionPlan};
+use crate::run::secret_env::{missing_credentials_message, resolve_agent_secrets};
 use crate::tmux;
 use crate::workspace::{StartOptions, Workspace, DEFAULT_STARTUP_TIMEOUT_S};
 
@@ -45,6 +46,12 @@ pub struct WorkspaceExecutor {
     submit_text: String,
     host_auth: HashMap<Agent, Option<PathBuf>>,
     host_claude_dotjson: Option<PathBuf>,
+    /// Per-agent secret env vars (OAuth token / API keys) to inject via the
+    /// sourced `0600` env-file launch wrapper (R1/R2). Never in argv.
+    secret_env: HashMap<Agent, BTreeMap<String, String>>,
+    /// Claude OAuth env-var mode: stage `.claude.json` only, no
+    /// `.credentials.json` (R1/R8).
+    claude_omit_credentials: bool,
     startup_timeout_s: f64,
     /// Temp dirs holding credentials materialised from the spec; removed on
     /// teardown so inline credential material never lingers on disk.
@@ -52,18 +59,34 @@ pub struct WorkspaceExecutor {
 }
 
 impl WorkspaceExecutor {
-    /// Build an executor from a spec + its loaded plan. Materialises any inline
-    /// credentials (contract carries CONTENTS, not paths) into the on-disk
-    /// shapes `crate::auth` expects, or falls back to the environment-resolved
-    /// host auth (`ITMUX_<AGENT>_HOME` / `$HOME/.<agent>`) when the spec omits
-    /// them.
-    pub fn new(spec: &AgentRunSpec, plan: &RecipeExecutionPlan, image: &str) -> io::Result<Self> {
+    /// Build an executor from a spec + its loaded plan.
+    ///
+    /// Resolves the default agent's credentials (R1-R3): secrets from
+    /// `spec.credentials` (populated by the `.env`/process-env loader) are
+    /// routed to the harness as env vars (OAuth token / API key) injected via a
+    /// sourced `0600` env file, or - for codex - an `auth.json` staged file.
+    /// When the agent has NO credentials and `allow_host_fallback` is false,
+    /// this FAILS FAST with an actionable error (R3); with the flag it falls
+    /// back to the host `$HOME/.<agent>` dir (warned, path only - never token
+    /// contents).
+    pub fn new(
+        spec: &AgentRunSpec,
+        plan: &RecipeExecutionPlan,
+        image: &str,
+        allow_host_fallback: bool,
+    ) -> io::Result<Self> {
         let agent = plan.agent;
         let mut cred_tmp_dirs = Vec::new();
-        let mut host_auth: HashMap<Agent, Option<PathBuf>> = HashMap::new();
 
-        let auth_path = materialise_host_auth(spec, agent, &mut cred_tmp_dirs)?;
-        host_auth.insert(agent, auth_path);
+        let wiring =
+            resolve_launch_credentials(spec, agent, allow_host_fallback, &mut cred_tmp_dirs)?;
+
+        let mut host_auth: HashMap<Agent, Option<PathBuf>> = HashMap::new();
+        host_auth.insert(agent, wiring.host_auth);
+        let mut secret_env: HashMap<Agent, BTreeMap<String, String>> = HashMap::new();
+        if !wiring.secret_env.is_empty() {
+            secret_env.insert(agent, wiring.secret_env);
+        }
 
         let name = sanitize_name(&plan.recipe_name);
         let container_name = format!("interactive-tmux-{name}-{}", unique_suffix());
@@ -75,7 +98,9 @@ impl WorkspaceExecutor {
             plan: plan.clone(),
             submit_text: plan.submit_text.clone(),
             host_auth,
-            host_claude_dotjson: None,
+            host_claude_dotjson: resolve_host_claude_dotjson(),
+            secret_env,
+            claude_omit_credentials: wiring.claude_omit_credentials,
             startup_timeout_s: DEFAULT_STARTUP_TIMEOUT_S,
             cred_tmp_dirs,
         })
@@ -107,6 +132,8 @@ impl RunExecutor for WorkspaceExecutor {
         opts.host_auth = self.host_auth.clone();
         opts.host_claude_dotjson = self.host_claude_dotjson.clone();
         opts.claude_plugin_dirs = self.plan.claude_plugin_dirs.clone();
+        opts.secret_env = self.secret_env.clone();
+        opts.claude_omit_credentials = self.claude_omit_credentials;
         opts.strict_startup = true;
         opts.startup_timeout_s = self.startup_timeout_s;
 
@@ -201,47 +228,122 @@ impl RunExecutor for WorkspaceExecutor {
     }
 }
 
-/// Resolve the host-auth path for `agent`: materialise inline spec credentials
-/// when present, else fall back to the environment (`ITMUX_<AGENT>_HOME` or
-/// `$HOME/.<agent>`), matching the `start` subcommand's resolution.
-fn materialise_host_auth(
+/// How the executor wires one agent's credentials into `StartOptions`.
+struct CredentialWiring {
+    /// Host auth dir to stage (claude trust `.claude.json`, codex `auth.json`),
+    /// or `None` when the agent is enabled purely via `secret_env`.
+    host_auth: Option<PathBuf>,
+    /// Secret env vars (OAuth token / API key) to source at launch.
+    secret_env: BTreeMap<String, String>,
+    /// Claude OAuth env-var mode: stage `.claude.json` only (R1/R8).
+    claude_omit_credentials: bool,
+}
+
+/// Resolve credentials for `agent` from `spec` (R1-R3).
+///
+/// Precedence (per user + R8): env-var/file secrets from `spec.credentials`
+/// (populated by the `.env`/process-env loader) are preferred. When the agent
+/// has NO credentials: with `allow_host_fallback` we fall back to the host
+/// `$HOME/.<agent>` dir (warned to stderr - PATH only, never token contents);
+/// without it we FAIL FAST with an actionable error naming the missing var.
+fn resolve_launch_credentials(
     spec: &AgentRunSpec,
     agent: Agent,
+    allow_host_fallback: bool,
     cred_tmp_dirs: &mut Vec<PathBuf>,
-) -> io::Result<Option<PathBuf>> {
+) -> io::Result<CredentialWiring> {
+    let secrets = resolve_agent_secrets(agent, &spec.credentials);
+
+    if secrets.is_empty() {
+        if allow_host_fallback {
+            let (override_env, subdir) = match agent {
+                Agent::Claude => ("ITMUX_CLAUDE_HOME", ".claude"),
+                Agent::Codex => ("ITMUX_CODEX_HOME", ".codex"),
+                Agent::Gemini => ("ITMUX_GEMINI_HOME", ".gemini"),
+            };
+            let host = env_host_auth(override_env, subdir);
+            match &host {
+                Some(path) => eprintln!(
+                    "[itmux run] --allow-host-auth-fallback: using host auth dir {} for {} \
+                     (may be stale -> 401)",
+                    path.display(),
+                    agent.as_str()
+                ),
+                None => eprintln!(
+                    "[itmux run] --allow-host-auth-fallback: no host auth dir found for {}",
+                    agent.as_str()
+                ),
+            }
+            return Ok(CredentialWiring {
+                host_auth: host,
+                secret_env: BTreeMap::new(),
+                claude_omit_credentials: false,
+            });
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            missing_credentials_message(agent),
+        ));
+    }
+
     match agent {
         Agent::Claude => {
-            if let Some(claude) = &spec.credentials.claude {
-                let dir = fresh_cred_dir("claude")?;
-                // `.credentials.json` shape mirrors a Max-plan credentials file
-                // (`claudeAiOauth.accessToken`), per the interactive-tmux
-                // manifest. The exact schema is validated by the live run
-                // (Task 8); the contract supplies the token contents only.
-                let creds = serde_json::json!({
-                    "claudeAiOauth": { "accessToken": claude.oauth_token }
-                });
-                fs::write(
-                    dir.join(".credentials.json"),
-                    serde_json::to_vec_pretty(&creds)?,
-                )?;
-                cred_tmp_dirs.push(dir.clone());
-                Ok(Some(dir))
-            } else {
-                Ok(env_host_auth("ITMUX_CLAUDE_HOME", ".claude"))
-            }
+            // OAuth env-var mode (R1): stage the seeded `.claude.json` for
+            // trust/onboarding, but NO `.credentials.json`. Use the real host
+            // `.claude` dir when it exists (so `oauthAccount` can pass through);
+            // otherwise a fresh empty dir so `.claude.json` is still synthesized.
+            let host = match env_host_auth("ITMUX_CLAUDE_HOME", ".claude") {
+                Some(path) => path,
+                None => {
+                    let dir = fresh_cred_dir("claude-trust")?;
+                    cred_tmp_dirs.push(dir.clone());
+                    dir
+                }
+            };
+            Ok(CredentialWiring {
+                host_auth: Some(host),
+                secret_env: secrets.env,
+                claude_omit_credentials: true,
+            })
         }
         Agent::Codex => {
-            if let Some(codex) = &spec.credentials.codex {
+            // Preferred: stage `auth.json` (from CODEX_AUTH_FILE / legacy field).
+            // Fallback: `OPENAI_API_KEY` sourced as an env var (no file).
+            let host_auth = if let Some(auth_json) = secrets.codex_auth_json {
                 let dir = fresh_cred_dir("codex")?;
-                fs::write(dir.join("auth.json"), codex.auth_json.as_bytes())?;
+                // Create the auth.json 0600 at creation (atomic, no brief 0644
+                // window) - it carries the codex token (PR #254 review).
+                crate::workspace::write_private_file(&dir.join("auth.json"), auth_json.as_bytes())?;
                 cred_tmp_dirs.push(dir.clone());
-                Ok(Some(dir))
+                Some(dir)
             } else {
-                Ok(env_host_auth("ITMUX_CODEX_HOME", ".codex"))
-            }
+                None
+            };
+            Ok(CredentialWiring {
+                host_auth,
+                secret_env: secrets.env,
+                claude_omit_credentials: false,
+            })
         }
-        Agent::Gemini => Ok(env_host_auth("ITMUX_GEMINI_HOME", ".gemini")),
+        Agent::Gemini => Ok(CredentialWiring {
+            host_auth: env_host_auth("ITMUX_GEMINI_HOME", ".gemini"),
+            secret_env: secrets.env,
+            claude_omit_credentials: false,
+        }),
     }
+}
+
+/// Resolve `~/.claude.json` for the trust/onboarding synthesis, honoring
+/// `ITMUX_CLAUDE_JSON` first, then `$HOME/.claude.json`. Mirrors the `start`
+/// subcommand's `default_host_claude_dotjson`.
+fn resolve_host_claude_dotjson() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os("ITMUX_CLAUDE_JSON") {
+        let path = PathBuf::from(explicit);
+        return path.is_file().then_some(path);
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    let path = home.join(".claude.json");
+    path.is_file().then_some(path)
 }
 
 /// Environment-resolved host auth dir: `$<override_env>` if set, else
@@ -255,20 +357,16 @@ fn env_host_auth(override_env: &str, home_subdir: &str) -> Option<PathBuf> {
     candidate.is_dir().then_some(candidate)
 }
 
-/// Create a fresh 0700 temp dir under the system temp dir for credential
-/// materialisation.
+/// Create a fresh temp dir under the system temp dir for credential
+/// materialisation, with mode 0700 set ATOMICALLY at creation (no brief 0755
+/// window) - it holds staged secret files (PR #254 review).
 fn fresh_cred_dir(agent: &str) -> io::Result<PathBuf> {
     let base = std::env::temp_dir();
     let mut path = base.join(format!("itmux-run-cred-{agent}-{}", unique_suffix()));
     while path.exists() {
         path = base.join(format!("itmux-run-cred-{agent}-{}", unique_suffix()));
     }
-    fs::create_dir_all(&path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o700));
-    }
+    crate::workspace::create_private_dir(&path)?;
     Ok(path)
 }
 
@@ -356,6 +454,7 @@ pub fn run(
     image: &str,
     run_id: &str,
     cancel: &CancelToken,
+    allow_host_fallback: bool,
     emit: &mut dyn FnMut(&AgentRunEvent),
 ) -> io::Result<AgentRunResult> {
     let plan = load_execution_plan(spec).map_err(|e| io::Error::other(e.to_string()))?;
@@ -364,7 +463,7 @@ pub fn run(
         .as_ref()
         .and_then(|l| l.timeout_s)
         .map(Duration::from_secs_f64);
-    let mut executor = WorkspaceExecutor::new(spec, &plan, image)?;
+    let mut executor = WorkspaceExecutor::new(spec, &plan, image, allow_host_fallback)?;
     let mut now = now_rfc3339;
     Ok(run_core(
         run_id,

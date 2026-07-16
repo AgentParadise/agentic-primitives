@@ -34,6 +34,7 @@ fn claude_seeds_synthetic_dotjson_when_host_missing() {
         workdir: "/workspace".to_string(),
         throwaway_dir: throwaway.clone(),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
 
     let mounts = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
@@ -76,6 +77,7 @@ fn claude_seeds_carry_oauth_account_through_when_host_present() {
         workdir: "/workspace".to_string(),
         throwaway_dir: throwaway.clone(),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let mounts = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
     let dotjson_mount = mounts
@@ -112,6 +114,7 @@ fn claude_honors_explicit_dotjson_override_dood_case() {
         workdir: "/workspace".to_string(),
         throwaway_dir: throwaway.clone(),
         host_claude_dotjson: Some(dotjson_path.clone()),
+        claude_omit_credentials: false,
     };
 
     let mounts = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
@@ -136,6 +139,7 @@ fn claude_rejects_missing_credentials_file() {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("claude-throwaway-bad"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let err = prepare(Agent::Claude, &claude_dir, &ctx).unwrap_err();
     assert!(err.to_string().contains(".credentials.json"));
@@ -150,6 +154,7 @@ fn gemini_patches_folder_trust_in_settings() {
         workdir: "/workspace".to_string(),
         throwaway_dir: throwaway.clone(),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let mounts = prepare(Agent::Gemini, &host, &ctx).unwrap();
     assert_eq!(mounts.len(), 1);
@@ -187,6 +192,7 @@ fn codex_stages_only_the_auth_allowlist() {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("codex-throwaway"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let mounts = prepare(Agent::Codex, &host, &ctx).unwrap();
     assert_eq!(mounts.len(), 1);
@@ -240,6 +246,7 @@ fn codex_stages_symlinked_auth_files() {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("codex-symlink-throwaway"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let mounts = prepare(Agent::Codex, &host, &ctx).unwrap();
     let dst = &mounts[0].host;

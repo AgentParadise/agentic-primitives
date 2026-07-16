@@ -377,6 +377,31 @@ fn shell_quote(s: &str) -> String {
     }
 }
 
+/// Wrap a harness launch command so it sources a per-agent secret env file and
+/// then `exec`s the CLI (R1). The wrapper is:
+///
+/// ```sh
+/// set -a; . '<env_file>'; set +a; exec <harness_cmd>
+/// ```
+///
+/// `set -a` marks every assignment in the sourced file for export, so each
+/// `KEY='value'` line lands in the harness child's environment; `exec` replaces
+/// the shell so the pane IS the harness (no lingering parent shell). The secret
+/// VALUES live only inside `<env_file>` (a `0600` in-container file) - this
+/// command string carries only the file PATH and the harness command, NEVER a
+/// secret. That is the property `tests/secret_redaction.rs` pins.
+///
+/// SECURITY: this is why the OAuth path is an env var + sourced file rather
+/// than `docker exec -e VAR=value` or `tmux set-environment VAR value` - both
+/// of those put the secret in argv, which is world-readable via `ps` /
+/// `/proc/<pid>/cmdline`.
+pub fn launch_command_with_env(harness_cmd: &str, secret_env_file: &str) -> String {
+    format!(
+        "set -a; . {}; set +a; exec {harness_cmd}",
+        shell_quote(secret_env_file)
+    )
+}
+
 /// Launch the agent CLI in its tmux window and walk init gates.
 ///
 /// Per ANALYTICS.md §4:
@@ -387,31 +412,53 @@ fn shell_quote(s: &str) -> String {
 ///
 /// `claude_plugin_dirs` only affects the claude window; codex/gemini ignore
 /// it (no equivalent `--plugin-dir` flag).
+///
+/// `secret_env_file` (R1/R6): when `Some`, the harness is launched through the
+/// [`launch_command_with_env`] wrapper so it sources that in-container `0600`
+/// env file (secrets) before exec. When `None`, the byte-exact pre-secrets
+/// keystroke sequence is preserved (so smoke fixtures stay stable).
 pub fn launch_in_window(
     container: &str,
     agent: Agent,
     claude_plugin_dirs: &[std::path::PathBuf],
+    secret_env_file: Option<&str>,
 ) -> std::io::Result<()> {
     match agent {
         Agent::Claude => {
             let cmd = claude_launch_command(claude_plugin_dirs);
-            if claude_plugin_dirs.is_empty() {
-                // Bare `claude` + Enter — preserves the pre-plugins keystroke
-                // sequence exactly so the smoke fixtures stay byte-equal.
-                tmux::send_keys(container, agent.window(), &["claude", "Enter"])?;
-            } else {
-                // `claude --plugin-dir P1 --plugin-dir P2 ...` — sent literal
-                // so the spaces survive tmux's argument tokenizer; then Enter.
-                tmux::send_literal(container, agent.window(), &cmd)?;
-                tmux::send_keys(container, agent.window(), &["Enter"])?;
+            match secret_env_file {
+                None if claude_plugin_dirs.is_empty() => {
+                    // Bare `claude` + Enter — preserves the pre-plugins,
+                    // pre-secrets keystroke sequence exactly.
+                    tmux::send_keys(container, agent.window(), &["claude", "Enter"])?;
+                }
+                None => {
+                    // `claude --plugin-dir P1 ...` — sent literal so spaces
+                    // survive tmux's tokenizer; then Enter.
+                    tmux::send_literal(container, agent.window(), &cmd)?;
+                    tmux::send_keys(container, agent.window(), &["Enter"])?;
+                }
+                Some(env_file) => {
+                    // Source the 0600 env file (CLAUDE_CODE_OAUTH_TOKEN /
+                    // ANTHROPIC_API_KEY) then exec claude.
+                    let wrapped = launch_command_with_env(&cmd, env_file);
+                    tmux::send_literal(container, agent.window(), &wrapped)?;
+                    tmux::send_keys(container, agent.window(), &["Enter"])?;
+                }
             }
         }
         Agent::Codex => {
-            tmux::send_keys(
-                container,
-                agent.window(),
-                &["codex --no-alt-screen", "Enter"],
-            )?;
+            let base = "codex --no-alt-screen";
+            match secret_env_file {
+                None => {
+                    tmux::send_keys(container, agent.window(), &[base, "Enter"])?;
+                }
+                Some(env_file) => {
+                    let wrapped = launch_command_with_env(base, env_file);
+                    tmux::send_literal(container, agent.window(), &wrapped)?;
+                    tmux::send_keys(container, agent.window(), &["Enter"])?;
+                }
+            }
             thread::sleep(Duration::from_secs(2));
             tmux::send_keys(container, agent.window(), &["1", "Enter"])?;
             thread::sleep(Duration::from_secs(1));
@@ -419,7 +466,16 @@ pub fn launch_in_window(
             thread::sleep(Duration::from_secs(1));
         }
         Agent::Gemini => {
-            tmux::send_keys(container, agent.window(), &["gemini", "Enter"])?;
+            match secret_env_file {
+                None => {
+                    tmux::send_keys(container, agent.window(), &["gemini", "Enter"])?;
+                }
+                Some(env_file) => {
+                    let wrapped = launch_command_with_env("gemini", env_file);
+                    tmux::send_literal(container, agent.window(), &wrapped)?;
+                    tmux::send_keys(container, agent.window(), &["Enter"])?;
+                }
+            }
             thread::sleep(Duration::from_secs(1));
         }
     }

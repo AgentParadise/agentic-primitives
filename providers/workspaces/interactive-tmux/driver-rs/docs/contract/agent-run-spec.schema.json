@@ -12,7 +12,8 @@
       "description": "Per-harness credentials. Empty by default (no credentials configured).",
       "default": {
         "claude": null,
-        "codex": null
+        "codex": null,
+        "secret_env": {}
       },
       "allOf": [
         {
@@ -60,7 +61,7 @@
   "additionalProperties": false,
   "definitions": {
     "AgentRunCredentials": {
-      "description": "Per-harness credentials for the run. All fields optional - only the harnesses actually exercised by the recipe need credentials supplied.",
+      "description": "Per-harness credentials for the run. All fields optional - only the harnesses actually exercised by the recipe need credentials supplied.\n\n# Secrets travel here, never in argv (security-critical)\n\nEvery field on this struct carries credential MATERIAL (token contents, `auth.json` bytes, raw env-var values). The executor injects them into the container ONLY over the base64-over-stdin `docker exec` transfer and, at launch, via an in-container `0600` env file the harness pane `source`s before `exec`ing the CLI. No credential value ever reaches a `docker run`/`docker exec` argv or a `tmux` command line - argv is world-readable via `ps` / `/proc/<pid>/cmdline`; stdin and a `0600` file are not. The `secret_env` redaction test (`tests/secret_redaction.rs`) is the load- bearing guard for that invariant.",
       "type": "object",
       "properties": {
         "claude": {
@@ -84,6 +85,14 @@
               "type": "null"
             }
           ]
+        },
+        "secret_env": {
+          "description": "Generic, harness-neutral secret environment variables (R2). Populated by the `.env`/process-env loader with an ALLOWLISTED set of names only (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). The executor routes each var to the relevant harness pane's sourced `0600` env file; values never touch argv. Empty by default. A `BTreeMap` so the serialized order is deterministic (stable schema round-trips).",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

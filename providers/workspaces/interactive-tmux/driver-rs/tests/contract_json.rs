@@ -50,6 +50,13 @@ fn agent_run_spec_round_trips_full() {
             codex: Some(CodexCredentials {
                 auth_json: r#"{"token":"xyz"}"#.to_string(),
             }),
+            secret_env: std::collections::BTreeMap::from([
+                (
+                    "CLAUDE_CODE_OAUTH_TOKEN".to_string(),
+                    "sk-ant-oat-abc".to_string(),
+                ),
+                ("OPENAI_API_KEY".to_string(), "sk-openai-xyz".to_string()),
+            ]),
         },
         observability: vec![ObservabilityExporter {
             name: "otel".to_string(),
@@ -99,12 +106,42 @@ fn agent_run_credentials_round_trip_and_reject_unknown_field() {
             oauth_token: "tok".to_string(),
         }),
         codex: None,
+        secret_env: std::collections::BTreeMap::new(),
     };
     roundtrip(&creds);
 
     let json = r#"{"claude": {"oauth_token": "tok"}, "gemini": {}}"#;
     let err = serde_json::from_str::<AgentRunCredentials>(json).unwrap_err();
     assert!(err.to_string().contains("gemini"), "err: {err}");
+}
+
+#[test]
+fn agent_run_credentials_carry_secret_env_and_round_trip() {
+    // R2/R7/R8: `secret_env` is a defaulted, serde-stable generic secret map.
+    // It defaults to empty (compat: old JSON with no `secret_env` still loads)
+    // and round-trips deterministically (BTreeMap ordering).
+    let json = r#"{"claude": {"oauth_token": "tok"}}"#;
+    let creds: AgentRunCredentials = serde_json::from_str(json).expect("secret_env defaults empty");
+    assert!(creds.secret_env.is_empty(), "secret_env defaults to empty");
+
+    let with_env = AgentRunCredentials {
+        claude: None,
+        codex: None,
+        secret_env: std::collections::BTreeMap::from([
+            ("ANTHROPIC_API_KEY".to_string(), "sk-ant-123".to_string()),
+            (
+                "CLAUDE_CODE_OAUTH_TOKEN".to_string(),
+                "sk-ant-oat-456".to_string(),
+            ),
+        ]),
+    };
+    roundtrip(&with_env);
+    let value = serde_json::to_value(&with_env).unwrap();
+    assert_eq!(value["secret_env"]["ANTHROPIC_API_KEY"], "sk-ant-123");
+    assert_eq!(
+        value["secret_env"]["CLAUDE_CODE_OAUTH_TOKEN"],
+        "sk-ant-oat-456"
+    );
 }
 
 #[test]
