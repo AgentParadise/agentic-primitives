@@ -154,6 +154,7 @@ Replace `sdlc` with any plugin name from the [Available Plugins](#available-plug
 | **observability** | `claude plugin install observability@agentic-primitives --scope user` | Full-spectrum JSONL event observability |
 | **delegation** | `claude plugin install delegation@agentic-primitives --scope user` | Delegating work — `claude -p`, Codex, and session handoffs |
 | **experiments** | `claude plugin install experiments@agentic-primitives --scope user` | Hypothesis-first experiment workflow |
+| **plugin-doctor** | `claude plugin install plugin-doctor@agentic-primitives --scope user` | Warns when installed plugins are outdated |
 
 ### What's in each plugin
 
@@ -168,6 +169,7 @@ Replace `sdlc` with any plugin name from the [Available Plugins](#available-plug
 | **observability** | -- | -- | -- | All 14 lifecycle events → structured JSONL via agentic_events |
 | **delegation** | -- | `delegating-to-claude-p`, `delegating-to-codex`, `writing-handoffs` | -- | -- |
 | **experiments** | -- | `running-experiments` | -- | -- |
+| **plugin-doctor** | -- | -- | -- | SessionStart plugin-freshness check (weekly, never auto-updates) |
 
 ---
 

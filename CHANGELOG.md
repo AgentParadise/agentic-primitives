@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🩺 plugin-doctor
+
+A new plugin that warns when installed `agentic-primitives` plugins have updates available.
+
+#### Added
+
+- **`plugins/plugin-doctor/`** — `SessionStart` hook compares installed plugin versions (from `~/.claude/plugins/cache/agentic-primitives/`) against the marketplace catalog (from `~/.claude/plugins/marketplaces/agentic-primitives/`), refreshing the catalog at most once a week. Emits `additionalContext` naming outdated plugins when found; instructs Claude to ask the user before updating anything. Never runs `claude plugin update` itself.
+- **26 unit/integration tests** in `tests/unit/claude/hooks/test_plugin_doctor.py` covering state I/O, cadence gating, semver comparison, and the handler end-to-end via subprocess.
+
 ### 🏗 Workspace Injection Contract (ADR-035)
 
 A small, cross-orchestrator file-injection seam that any consumer of the workspace image (agentic-domain-runner, Syntropic137, future Codex/Gemini wrappers) can target.
