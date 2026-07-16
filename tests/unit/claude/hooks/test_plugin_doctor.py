@@ -82,6 +82,18 @@ class TestStateIO:
             "last_checked_at": "2026-07-16T00:00:00+00:00"
         }
 
+    def test_read_state_non_dict_json_array_returns_empty_dict(self, tmp_path):
+        freshness = load_freshness()
+        state_path = tmp_path / "state.json"
+        state_path.write_text("[1, 2, 3]")
+        assert freshness.read_state(state_path) == {}
+
+    def test_read_state_non_dict_json_null_returns_empty_dict(self, tmp_path):
+        freshness = load_freshness()
+        state_path = tmp_path / "state.json"
+        state_path.write_text("null")
+        assert freshness.read_state(state_path) == {}
+
 
 class TestIsCheckDue:
     def test_missing_last_checked_at_is_due(self):
@@ -111,3 +123,13 @@ class TestIsCheckDue:
         now = datetime(2026, 7, 16, tzinfo=timezone.utc)
         last = (now - timedelta(days=10)).isoformat()
         assert freshness.is_check_due(last, now) is True
+
+    def test_non_string_last_checked_at_int_is_due(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 16, tzinfo=timezone.utc)
+        assert freshness.is_check_due(12345, now) is True
+
+    def test_non_string_last_checked_at_list_is_due(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 16, tzinfo=timezone.utc)
+        assert freshness.is_check_due([1, 2, 3], now) is True

@@ -16,7 +16,10 @@ from pathlib import Path
 def read_state(state_path: Path) -> dict:
     """Read the state file, returning {} if missing or malformed."""
     try:
-        return json.loads(state_path.read_text())
+        data = json.loads(state_path.read_text())
+        if not isinstance(data, dict):
+            return {}
+        return data
     except (OSError, json.JSONDecodeError):
         return {}
 
@@ -36,7 +39,7 @@ def is_check_due(
         return True
     try:
         last = datetime.fromisoformat(last_checked_at)
-    except ValueError:
+    except (ValueError, TypeError):
         return True
     if last.tzinfo is None:
         last = last.replace(tzinfo=timezone.utc)
