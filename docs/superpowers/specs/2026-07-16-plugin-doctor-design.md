@@ -78,7 +78,7 @@ On `SessionStart`:
    - Mention this near the start of the conversation.
    - Ask the user whether they want to update.
    - Never run `claude plugin update` without the user explicitly agreeing.
-5. If nothing is outdated, or the check wasn't due this session, emit nothing — no-op, matching the convention of every other hook in this repo (empty output = allow/no context).
+5. If nothing is outdated, emit nothing — no-op, matching the convention of every other hook in this repo (empty output = allow/no context). This is independent of whether the weekly refresh ran this session: the comparison in step 3 always runs against whatever's cached, so a session can still report outdated plugins (or report nothing) regardless of whether step 2's refresh fired.
 
 ### 4. Error handling
 
