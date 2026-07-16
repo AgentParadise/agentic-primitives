@@ -1,0 +1,9 @@
+{
+  "name": "plugin-doctor",
+  "version": "0.1.0",
+  "description": "Warns when installed agentic-primitives plugins have updates available, checked weekly. Never auto-updates.",
+  "author": {
+    "name": "NeuralEmpowerment"
+  },
+  "repository": "https://github.com/AgentParadise/agentic-primitives"
+}

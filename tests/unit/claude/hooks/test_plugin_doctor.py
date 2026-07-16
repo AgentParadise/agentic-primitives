@@ -244,3 +244,98 @@ class TestFormatContext:
             "never run a plugin update without the user explicitly agreeing"
             in message.lower()
         )
+
+
+# ============================================================================
+# Task 3: session-start.py handler (end-to-end via subprocess)
+# ============================================================================
+
+
+class TestSessionStartHandler:
+    def test_no_context_when_all_plugins_up_to_date(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.4.0"}))
+        state_path = tmp_path / "state.json"
+        state_path.write_text(
+            json.dumps({"last_checked_at": datetime.now(timezone.utc).isoformat()})
+        )
+
+        result = run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+            }
+        )
+        assert result == {}
+
+    def test_emits_context_when_plugin_outdated(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.5.0"}))
+        state_path = tmp_path / "state.json"
+        state_path.write_text(
+            json.dumps({"last_checked_at": datetime.now(timezone.utc).isoformat()})
+        )
+
+        result = run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+            }
+        )
+        assert result["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+        assert "sdlc: 1.4.0 -> 1.5.0" in result["hookSpecificOutput"]["additionalContext"]
+
+    def test_writes_state_when_check_is_due(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        cache_root.mkdir()
+        marketplace_root = tmp_path / "marketplace"
+        marketplace_root.mkdir()
+        state_path = tmp_path / "state.json"  # does not exist yet -> due
+
+        run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+            }
+        )
+        assert state_path.exists()
+        assert "last_checked_at" in json.loads(state_path.read_text())
+
+    def test_does_not_touch_state_when_check_not_due(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        cache_root.mkdir()
+        marketplace_root = tmp_path / "marketplace"
+        marketplace_root.mkdir()
+        state_path = tmp_path / "state.json"
+        original = {"last_checked_at": datetime.now(timezone.utc).isoformat()}
+        state_path.write_text(json.dumps(original))
+
+        run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+            }
+        )
+        assert json.loads(state_path.read_text()) == original
+
+    def test_missing_cache_and_marketplace_dirs_no_crash(self, tmp_path):
+        result = run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(tmp_path / "no-cache"),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(tmp_path / "no-marketplace"),
+                "PLUGIN_DOCTOR_STATE_PATH": str(tmp_path / "state.json"),
+            }
+        )
+        assert result == {}

@@ -1,0 +1,17 @@
+{
+  "description": "Warns when installed agentic-primitives plugins have newer versions available (checked at most weekly). Never auto-updates.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/handlers/session-start.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
