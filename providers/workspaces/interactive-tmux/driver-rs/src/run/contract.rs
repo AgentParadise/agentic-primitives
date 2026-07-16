@@ -54,7 +54,7 @@ pub struct AgentRunSpec {
     /// Per-harness credentials. Empty by default (no credentials configured).
     #[serde(default)]
     pub credentials: AgentRunCredentials,
-    /// Plan 3 observability exporters to fan telemetry out to. Empty by default.
+    /// Observability exporters to fan normalized run telemetry out to. Empty by default.
     #[serde(default)]
     pub observability: Vec<ObservabilityExporter>,
     /// Optional run limits (timeout, token budget).
@@ -121,17 +121,79 @@ pub struct AgentRunLimits {
     pub token_budget: Option<u64>,
 }
 
-/// Plan 3 placeholder: an observability sink to fan run telemetry out to.
-/// The shape is intentionally minimal (`name` + opaque `config`) until
-/// Plan 3 defines concrete exporter configs (OTel, file, webhook, ...).
+/// An observability sink that receives the normalized [`AgentRunEvent`] stream.
+/// Exporters are configured per run and are deliberately filesystem/env
+/// portable: the same spec can point at a host path on a Mac/VPS or a mounted
+/// path inside a Docker workspace.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ObservabilityExporter {
+    /// Append one JSON-serialized [`AgentRunEvent`] per line to `path`.
+    File {
+        path: PathBuf,
+        /// Stable label surfaced in the final observability bundle for UIs.
+        #[serde(default)]
+        label: Option<String>,
+    },
+    /// Append Syntropic137 HookWatcher-compatible JSONL to `path`.
+    ///
+    /// This preserves the canonical `file` exporter while providing the
+    /// top-level `event_type`/`session_id`/`timestamp` shape consumed by
+    /// Syntropic137's existing hook-file watcher.
+    SyntropicJsonl {
+        path: PathBuf,
+        /// Stable label surfaced in the final observability bundle for UIs.
+        #[serde(default)]
+        label: Option<String>,
+    },
+}
+
+impl ObservabilityExporter {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::File { .. } => "file",
+            Self::SyntropicJsonl { .. } => "syntropic_jsonl",
+        }
+    }
+}
+
+/// Aggregated observability export status attached to the final result.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ObservabilityBundle {
+    #[serde(default)]
+    pub exporters: Vec<ObservabilityExportReport>,
+}
+
+/// Final status for one configured observability exporter.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct ObservabilityExporter {
-    pub name: String,
-    /// Opaque, exporter-specific configuration. Untyped by design - Plan 3
-    /// will introduce a typed config per exporter kind.
+pub struct ObservabilityExportReport {
+    pub kind: String,
+    pub status: ObservabilityExportStatus,
     #[serde(default)]
-    pub config: serde_json::Value,
+    pub target: Option<String>,
+    #[serde(default)]
+    pub events_exported: u64,
+    #[serde(default)]
+    pub links: Vec<ObservabilityLink>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservabilityExportStatus {
+    Ok,
+    Failed,
+}
+
+/// A consumer-facing location for an exported observability view or artifact.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ObservabilityLink {
+    pub label: String,
+    pub uri: String,
 }
 
 /// Terminal result of `itmux run`, emitted once after the run finishes
@@ -145,7 +207,7 @@ pub struct AgentRunResult {
     pub output_artifacts: Vec<PathBuf>,
     /// The captured pane / session transcript.
     pub session_log: String,
-    /// Plan 3 placeholder: aggregated observability data for the run.
+    /// Aggregated status for configured observability exporters.
     #[serde(default)]
     pub observability: Option<ObservabilityBundle>,
 }
@@ -157,17 +219,6 @@ pub struct AgentRunResult {
 pub struct AgentRunOutcome {
     pub success: bool,
     pub summary: String,
-}
-
-/// Plan 3 placeholder: aggregated observability data attached to the final
-/// `AgentRunResult`. Minimal until Plan 3 defines the real bundle shape.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ObservabilityBundle {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub data: serde_json::Value,
 }
 
 /// One line of the `itmux run` event stream (R6): `run_id`/`seq`/`ts` plus a
@@ -230,7 +281,26 @@ pub enum AgentRunEventPayload {
         input_tokens: u64,
         output_tokens: u64,
         #[serde(default)]
+        cached_input_tokens: Option<u64>,
+        #[serde(default)]
+        reasoning_output_tokens: Option<u64>,
+        #[serde(default)]
         cost_usd: Option<f64>,
+        /// Harness that produced this usage record, e.g. `codex` or `claude`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        harness: Option<String>,
+        /// Model provider when known, e.g. `openai` or `anthropic`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+        /// Model name when the harness exposes or is launched with one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+    },
+    #[serde(rename = "hook_event")]
+    HookEvent {
+        provider: String,
+        event_type: String,
+        event: serde_json::Value,
     },
     /// Terminal LIFECYCLE event - the last lifecycle event of a run, carrying
     /// the terminal outcome (mirrors `AgentRunResult.result`).

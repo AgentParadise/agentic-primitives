@@ -48,6 +48,9 @@ pub struct StartOptions {
     /// injection is silently ignored by the TUI; the CLI flag is the only
     /// mechanism that actually loads plugins.
     pub claude_plugin_dirs: Vec<PathBuf>,
+    /// Non-secret container environment variables, such as the hook sink
+    /// location. Secret values use `secret_env`, never Docker argv.
+    pub env_vars: Vec<(String, String)>,
     /// Explicit container name. When `None` (the default), `start` generates
     /// `interactive-tmux-<name>-<random>`. Callers that must know the container
     /// name BEFORE `start` returns (e.g. `itmux run` needs a deterministic name
@@ -80,6 +83,7 @@ impl StartOptions {
             host_auth: HashMap::new(),
             host_claude_dotjson: None,
             claude_plugin_dirs: Vec::new(),
+            env_vars: Vec::new(),
             container_name: None,
             secret_env: HashMap::new(),
             claude_omit_credentials: false,
@@ -180,18 +184,30 @@ pub(crate) fn write_private_file(path: &Path, contents: &[u8]) -> Result<()> {
 /// are pushed in afterwards over `docker exec` - see
 /// `auth::stage_into_container`. Pure (no I/O) so it can be asserted on
 /// without a docker daemon; see `tests/cred_transfer.rs`.
-pub fn build_docker_run_argv(container: &str, workdir: &str, image: &str) -> Vec<String> {
-    vec![
+pub fn build_docker_run_argv(
+    container: &str,
+    workdir: &str,
+    image: &str,
+    env_vars: &[(String, String)],
+) -> Vec<String> {
+    let mut argv = vec![
         "run".to_string(),
         "-d".to_string(),
         "--name".to_string(),
         container.to_string(),
         "--workdir".to_string(),
         workdir.to_string(),
+    ];
+    for (name, value) in env_vars {
+        argv.push("-e".to_string());
+        argv.push(format!("{name}={value}"));
+    }
+    argv.extend([
         image.to_string(),
         "sleep".to_string(),
         "infinity".to_string(),
-    ]
+    ]);
+    argv
 }
 
 /// Substrings docker/tmux emit when the workspace target itself is GONE
@@ -371,7 +387,8 @@ impl Workspace {
             // Provision a bare, credential-free container (docker-out-of-
             // docker fix - see `build_docker_run_argv` and module docs on
             // `auth::stage_into_container`).
-            let argv = build_docker_run_argv(&container, &opts.workdir, &opts.image);
+            let argv =
+                build_docker_run_argv(&container, &opts.workdir, &opts.image, &opts.env_vars);
             let mut run = Command::new("docker");
             run.args(&argv);
             run_capture(run, "docker run")?;
@@ -553,6 +570,25 @@ impl Workspace {
         poll_interval: f64,
         warmup: f64,
     ) -> Result<AwaitResult> {
+        self.await_completion_with_poll_callback(
+            agent,
+            timeout,
+            stable_polls,
+            poll_interval,
+            warmup,
+            &mut |_, _, _, _| None,
+        )
+    }
+
+    pub fn await_completion_with_poll_callback(
+        &self,
+        agent: Agent,
+        timeout: f64,
+        stable_polls: u32,
+        poll_interval: f64,
+        warmup: f64,
+        on_poll: &mut dyn FnMut(&Workspace, &str, f64, u32) -> Option<AwaitResult>,
+    ) -> Result<AwaitResult> {
         self.check_agent(agent)?;
         let start = Instant::now();
         let deadline = start + Duration::from_secs_f64(timeout);
@@ -579,6 +615,11 @@ impl Workspace {
                             consecutive_stable_ready += 1;
                             if consecutive_stable_ready >= stable_polls {
                                 let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                                if let Some(result) =
+                                    on_poll(self, &pane, elapsed, consecutive_stable_ready)
+                                {
+                                    return Ok(result);
+                                }
                                 return Ok(AwaitResult::ready(
                                     elapsed,
                                     consecutive_stable_ready,
@@ -595,6 +636,9 @@ impl Workspace {
                 }
                 PollStep::Dead(reason) => {
                     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                    if let Some(result) = on_poll(self, &pane, elapsed, consecutive_stable_ready) {
+                        return Ok(result);
+                    }
                     return Ok(AwaitResult::container_dead(
                         elapsed,
                         consecutive_stable_ready,
@@ -610,6 +654,10 @@ impl Workspace {
                     consecutive_stable_ready = 0;
                     last_tail = None;
                 }
+            }
+            let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+            if let Some(result) = on_poll(self, &pane, elapsed, consecutive_stable_ready) {
+                return Ok(result);
             }
             thread::sleep(Duration::from_secs_f64(poll_interval));
         }

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "6905cfb7d1b969a0214e613383748ce7",
+    "projectId": "agentic-primitives-local-project",
+    "name": "Codex Turn",
+    "timestamp": "2026-06-03T10:00:01.000Z",
+    "environment": "official-plugin-e2e-local",
+    "tags": [],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "agentic-official-plugin-e2e",
+    "sessionId": "official-codex-e2e-1783535611",
+    "public": false,
+    "input": "List the files in the repo",
+    "output": "There are two files: file1.txt and file2.txt.",
+    "metadata": {
+      "codex.turn_id": "turn-1",
+      "codex.thread_id": "official-codex-e2e-1783535611",
+      "codex.model": "gpt-5.4",
+      "codex.model_provider": "openai",
+      "codex.cli_version": "0.123.0",
+      "codex.aborted": false,
+      "codex.tool_call_count": 1,
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    },
+    "createdAt": "2026-07-08T18:34:18.031Z",
+    "updatedAt": "2026-07-08T18:34:18.041Z",
+    "observations": [
+      "302fd962b703cb07",
+      "858952b4049ec99d",
+      "900370644fd7ecb9",
+      "da67190068d775bd"
+    ],
+    "scores": [],
+    "totalCost": 0.001374999999,
+    "latency": 3.3,
+    "htmlPath": "/project/agentic-primitives-local-project/traces/6905cfb7d1b969a0214e613383748ce7",
+    "externalId": null
+  }
+]

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "76a54f7c977ae138c22ebae34b05e047",
+    "projectId": "agentic-primitives-local-project",
+    "name": "Claude Code - Turn 1 (official-cla)",
+    "timestamp": "2026-01-01T00:01:00.000Z",
+    "environment": "official-plugin-e2e-local",
+    "tags": [
+      "claude-code"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "agentic-official-plugin-e2e",
+    "sessionId": "official-claude-e2e-1783535611",
+    "public": false,
+    "input": {
+      "role": "user",
+      "content": "Read the file."
+    },
+    "output": {
+      "role": "assistant",
+      "content": "The file starts with a heading."
+    },
+    "metadata": {
+      "source": "claude-code",
+      "session_id": "official-claude-e2e-1783535611",
+      "turn_number": 1,
+      "transcript_path": "claude-tool-turn.jsonl",
+      "user_text": {
+        "truncated": false,
+        "orig_len": 14
+      },
+      "assistant_message_count": 2,
+      "cwd": "/repo",
+      "git_branch": "feature/test",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.43.0",
+        "service.instance.id": "39512917-334f-41c8-b346-f442c4237b68",
+        "langfuse.environment": "official-plugin-e2e-local",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.13.2",
+        "attributes": {
+          "public_key": "<redacted-public-key>"
+        }
+      }
+    },
+    "createdAt": "2026-07-08T18:33:47.007Z",
+    "updatedAt": "2026-07-08T18:33:47.018Z",
+    "observations": [
+      "b8e444bdcd8ad984",
+      "c7f8468093a53152",
+      "5da4e7805e690c6c",
+      "e0a6a7aa0fed787e"
+    ],
+    "scores": [],
+    "totalCost": 0,
+    "latency": 3,
+    "htmlPath": "/project/agentic-primitives-local-project/traces/76a54f7c977ae138c22ebae34b05e047",
+    "externalId": null
+  }
+]

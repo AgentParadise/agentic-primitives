@@ -4,21 +4,35 @@
 //! can mirror `smoke.sh` line-for-line.
 
 use std::collections::HashMap;
-use std::io::Write;
-use std::path::PathBuf;
-use std::process::ExitCode;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode, Stdio};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+mod langfuse;
+
+use crate::langfuse::{
+    handle_langfuse_score, handle_langfuse_scores, handle_langfuse_sessions, handle_langfuse_trace,
+    handle_langfuse_traces, LangFuseScoreDataType, LangFuseTraceApi, LangFuseTraceOutput,
+    DEFAULT_LANGFUSE_QUERY_FROM_START_TIME, DEFAULT_LANGFUSE_QUERY_TO_START_TIME,
+};
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
-use itmux::run::contract::{AgentRunEvent, AgentRunLimits, AgentRunSpec};
+use itmux::run::contract::{
+    AgentRunEvent, AgentRunEventPayload, AgentRunLimits, AgentRunOutcome, AgentRunResult,
+    AgentRunSpec, ObservabilityExporter,
+};
+use itmux::run::harness_observer::{
+    ClaudeTranscriptObserver, CodexExecJsonObserver, HarnessObserver,
+};
+use itmux::run::observability::ObservabilityFanout;
 use itmux::run::orchestrator::CancelToken;
 #[cfg(unix)]
 use itmux::run::orchestrator::{CancelEscalator, SignalKind};
-use itmux::run::workspace_executor::{generate_run_id, now_rfc3339, run as run_orchestrated};
+use itmux::run::workspace_executor::{generate_run_id, now_rfc3339};
 use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
     DEFAULT_TMUX_ROWS, DEFAULT_WORKDIR,
@@ -33,6 +47,21 @@ use itmux::workspace::{
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CodexRunMode {
+    /// Launch the interactive Codex TUI in the Docker workspace.
+    Tui,
+    /// Run `codex exec --json` and normalize its structured event stream.
+    Exec,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunDispatch {
+    WorkspaceTui,
+    CodexExec,
+    AgentMismatch,
 }
 
 #[derive(Subcommand, Debug)]
@@ -116,6 +145,17 @@ enum Cmd {
         /// Container image. Defaults to the interactive-tmux workspace image.
         #[arg(long, default_value = DEFAULT_IMAGE)]
         image: String,
+        /// How Codex recipes execute. `tui` preserves the current interactive
+        /// workspace behavior; `exec` uses structured `codex exec --json`
+        /// telemetry for rich tool/token/cost observability.
+        #[arg(long, default_value = "tui")]
+        codex_mode: CodexRunMode,
+        /// Codex binary used when `--codex-mode exec`.
+        #[arg(long, default_value = "codex")]
+        codex_bin: String,
+        /// Sandbox policy passed to `codex exec` when `--codex-mode exec`.
+        #[arg(long, default_value = "read-only")]
+        codex_sandbox: String,
         /// Emit event JSONL on stdout (on by default). `--json false`
         /// suppresses the event stream and prints only a human result summary.
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
@@ -132,19 +172,279 @@ enum Cmd {
         /// (never a downstream `Duration::from_secs_f64` panic).
         #[arg(long, value_parser = parse_positive_timeout)]
         timeout: Option<f64>,
-        /// Path to a `.env` file supplying run credentials (highest precedence,
-        /// above process env). Recognized keys: `CLAUDE_CODE_OAUTH_TOKEN`
-        /// (preferred) / `ANTHROPIC_API_KEY` for claude; `CODEX_AUTH_FILE`
-        /// (preferred) / `OPENAI_API_KEY` for codex. Only the PATH is ever on
-        /// argv - the secret values travel via stdin + an in-container 0600 file.
+        /// Path to a `.env` file supplying run credentials. Secret values are
+        /// loaded from the file and never appear in command arguments.
         #[arg(long)]
         env_file: Option<PathBuf>,
-        /// Re-enable the legacy host `$HOME/.<agent>` credential fallback when no
-        /// `.env`/process-env credentials are found. Off by default (fail fast).
-        /// The host `.credentials.json` is often stale (-> 401); prefer
-        /// `--env-file` / `CLAUDE_CODE_OAUTH_TOKEN`.
         #[arg(long, default_value_t = false)]
         allow_host_auth_fallback: bool,
+        /// Append normalized run events to this JSONL file as an observability
+        /// artifact. Relative paths resolve in the driver process.
+        #[arg(long)]
+        observability_file: Option<PathBuf>,
+        /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
+        #[arg(long)]
+        observability_syntropic_file: Option<PathBuf>,
+    },
+    /// Run `codex exec --json`, normalize its event stream, and fan it out to
+    /// observability exporters. This is the first runnable harness-observer
+    /// path for Codex token/usage events.
+    #[command(name = "codex-exec")]
+    CodexExec {
+        /// Prompt handed to `codex exec`.
+        #[arg(long)]
+        prompt: String,
+        /// Codex binary to execute.
+        #[arg(long, default_value = "codex")]
+        codex_bin: String,
+        /// Optional model override passed as `--model`.
+        #[arg(long)]
+        model: Option<String>,
+        /// Sandbox policy passed to `codex exec`.
+        #[arg(long, default_value = "read-only")]
+        sandbox: String,
+        /// Emit normalized AgentRunEvent JSONL on stdout.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        json: bool,
+        /// Write the final `AgentRunResult` JSON to this file. If omitted and
+        /// `--json true`, the result is emitted as a final `type:"result"`
+        /// event on stdout.
+        #[arg(long)]
+        result_file: Option<PathBuf>,
+        /// Append normalized observer events to this JSONL file.
+        #[arg(long)]
+        observability_file: Option<PathBuf>,
+        /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
+        #[arg(long)]
+        observability_syntropic_file: Option<PathBuf>,
+    },
+    /// Read Claude Code transcript JSONL, normalize tool/usage events, and fan
+    /// them out to observability exporters.
+    #[command(name = "claude-transcript")]
+    ClaudeTranscript {
+        /// Claude transcript JSONL file. Use `-` to read stdin.
+        #[arg(long)]
+        transcript: PathBuf,
+        /// Optional run id. Defaults to a generated `itmux` run id.
+        #[arg(long)]
+        run_id: Option<String>,
+        /// Emit normalized AgentRunEvent JSONL on stdout.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        json: bool,
+        /// Write the final `AgentRunResult` JSON to this file. If omitted and
+        /// `--json true`, the result is emitted as a final `type:"result"`
+        /// event on stdout.
+        #[arg(long)]
+        result_file: Option<PathBuf>,
+        /// Append normalized observer events to this JSONL file.
+        #[arg(long)]
+        observability_file: Option<PathBuf>,
+        /// Append Syntropic137 HookWatcher-compatible JSONL to this file.
+        #[arg(long)]
+        observability_syntropic_file: Option<PathBuf>,
+    },
+    /// Query LangFuse observations for an exported trace. This is the first
+    /// agent-facing read path for inspecting traces after export.
+    #[command(name = "langfuse-trace")]
+    LangFuseTrace {
+        /// Existing 32-hex LangFuse/OpenTelemetry trace id.
+        #[arg(long, conflicts_with = "run_id")]
+        trace_id: Option<String>,
+        /// `itmux` run id; the command derives the deterministic trace id used
+        /// by the exporter.
+        #[arg(long, conflicts_with = "trace_id")]
+        run_id: Option<String>,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Lower bound for observation start time. Keep this bounded.
+        #[arg(long, default_value = DEFAULT_LANGFUSE_QUERY_FROM_START_TIME)]
+        from_start_time: String,
+        /// Upper bound for observation start time. Keep this bounded.
+        #[arg(long, default_value = DEFAULT_LANGFUSE_QUERY_TO_START_TIME)]
+        to_start_time: String,
+        /// LangFuse observation field groups to request.
+        #[arg(long, default_value = "core,basic,usage,trace_context")]
+        fields: String,
+        /// Maximum observation rows to request.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+        /// Include trace-scoped LangFuse scores in the summary.
+        #[arg(long, default_value_t = false)]
+        include_scores: bool,
+        /// Maximum score rows to request when --include-scores is set.
+        #[arg(long, default_value_t = 20)]
+        score_limit: u32,
+        /// LangFuse read API to use.
+        #[arg(long, value_enum, default_value = "observations-v2")]
+        api: LangFuseTraceApi,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "full")]
+        output: LangFuseTraceOutput,
+    },
+    /// List recent LangFuse traces so agents can discover runs to inspect.
+    #[command(name = "langfuse-traces")]
+    LangFuseTraces {
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Maximum trace rows to request.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+        /// 1-based LangFuse page number.
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Keep only traces for this harness, for example codex or claude.
+        #[arg(long)]
+        harness: Option<String>,
+        /// Keep only traces for this provider, for example openai or anthropic.
+        #[arg(long)]
+        provider: Option<String>,
+        /// Keep only traces for this model.
+        #[arg(long)]
+        model: Option<String>,
+        /// Keep only traces for this LangFuse environment.
+        #[arg(long)]
+        environment: Option<String>,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
+    },
+    /// Group LangFuse per-turn traces into session-level learning-loop reports.
+    #[command(name = "langfuse-sessions")]
+    LangFuseSessions {
+        /// LangFuse origin. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Maximum trace rows to discover and group on this page.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+        /// 1-based LangFuse trace discovery page number.
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Keep only sessions containing traces for this harness.
+        #[arg(long)]
+        harness: Option<String>,
+        /// Keep only sessions containing traces for this provider.
+        #[arg(long)]
+        provider: Option<String>,
+        /// Keep only sessions containing traces for this model.
+        #[arg(long)]
+        model: Option<String>,
+        /// Keep only sessions containing traces for this LangFuse environment.
+        #[arg(long)]
+        environment: Option<String>,
+        /// Include trace-scoped LangFuse scores in each session report.
+        #[arg(long, default_value_t = true)]
+        include_scores: bool,
+        /// Maximum score rows to request for each trace.
+        #[arg(long, default_value_t = 20)]
+        score_limit: u32,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
+    },
+    /// Create a LangFuse score for an exported trace so agents can write
+    /// learning-loop feedback next to the telemetry they inspect.
+    #[command(name = "langfuse-score")]
+    LangFuseScore {
+        /// Existing 32-hex LangFuse/OpenTelemetry trace id.
+        #[arg(long, conflicts_with = "run_id")]
+        trace_id: Option<String>,
+        /// `itmux` run id; the command derives the deterministic trace id used
+        /// by the exporter.
+        #[arg(long, conflicts_with = "trace_id")]
+        run_id: Option<String>,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Score name, for example agentic.learning_loop_probe.
+        #[arg(long)]
+        name: String,
+        /// Score value. Numeric/boolean values must parse as numbers; text and
+        /// categorical values are sent as strings.
+        #[arg(long)]
+        value: String,
+        /// LangFuse score data type.
+        #[arg(long, value_enum, default_value = "numeric")]
+        data_type: LangFuseScoreDataType,
+        /// Optional score comment.
+        #[arg(long)]
+        comment: Option<String>,
+        /// Optional JSON metadata object.
+        #[arg(long)]
+        metadata_json: Option<String>,
+        /// Optional LangFuse score id. Supplying one makes retries idempotent.
+        #[arg(long)]
+        score_id: Option<String>,
+        /// Optional LangFuse environment label for the score.
+        #[arg(long)]
+        environment: Option<String>,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
+    },
+    /// List LangFuse scores so agents can read learning-loop feedback.
+    #[command(name = "langfuse-scores")]
+    LangFuseScores {
+        /// Existing 32-hex LangFuse/OpenTelemetry trace id.
+        #[arg(long, conflicts_with = "run_id")]
+        trace_id: Option<String>,
+        /// `itmux` run id; the command derives the deterministic trace id used
+        /// by the exporter.
+        #[arg(long, conflicts_with = "trace_id")]
+        run_id: Option<String>,
+        /// LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL.
+        #[arg(long)]
+        langfuse_base_url: Option<String>,
+        /// Env var containing the LangFuse public key.
+        #[arg(long, default_value = "LANGFUSE_PUBLIC_KEY")]
+        public_key_env: String,
+        /// Env var containing the LangFuse secret key.
+        #[arg(long, default_value = "LANGFUSE_SECRET_KEY")]
+        secret_key_env: String,
+        /// Optional score id filter. Comma-separate multiple ids.
+        #[arg(long)]
+        score_ids: Option<String>,
+        /// Optional score name filter.
+        #[arg(long)]
+        name: Option<String>,
+        /// Optional data type filter.
+        #[arg(long, value_enum)]
+        data_type: Option<LangFuseScoreDataType>,
+        /// Maximum score rows to request.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+        /// 1-based LangFuse page number.
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Response shape for agents: compact summary or full backend response.
+        #[arg(long, value_enum, default_value = "summary")]
+        output: LangFuseTraceOutput,
     },
 }
 
@@ -520,34 +820,181 @@ fn install_signal_watcher(
     Some((handle, join))
 }
 
+fn build_observability_exporters(
+    observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
+    file_label: &str,
+) -> Vec<ObservabilityExporter> {
+    let mut exporters: Vec<_> = observability_file
+        .map(|path| ObservabilityExporter::File {
+            path,
+            label: Some(file_label.to_string()),
+        })
+        .into_iter()
+        .collect();
+
+    if let Some(path) = observability_syntropic_file {
+        exporters.push(ObservabilityExporter::SyntropicJsonl {
+            path,
+            label: Some("Syntropic137 events".to_string()),
+        });
+    }
+
+    exporters
+}
+
+fn resolve_codex_exec_model(explicit_model: Option<String>) -> Option<String> {
+    if let Some(model) = non_empty_string(explicit_model) {
+        return Some(model);
+    }
+    if let Some(model) = non_empty_env("CODEX_MODEL") {
+        return Some(model);
+    }
+    codex_config_path().and_then(|path| read_codex_config_model(&path))
+}
+
+fn codex_config_path() -> Option<PathBuf> {
+    if let Some(codex_home) = std::env::var_os("CODEX_HOME") {
+        return Some(PathBuf::from(codex_home).join("config.toml"));
+    }
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join(".codex/config.toml"))
+}
+
+fn read_codex_config_model(path: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    parse_codex_config_model(&raw)
+}
+
+fn parse_codex_config_model(raw: &str) -> Option<String> {
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            break;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "model" {
+            continue;
+        }
+        return parse_toml_string_literal(value.trim())
+            .and_then(|value| non_empty_string(Some(value)));
+    }
+    None
+}
+
+fn parse_toml_string_literal(value: &str) -> Option<String> {
+    let value = value.split('#').next().unwrap_or(value).trim();
+    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
+        return Some(value[1..value.len() - 1].to_string());
+    }
+    if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
+        return Some(value[1..value.len() - 1].to_string());
+    }
+    None
+}
+
+fn non_empty_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn non_empty_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn codex_model_for_exec(recipe_model: &str) -> Option<String> {
+    let model = recipe_model
+        .trim()
+        .strip_prefix("openai/")
+        .unwrap_or_else(|| recipe_model.trim());
+    non_empty_string(Some(model.to_string()))
+}
+
+fn select_run_dispatch(agent: Agent, codex_mode: CodexRunMode) -> RunDispatch {
+    match (agent, codex_mode) {
+        (Agent::Codex, CodexRunMode::Exec) => RunDispatch::CodexExec,
+        (Agent::Codex, CodexRunMode::Tui) => RunDispatch::WorkspaceTui,
+        (_, CodexRunMode::Exec) => RunDispatch::AgentMismatch,
+        (_, CodexRunMode::Tui) => RunDispatch::WorkspaceTui,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_run(
     recipe: PathBuf,
     task: String,
     image: String,
+    codex_mode: CodexRunMode,
+    codex_bin: String,
+    codex_sandbox: String,
     json: bool,
     result_file: Option<PathBuf>,
     timeout: Option<f64>,
     env_file: Option<PathBuf>,
     allow_host_auth_fallback: bool,
+    observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
 ) -> ExitCode {
-    // Load run credentials from --env-file / process env (R1-R4). This is the
-    // fix for the stale-file 401: the run spec now carries fresh credentials
-    // instead of leaving `credentials` empty and falling back to the host
-    // `$HOME/.claude` file. Secret VALUES never reach argv here - `env_file` is
-    // a PATH; the values load into the spec and, later, an in-container 0600
-    // file. A load failure (unreadable/malformed) is fatal and human-only on
-    // stderr (never echoes a secret).
     let credentials = match itmux::run::secret_env::load_credentials(env_file.as_deref()) {
-        Ok(creds) => creds,
+        Ok(credentials) => credentials,
         Err(err) => {
             eprintln!("[itmux run] {err}");
             return ExitCode::from(2);
         }
     };
+    let observability = build_observability_exporters(
+        observability_file,
+        observability_syntropic_file,
+        "itmux run events",
+    );
+    let spec_recipe = recipe.clone();
     let mut spec = build_run_spec(recipe, task, timeout);
     spec.credentials = credentials;
+    spec.observability = observability;
     let run_id = generate_run_id();
+    let plan = match itmux::run::recipe_loader::load_execution_plan(&spec) {
+        Ok(plan) => plan,
+        Err(err) => {
+            eprintln!("[itmux run] failed to load recipe: {err}");
+            return ExitCode::from(1);
+        }
+    };
+    match select_run_dispatch(plan.agent, codex_mode) {
+        RunDispatch::CodexExec => {
+            let model =
+                codex_model_for_exec(&plan.model_name).or_else(|| resolve_codex_exec_model(None));
+            return handle_codex_exec_with_exporters(CodexExecRunOptions {
+                prompt: plan.submit_text,
+                codex_bin,
+                model,
+                sandbox: codex_sandbox,
+                json,
+                result_file,
+                exporters: spec.observability,
+                run_id,
+                log_prefix: "itmux run codex-exec",
+                human_label: "run codex-exec",
+            });
+        }
+        RunDispatch::AgentMismatch => {
+            eprintln!(
+                "[itmux run] --codex-mode exec was requested, but recipe {} default agent is {}",
+                spec_recipe.display(),
+                plan.agent.as_str()
+            );
+            return ExitCode::from(64);
+        }
+        RunDispatch::WorkspaceTui => {}
+    }
     let cancel = CancelToken::new();
 
     // Wire OS signals to the two-tier cancellation (Task 6): first Ctrl-C ->
@@ -572,8 +1019,9 @@ fn handle_run(
         }
     };
 
-    let run_result = run_orchestrated(
+    let run_result = itmux::run::workspace_executor::run_with_plan(
         &spec,
+        &plan,
         &image,
         &run_id,
         &cancel,
@@ -643,6 +1091,396 @@ fn handle_run(
     }
 }
 
+struct CodexExecRunOptions<'a> {
+    prompt: String,
+    codex_bin: String,
+    model: Option<String>,
+    sandbox: String,
+    json: bool,
+    result_file: Option<PathBuf>,
+    exporters: Vec<ObservabilityExporter>,
+    run_id: String,
+    log_prefix: &'a str,
+    human_label: &'a str,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_codex_exec(
+    prompt: String,
+    codex_bin: String,
+    model: Option<String>,
+    sandbox: String,
+    json: bool,
+    result_file: Option<PathBuf>,
+    observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
+) -> ExitCode {
+    let exporters = build_observability_exporters(
+        observability_file,
+        observability_syntropic_file,
+        "codex exec events",
+    );
+    handle_codex_exec_with_exporters(CodexExecRunOptions {
+        prompt,
+        codex_bin,
+        model,
+        sandbox,
+        json,
+        result_file,
+        exporters,
+        run_id: generate_run_id(),
+        log_prefix: "itmux codex-exec",
+        human_label: "codex exec",
+    })
+}
+
+fn handle_codex_exec_with_exporters(options: CodexExecRunOptions<'_>) -> ExitCode {
+    let CodexExecRunOptions {
+        prompt,
+        codex_bin,
+        model,
+        sandbox,
+        json,
+        result_file,
+        exporters,
+        run_id,
+        log_prefix,
+        human_label,
+    } = options;
+    let mut fanout = ObservabilityFanout::new(&exporters);
+    let requested_model = non_empty_string(model.clone());
+    let telemetry_model = resolve_codex_exec_model(model.clone());
+    let mut observer = CodexExecJsonObserver::with_model(telemetry_model);
+    let mut seq = 0u64;
+    let mut session_log = String::new();
+    let mut parse_error: Option<String> = None;
+
+    let mut emit_payload = |payload: AgentRunEventPayload, fanout: &mut ObservabilityFanout| {
+        let event = AgentRunEvent {
+            run_id: run_id.clone(),
+            seq,
+            ts: now_rfc3339(),
+            payload,
+        };
+        seq += 1;
+        fanout.emit(&event);
+        if json {
+            match serde_json::to_string(&event) {
+                Ok(line) => println!("{line}"),
+                Err(err) => eprintln!("[{log_prefix}] failed to serialize event: {err}"),
+            }
+        }
+    };
+
+    let mut cmd = Command::new(&codex_bin);
+    cmd.arg("exec")
+        .arg("--json")
+        .arg("--sandbox")
+        .arg(&sandbox)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(model) = requested_model {
+        cmd.arg("--model").arg(model);
+    }
+    cmd.arg(prompt);
+
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            eprintln!("[{log_prefix}] failed to spawn {codex_bin}: {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let stderr = child.stderr.take();
+    let stderr_join = stderr.map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = stderr.read_to_string(&mut buf);
+            buf
+        })
+    });
+
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    session_log.push_str(&line);
+                    session_log.push('\n');
+                    match observer.observe_jsonl_line(&line) {
+                        Ok(events) => {
+                            for observed in events {
+                                emit_payload(observed.payload, &mut fanout);
+                            }
+                        }
+                        Err(err) => {
+                            let message = err.to_string();
+                            parse_error.get_or_insert_with(|| message.clone());
+                            emit_payload(
+                                AgentRunEventPayload::ToolEnd {
+                                    tool_name: "codex_exec.parse".to_string(),
+                                    success: false,
+                                    output_summary: Some(message),
+                                },
+                                &mut fanout,
+                            );
+                        }
+                    }
+                }
+                Err(err) => {
+                    let message = format!("failed reading codex stdout: {err}");
+                    parse_error.get_or_insert_with(|| message.clone());
+                    emit_payload(
+                        AgentRunEventPayload::ToolEnd {
+                            tool_name: "codex_exec.read".to_string(),
+                            success: false,
+                            output_summary: Some(message),
+                        },
+                        &mut fanout,
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
+    let status = match child.wait() {
+        Ok(status) => status,
+        Err(err) => {
+            eprintln!("[{log_prefix}] failed waiting for codex process: {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let stderr = stderr_join
+        .and_then(|join| join.join().ok())
+        .unwrap_or_default();
+    if !stderr.is_empty() {
+        session_log.push_str("\n[stderr]\n");
+        session_log.push_str(&stderr);
+        let mut stderr_out = std::io::stderr().lock();
+        let _ = stderr_out.write_all(stderr.as_bytes());
+    }
+
+    let success = status.success() && parse_error.is_none();
+    let summary = if let Some(err) = parse_error {
+        format!("codex exec observer parse/read failure: {err}")
+    } else if success {
+        "codex exec completed successfully".to_string()
+    } else {
+        format!(
+            "codex exec exited with status {}",
+            status
+                .code()
+                .map_or_else(|| "signal".to_string(), |code| code.to_string())
+        )
+    };
+    let outcome = AgentRunOutcome { success, summary };
+    emit_payload(
+        AgentRunEventPayload::SessionEnd {
+            outcome: outcome.clone(),
+        },
+        &mut fanout,
+    );
+
+    let result = AgentRunResult {
+        result: outcome,
+        output_artifacts: Vec::new(),
+        session_log,
+        observability: fanout.finish(),
+    };
+
+    match result_file {
+        Some(path) => match serde_json::to_vec_pretty(&result) {
+            Ok(bytes) => {
+                if let Err(err) = std::fs::write(&path, bytes) {
+                    eprintln!(
+                        "[{log_prefix}] failed to write result file {}: {err}",
+                        path.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("[{log_prefix}] failed to serialize result: {err}");
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            if json {
+                let event = AgentRunEvent::result(&run_id, seq, now_rfc3339(), result);
+                match serde_json::to_string(&event) {
+                    Ok(line) => println!("{line}"),
+                    Err(err) => eprintln!("[{log_prefix}] failed to serialize result: {err}"),
+                }
+            } else {
+                println!(
+                    "{human_label} {}: success={}",
+                    run_id,
+                    if success { "true" } else { "false" }
+                );
+            }
+        }
+    }
+
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(3)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_claude_transcript(
+    transcript: PathBuf,
+    run_id: Option<String>,
+    json: bool,
+    result_file: Option<PathBuf>,
+    observability_file: Option<PathBuf>,
+    observability_syntropic_file: Option<PathBuf>,
+) -> ExitCode {
+    let exporters = build_observability_exporters(
+        observability_file,
+        observability_syntropic_file,
+        "claude transcript events",
+    );
+    let mut fanout = ObservabilityFanout::new(&exporters);
+    let mut observer = ClaudeTranscriptObserver::new();
+    let run_id = run_id.unwrap_or_else(generate_run_id);
+    let mut seq = 0u64;
+    let mut parse_error: Option<String> = None;
+    let mut input_lines = 0usize;
+    let mut observed_payloads = 0usize;
+
+    let input = if transcript.as_os_str() == "-" {
+        let mut input = String::new();
+        if let Err(err) = std::io::stdin().read_to_string(&mut input) {
+            eprintln!("[itmux claude-transcript] failed to read stdin: {err}");
+            return ExitCode::from(1);
+        }
+        input
+    } else {
+        match std::fs::read_to_string(&transcript) {
+            Ok(input) => input,
+            Err(err) => {
+                eprintln!(
+                    "[itmux claude-transcript] failed to read transcript {}: {err}",
+                    transcript.display()
+                );
+                return ExitCode::from(1);
+            }
+        }
+    };
+
+    let mut emit_payload = |payload: AgentRunEventPayload, fanout: &mut ObservabilityFanout| {
+        let event = AgentRunEvent {
+            run_id: run_id.clone(),
+            seq,
+            ts: now_rfc3339(),
+            payload,
+        };
+        seq += 1;
+        fanout.emit(&event);
+        if json {
+            match serde_json::to_string(&event) {
+                Ok(line) => println!("{line}"),
+                Err(err) => {
+                    eprintln!("[itmux claude-transcript] failed to serialize event: {err}");
+                }
+            }
+        }
+    };
+
+    for line in input.lines() {
+        input_lines += 1;
+        match observer.observe_jsonl_line(line) {
+            Ok(events) => {
+                for observed in events {
+                    observed_payloads += 1;
+                    emit_payload(observed.payload, &mut fanout);
+                }
+            }
+            Err(err) => {
+                let message = "invalid claude transcript JSONL line".to_string();
+                eprintln!("[itmux claude-transcript] {err}");
+                parse_error.get_or_insert_with(|| message.clone());
+                emit_payload(
+                    AgentRunEventPayload::ToolEnd {
+                        tool_name: "claude_transcript.parse".to_string(),
+                        success: false,
+                        output_summary: Some(message),
+                    },
+                    &mut fanout,
+                );
+            }
+        }
+    }
+
+    let success = parse_error.is_none();
+    let summary = parse_error
+        .map(|err| format!("claude transcript observer parse failure: {err}"))
+        .unwrap_or_else(|| "claude transcript normalized successfully".to_string());
+    let outcome = AgentRunOutcome { success, summary };
+    emit_payload(
+        AgentRunEventPayload::SessionEnd {
+            outcome: outcome.clone(),
+        },
+        &mut fanout,
+    );
+
+    let result = AgentRunResult {
+        result: outcome,
+        output_artifacts: Vec::new(),
+        session_log: format!(
+            "claude transcript omitted from result; normalized {observed_payloads} events from {input_lines} input lines"
+        ),
+        observability: fanout.finish(),
+    };
+
+    match result_file {
+        Some(path) => match serde_json::to_vec_pretty(&result) {
+            Ok(bytes) => {
+                if let Err(err) = std::fs::write(&path, bytes) {
+                    eprintln!(
+                        "[itmux claude-transcript] failed to write result file {}: {err}",
+                        path.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("[itmux claude-transcript] failed to serialize result: {err}");
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            if json {
+                let event = AgentRunEvent::result(&run_id, seq, now_rfc3339(), result);
+                match serde_json::to_string(&event) {
+                    Ok(line) => println!("{line}"),
+                    Err(err) => {
+                        eprintln!("[itmux claude-transcript] failed to serialize result: {err}");
+                    }
+                }
+            } else {
+                println!(
+                    "claude transcript {}: success={}",
+                    run_id,
+                    if success { "true" } else { "false" }
+                );
+            }
+        }
+    }
+
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(3)
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.cmd {
@@ -681,43 +1519,347 @@ fn main() -> ExitCode {
             recipe,
             task,
             image,
+            codex_mode,
+            codex_bin,
+            codex_sandbox,
             json,
             result_file,
             timeout,
             env_file,
             allow_host_auth_fallback,
+            observability_file,
+            observability_syntropic_file,
         } => handle_run(
             recipe,
             task,
             image,
+            codex_mode,
+            codex_bin,
+            codex_sandbox,
             json,
             result_file,
             timeout,
             env_file,
             allow_host_auth_fallback,
+            observability_file,
+            observability_syntropic_file,
+        ),
+        Cmd::CodexExec {
+            prompt,
+            codex_bin,
+            model,
+            sandbox,
+            json,
+            result_file,
+            observability_file,
+            observability_syntropic_file,
+        } => handle_codex_exec(
+            prompt,
+            codex_bin,
+            model,
+            sandbox,
+            json,
+            result_file,
+            observability_file,
+            observability_syntropic_file,
+        ),
+        Cmd::ClaudeTranscript {
+            transcript,
+            run_id,
+            json,
+            result_file,
+            observability_file,
+            observability_syntropic_file,
+        } => handle_claude_transcript(
+            transcript,
+            run_id,
+            json,
+            result_file,
+            observability_file,
+            observability_syntropic_file,
+        ),
+        Cmd::LangFuseTrace {
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            from_start_time,
+            to_start_time,
+            fields,
+            limit,
+            include_scores,
+            score_limit,
+            api,
+            output,
+        } => handle_langfuse_trace(
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            from_start_time,
+            to_start_time,
+            fields,
+            limit,
+            include_scores,
+            score_limit,
+            api,
+            output,
+        ),
+        Cmd::LangFuseTraces {
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
+            output,
+        } => handle_langfuse_traces(
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
+            output,
+        ),
+        Cmd::LangFuseSessions {
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
+            include_scores,
+            score_limit,
+            output,
+        } => handle_langfuse_sessions(
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            limit,
+            page,
+            harness,
+            provider,
+            model,
+            environment,
+            include_scores,
+            score_limit,
+            output,
+        ),
+        Cmd::LangFuseScore {
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            name,
+            value,
+            data_type,
+            comment,
+            metadata_json,
+            score_id,
+            environment,
+            output,
+        } => handle_langfuse_score(
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            name,
+            value,
+            data_type,
+            comment,
+            metadata_json,
+            score_id,
+            environment,
+            output,
+        ),
+        Cmd::LangFuseScores {
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            score_ids,
+            name,
+            data_type,
+            limit,
+            page,
+            output,
+        } => handle_langfuse_scores(
+            trace_id,
+            run_id,
+            langfuse_base_url,
+            public_key_env,
+            secret_key_env,
+            score_ids,
+            name,
+            data_type,
+            limit,
+            page,
+            output,
         ),
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod cli_tests {
     use super::*;
 
     #[test]
-    fn build_run_spec_maps_timeout_to_limits_timeout_s() {
-        let spec = build_run_spec(
-            PathBuf::from("/recipes/hello"),
-            "do the thing".to_string(),
-            Some(12.5),
+    fn cli_exporters_include_file_when_configured() {
+        let exporters = build_observability_exporters(
+            Some(PathBuf::from("/tmp/events.jsonl")),
+            None,
+            "local events",
         );
-        let limits = spec.limits.expect("timeout should populate limits");
-        assert_eq!(limits.timeout_s, Some(12.5));
-        assert_eq!(limits.token_budget, None);
+
+        assert_eq!(exporters.len(), 1);
+        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
     }
 
     #[test]
-    fn parse_positive_timeout_accepts_a_finite_positive_value() {
-        assert_eq!(parse_positive_timeout("2.5"), Ok(2.5));
+    fn cli_exporters_include_syntropic_jsonl_when_configured() {
+        let exporters = build_observability_exporters(
+            Some(PathBuf::from("/tmp/events.jsonl")),
+            Some(PathBuf::from("/tmp/syntropic-events.jsonl")),
+            "local events",
+        );
+
+        assert_eq!(exporters.len(), 2);
+        assert!(matches!(exporters[0], ObservabilityExporter::File { .. }));
+        match &exporters[1] {
+            ObservabilityExporter::SyntropicJsonl { path, label } => {
+                assert_eq!(path, &PathBuf::from("/tmp/syntropic-events.jsonl"));
+                assert_eq!(label.as_deref(), Some("Syntropic137 events"));
+            }
+            ObservabilityExporter::File { .. } => panic!("expected Syntropic137 exporter"),
+        }
+    }
+
+    #[test]
+    fn codex_exec_model_prefers_explicit_model() {
+        assert_eq!(
+            resolve_codex_exec_model(Some(" gpt-explicit ".to_string())).as_deref(),
+            Some("gpt-explicit")
+        );
+    }
+
+    #[test]
+    fn codex_config_model_reads_top_level_model_only() {
+        let raw = r#"
+            # Codex account default
+            model = "gpt-5.5"
+
+            [profiles.fast]
+            model = "gpt-4.1"
+        "#;
+
+        assert_eq!(parse_codex_config_model(raw).as_deref(), Some("gpt-5.5"));
+    }
+
+    #[test]
+    fn codex_config_model_ignores_profile_only_model() {
+        let raw = r#"
+            [profiles.fast]
+            model = "gpt-4.1"
+        "#;
+
+        assert_eq!(parse_codex_config_model(raw), None);
+    }
+
+    #[test]
+    fn codex_exec_model_strips_openai_recipe_prefix() {
+        assert_eq!(
+            codex_model_for_exec("openai/gpt-5.5").as_deref(),
+            Some("gpt-5.5")
+        );
+        assert_eq!(
+            codex_model_for_exec(" gpt-5.5 ").as_deref(),
+            Some("gpt-5.5")
+        );
+        assert_eq!(codex_model_for_exec("  "), None);
+    }
+
+    #[test]
+    fn run_cli_accepts_codex_exec_mode() {
+        let cli = Cli::parse_from([
+            "itmux",
+            "run",
+            "--recipe",
+            "/tmp/recipe",
+            "--task",
+            "hello",
+            "--codex-mode",
+            "exec",
+            "--codex-bin",
+            "codex-dev",
+            "--codex-sandbox",
+            "workspace-write",
+        ]);
+        match cli.cmd {
+            Cmd::Run {
+                codex_mode,
+                codex_bin,
+                codex_sandbox,
+                ..
+            } => {
+                assert_eq!(codex_mode, CodexRunMode::Exec);
+                assert_eq!(codex_bin, "codex-dev");
+                assert_eq!(codex_sandbox, "workspace-write");
+            }
+            other => panic!("expected run command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn run_dispatch_only_uses_exec_for_codex_recipes() {
+        assert_eq!(
+            select_run_dispatch(Agent::Codex, CodexRunMode::Exec),
+            RunDispatch::CodexExec
+        );
+        assert_eq!(
+            select_run_dispatch(Agent::Codex, CodexRunMode::Tui),
+            RunDispatch::WorkspaceTui
+        );
+        assert_eq!(
+            select_run_dispatch(Agent::Claude, CodexRunMode::Exec),
+            RunDispatch::AgentMismatch
+        );
+        assert_eq!(
+            select_run_dispatch(Agent::Claude, CodexRunMode::Tui),
+            RunDispatch::WorkspaceTui
+        );
+    }
+
+    #[test]
+    fn run_cli_timeout_maps_to_the_contract_limit() {
+        let cli = Cli::parse_from([
+            "itmux",
+            "run",
+            "--recipe",
+            "/tmp/recipe",
+            "--task",
+            "hello",
+            "--timeout",
+            "12.5",
+        ]);
+        match cli.cmd {
+            Cmd::Run { timeout, .. } => assert_eq!(timeout, Some(12.5)),
+            other => panic!("expected run command, got {other:?}"),
+        }
     }
 
     #[test]
@@ -728,15 +1870,5 @@ mod tests {
                 "expected {bad:?} to be rejected"
             );
         }
-    }
-
-    #[test]
-    fn build_run_spec_without_timeout_leaves_limits_none() {
-        let spec = build_run_spec(
-            PathBuf::from("/recipes/hello"),
-            "do the thing".to_string(),
-            None,
-        );
-        assert!(spec.limits.is_none());
     }
 }

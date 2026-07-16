@@ -1,0 +1,88 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/traces?limit=10&page=1",
+    "limit": 10,
+    "page": 1,
+    "harness": "codex"
+  },
+  "summary": {
+    "page": 1,
+    "limit": 10,
+    "returned_count": 3,
+    "backend_total_items": 17,
+    "backend_total_pages": 2,
+    "filters": {
+      "harness": "codex",
+      "provider": null,
+      "model": null,
+      "environment": null
+    },
+    "harnesses": [
+      "codex"
+    ],
+    "providers": [
+      "openai"
+    ],
+    "models": [
+      "gpt-5.5"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "total_cost": 0.164485,
+    "traces": [
+      {
+        "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+        "run_id": "run-f7ae62c8",
+        "session_id": "run-f7ae62c8",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:26:12.000Z",
+        "created_at": "2026-07-08T03:26:14.571Z",
+        "updated_at": "2026-07-08T03:26:14.584Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "total_cost": 0.07996,
+        "latency_s": 2.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/fe7564993ed4fa5634428123b0f44ccf"
+      },
+      {
+        "trace_id": "edc4d1b77ac6b59a530c5a0014a0707b",
+        "run_id": "run-40ceea48",
+        "session_id": "run-40ceea48",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:41:51.000Z",
+        "created_at": "2026-07-08T02:41:54.666Z",
+        "updated_at": "2026-07-08T02:41:54.675Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "total_cost": 0.084525,
+        "latency_s": 3.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/edc4d1b77ac6b59a530c5a0014a0707b"
+      },
+      {
+        "trace_id": "6f59f531212bf388960195b763d78245",
+        "run_id": "run-00411d68",
+        "session_id": "run-00411d68",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:39:55.000Z",
+        "created_at": "2026-07-08T02:39:58.601Z",
+        "updated_at": "2026-07-08T02:39:58.618Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 3.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/6f59f531212bf388960195b763d78245"
+      }
+    ]
+  }
+}

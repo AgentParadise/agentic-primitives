@@ -1,0 +1,6 @@
+{"run_id":"run-f7ae62c8","seq":0,"ts":"2026-07-08T03:26:12Z","type":"tool_start","tool_name":"codex_exec.thread","tool_input":{"thread_id":"019f3fc2-ffbc-7ed0-b4fa-6276137475fd"}}
+{"run_id":"run-f7ae62c8","seq":1,"ts":"2026-07-08T03:26:12Z","type":"tool_start","tool_name":"codex_exec.turn","tool_input":null}
+{"run_id":"run-f7ae62c8","seq":2,"ts":"2026-07-08T03:26:14Z","type":"tool_end","tool_name":"codex_exec.item.agent_message","success":true,"output_summary":"CODEX_LANGFUSE_TOTAL_FIXED_OK"}
+{"run_id":"run-f7ae62c8","seq":3,"ts":"2026-07-08T03:26:14Z","type":"tool_end","tool_name":"codex_exec.turn","success":true,"output_summary":"turn completed"}
+{"run_id":"run-f7ae62c8","seq":4,"ts":"2026-07-08T03:26:14Z","type":"token_usage","input_tokens":15920,"output_tokens":12,"cached_input_tokens":9600,"reasoning_output_tokens":0,"cost_usd":null,"harness":"codex","provider":"openai","model":"gpt-5.5"}
+{"run_id":"run-f7ae62c8","seq":5,"ts":"2026-07-08T03:26:14Z","type":"session_end","outcome":{"success":true,"summary":"codex exec completed successfully"}}

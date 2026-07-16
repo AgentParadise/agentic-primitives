@@ -1,0 +1,41 @@
+{
+  "tools": {
+    "claude": {
+      "present": true,
+      "path": "/Users/neural/.local/bin/claude"
+    },
+    "codex": {
+      "present": true,
+      "path": "/opt/homebrew/bin/codex"
+    },
+    "node": {
+      "present": true,
+      "path": "/Users/neural/.nvm/versions/node/v22.17.1/bin/node",
+      "major": 22,
+      "node22_plus": true
+    },
+    "uv": {
+      "present": true,
+      "path": "/Users/neural/.local/bin/uv"
+    },
+    "python3": {
+      "present": true,
+      "path": "/Users/neural/.pyenv/shims/python3"
+    },
+    "cargo": {
+      "present": true,
+      "path": "/Users/neural/.cargo/bin/cargo"
+    }
+  },
+  "fanout": {
+    "file_jsonl_supported": true,
+    "syntropic_jsonl_supported": true,
+    "mcp_server_present": true
+  },
+  "guard": {
+    "trace_to_langfuse_suppression_supported": true,
+    "force_flag_supported": true,
+    "focused_test_status": "pass",
+    "focused_test_detail": "cli_exporters tests passed"
+  }
+}

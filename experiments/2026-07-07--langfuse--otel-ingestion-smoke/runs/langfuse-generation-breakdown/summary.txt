@@ -1,0 +1,30 @@
+Generation cost breakdown evidence
+
+Commands:
+- itmux langfuse-trace --api legacy-trace --output summary --include-scores --score-limit 10 --run-id run-f7ae62c8
+- itmux langfuse-trace --api legacy-trace --output summary --run-id run-f07cba88
+
+Codex trace:
+- harness: codex
+- provider: openai
+- model: gpt-5.5
+- generations: 1
+- tokens: input 15920, output 12, total 15932
+- cached input tokens: 9600
+- cost: input 0.0796 USD, output 0.00036 USD, total 0.07996 USD
+- score included: agentic.learning_loop_probe=true
+
+Claude trace:
+- harness: claude
+- provider: anthropic
+- model: claude-sonnet-4-6
+- generations: 2
+- tokens: input 4, output 117, total 31789
+- cached input tokens by sequence: 15770, 15898
+- costs by sequence: 0.001524 USD, 0.000243 USD
+- total cost: 0.001767 USD
+
+Artifacts:
+- codex-generation-summary.json
+- claude-generation-summary.json
+- summary.json

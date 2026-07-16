@@ -1,0 +1,25 @@
+{
+  "result": {
+    "success": true,
+    "summary": "codex exec completed successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "{\"type\":\"thread.started\",\"thread_id\":\"019f3dc7-e99f-7922-a4fe-2cedf0adb8f8\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"CODEX_EXEC_WIRING_OK\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":15919,\"cached_input_tokens\":9600,\"output_tokens\":11,\"reasoning_output_tokens\":0}}\n\n[stderr]\nReading additional input from stdin...\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--observability--codex-exec-observer-wiring/runs/events.jsonl",
+        "events_exported": 6,
+        "links": [
+          {
+            "label": "codex exec events",
+            "uri": "experiments/2026-07-07--observability--codex-exec-observer-wiring/runs/events.jsonl"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,588 @@
+{
+  "ok": true,
+  "request": {
+    "api": "legacy_trace",
+    "endpoint": "http://localhost:3000/api/public/traces/a7d70dbd4b8024793804ebf8a7b35050",
+    "trace_id": "a7d70dbd4b8024793804ebf8a7b35050",
+    "run_id": "run-08ac78b8",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 20,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
+  },
+  "summary": {
+    "trace_id": "a7d70dbd4b8024793804ebf8a7b35050",
+    "trace_name": "agentic_primitives.run",
+    "session_id": "run-08ac78b8",
+    "environment": "local-macbook",
+    "observation_count": 7,
+    "observation_names": [
+      "agentic_primitives.run",
+      "session_end",
+      "token_usage",
+      "tool_end",
+      "tool_start"
+    ],
+    "observation_types": [
+      "GENERATION",
+      "SPAN"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "harnesses": [
+      "codex"
+    ],
+    "providers": [
+      "openai"
+    ],
+    "models": [
+      "clyrjp56f0000t0mzapoocd7u",
+      "gpt-4o-mini"
+    ],
+    "usage": {
+      "input_tokens": 20,
+      "output_tokens": 6,
+      "total_tokens": 26
+    },
+    "cost": {
+      "calculated_total_usd": 3.299999e-6
+    }
+  },
+  "response": {
+    "id": "a7d70dbd4b8024793804ebf8a7b35050",
+    "projectId": "agentic-primitives-local-project",
+    "name": "agentic_primitives.run",
+    "timestamp": "2026-07-08T01:12:42.000Z",
+    "environment": "local-macbook",
+    "tags": [
+      "agentic-primitives",
+      "harness:codex",
+      "itmux"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": null,
+    "sessionId": "run-08ac78b8",
+    "public": false,
+    "input": null,
+    "output": null,
+    "metadata": {
+      "resourceAttributes": {
+        "service.name": "agentic-primitives",
+        "deployment.environment.name": "local-macbook",
+        "langfuse.environment": "local-macbook"
+      },
+      "scope": {
+        "name": "itmux",
+        "attributes": {}
+      },
+      "event_type": "token_usage",
+      "harness": "codex",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "run_id": "run-08ac78b8",
+      "observer": "itmux",
+      "attributes": {
+        "session.id": "run-08ac78b8",
+        "langfuse.session.id": "run-08ac78b8",
+        "langfuse.trace.name": "agentic_primitives.run",
+        "langfuse.trace.tags": "agentic-primitives,itmux"
+      }
+    },
+    "createdAt": "2026-07-08T01:12:42.897Z",
+    "updatedAt": "2026-07-08T01:12:42.911Z",
+    "externalId": null,
+    "scores": [],
+    "latency": 0.001,
+    "observations": [
+      {
+        "id": "d43e1af0448dcb36",
+        "traceId": "a7d70dbd4b8024793804ebf8a7b35050",
+        "startTime": "2026-07-08T01:12:42.000Z",
+        "endTime": "2026-07-08T01:12:42.001Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "25f7afd680f1afbb",
+        "type": "SPAN",
+        "environment": "local-macbook",
+        "name": "tool_start",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T01:12:42.893Z",
+        "updatedAt": "2026-07-08T01:12:42.904Z",
+        "input": null,
+        "output": null,
+        "metadata": {
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "agentic.event.type": "tool_start",
+            "agentic.event.seq": "0",
+            "agentic.tool.name": "codex_exec.thread",
+            "agentic.tool.input_json": "{\"thread_id\":\"synthetic-thread\"}"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": null,
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.001,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "d43e1ef0448dd202",
+        "traceId": "a7d70dbd4b8024793804ebf8a7b35050",
+        "startTime": "2026-07-08T01:12:42.000Z",
+        "endTime": "2026-07-08T01:12:42.001Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "25f7afd680f1afbb",
+        "type": "GENERATION",
+        "environment": "local-macbook",
+        "name": "token_usage",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T01:12:42.893Z",
+        "updatedAt": "2026-07-08T01:12:42.903Z",
+        "input": null,
+        "output": null,
+        "metadata": {
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "agentic.event.type": "token_usage",
+            "agentic.event.seq": "4",
+            "gen_ai.usage.prompt_tokens": "10",
+            "gen_ai.usage.completion_tokens": "3",
+            "gen_ai.usage.total_tokens": "13",
+            "llm.usage.prompt_tokens": "10",
+            "llm.usage.completion_tokens": "3",
+            "llm.usage.total_tokens": "13",
+            "agentic.usage.input_tokens": "10",
+            "agentic.usage.output_tokens": "3",
+            "gen_ai.usage.cached_prompt_tokens": "0",
+            "agentic.usage.cached_input_tokens": "0",
+            "gen_ai.usage.reasoning_completion_tokens": "0",
+            "agentic.usage.reasoning_output_tokens": "0",
+            "agentic.harness": "codex",
+            "langfuse.trace.tags": "agentic-primitives,itmux,harness:codex",
+            "gen_ai.system": "openai",
+            "agentic.provider": "openai",
+            "gen_ai.request.model": "gpt-4o-mini",
+            "gen_ai.response.model": "gpt-4o-mini",
+            "llm.request.model": "gpt-4o-mini",
+            "agentic.model": "gpt-4o-mini"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "model": "gpt-4o-mini",
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.001,
+        "timeToFirstToken": null,
+        "usageDetails": {
+          "cached_prompt_tokens": 0,
+          "reasoning_completion_tokens": 0,
+          "input": 10,
+          "output": 3,
+          "total": 13
+        },
+        "costDetails": {
+          "input": 1.5e-6,
+          "output": 1.8e-6,
+          "total": 3.299999e-6
+        },
+        "usagePricingTierId": "clyrjp56f0000t0mzapoocd7u_tier_default",
+        "usagePricingTierName": "Standard",
+        "inputPrice": 1.5e-7,
+        "outputPrice": 6e-7,
+        "totalPrice": 0,
+        "calculatedInputCost": 1.5e-6,
+        "calculatedOutputCost": 1.8e-6,
+        "calculatedTotalCost": 3.299999e-6,
+        "unit": "TOKENS",
+        "promptTokens": 10,
+        "completionTokens": 3,
+        "totalTokens": 13,
+        "modelId": "clyrjp56f0000t0mzapoocd7u",
+        "usage": {
+          "unit": "TOKENS",
+          "input": 10,
+          "output": 3,
+          "total": 13
+        }
+      },
+      {
+        "id": "d43e18f0448dc7d0",
+        "traceId": "a7d70dbd4b8024793804ebf8a7b35050",
+        "startTime": "2026-07-08T01:12:42.000Z",
+        "endTime": "2026-07-08T01:12:42.001Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "25f7afd680f1afbb",
+        "type": "SPAN",
+        "environment": "local-macbook",
+        "name": "tool_end",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T01:12:42.893Z",
+        "updatedAt": "2026-07-08T01:12:42.903Z",
+        "input": null,
+        "output": null,
+        "metadata": {
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "agentic.event.type": "tool_end",
+            "agentic.event.seq": "2",
+            "agentic.tool.name": "codex_exec.item.agent_message",
+            "agentic.tool.success": "true",
+            "agentic.tool.output_summary": "SYNTHETIC_CODEX_OK"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": null,
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.001,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "d43e1bf0448dcce9",
+        "traceId": "a7d70dbd4b8024793804ebf8a7b35050",
+        "startTime": "2026-07-08T01:12:42.000Z",
+        "endTime": "2026-07-08T01:12:42.001Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "25f7afd680f1afbb",
+        "type": "SPAN",
+        "environment": "local-macbook",
+        "name": "tool_start",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T01:12:42.893Z",
+        "updatedAt": "2026-07-08T01:12:42.903Z",
+        "input": null,
+        "output": null,
+        "metadata": {
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "agentic.event.type": "tool_start",
+            "agentic.event.seq": "1",
+            "agentic.tool.name": "codex_exec.turn",
+            "agentic.tool.input_json": "null"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": null,
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.001,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "d43e1ff0448dd3b5",
+        "traceId": "a7d70dbd4b8024793804ebf8a7b35050",
+        "startTime": "2026-07-08T01:12:42.000Z",
+        "endTime": "2026-07-08T01:12:42.001Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "25f7afd680f1afbb",
+        "type": "SPAN",
+        "environment": "local-macbook",
+        "name": "session_end",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T01:12:42.893Z",
+        "updatedAt": "2026-07-08T01:12:42.903Z",
+        "input": null,
+        "output": null,
+        "metadata": {
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "agentic.event.type": "session_end",
+            "agentic.event.seq": "5",
+            "agentic.outcome.success": "true",
+            "agentic.outcome.summary": "codex exec completed successfully"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": null,
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.001,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "25f7afd680f1afbb",
+        "traceId": "a7d70dbd4b8024793804ebf8a7b35050",
+        "startTime": "2026-07-08T01:12:42.000Z",
+        "endTime": "2026-07-08T01:12:42.001Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": null,
+        "type": "SPAN",
+        "environment": "local-macbook",
+        "name": "agentic_primitives.run",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T01:12:42.893Z",
+        "updatedAt": "2026-07-08T01:12:42.902Z",
+        "input": null,
+        "output": null,
+        "metadata": {
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "langfuse.session.id": "run-08ac78b8",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": null,
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.001,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "d43e19f0448dc983",
+        "traceId": "a7d70dbd4b8024793804ebf8a7b35050",
+        "startTime": "2026-07-08T01:12:42.000Z",
+        "endTime": "2026-07-08T01:12:42.001Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "25f7afd680f1afbb",
+        "type": "SPAN",
+        "environment": "local-macbook",
+        "name": "tool_end",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T01:12:42.893Z",
+        "updatedAt": "2026-07-08T01:12:42.902Z",
+        "input": null,
+        "output": null,
+        "metadata": {
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "agentic.event.type": "tool_end",
+            "agentic.event.seq": "3",
+            "agentic.tool.name": "codex_exec.turn",
+            "agentic.tool.success": "true",
+            "agentic.tool.output_summary": "turn completed"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": null,
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.001,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "htmlPath": "/project/agentic-primitives-local-project/traces/a7d70dbd4b8024793804ebf8a7b35050",
+    "totalCost": 3.299999e-6
+  }
+}

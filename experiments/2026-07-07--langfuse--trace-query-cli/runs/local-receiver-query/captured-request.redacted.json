@@ -1,0 +1,6 @@
+{
+  "authorization_matches_expected": true,
+  "authorization_redacted": "<present>",
+  "method": "GET",
+  "path": "/api/public/v2/observations?traceId=abc123&fromStartTime=2026-07-07T20%3A00%3A00Z&toStartTime=2026-07-07T21%3A00%3A00Z&fields=core%2Cbasic%2Cusage%2Ctrace_context&limit=25"
+}

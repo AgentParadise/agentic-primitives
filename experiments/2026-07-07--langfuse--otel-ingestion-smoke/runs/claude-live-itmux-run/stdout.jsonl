@@ -1,0 +1,15 @@
+{"run_id":"run-0b3f4760","seq":0,"ts":"2026-07-08T01:49:14Z","type":"tool_start","tool_name":"provision","tool_input":null}
+{"run_id":"run-0b3f4760","seq":1,"ts":"2026-07-08T01:49:16Z","type":"tool_end","tool_name":"provision","success":true,"output_summary":null}
+{"run_id":"run-0b3f4760","seq":2,"ts":"2026-07-08T01:49:16Z","type":"tool_start","tool_name":"launch","tool_input":null}
+{"run_id":"run-0b3f4760","seq":3,"ts":"2026-07-08T01:49:16Z","type":"tool_end","tool_name":"launch","success":true,"output_summary":null}
+{"run_id":"run-0b3f4760","seq":4,"ts":"2026-07-08T01:49:16Z","type":"tool_start","tool_name":"submit","tool_input":null}
+{"run_id":"run-0b3f4760","seq":5,"ts":"2026-07-08T01:49:16Z","type":"tool_end","tool_name":"submit","success":true,"output_summary":null}
+{"run_id":"run-0b3f4760","seq":6,"ts":"2026-07-08T01:49:16Z","type":"tool_start","tool_name":"await","tool_input":null}
+{"run_id":"run-0b3f4760","seq":7,"ts":"2026-07-08T01:49:22Z","type":"tool_end","tool_name":"await","success":true,"output_summary":null}
+{"run_id":"run-0b3f4760","seq":8,"ts":"2026-07-08T01:49:22Z","type":"tool_start","tool_name":"capture","tool_input":null}
+{"run_id":"run-0b3f4760","seq":9,"ts":"2026-07-08T01:49:22Z","type":"tool_end","tool_name":"capture","success":true,"output_summary":null}
+{"run_id":"run-0b3f4760","seq":10,"ts":"2026-07-08T01:49:22Z","type":"hook_event","provider":"claude","event_type":"session_started","event":{"event_type":"session_started","timestamp":"2026-07-08T01:49:16.223022+00:00","session_id":"9b0b945e-e1e7-4b5e-8b72-232d515cc641","provider":"claude","context":{"source":"startup"},"metadata":{"transcript_path":"/home/agent/.claude/projects/-workspace/9b0b945e-e1e7-4b5e-8b72-232d515cc641.jsonl","cwd":"/workspace","permission_mode":null}}}
+{"run_id":"run-0b3f4760","seq":11,"ts":"2026-07-08T01:49:22Z","type":"hook_event","provider":"claude","event_type":"user_prompt_submitted","event":{"event_type":"user_prompt_submitted","timestamp":"2026-07-08T01:49:16.795666+00:00","session_id":"9b0b945e-e1e7-4b5e-8b72-232d515cc641","provider":"claude","context":{},"redacted":true}}
+{"run_id":"run-0b3f4760","seq":12,"ts":"2026-07-08T01:49:22Z","type":"hook_event","provider":"claude","event_type":"agent_stopped","event":{"event_type":"agent_stopped","timestamp":"2026-07-08T01:49:19.890752+00:00","session_id":"9b0b945e-e1e7-4b5e-8b72-232d515cc641","provider":"claude","context":{"reason":"normal"},"metadata":null}}
+{"run_id":"run-0b3f4760","seq":13,"ts":"2026-07-08T01:49:22Z","type":"token_usage","input_tokens":3,"output_tokens":15,"cached_input_tokens":15719,"reasoning_output_tokens":null,"cost_usd":null,"harness":"claude","provider":"anthropic","model":"claude-sonnet-4-6"}
+{"run_id":"run-0b3f4760","seq":14,"ts":"2026-07-08T01:49:22Z","type":"session_end","outcome":{"success":true,"summary":"agent settled to a ready state with no error markers (liveness floor; true task-completion detection is a known interactive-TUI limit)"}}

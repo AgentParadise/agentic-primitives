@@ -1,0 +1,14 @@
+{
+  "auth_value_redacted": "<redacted>",
+  "authorization_matches_expected": true,
+  "authorization_scheme": "Basic",
+  "body_len": 19,
+  "body_non_empty": true,
+  "content_type": "application/x-protobuf",
+  "content_type_matches_expected": true,
+  "expected_path": "/api/public/otel/v1/traces",
+  "method": "POST",
+  "path": "/api/public/otel/v1/traces",
+  "path_matches_expected": true,
+  "received_at_unix": 1783450727.475598
+}

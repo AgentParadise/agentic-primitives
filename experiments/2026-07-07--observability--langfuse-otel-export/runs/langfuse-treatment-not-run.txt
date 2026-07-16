@@ -1,0 +1,1 @@
+not run: no LangFuse/OTEL exporter exists in current ObservabilityExporter enum, and LangFuse credentials/env are absent.

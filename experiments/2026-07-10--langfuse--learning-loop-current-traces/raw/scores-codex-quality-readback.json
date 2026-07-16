@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/scores?limit=20&page=1&traceId=b928a86e0c44784896a2224778c339c4&name=agentic.learning_loop_trace_quality",
+    "trace_id": "b928a86e0c44784896a2224778c339c4",
+    "name": "agentic.learning_loop_trace_quality",
+    "limit": 20,
+    "page": 1
+  },
+  "summary": {
+    "requested_trace_id": "b928a86e0c44784896a2224778c339c4",
+    "requested_run_id": null,
+    "requested_name": "agentic.learning_loop_trace_quality",
+    "requested_score_ids": null,
+    "returned_count": 0,
+    "total_items": 0,
+    "scores": []
+  }
+}

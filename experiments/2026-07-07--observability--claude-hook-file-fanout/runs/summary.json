@@ -1,0 +1,40 @@
+[
+  {
+    "probe": "baseline",
+    "exit": "exit_code:3",
+    "stdout_events": 11,
+    "exported_events": 11,
+    "event_types": [
+      "session_end",
+      "tool_end",
+      "tool_start"
+    ],
+    "tool_events": 10,
+    "session_events": 1,
+    "result_success": false,
+    "result_summary": "harness hard-error detected (error banner \"API Error\")",
+    "exporter_status": "ok",
+    "exporter_event_count": 11,
+    "launch_contains_plugin_dir": false,
+    "session_contains_api_401": true
+  },
+  {
+    "probe": "treatment",
+    "exit": "exit_code:3",
+    "stdout_events": 11,
+    "exported_events": 11,
+    "event_types": [
+      "session_end",
+      "tool_end",
+      "tool_start"
+    ],
+    "tool_events": 10,
+    "session_events": 1,
+    "result_success": false,
+    "result_summary": "harness hard-error detected (error banner \"API Error\")",
+    "exporter_status": "ok",
+    "exporter_event_count": 11,
+    "launch_contains_plugin_dir": true,
+    "session_contains_api_401": true
+  }
+]

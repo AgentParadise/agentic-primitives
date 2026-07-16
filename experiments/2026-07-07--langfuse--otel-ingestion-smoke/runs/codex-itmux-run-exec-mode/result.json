@@ -1,0 +1,33 @@
+{
+  "result": {
+    "success": true,
+    "summary": "codex exec completed successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "{\"type\":\"thread.started\",\"thread_id\":\"019f4013-e760-7d80-9629-2dc783b7b580\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"CODEX_ITMUX_RUN_EXEC_MODE_OK\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":15931,\"cached_input_tokens\":4992,\"output_tokens\":12,\"reasoning_output_tokens\":0}}\n\n[stderr]\nReading additional input from stdin...\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/codex-itmux-run-exec-mode/events.jsonl",
+        "events_exported": 6,
+        "links": [
+          {
+            "label": "itmux run events",
+            "uri": "experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/codex-itmux-run-exec-mode/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "ok",
+        "target": "http://localhost:3000/api/public/otel/v1/traces",
+        "events_exported": 6,
+        "links": [],
+        "error": null
+      }
+    ]
+  }
+}

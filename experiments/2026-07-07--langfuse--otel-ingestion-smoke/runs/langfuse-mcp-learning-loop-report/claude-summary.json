@@ -1,0 +1,242 @@
+{
+  "agent_tools": {
+    "end_count": 1,
+    "failure_count": 0,
+    "start_count": 1,
+    "success_count": 1
+  },
+  "backend_total_items": 19,
+  "cost": {
+    "calculated_total_usd": 0.0020009999999999997
+  },
+  "errors": [],
+  "generations": {
+    "count": 3
+  },
+  "harnesses": [
+    "claude"
+  ],
+  "models": [
+    "claude-sonnet-4-6"
+  ],
+  "providers": [
+    "anthropic"
+  ],
+  "trace_count": 2,
+  "traces": [
+    {
+      "agent_tools": {
+        "by_name": {},
+        "end_count": 0,
+        "failure_count": 0,
+        "names": [],
+        "start_count": 0,
+        "success_count": 0
+      },
+      "cost": {
+        "calculated_total_usd": 0.000234
+      },
+      "generations": {
+        "by_model": [
+          {
+            "calculated_total_usd": 0.000234,
+            "count": 1,
+            "harnesses": [
+              "claude"
+            ],
+            "input_tokens": 3,
+            "model": "claude-sonnet-4-6",
+            "model_ids": [
+              "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed"
+            ],
+            "output_tokens": 15,
+            "providers": [
+              "anthropic"
+            ],
+            "total_tokens": 15737
+          }
+        ],
+        "calculated_total_usd": 0.000234,
+        "count": 1,
+        "sequence": [
+          {
+            "cached_input_tokens": 15719,
+            "calculated_input_cost_usd": 9e-06,
+            "calculated_output_cost_usd": 0.000225,
+            "calculated_total_cost_usd": 0.000234,
+            "harness": "claude",
+            "input_tokens": 3,
+            "model": "claude-sonnet-4-6",
+            "model_id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed",
+            "name": "token_usage",
+            "observation_id": "f84344d909845b43",
+            "output_tokens": 15,
+            "pricing_tier": "Standard",
+            "provider": "anthropic",
+            "reasoning_output_tokens": null,
+            "seq": 10,
+            "total_tokens": 15737,
+            "unit": "TOKENS"
+          }
+        ],
+        "total_tokens": 15737
+      },
+      "harness_tools": {
+        "by_name": {},
+        "end_count": 0,
+        "failure_count": 0,
+        "names": [],
+        "start_count": 0,
+        "success_count": 0
+      },
+      "harnesses": [
+        "claude"
+      ],
+      "models": [
+        "claude-sonnet-4-6"
+      ],
+      "providers": [
+        "anthropic"
+      ],
+      "run_id": "run-3f9dfb58",
+      "scores": {
+        "requested_name": null,
+        "requested_run_id": "run-3f9dfb58",
+        "requested_score_ids": null,
+        "requested_trace_id": "0cea86b285c18bb156f31a00472ffe60",
+        "returned_count": 0,
+        "scores": [],
+        "total_items": 1
+      },
+      "trace_id": "0cea86b285c18bb156f31a00472ffe60",
+      "usage": {
+        "input_tokens": 3,
+        "output_tokens": 15,
+        "total_tokens": 15737
+      }
+    },
+    {
+      "agent_tools": {
+        "by_name": [
+          {
+            "ends": 1,
+            "failures": 0,
+            "name": "Bash",
+            "starts": 1,
+            "successes": 1
+          }
+        ],
+        "end_count": 1,
+        "failure_count": 0,
+        "names": [
+          "Bash"
+        ],
+        "start_count": 1,
+        "success_count": 1
+      },
+      "cost": {
+        "calculated_total_usd": 0.001767
+      },
+      "generations": {
+        "by_model": [
+          {
+            "calculated_total_usd": 0.001767,
+            "count": 2,
+            "harnesses": [
+              "claude"
+            ],
+            "input_tokens": 4,
+            "model": "claude-sonnet-4-6",
+            "model_ids": [
+              "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed"
+            ],
+            "output_tokens": 117,
+            "providers": [
+              "anthropic"
+            ],
+            "total_tokens": 31789
+          }
+        ],
+        "calculated_total_usd": 0.001767,
+        "count": 2,
+        "sequence": [
+          {
+            "cached_input_tokens": 15770,
+            "calculated_input_cost_usd": 9e-06,
+            "calculated_output_cost_usd": 0.001515,
+            "calculated_total_cost_usd": 0.001524,
+            "harness": "claude",
+            "input_tokens": 3,
+            "model": "claude-sonnet-4-6",
+            "model_id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed",
+            "name": "token_usage",
+            "observation_id": "7cf06ed7cfd44dfc",
+            "output_tokens": 101,
+            "pricing_tier": "Standard",
+            "provider": "anthropic",
+            "reasoning_output_tokens": null,
+            "seq": 11,
+            "total_tokens": 15874,
+            "unit": "TOKENS"
+          },
+          {
+            "cached_input_tokens": 15898,
+            "calculated_input_cost_usd": 3e-06,
+            "calculated_output_cost_usd": 0.00024,
+            "calculated_total_cost_usd": 0.000243,
+            "harness": "claude",
+            "input_tokens": 1,
+            "model": "claude-sonnet-4-6",
+            "model_id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed",
+            "name": "token_usage",
+            "observation_id": "7cf06ad7cfd44730",
+            "output_tokens": 16,
+            "pricing_tier": "Standard",
+            "provider": "anthropic",
+            "reasoning_output_tokens": null,
+            "seq": 15,
+            "total_tokens": 15915,
+            "unit": "TOKENS"
+          }
+        ],
+        "total_tokens": 31789
+      },
+      "harness_tools": {
+        "by_name": {},
+        "end_count": 0,
+        "failure_count": 0,
+        "names": [],
+        "start_count": 0,
+        "success_count": 0
+      },
+      "harnesses": [
+        "claude"
+      ],
+      "models": [
+        "claude-sonnet-4-6"
+      ],
+      "providers": [
+        "anthropic"
+      ],
+      "run_id": "run-f07cba88",
+      "scores": {
+        "requested_name": null,
+        "requested_run_id": "run-f07cba88",
+        "requested_score_ids": null,
+        "requested_trace_id": "ca9adeba40ddbc919e94aec818894214",
+        "returned_count": 0,
+        "scores": [],
+        "total_items": 1
+      },
+      "trace_id": "ca9adeba40ddbc919e94aec818894214",
+      "usage": {
+        "input_tokens": 4,
+        "output_tokens": 117,
+        "total_tokens": 31789
+      }
+    }
+  ],
+  "usage": {
+    "total_tokens": 47526
+  }
+}

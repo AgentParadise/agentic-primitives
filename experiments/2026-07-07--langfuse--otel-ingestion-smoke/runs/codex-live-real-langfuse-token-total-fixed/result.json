@@ -1,0 +1,38 @@
+{
+  "result": {
+    "success": true,
+    "summary": "codex exec completed successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "{\"type\":\"thread.started\",\"thread_id\":\"019f3fc2-ffbc-7ed0-b4fa-6276137475fd\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"CODEX_LANGFUSE_TOTAL_FIXED_OK\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":15920,\"cached_input_tokens\":9600,\"output_tokens\":12,\"reasoning_output_tokens\":0}}\n\n[stderr]\nReading additional input from stdin...\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/codex-live-real-langfuse-token-total-fixed/events.jsonl",
+        "events_exported": 6,
+        "links": [
+          {
+            "label": "codex exec events",
+            "uri": "experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/codex-live-real-langfuse-token-total-fixed/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "ok",
+        "target": "http://localhost:3000/api/public/otel/v1/traces",
+        "events_exported": 6,
+        "links": [
+          {
+            "label": "LangFuse trace",
+            "uri": "http://localhost:3000/project/agentic-primitives-local-project/traces/fe7564993ed4fa5634428123b0f44ccf"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

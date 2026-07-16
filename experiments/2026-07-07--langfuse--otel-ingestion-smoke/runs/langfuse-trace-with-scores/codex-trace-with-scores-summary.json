@@ -1,0 +1,360 @@
+{
+  "ok": true,
+  "request": {
+    "api": "legacy_trace",
+    "endpoint": "http://localhost:3000/api/public/traces/fe7564993ed4fa5634428123b0f44ccf",
+    "scores_endpoint": "http://localhost:3000/api/public/scores?limit=10&page=1&traceId=fe7564993ed4fa5634428123b0f44ccf",
+    "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+    "run_id": "run-f7ae62c8",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 100,
+    "include_scores": true,
+    "score_limit": 10,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
+  },
+  "summary": {
+    "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+    "trace_name": "agentic_primitives.run",
+    "session_id": "run-f7ae62c8",
+    "environment": "local-macbook",
+    "observation_count": 7,
+    "observation_names": [
+      "agentic_primitives.run",
+      "session_end",
+      "token_usage",
+      "tool_end",
+      "tool_start"
+    ],
+    "observation_types": [
+      "GENERATION",
+      "SPAN"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "harnesses": [
+      "codex"
+    ],
+    "providers": [
+      "openai"
+    ],
+    "models": [
+      "gpt-5.5"
+    ],
+    "model_ids": [
+      "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+    ],
+    "usage": {
+      "input_tokens": 15920,
+      "output_tokens": 12,
+      "total_tokens": 15932
+    },
+    "cost": {
+      "calculated_total_usd": 0.07996
+    },
+    "events": {
+      "sequence_source": "agentic.event.seq",
+      "category_counts": [
+        {
+          "category": "agent_tool",
+          "count": 1
+        },
+        {
+          "category": "harness_tool",
+          "count": 3
+        },
+        {
+          "category": "root",
+          "count": 1
+        },
+        {
+          "category": "session",
+          "count": 1
+        },
+        {
+          "category": "usage",
+          "count": 1
+        }
+      ],
+      "sequence": [
+        {
+          "seq": 0,
+          "event": "tool_start",
+          "name": "tool_start",
+          "category": "harness_tool",
+          "tool_name": "codex_exec.thread",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 1,
+          "event": "tool_start",
+          "name": "tool_start",
+          "category": "harness_tool",
+          "tool_name": "codex_exec.turn",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 2,
+          "event": "tool_end",
+          "name": "tool_end",
+          "category": "agent_tool",
+          "tool_name": "codex_exec.item.agent_message",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 3,
+          "event": "tool_end",
+          "name": "tool_end",
+          "category": "harness_tool",
+          "tool_name": "codex_exec.turn",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": 4,
+          "event": "token_usage",
+          "name": "token_usage",
+          "category": "usage",
+          "tool_name": null,
+          "harness": "codex",
+          "provider": "openai",
+          "model": "gpt-5.5",
+          "success": null,
+          "total_tokens": 15932,
+          "calculated_total_cost": 0.07996
+        },
+        {
+          "seq": 5,
+          "event": "session_end",
+          "name": "session_end",
+          "category": "session",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": true,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "agentic_primitives.run",
+          "name": "agentic_primitives.run",
+          "category": "root",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "tools": {
+      "start_count": 2,
+      "end_count": 2,
+      "success_count": 2,
+      "failure_count": 0,
+      "names": [
+        "codex_exec.item.agent_message",
+        "codex_exec.thread",
+        "codex_exec.turn"
+      ],
+      "by_name": [
+        {
+          "name": "codex_exec.item.agent_message",
+          "starts": 0,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        },
+        {
+          "name": "codex_exec.thread",
+          "starts": 1,
+          "ends": 0,
+          "successes": 0,
+          "failures": 0
+        },
+        {
+          "name": "codex_exec.turn",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 0,
+          "event": "tool_start",
+          "tool_name": "codex_exec.thread",
+          "success": null
+        },
+        {
+          "seq": 1,
+          "event": "tool_start",
+          "tool_name": "codex_exec.turn",
+          "success": null
+        },
+        {
+          "seq": 2,
+          "event": "tool_end",
+          "tool_name": "codex_exec.item.agent_message",
+          "success": true
+        },
+        {
+          "seq": 3,
+          "event": "tool_end",
+          "tool_name": "codex_exec.turn",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "operations": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "agent_tools": {
+      "start_count": 0,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "codex_exec.item.agent_message"
+      ],
+      "by_name": [
+        {
+          "name": "codex_exec.item.agent_message",
+          "starts": 0,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 2,
+          "event": "tool_end",
+          "tool_name": "codex_exec.item.agent_message",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "harness_tools": {
+      "start_count": 2,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "codex_exec.thread",
+        "codex_exec.turn"
+      ],
+      "by_name": [
+        {
+          "name": "codex_exec.thread",
+          "starts": 1,
+          "ends": 0,
+          "successes": 0,
+          "failures": 0
+        },
+        {
+          "name": "codex_exec.turn",
+          "starts": 1,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": "agentic.event.seq",
+      "sequence": [
+        {
+          "seq": 0,
+          "event": "tool_start",
+          "tool_name": "codex_exec.thread",
+          "success": null
+        },
+        {
+          "seq": 1,
+          "event": "tool_start",
+          "tool_name": "codex_exec.turn",
+          "success": null
+        },
+        {
+          "seq": 3,
+          "event": "tool_end",
+          "tool_name": "codex_exec.turn",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "scores": {
+      "requested_trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+      "requested_run_id": "run-f7ae62c8",
+      "requested_name": null,
+      "requested_score_ids": null,
+      "returned_count": 1,
+      "total_items": 1,
+      "scores": [
+        {
+          "score_id": "agentic-learning-loop-probe-run-f7ae62c8",
+          "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+          "observation_id": null,
+          "name": "agentic.learning_loop_probe",
+          "data_type": "BOOLEAN",
+          "value": 1,
+          "string_value": "True",
+          "source": "API",
+          "environment": "local",
+          "comment": "Local verification that agentic-primitives agents can write learning-loop feedback to LangFuse.",
+          "metadata": {
+            "experiment": "2026-07-07--langfuse--otel-ingestion-smoke",
+            "harness": "codex",
+            "purpose": "learning_loop_writeback"
+          },
+          "created_at": "2026-07-08T04:09:42.075Z",
+          "updated_at": "2026-07-08T04:09:47.111Z",
+          "trace_environment": "local-macbook",
+          "trace_tags": [
+            "agentic-primitives",
+            "harness:codex",
+            "itmux"
+          ]
+        }
+      ]
+    }
+  }
+}

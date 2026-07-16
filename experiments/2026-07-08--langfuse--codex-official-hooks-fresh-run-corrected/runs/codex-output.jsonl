@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"019f4370-6474-74a3-825b-2c70d782f3a5"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc \"printf '%s\\\\n' CODEX_OFFICIAL_HOOKS_READY_1783542866\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc \"printf '%s\\\\n' CODEX_OFFICIAL_HOOKS_READY_1783542866\"","aggregated_output":"CODEX_OFFICIAL_HOOKS_READY_1783542866\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"CODEX_OFFICIAL_HOOKS_READY_1783542866"}}
+{"type":"turn.completed","usage":{"input_tokens":33869,"cached_input_tokens":26368,"output_tokens":81,"reasoning_output_tokens":0}}

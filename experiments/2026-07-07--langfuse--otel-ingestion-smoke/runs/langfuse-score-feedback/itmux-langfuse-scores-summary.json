@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/scores?limit=10&page=1&traceId=fe7564993ed4fa5634428123b0f44ccf&scoreIds=agentic-learning-loop-probe-run-f7ae62c8&name=agentic.learning_loop_probe&dataType=BOOLEAN",
+    "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+    "run_id": "run-f7ae62c8",
+    "score_ids": "agentic-learning-loop-probe-run-f7ae62c8",
+    "name": "agentic.learning_loop_probe",
+    "data_type": "BOOLEAN",
+    "limit": 10,
+    "page": 1
+  },
+  "summary": {
+    "requested_trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+    "requested_run_id": "run-f7ae62c8",
+    "requested_name": "agentic.learning_loop_probe",
+    "requested_score_ids": "agentic-learning-loop-probe-run-f7ae62c8",
+    "returned_count": 1,
+    "total_items": 1,
+    "scores": [
+      {
+        "score_id": "agentic-learning-loop-probe-run-f7ae62c8",
+        "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+        "observation_id": null,
+        "name": "agentic.learning_loop_probe",
+        "data_type": "BOOLEAN",
+        "value": 1,
+        "string_value": "True",
+        "source": "API",
+        "environment": "local",
+        "comment": "Local verification that agentic-primitives agents can write learning-loop feedback to LangFuse.",
+        "metadata": {
+          "experiment": "2026-07-07--langfuse--otel-ingestion-smoke",
+          "harness": "codex",
+          "purpose": "learning_loop_writeback"
+        },
+        "created_at": "2026-07-08T04:09:42.075Z",
+        "updated_at": "2026-07-08T04:09:47.111Z",
+        "trace_environment": "local-macbook",
+        "trace_tags": [
+          "agentic-primitives",
+          "harness:codex",
+          "itmux"
+        ]
+      }
+    ]
+  }
+}

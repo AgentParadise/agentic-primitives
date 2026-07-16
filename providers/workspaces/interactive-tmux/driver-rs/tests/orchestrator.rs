@@ -63,6 +63,7 @@ struct FakeExecutor {
     /// Request a hard cancel BEFORE the run starts (simulates a hard cancel
     /// landing during a blocking provision, before any handle exists).
     pre_cancel_hard: bool,
+    observed_events: Vec<AgentRunEventPayload>,
 }
 
 impl FakeExecutor {
@@ -78,6 +79,7 @@ impl FakeExecutor {
             escalate_at: None,
             escalator: RefCell::new(CancelEscalator::new()),
             pre_cancel_hard: false,
+            observed_events: Vec::new(),
         }
     }
 
@@ -133,8 +135,12 @@ impl RunExecutor for FakeExecutor {
         &mut self,
         _h: &mut Self::Handle,
         _timeout: Option<Duration>,
+        emit_observed: &mut dyn FnMut(Vec<AgentRunEventPayload>),
     ) -> io::Result<AwaitResult> {
         self.step(FakePhase::Await)?;
+        if !self.observed_events.is_empty() {
+            emit_observed(std::mem::take(&mut self.observed_events));
+        }
         Ok(if self.await_timed_out {
             AwaitResult::timeout_never_ready(10.0, self.pane.clone())
         } else {
@@ -169,6 +175,13 @@ impl RunExecutor for FakeExecutor {
         }
     }
 
+    fn drain_observed_events(
+        &mut self,
+        _h: &mut Self::Handle,
+    ) -> io::Result<Vec<AgentRunEventPayload>> {
+        Ok(std::mem::take(&mut self.observed_events))
+    }
+
     fn teardown(&mut self, _h: Self::Handle) -> io::Result<()> {
         self.record.borrow_mut().teardowns += 1;
         if self.teardown_fails {
@@ -192,6 +205,7 @@ fn fake_plan() -> RecipeExecutionPlan {
         claude_plugin_dirs: vec![PathBuf::from("/skills/x")],
         submit_text: "do the task".to_string(),
         subagents: vec![],
+        model_name: "anthropic/claude-opus-4-8".to_string(),
     }
 }
 
@@ -299,6 +313,58 @@ fn happy_path_runs_phases_in_order_and_emits_terminal_session_end() {
     assert!(run.result.result.success);
     assert_eq!(run.result.session_log, "session pane");
     assert!(terminal_outcome(&run.events).success);
+}
+
+#[test]
+fn observed_events_are_emitted_before_terminal_session_end() {
+    let run = drive(|executor| {
+        executor
+            .observed_events
+            .push(AgentRunEventPayload::HookEvent {
+                provider: "fake".to_string(),
+                event_type: "session_started".to_string(),
+                event: serde_json::json!({"event_type": "session_started"}),
+            });
+    });
+
+    assert_seq_monotonic_from_zero(&run.events);
+    assert!(run
+        .events
+        .iter()
+        .any(|event| matches!(event.payload, AgentRunEventPayload::HookEvent { .. })));
+    let await_start = run
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.payload,
+                AgentRunEventPayload::ToolStart { ref tool_name, .. } if tool_name == "await"
+            )
+        })
+        .expect("await starts");
+    let await_end = run
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.payload,
+                AgentRunEventPayload::ToolEnd { ref tool_name, .. } if tool_name == "await"
+            )
+        })
+        .expect("await ends");
+    let observed = run
+        .events
+        .iter()
+        .position(|event| matches!(event.payload, AgentRunEventPayload::HookEvent { .. }))
+        .expect("observed event emitted");
+    assert!(
+        await_start < observed && observed < await_end,
+        "observed event should stream during await, not wait for terminal drain"
+    );
+    assert!(matches!(
+        run.events[run.events.len() - 1].payload,
+        AgentRunEventPayload::SessionEnd { .. }
+    ));
 }
 
 #[test]

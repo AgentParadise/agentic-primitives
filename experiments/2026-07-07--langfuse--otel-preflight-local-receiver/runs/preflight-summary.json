@@ -1,0 +1,37 @@
+{
+  "auth_ok": true,
+  "body_non_empty": true,
+  "classification": "Local OTLP preflight validates endpoint/auth/header/attribute contract; real LangFuse ingestion remains unproven",
+  "content_type_ok": true,
+  "derived_traces_endpoint": "http://127.0.0.1:<port>/api/public/otel/v1/traces",
+  "existing_env_missing": [
+    "LANGFUSE_BASE_URL",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_TRACING_ENVIRONMENT",
+    "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+  ],
+  "method_ok": true,
+  "local_receiver_response_status": 200,
+  "path_ok": true,
+  "redaction_ok": true,
+  "required_attributes": [
+    "service.name",
+    "deployment.environment.name",
+    "langfuse.environment",
+    "session.id",
+    "langfuse.session.id",
+    "langfuse.trace.name",
+    "langfuse.trace.metadata.run_id"
+  ],
+  "required_attributes_present": [
+    "deployment.environment.name",
+    "langfuse.environment",
+    "langfuse.session.id",
+    "langfuse.trace.metadata.run_id",
+    "langfuse.trace.name",
+    "service.name",
+    "session.id"
+  ]
+}

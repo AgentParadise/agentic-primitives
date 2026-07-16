@@ -1,0 +1,51 @@
+{
+  "count": 15,
+  "types": {
+    "tool_start": 5,
+    "tool_end": 5,
+    "hook_event": 3,
+    "token_usage": 1,
+    "session_end": 1
+  },
+  "await_end_seq": 11,
+  "session_end_seq": 14,
+  "observed_before_await_end": [
+    {
+      "seq": 7,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "session_started",
+      "model": null
+    },
+    {
+      "seq": 8,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "user_prompt_submitted",
+      "model": null
+    },
+    {
+      "seq": 9,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "agent_stopped",
+      "model": null
+    },
+    {
+      "seq": 10,
+      "type": "token_usage",
+      "tool_name": null,
+      "event_type": null,
+      "model": "claude-sonnet-4-6"
+    }
+  ],
+  "token_usage_events": [
+    {
+      "seq": 10,
+      "input": 3,
+      "output": 14,
+      "cached": 15718,
+      "model": "claude-sonnet-4-6"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+local_langfuse_http=200
+LANGFUSE_INIT_PROJECT_ID=set
+LANGFUSE_INIT_PROJECT_PUBLIC_KEY=set
+LANGFUSE_INIT_PROJECT_SECRET_KEY=set
+LANGFUSE_INIT_USER_EMAIL=set
+claude_session=official-claude-e2e-1783535611
+codex_session=official-codex-e2e-1783535611
+node22=v22.17.1
+pnpm22_path=/Users/neural/.nvm/versions/node/v22.17.1/bin

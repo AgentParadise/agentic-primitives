@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use itmux::run::contract::{
     AgentRunCredentials, AgentRunEvent, AgentRunEventPayload, AgentRunLimits, AgentRunOutcome,
     AgentRunResult, AgentRunSpec, ClaudeCredentials, CodexCredentials, ObservabilityBundle,
-    ObservabilityExporter,
+    ObservabilityExportReport, ObservabilityExportStatus, ObservabilityExporter, ObservabilityLink,
 };
 
 fn roundtrip<T>(value: &T)
@@ -58,9 +58,9 @@ fn agent_run_spec_round_trips_full() {
                 ("OPENAI_API_KEY".to_string(), "sk-openai-xyz".to_string()),
             ]),
         },
-        observability: vec![ObservabilityExporter {
-            name: "otel".to_string(),
-            config: serde_json::json!({"endpoint": "http://collector:4318"}),
+        observability: vec![ObservabilityExporter::File {
+            path: PathBuf::from("/tmp/itmux-events.jsonl"),
+            label: Some("local events".to_string()),
         }],
         limits: Some(AgentRunLimits {
             timeout_s: Some(120.0),
@@ -175,12 +175,40 @@ fn agent_run_limits_round_trip_and_reject_unknown_field() {
 }
 
 #[test]
-fn observability_exporter_round_trips_with_opaque_config() {
-    let exporter = ObservabilityExporter {
-        name: "otel".to_string(),
-        config: serde_json::json!({"anything": [1, 2, 3]}),
+fn observability_file_exporter_round_trips_with_typed_config() {
+    let exporter = ObservabilityExporter::File {
+        path: PathBuf::from("/tmp/itmux-events.jsonl"),
+        label: Some("local events".to_string()),
     };
     roundtrip(&exporter);
+}
+
+#[test]
+fn observability_syntropic_jsonl_exporter_round_trips_with_typed_config() {
+    let exporter = ObservabilityExporter::SyntropicJsonl {
+        path: PathBuf::from("/tmp/syntropic-events.jsonl"),
+        label: Some("Syntropic137 events".to_string()),
+    };
+    roundtrip(&exporter);
+    assert_eq!(exporter.kind(), "syntropic_jsonl");
+}
+
+#[test]
+fn observability_bundle_reports_exporter_status_and_links() {
+    let bundle = ObservabilityBundle {
+        exporters: vec![ObservabilityExportReport {
+            kind: "file".to_string(),
+            status: ObservabilityExportStatus::Ok,
+            target: Some("/tmp/itmux-events.jsonl".to_string()),
+            events_exported: 7,
+            links: vec![ObservabilityLink {
+                label: "local events".to_string(),
+                uri: "file:///tmp/itmux-events.jsonl".to_string(),
+            }],
+            error: None,
+        }],
+    };
+    roundtrip(&bundle);
 }
 
 #[test]
@@ -206,7 +234,16 @@ fn agent_run_result_round_trips_full_and_rejects_unknown_field() {
         },
         output_artifacts: vec![PathBuf::from("/tmp/out/report.md")],
         session_log: "pane contents here".to_string(),
-        observability: Some(ObservabilityBundle::default()),
+        observability: Some(ObservabilityBundle {
+            exporters: vec![ObservabilityExportReport {
+                kind: "file".to_string(),
+                status: ObservabilityExportStatus::Failed,
+                target: Some("/nope/events.jsonl".to_string()),
+                events_exported: 0,
+                links: vec![],
+                error: Some("permission denied".to_string()),
+            }],
+        }),
     };
     roundtrip(&result);
 
@@ -308,6 +345,8 @@ fn agent_run_event_token_usage_round_trips() {
         "type": "token_usage",
         "input_tokens": 1000,
         "output_tokens": 250,
+        "cached_input_tokens": 700,
+        "reasoning_output_tokens": 50,
         "cost_usd": 0.015
     }"#;
     let event: AgentRunEvent = serde_json::from_str(json).expect("deserialize");
@@ -315,15 +354,131 @@ fn agent_run_event_token_usage_round_trips() {
         AgentRunEventPayload::TokenUsage {
             input_tokens,
             output_tokens,
+            cached_input_tokens,
+            reasoning_output_tokens,
             cost_usd,
+            harness,
+            provider,
+            model,
         } => {
             assert_eq!(*input_tokens, 1000);
             assert_eq!(*output_tokens, 250);
+            assert_eq!(*cached_input_tokens, Some(700));
+            assert_eq!(*reasoning_output_tokens, Some(50));
             assert_eq!(*cost_usd, Some(0.015));
+            assert_eq!(harness, &None);
+            assert_eq!(provider, &None);
+            assert_eq!(model, &None);
         }
         other => panic!("expected TokenUsage, got {other:?}"),
     }
     roundtrip(&event);
+}
+
+#[test]
+fn agent_run_event_token_usage_defaults_harness_metadata() {
+    let json = r#"{
+        "run_id": "run-1",
+        "seq": 2,
+        "ts": "2026-07-07T12:00:02Z",
+        "type": "token_usage",
+        "input_tokens": 1000,
+        "output_tokens": 250
+    }"#;
+    let event: AgentRunEvent = serde_json::from_str(json).expect("deserialize");
+    match &event.payload {
+        AgentRunEventPayload::TokenUsage {
+            cached_input_tokens,
+            reasoning_output_tokens,
+            cost_usd,
+            harness,
+            provider,
+            model,
+            ..
+        } => {
+            assert_eq!(*cached_input_tokens, None);
+            assert_eq!(*reasoning_output_tokens, None);
+            assert_eq!(*cost_usd, None);
+            assert_eq!(harness, &None);
+            assert_eq!(provider, &None);
+            assert_eq!(model, &None);
+        }
+        other => panic!("expected TokenUsage, got {other:?}"),
+    }
+}
+
+#[test]
+fn agent_run_event_token_usage_accepts_claude_harness_metadata() {
+    let json = serde_json::json!({
+        "run_id": "run-claude",
+        "seq": 2,
+        "ts": "2026-07-07T12:00:02Z",
+        "type": "token_usage",
+        "input_tokens": 2000,
+        "output_tokens": 300,
+        "cached_input_tokens": 1200,
+        "reasoning_output_tokens": 0,
+        "cost_usd": 0.0123,
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5-20250929"
+    });
+    let event: AgentRunEvent = serde_json::from_value(json.clone()).expect("deserialize");
+    match &event.payload {
+        AgentRunEventPayload::TokenUsage {
+            input_tokens,
+            output_tokens,
+            cached_input_tokens,
+            reasoning_output_tokens,
+            cost_usd,
+            harness,
+            provider,
+            model,
+        } => {
+            assert_eq!(*input_tokens, 2000);
+            assert_eq!(*output_tokens, 300);
+            assert_eq!(*cached_input_tokens, Some(1200));
+            assert_eq!(*reasoning_output_tokens, Some(0));
+            assert_eq!(*cost_usd, Some(0.0123));
+            assert_eq!(harness.as_deref(), Some("claude"));
+            assert_eq!(provider.as_deref(), Some("anthropic"));
+            assert_eq!(model.as_deref(), Some("claude-sonnet-4-5-20250929"));
+        }
+        other => panic!("expected TokenUsage, got {other:?}"),
+    }
+    assert_eq!(serde_json::to_value(&event).unwrap(), json);
+}
+
+#[test]
+fn agent_run_event_hook_event_round_trips() {
+    let json = serde_json::json!({
+        "run_id": "r1",
+        "seq": 2,
+        "ts": "2026-07-07T00:00:02Z",
+        "type": "hook_event",
+        "provider": "claude",
+        "event_type": "session_started",
+        "event": {
+            "event_type": "session_started",
+            "session_id": "s1",
+            "provider": "claude",
+            "context": {"source": "startup"}
+        }
+    });
+    let event: AgentRunEvent = serde_json::from_value(json.clone()).unwrap();
+    match &event.payload {
+        AgentRunEventPayload::HookEvent {
+            provider,
+            event_type,
+            event,
+        } => {
+            assert_eq!(provider, "claude");
+            assert_eq!(event_type, "session_started");
+            assert_eq!(event["context"]["source"], "startup");
+        }
+        other => panic!("expected HookEvent, got {other:?}"),
+    }
+    assert_eq!(serde_json::to_value(&event).unwrap(), json);
 }
 
 #[test]
@@ -381,7 +536,7 @@ fn agent_run_event_jsonl_stream_of_four_events_parses_line_by_line() {
     let lines = [
         r#"{"run_id":"r1","seq":0,"ts":"2026-07-07T00:00:00Z","type":"tool_start","tool_name":"Read","tool_input":{}}"#,
         r#"{"run_id":"r1","seq":1,"ts":"2026-07-07T00:00:01Z","type":"tool_end","tool_name":"Read","success":true,"output_summary":null}"#,
-        r#"{"run_id":"r1","seq":2,"ts":"2026-07-07T00:00:02Z","type":"token_usage","input_tokens":10,"output_tokens":5,"cost_usd":null}"#,
+        r#"{"run_id":"r1","seq":2,"ts":"2026-07-07T00:00:02Z","type":"token_usage","input_tokens":10,"output_tokens":5,"cached_input_tokens":7,"reasoning_output_tokens":0,"cost_usd":null}"#,
         r#"{"run_id":"r1","seq":3,"ts":"2026-07-07T00:00:03Z","type":"session_end","outcome":{"success":true,"summary":"done"}}"#,
     ];
 

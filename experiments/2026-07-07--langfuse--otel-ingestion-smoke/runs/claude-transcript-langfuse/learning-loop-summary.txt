@@ -1,0 +1,12 @@
+Trace id: 78568acaeec8a7753be1d3228546d9a6
+Observation count: 14
+Harness values: claude
+Provider values: anthropic
+Models: claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929
+Total tokens: 122272
+Calculated total cost: 0.09459785
+Tool starts: 5
+Tool ends: 5
+Tool successes: 5
+Tool failures: 0
+Tool names: Bash,TodoWrite,Write

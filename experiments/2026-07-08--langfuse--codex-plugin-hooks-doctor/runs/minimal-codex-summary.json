@@ -1,0 +1,25 @@
+{
+  "command_present": false,
+  "node22_plus": false,
+  "plugin_hooks_enabled": false,
+  "tracing_plugin_configured": true,
+  "config": {
+    "checked_paths": [
+      {
+        "path": "/Users/neural/.codex/config.toml",
+        "exists": true
+      },
+      {
+        "path": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/.codex/config.toml",
+        "exists": false
+      }
+    ],
+    "any_config_file_exists": true,
+    "plugin_hooks_required": true,
+    "plugin_hooks_found": false,
+    "tracing_plugin_found": true,
+    "ready": false,
+    "remediation": "add [features] plugin_hooks = true and enable [plugins.\"tracing@codex-observability-plugin\"] in ~/.codex/config.toml or <project>/.codex/config.toml"
+  },
+  "expected_plugin": "langfuse/codex-observability-plugin"
+}

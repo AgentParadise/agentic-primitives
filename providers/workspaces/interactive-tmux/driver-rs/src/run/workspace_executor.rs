@@ -6,7 +6,7 @@
 //! here: mapping the recipe's default agent onto `StartOptions`, materialising
 //! per-harness credentials, and the (placeholder) outcome detection.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -15,7 +15,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::adapter::Agent;
 use crate::result::AwaitResult;
-use crate::run::contract::{AgentRunEvent, AgentRunOutcome, AgentRunResult, AgentRunSpec};
+use crate::run::contract::{
+    AgentRunEvent, AgentRunEventPayload, AgentRunOutcome, AgentRunResult, AgentRunSpec,
+};
+use crate::run::harness_observer::{ClaudeTranscriptObserver, HarnessObserver};
+use crate::run::observability::ObservabilityFanout;
 use crate::run::orchestrator::{run_core, CancelToken, RunExecutor};
 use crate::run::recipe_loader::{load_execution_plan, RecipeExecutionPlan};
 use crate::run::secret_env::{missing_credentials_message, resolve_agent_secrets};
@@ -24,6 +28,8 @@ use crate::workspace::{StartOptions, Workspace, DEFAULT_STARTUP_TIMEOUT_S};
 
 /// Default await bound (seconds) when the spec sets no `limits.timeout_s`.
 const DEFAULT_AWAIT_TIMEOUT_S: f64 = 300.0;
+const AGENTIC_EVENTS_JSONL_ENV: &str = "AGENTIC_EVENTS_JSONL";
+const AGENTIC_EVENTS_JSONL_PATH: &str = "/tmp/agentic-observability/hooks.jsonl";
 
 /// Live workspace handle owned by the orchestrator between Provisioning and
 /// Terminalizing.
@@ -52,6 +58,13 @@ pub struct WorkspaceExecutor {
     /// Claude OAuth env-var mode: stage `.claude.json` only, no
     /// `.credentials.json` (R1/R8).
     claude_omit_credentials: bool,
+    env_vars: Vec<(String, String)>,
+    hook_events_path: Option<String>,
+    hook_events_bytes_read: usize,
+    transcript_paths: BTreeSet<String>,
+    transcript_bytes_read: HashMap<String, usize>,
+    transcript_observers: HashMap<String, ClaudeTranscriptObserver>,
+    agent_stopped_normal: bool,
     startup_timeout_s: f64,
     /// Temp dirs holding credentials materialised from the spec; removed on
     /// teardown so inline credential material never lingers on disk.
@@ -101,6 +114,13 @@ impl WorkspaceExecutor {
             host_claude_dotjson: resolve_host_claude_dotjson(),
             secret_env,
             claude_omit_credentials: wiring.claude_omit_credentials,
+            env_vars: hook_sink_env(agent),
+            hook_events_path: hook_events_path(agent),
+            hook_events_bytes_read: 0,
+            transcript_paths: BTreeSet::new(),
+            transcript_bytes_read: HashMap::new(),
+            transcript_observers: HashMap::new(),
+            agent_stopped_normal: false,
             startup_timeout_s: DEFAULT_STARTUP_TIMEOUT_S,
             cred_tmp_dirs,
         })
@@ -134,6 +154,7 @@ impl RunExecutor for WorkspaceExecutor {
         opts.claude_plugin_dirs = self.plan.claude_plugin_dirs.clone();
         opts.secret_env = self.secret_env.clone();
         opts.claude_omit_credentials = self.claude_omit_credentials;
+        opts.env_vars = self.env_vars.clone();
         opts.strict_startup = true;
         opts.startup_timeout_s = self.startup_timeout_s;
 
@@ -164,6 +185,7 @@ impl RunExecutor for WorkspaceExecutor {
         &mut self,
         handle: &mut Self::Handle,
         timeout: Option<Duration>,
+        emit_observed: &mut dyn FnMut(Vec<AgentRunEventPayload>),
     ) -> io::Result<AwaitResult> {
         // TODO(#248): like `provision`, `await_completion` is a BLOCKING bounded
         // poll loop that does not observe the `CancelToken` mid-poll. A hard
@@ -171,9 +193,28 @@ impl RunExecutor for WorkspaceExecutor {
         // orchestrator then tears down the handle. Making the poll loop
         // cancel-aware (so a hard cancel returns promptly) is part of #248.
         let secs = timeout.map_or(DEFAULT_AWAIT_TIMEOUT_S, |d| d.as_secs_f64());
-        handle
-            .workspace
-            .await_completion(handle.agent, secs, 4, 0.5, 2.0)
+        handle.workspace.await_completion_with_poll_callback(
+            handle.agent,
+            secs,
+            4,
+            0.5,
+            2.0,
+            &mut |workspace, pane, elapsed_ms, stable_polls_observed| {
+                match self.drain_observed_event_deltas(workspace) {
+                    Ok(payloads) if !payloads.is_empty() => emit_observed(payloads),
+                    Ok(_) => {}
+                    Err(err) => eprintln!("[itmux run] failed to drain observed events: {err}"),
+                }
+                if self.agent_stopped_normal {
+                    return Some(AwaitResult::ready(
+                        elapsed_ms,
+                        stable_polls_observed,
+                        pane.to_string(),
+                    ));
+                }
+                None
+            },
+        )
     }
 
     fn capture(&mut self, handle: &mut Self::Handle) -> io::Result<String> {
@@ -196,6 +237,13 @@ impl RunExecutor for WorkspaceExecutor {
             success: signal.success,
             summary: signal.reason,
         }
+    }
+
+    fn drain_observed_events(
+        &mut self,
+        handle: &mut Self::Handle,
+    ) -> io::Result<Vec<AgentRunEventPayload>> {
+        self.drain_observed_event_deltas(&handle.workspace)
     }
 
     fn teardown(&mut self, handle: Self::Handle) -> io::Result<()> {
@@ -239,13 +287,61 @@ struct CredentialWiring {
     claude_omit_credentials: bool,
 }
 
+impl WorkspaceExecutor {
+    fn drain_observed_event_deltas(
+        &mut self,
+        workspace: &Workspace,
+    ) -> io::Result<Vec<AgentRunEventPayload>> {
+        let Some(path) = self.hook_events_path.clone() else {
+            return Ok(Vec::new());
+        };
+        let (stdout, bytes_read) =
+            read_workspace_file_delta_if_present(workspace, &path, self.hook_events_bytes_read)?;
+        self.hook_events_bytes_read = bytes_read;
+        let parsed = parse_hook_events(&stdout);
+        self.agent_stopped_normal |= parsed.agent_stopped_normal;
+        let mut payloads = parsed.payloads;
+        for transcript_path in parsed.transcript_paths {
+            self.transcript_paths.insert(transcript_path);
+        }
+        let transcript_paths = self.transcript_paths.iter().cloned().collect::<Vec<_>>();
+        for transcript_path in transcript_paths {
+            let offset = self
+                .transcript_bytes_read
+                .get(&transcript_path)
+                .copied()
+                .unwrap_or_default();
+            let (transcript_delta, bytes_read) =
+                read_workspace_file_delta_if_present(workspace, &transcript_path, offset)?;
+            self.transcript_bytes_read
+                .insert(transcript_path.clone(), bytes_read);
+            payloads.extend(
+                self.parse_claude_transcript_event_deltas(&transcript_path, &transcript_delta),
+            );
+        }
+        Ok(payloads)
+    }
+
+    fn parse_claude_transcript_event_deltas(
+        &mut self,
+        transcript_path: &str,
+        raw: &str,
+    ) -> Vec<AgentRunEventPayload> {
+        let observer = self
+            .transcript_observers
+            .entry(transcript_path.to_string())
+            .or_insert_with(|| ClaudeTranscriptObserver::new().with_message_usage(true));
+        parse_claude_transcript_events_with_observer(observer, raw)
+    }
+}
+
 /// Resolve credentials for `agent` from `spec` (R1-R3).
 ///
 /// Precedence (per user + R8): env-var/file secrets from `spec.credentials`
 /// (populated by the `.env`/process-env loader) are preferred. When the agent
 /// has NO credentials: with `allow_host_fallback` we fall back to the host
 /// `$HOME/.<agent>` dir (warned to stderr - PATH only, never token contents);
-/// without it we FAIL FAST with an actionable error naming the missing var.
+/// without it we fail fast with an actionable error naming the missing var.
 fn resolve_launch_credentials(
     spec: &AgentRunSpec,
     agent: Agent,
@@ -357,6 +453,165 @@ fn env_host_auth(override_env: &str, home_subdir: &str) -> Option<PathBuf> {
     candidate.is_dir().then_some(candidate)
 }
 
+fn hook_events_path(agent: Agent) -> Option<String> {
+    (agent == Agent::Claude).then(|| AGENTIC_EVENTS_JSONL_PATH.to_string())
+}
+
+fn hook_sink_env(agent: Agent) -> Vec<(String, String)> {
+    hook_events_path(agent)
+        .map(|path| vec![(AGENTIC_EVENTS_JSONL_ENV.to_string(), path)])
+        .unwrap_or_default()
+}
+
+#[derive(Debug, Default)]
+struct ParsedHookEvents {
+    payloads: Vec<AgentRunEventPayload>,
+    transcript_paths: BTreeSet<String>,
+    agent_stopped_normal: bool,
+}
+
+fn parse_hook_events(raw: &str) -> ParsedHookEvents {
+    let mut parsed = ParsedHookEvents::default();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        if let Some(path) = transcript_path_from_hook_event(&event) {
+            parsed.transcript_paths.insert(path.to_string());
+        }
+        if is_normal_agent_stopped_hook_event(&event) {
+            parsed.agent_stopped_normal = true;
+        }
+        let Some(event_type) = event.get("event_type").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let provider = event
+            .get("provider")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        parsed.payloads.push(AgentRunEventPayload::HookEvent {
+            provider,
+            event_type: event_type.to_string(),
+            event: sanitize_hook_event(event),
+        });
+    }
+    parsed
+}
+
+fn is_normal_agent_stopped_hook_event(event: &serde_json::Value) -> bool {
+    event
+        .get("event_type")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|event_type| event_type == "agent_stopped")
+        && event
+            .pointer("/context/reason")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|reason| reason == "normal")
+}
+
+fn sanitize_hook_event(mut event: serde_json::Value) -> serde_json::Value {
+    let mut redacted = false;
+    if let Some(context) = event
+        .get_mut("context")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in [
+            "input_preview",
+            "output_preview",
+            "prompt_preview",
+            "message",
+            "error",
+        ] {
+            if context.remove(key).is_some() {
+                redacted = true;
+            }
+        }
+    }
+    if let Some(metadata) = event
+        .get_mut("metadata")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in ["prompt", "tool_input", "tool_result"] {
+            if metadata.remove(key).is_some() {
+                redacted = true;
+            }
+        }
+    }
+    if redacted {
+        event["redacted"] = serde_json::Value::Bool(true);
+    }
+    event
+}
+
+fn transcript_path_from_hook_event(event: &serde_json::Value) -> Option<&str> {
+    event
+        .pointer("/metadata/transcript_path")
+        .or_else(|| event.get("transcript_path"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|path| !path.trim().is_empty())
+}
+
+fn read_workspace_file_if_present(workspace: &Workspace, path: &str) -> io::Result<String> {
+    let quoted = sh_single_quote(path);
+    let output = workspace.exec(&[
+        "sh",
+        "-lc",
+        &format!("if [ -f {quoted} ]; then cat {quoted}; fi"),
+    ])?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "read observed transcript failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn read_workspace_file_delta_if_present(
+    workspace: &Workspace,
+    path: &str,
+    offset: usize,
+) -> io::Result<(String, usize)> {
+    let raw = read_workspace_file_if_present(workspace, path)?;
+    if raw.len() <= offset {
+        return Ok((String::new(), raw.len()));
+    }
+    Ok((raw[offset..].to_string(), raw.len()))
+}
+
+#[cfg(test)]
+fn parse_claude_transcript_events(raw: &str) -> Vec<AgentRunEventPayload> {
+    let mut observer = ClaudeTranscriptObserver::new().with_message_usage(true);
+    parse_claude_transcript_events_with_observer(&mut observer, raw)
+}
+
+fn parse_claude_transcript_events_with_observer(
+    observer: &mut ClaudeTranscriptObserver,
+    raw: &str,
+) -> Vec<AgentRunEventPayload> {
+    let mut payloads = Vec::new();
+    for line in raw.lines() {
+        match observer.observe_jsonl_line(line) {
+            Ok(events) => payloads.extend(events.into_iter().map(|event| event.payload)),
+            Err(_) => payloads.push(AgentRunEventPayload::ToolEnd {
+                tool_name: "claude_transcript.parse".to_string(),
+                success: false,
+                output_summary: Some("invalid claude transcript JSONL line".to_string()),
+            }),
+        }
+    }
+    payloads
+}
+
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 /// Create a fresh temp dir under the system temp dir for credential
 /// materialisation, with mode 0700 set ATOMICALLY at creation (no brief 0755
 /// window) - it holds staged secret files (PR #254 review).
@@ -458,22 +713,54 @@ pub fn run(
     emit: &mut dyn FnMut(&AgentRunEvent),
 ) -> io::Result<AgentRunResult> {
     let plan = load_execution_plan(spec).map_err(|e| io::Error::other(e.to_string()))?;
+    run_with_plan(
+        spec,
+        &plan,
+        image,
+        run_id,
+        cancel,
+        allow_host_fallback,
+        emit,
+    )
+}
+
+/// Drive a run with a plan the caller has already loaded.
+///
+/// This keeps the public [`run`] entry point convenient while allowing CLI
+/// code that must inspect the plan for dispatch decisions to avoid loading the
+/// same recipe twice.
+pub fn run_with_plan(
+    spec: &AgentRunSpec,
+    plan: &RecipeExecutionPlan,
+    image: &str,
+    run_id: &str,
+    cancel: &CancelToken,
+    allow_host_fallback: bool,
+    emit: &mut dyn FnMut(&AgentRunEvent),
+) -> io::Result<AgentRunResult> {
     let timeout = spec
         .limits
         .as_ref()
         .and_then(|l| l.timeout_s)
         .map(Duration::from_secs_f64);
-    let mut executor = WorkspaceExecutor::new(spec, &plan, image, allow_host_fallback)?;
+    let mut executor = WorkspaceExecutor::new(spec, plan, image, allow_host_fallback)?;
     let mut now = now_rfc3339;
-    Ok(run_core(
+    let mut fanout = ObservabilityFanout::new(&spec.observability);
+    let mut fanout_emit = |event: &AgentRunEvent| {
+        fanout.emit(event);
+        emit(event);
+    };
+    let mut result = run_core(
         run_id,
-        &plan,
+        plan,
         timeout,
         &mut executor,
         cancel,
         &mut now,
-        emit,
-    ))
+        &mut fanout_emit,
+    );
+    result.observability = fanout.finish();
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -497,5 +784,98 @@ mod tests {
         assert_eq!(sanitize_name("pr-reviewer"), "pr-reviewer");
         assert_eq!(sanitize_name("my recipe!"), "my-recipe");
         assert_eq!(sanitize_name("///"), "recipe");
+    }
+
+    #[test]
+    fn hook_events_include_payloads_and_transcript_paths() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"session_started","provider":"claude","metadata":{"transcript_path":"/tmp/claude/session.jsonl"}}"#,
+        );
+
+        assert_eq!(parsed.payloads.len(), 1);
+        assert!(parsed
+            .transcript_paths
+            .contains("/tmp/claude/session.jsonl"));
+        assert!(matches!(
+            parsed.payloads[0],
+            AgentRunEventPayload::HookEvent {
+                ref provider,
+                ref event_type,
+                ..
+            } if provider == "claude" && event_type == "session_started"
+        ));
+    }
+
+    #[test]
+    fn hook_events_redact_preview_fields() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"tool_execution_started","provider":"claude","context":{"tool_name":"Bash","tool_use_id":"toolu_1","input_preview":"echo sk-ant-secret"}}"#,
+        );
+
+        assert_eq!(parsed.payloads.len(), 1);
+        let serialized = serde_json::to_string(&parsed.payloads[0]).expect("payload json");
+        assert!(serialized.contains("\"redacted\":true"), "{serialized}");
+        assert!(
+            serialized.contains("\"tool_name\":\"Bash\""),
+            "{serialized}"
+        );
+        assert!(!serialized.contains("sk-ant-secret"), "{serialized}");
+        assert!(!serialized.contains("input_preview"), "{serialized}");
+    }
+
+    #[test]
+    fn hook_events_detect_normal_agent_stop() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"agent_stopped","provider":"claude","context":{"reason":"normal"}}"#,
+        );
+
+        assert!(parsed.agent_stopped_normal);
+        assert_eq!(parsed.payloads.len(), 1);
+    }
+
+    #[test]
+    fn hook_events_ignore_non_normal_agent_stop_for_completion() {
+        let parsed = parse_hook_events(
+            r#"{"event_type":"agent_stopped","provider":"claude","context":{"reason":"error"}}"#,
+        );
+
+        assert!(!parsed.agent_stopped_normal);
+        assert_eq!(parsed.payloads.len(), 1);
+    }
+
+    #[test]
+    fn claude_transcript_events_are_normalized_for_workspace_run() {
+        let payloads = parse_claude_transcript_events(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"echo sk-ant-secret"}}]}}"#,
+        );
+
+        assert_eq!(payloads.len(), 1);
+        let serialized = serde_json::to_string(&payloads[0]).expect("payload json");
+        assert!(serialized.contains("\"redacted\":true"), "{serialized}");
+        assert!(!serialized.contains("sk-ant-secret"), "{serialized}");
+    }
+
+    #[test]
+    fn claude_transcript_usage_is_available_to_workspace_run() {
+        let payloads = parse_claude_transcript_events(
+            r#"{"type":"result","modelUsage":{"claude-sonnet-4-5-20250929":{"inputTokens":3,"outputTokens":5,"cacheReadInputTokens":7,"cacheCreationInputTokens":11,"costUSD":0.02}}}"#,
+        );
+
+        assert_eq!(payloads.len(), 1);
+        assert!(matches!(
+            payloads[0],
+            AgentRunEventPayload::TokenUsage {
+                input_tokens: 3,
+                output_tokens: 5,
+                cached_input_tokens: Some(18),
+                cost_usd: Some(0.02),
+                ref harness,
+                ref provider,
+                ref model,
+                ..
+            } if harness.as_deref() == Some("claude")
+                && provider.as_deref() == Some("anthropic")
+                && model.as_deref() == Some("claude-sonnet-4-5-20250929")
+        ));
     }
 }

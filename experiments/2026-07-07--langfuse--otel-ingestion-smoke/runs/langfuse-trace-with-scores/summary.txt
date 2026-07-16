@@ -1,0 +1,10 @@
+ok=True
+run_id=run-f7ae62c8
+trace_id=fe7564993ed4fa5634428123b0f44ccf
+harnesses=codex
+total_tokens=15932
+calculated_total_usd=0.07996
+scores_returned=1
+score_ids=agentic-learning-loop-probe-run-f7ae62c8
+score_names=agentic.learning_loop_probe
+has_raw_response=False

@@ -1,0 +1,35 @@
+{
+  "exit": "exit_code:0",
+  "stdout_events": 6,
+  "exported_events": 6,
+  "event_types": [
+    "session_end",
+    "token_usage",
+    "tool_end",
+    "tool_start"
+  ],
+  "seqs": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "result_success": true,
+  "result_summary": "codex exec completed successfully",
+  "exporter_status": "ok",
+  "exporter_event_count": 6,
+  "token_usage": {
+    "run_id": "run-106e4a40",
+    "seq": 4,
+    "ts": "2026-07-07T18:12:21Z",
+    "type": "token_usage",
+    "input_tokens": 15919,
+    "output_tokens": 11,
+    "cached_input_tokens": 9600,
+    "reasoning_output_tokens": 0,
+    "cost_usd": null
+  },
+  "stdout_matches_exporter": true
+}

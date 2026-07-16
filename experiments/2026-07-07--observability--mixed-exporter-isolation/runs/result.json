@@ -1,0 +1,33 @@
+{
+  "result": {
+    "success": true,
+    "summary": "codex exec completed successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "{\"type\":\"thread.started\",\"thread_id\":\"synthetic-thread\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"SYNTHETIC_CODEX_OK\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":3,\"reasoning_output_tokens\":0}}\n",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--observability--mixed-exporter-isolation/runs/events.jsonl",
+        "events_exported": 6,
+        "links": [
+          {
+            "label": "codex exec events",
+            "uri": "experiments/2026-07-07--observability--mixed-exporter-isolation/runs/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "failed",
+        "target": null,
+        "events_exported": 0,
+        "links": [],
+        "error": "missing required LangFuse config: LANGFUSE_BASE_URL"
+      }
+    ]
+  }
+}

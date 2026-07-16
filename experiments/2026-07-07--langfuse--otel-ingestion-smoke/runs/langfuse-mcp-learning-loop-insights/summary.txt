@@ -1,0 +1,25 @@
+# LangFuse MCP learning-loop insights
+
+## codex
+- Trace count: 2
+- Backend total items: 19
+- Total tokens: 31875
+- Calculated total USD: 0.159975
+- Models: gpt-5.5
+- Top cost trace: {'calculated_total_usd': 0.080015, 'run_id': 'run-88868068', 'trace_id': '37f5920448612df0be0a2228a671a055'}
+- Top token trace: {'run_id': 'run-88868068', 'total_tokens': 15943, 'trace_id': '37f5920448612df0be0a2228a671a055'}
+- Recommendation codes: cost_hotspot, missing_feedback_scores
+- Unscored trace count: 1
+- Failed tool trace count: 0
+
+## claude
+- Trace count: 2
+- Backend total items: 19
+- Total tokens: 47526
+- Calculated total USD: 0.0020009999999999997
+- Models: claude-sonnet-4-6
+- Top cost trace: {'calculated_total_usd': 0.001767, 'run_id': 'run-f07cba88', 'trace_id': 'ca9adeba40ddbc919e94aec818894214'}
+- Top token trace: {'run_id': 'run-f07cba88', 'total_tokens': 31789, 'trace_id': 'ca9adeba40ddbc919e94aec818894214'}
+- Recommendation codes: cost_hotspot, missing_feedback_scores
+- Unscored trace count: 2
+- Failed tool trace count: 0

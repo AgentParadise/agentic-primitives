@@ -57,6 +57,100 @@ literals as the Python `to_dict()`/`AwaitResult` output (`ready`,
 `error`). Exit codes match Python: `0` ready, `2` await timeout, `3`
 startup-readiness failure.
 
+## `itmux run` observability export
+
+`itmux run` emits normalized `AgentRunEvent` JSONL on stdout. For reusable
+observability outside stdout consumers, configure the portable file exporter:
+
+```bash
+itmux run \
+  --recipe /path/to/recipe \
+  --task "Implement the change" \
+  --observability-file /tmp/itmux-run-events.jsonl \
+  --result-file /tmp/itmux-run-result.json
+```
+
+The exporter appends the same normalized run events to the JSONL file and the
+final `AgentRunResult.observability.exporters[]` report includes status,
+event count, target, and a link URI. This works the same on a Mac, a VPS, or
+inside Docker when the path is mounted into the executing environment.
+
+For Syntropic137, keep the canonical file and add a HookWatcher-compatible
+projection:
+
+```bash
+itmux run \
+  --recipe /path/to/recipe \
+  --task "Implement the change" \
+  --observability-file /tmp/itmux-run-events.jsonl \
+  --observability-syntropic-file /tmp/syntropic-events.jsonl \
+  --result-file /tmp/itmux-run-result.json
+```
+
+`--observability-syntropic-file` emits top-level `event_type`, `session_id`,
+and `timestamp` JSONL records for Syntropic137's existing hook-file watcher.
+The canonical `--observability-file` remains the complete `AgentRunEvent`
+artifact.
+
+Rich LangFuse traces are produced by LangFuse's official Claude Code and Codex
+plugins. Keep `itmux` fanout focused on durable local evidence:
+
+```bash
+itmux run \
+  --recipe /path/to/recipe \
+  --task "Implement the change" \
+  --observability-file /tmp/itmux-run-events.jsonl \
+  --observability-syntropic-file /tmp/itmux-syntropic-events.jsonl \
+  --result-file /tmp/itmux-run-result.json
+```
+
+Use the official LangFuse plugins for Claude/Codex model spans, tool calls,
+tokens, cost, and trace UX. Use `itmux langfuse-trace`, `itmux
+langfuse-traces`, `itmux langfuse-sessions`, `itmux langfuse-score`, and
+`itmux langfuse-scores` to read those traces back for learning loops. The
+session command groups per-turn traces by LangFuse `session_id`; it does not
+replace the raw session-log store. See
+[`docs/guides/langfuse-observability-setup.md`](../../../../docs/guides/langfuse-observability-setup.md)
+for the macOS Keychain, VPS, Docker, and local LangFuse setup procedure.
+
+For Codex recipes, `itmux run` defaults to the existing interactive TUI
+workspace mode. Use `--codex-mode exec` when the run needs structured Codex
+tool/token/cost telemetry:
+
+```bash
+itmux run \
+  --recipe /path/to/codex-recipe \
+  --task "Reply exactly: OK" \
+  --codex-mode exec \
+  --observability-file /tmp/codex-run-events.jsonl \
+  --result-file /tmp/codex-run-result.json
+```
+
+`--codex-mode exec` is valid only for recipes whose default agent is Codex. It
+loads the recipe prompt/model, runs `codex exec --json`, strips an `openai/`
+model prefix before passing the model to Codex, and normalizes the structured
+event stream through the same `AgentRunEvent` and exporter fanout used by the
+rest of `itmux run`. The default `tui` mode remains the Docker workspace path
+and currently has only coarse lifecycle observability.
+
+## `itmux codex-exec` observer export
+
+`itmux codex-exec` runs `codex exec --json`, normalizes Codex's structured
+events into the shared `AgentRunEvent` stream, and uses the same observability
+exporters:
+
+```bash
+itmux codex-exec \
+  --prompt "Reply exactly: OK" \
+  --observability-file /tmp/codex-exec-events.jsonl \
+  --result-file /tmp/codex-exec-result.json
+```
+
+This is intentionally separate from the interactive Codex TUI path. The
+empirical token/cost surface is `codex exec --json`: `turn.completed.usage`
+maps to `type:"token_usage"` with `input_tokens`, `cached_input_tokens`,
+`output_tokens`, and `reasoning_output_tokens`.
+
 ## Per-agent matrix (parity-encoded — callers should not need this)
 
 | Concern    | Claude                                                                | Codex                                                                       | Gemini                                                       |

@@ -1,0 +1,193 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/scores?limit=20&page=1",
+    "limit": 20,
+    "page": 1
+  },
+  "summary": {
+    "requested_trace_id": null,
+    "requested_run_id": null,
+    "requested_name": null,
+    "requested_score_ids": null,
+    "returned_count": 3,
+    "total_items": 3,
+    "scores": [
+      {
+        "score_id": "3c5a719f-844d-4837-971a-3bfd4bef7652",
+        "trace_id": "53a78022e53d9abd2ef5de95c9add4f3",
+        "observation_id": null,
+        "name": "agentic.learning_loop_trace_quality",
+        "data_type": "NUMERIC",
+        "value": 0.85,
+        "string_value": null,
+        "source": "API",
+        "environment": "default",
+        "comment": "Claude official plugin trace is rich enough for learning loops: model/tokens/cost and agent tools present; trace-list model null and end-only tools remain normalization gaps.",
+        "metadata": {
+          "experiment": "2026-07-10--langfuse--learning-loop-current-traces",
+          "harness": "claude",
+          "finding": "rich_with_normalization_gaps"
+        },
+        "created_at": "2026-07-10T15:21:38.177Z",
+        "updated_at": "2026-07-10T15:21:43.234Z",
+        "trace_environment": "default",
+        "trace_tags": [
+          "claude-code"
+        ]
+      },
+      {
+        "score_id": "20e41eaf-6464-4d0f-be38-dba101301369",
+        "trace_id": "b928a86e0c44784896a2224778c339c4",
+        "observation_id": null,
+        "name": "agentic.learning_loop_trace_quality",
+        "data_type": "NUMERIC",
+        "value": 0.8,
+        "string_value": null,
+        "source": "API",
+        "environment": "default",
+        "comment": "Codex official plugin trace is usable for learning loops: model/tokens/cost/tool name present; trace-list model null and tool start/end pairing still need normalization.",
+        "metadata": {
+          "experiment": "2026-07-10--langfuse--learning-loop-current-traces",
+          "harness": "codex",
+          "finding": "usable_with_normalization_gaps"
+        },
+        "created_at": "2026-07-10T15:21:38.161Z",
+        "updated_at": "2026-07-10T15:21:43.234Z",
+        "trace_environment": "local-macbook",
+        "trace_tags": []
+      },
+      {
+        "score_id": "agentic-learning-loop-probe-run-f7ae62c8",
+        "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+        "observation_id": null,
+        "name": "agentic.learning_loop_probe",
+        "data_type": "BOOLEAN",
+        "value": 1,
+        "string_value": "True",
+        "source": "API",
+        "environment": "local",
+        "comment": "Local verification that agentic-primitives agents can write learning-loop feedback to LangFuse.",
+        "metadata": {
+          "experiment": "2026-07-07--langfuse--otel-ingestion-smoke",
+          "harness": "codex",
+          "purpose": "learning_loop_writeback"
+        },
+        "created_at": "2026-07-08T04:09:42.075Z",
+        "updated_at": "2026-07-08T04:09:47.111Z",
+        "trace_environment": "local-macbook",
+        "trace_tags": [
+          "agentic-primitives",
+          "harness:codex",
+          "itmux"
+        ]
+      }
+    ]
+  },
+  "response": {
+    "data": [
+      {
+        "id": "3c5a719f-844d-4837-971a-3bfd4bef7652",
+        "projectId": "agentic-primitives-local-project",
+        "environment": "default",
+        "name": "agentic.learning_loop_trace_quality",
+        "value": 0.85,
+        "source": "API",
+        "authorUserId": null,
+        "comment": "Claude official plugin trace is rich enough for learning loops: model/tokens/cost and agent tools present; trace-list model null and end-only tools remain normalization gaps.",
+        "metadata": {
+          "experiment": "2026-07-10--langfuse--learning-loop-current-traces",
+          "harness": "claude",
+          "finding": "rich_with_normalization_gaps"
+        },
+        "configId": null,
+        "queueId": null,
+        "executionTraceId": null,
+        "createdAt": "2026-07-10T15:21:38.177Z",
+        "updatedAt": "2026-07-10T15:21:43.234Z",
+        "timestamp": "2026-07-10T15:21:38.175Z",
+        "traceId": "53a78022e53d9abd2ef5de95c9add4f3",
+        "observationId": null,
+        "stringValue": null,
+        "dataType": "NUMERIC",
+        "trace": {
+          "userId": null,
+          "tags": [
+            "claude-code"
+          ],
+          "environment": "default"
+        }
+      },
+      {
+        "id": "20e41eaf-6464-4d0f-be38-dba101301369",
+        "projectId": "agentic-primitives-local-project",
+        "environment": "default",
+        "name": "agentic.learning_loop_trace_quality",
+        "value": 0.8,
+        "source": "API",
+        "authorUserId": null,
+        "comment": "Codex official plugin trace is usable for learning loops: model/tokens/cost/tool name present; trace-list model null and tool start/end pairing still need normalization.",
+        "metadata": {
+          "experiment": "2026-07-10--langfuse--learning-loop-current-traces",
+          "harness": "codex",
+          "finding": "usable_with_normalization_gaps"
+        },
+        "configId": null,
+        "queueId": null,
+        "executionTraceId": null,
+        "createdAt": "2026-07-10T15:21:38.161Z",
+        "updatedAt": "2026-07-10T15:21:43.234Z",
+        "timestamp": "2026-07-10T15:21:38.157Z",
+        "traceId": "b928a86e0c44784896a2224778c339c4",
+        "observationId": null,
+        "stringValue": null,
+        "dataType": "NUMERIC",
+        "trace": {
+          "userId": "neuralempowerment@gmail.com",
+          "tags": [],
+          "environment": "local-macbook"
+        }
+      },
+      {
+        "id": "agentic-learning-loop-probe-run-f7ae62c8",
+        "projectId": "agentic-primitives-local-project",
+        "environment": "local",
+        "name": "agentic.learning_loop_probe",
+        "value": 1,
+        "source": "API",
+        "authorUserId": null,
+        "comment": "Local verification that agentic-primitives agents can write learning-loop feedback to LangFuse.",
+        "metadata": {
+          "experiment": "2026-07-07--langfuse--otel-ingestion-smoke",
+          "harness": "codex",
+          "purpose": "learning_loop_writeback"
+        },
+        "configId": null,
+        "queueId": null,
+        "executionTraceId": null,
+        "createdAt": "2026-07-08T04:09:42.075Z",
+        "updatedAt": "2026-07-08T04:09:47.111Z",
+        "timestamp": "2026-07-08T04:09:42.062Z",
+        "traceId": "fe7564993ed4fa5634428123b0f44ccf",
+        "observationId": null,
+        "stringValue": "True",
+        "dataType": "BOOLEAN",
+        "trace": {
+          "userId": null,
+          "tags": [
+            "agentic-primitives",
+            "harness:codex",
+            "itmux"
+          ],
+          "environment": "local-macbook"
+        }
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 20,
+      "totalItems": 3,
+      "totalPages": 1
+    }
+  }
+}

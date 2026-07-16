@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/scores",
+    "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+    "run_id": "run-f7ae62c8",
+    "name": "agentic.learning_loop_probe",
+    "data_type": "BOOLEAN",
+    "score_id": "agentic-learning-loop-probe-run-f7ae62c8"
+  },
+  "summary": {
+    "score_id": "agentic-learning-loop-probe-run-f7ae62c8",
+    "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+    "run_id": "run-f7ae62c8",
+    "name": "agentic.learning_loop_probe",
+    "data_type": "BOOLEAN",
+    "created": true
+  },
+  "response": {
+    "id": "agentic-learning-loop-probe-run-f7ae62c8"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "itmux_bin": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/interactive-tmux/driver-rs/target/debug/itmux",
+  "langfuse_base_url": "http://localhost:3000",
+  "reports": [
+    {
+      "agent_tool_failures": 0,
+      "backend_total_items": 19,
+      "calculated_total_usd": 0.159975,
+      "failed_tool_trace_count": 0,
+      "harness": "codex",
+      "models": [
+        "gpt-5.5"
+      ],
+      "recommendation_codes": [
+        "cost_hotspot",
+        "missing_feedback_scores"
+      ],
+      "top_cost_trace": {
+        "calculated_total_usd": 0.080015,
+        "run_id": "run-88868068",
+        "trace_id": "37f5920448612df0be0a2228a671a055"
+      },
+      "top_token_trace": {
+        "run_id": "run-88868068",
+        "total_tokens": 15943,
+        "trace_id": "37f5920448612df0be0a2228a671a055"
+      },
+      "total_tokens": 31875,
+      "trace_count": 2,
+      "unscored_trace_count": 1
+    },
+    {
+      "agent_tool_failures": 0,
+      "backend_total_items": 19,
+      "calculated_total_usd": 0.0020009999999999997,
+      "failed_tool_trace_count": 0,
+      "harness": "claude",
+      "models": [
+        "claude-sonnet-4-6"
+      ],
+      "recommendation_codes": [
+        "cost_hotspot",
+        "missing_feedback_scores"
+      ],
+      "top_cost_trace": {
+        "calculated_total_usd": 0.001767,
+        "run_id": "run-f07cba88",
+        "trace_id": "ca9adeba40ddbc919e94aec818894214"
+      },
+      "top_token_trace": {
+        "run_id": "run-f07cba88",
+        "total_tokens": 31789,
+        "trace_id": "ca9adeba40ddbc919e94aec818894214"
+      },
+      "total_tokens": 47526,
+      "trace_count": 2,
+      "unscored_trace_count": 2
+    }
+  ]
+}

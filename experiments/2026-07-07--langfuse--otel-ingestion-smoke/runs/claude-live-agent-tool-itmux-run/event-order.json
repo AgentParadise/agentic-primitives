@@ -1,0 +1,211 @@
+{
+  "event_count": 20,
+  "observed_before_await_end": [
+    {
+      "seq": 0,
+      "type": "tool_start",
+      "tool_name": "provision",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 1,
+      "type": "tool_end",
+      "tool_name": "provision",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 2,
+      "type": "tool_start",
+      "tool_name": "launch",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 3,
+      "type": "tool_end",
+      "tool_name": "launch",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 4,
+      "type": "tool_start",
+      "tool_name": "submit",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 5,
+      "type": "tool_end",
+      "tool_name": "submit",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 6,
+      "type": "tool_start",
+      "tool_name": "await",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 7,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "session_started",
+      "model": null
+    },
+    {
+      "seq": 8,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "user_prompt_submitted",
+      "model": null
+    },
+    {
+      "seq": 9,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "tool_execution_started",
+      "model": null
+    },
+    {
+      "seq": 10,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "tool_execution_completed",
+      "model": null
+    },
+    {
+      "seq": 11,
+      "type": "token_usage",
+      "tool_name": null,
+      "event_type": null,
+      "model": "claude-sonnet-4-6"
+    },
+    {
+      "seq": 12,
+      "type": "tool_start",
+      "tool_name": "Bash",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 13,
+      "type": "tool_end",
+      "tool_name": "Bash",
+      "event_type": null,
+      "model": null
+    },
+    {
+      "seq": 14,
+      "type": "hook_event",
+      "tool_name": null,
+      "event_type": "agent_stopped",
+      "model": null
+    },
+    {
+      "seq": 15,
+      "type": "token_usage",
+      "tool_name": null,
+      "event_type": null,
+      "model": "claude-sonnet-4-6"
+    }
+  ],
+  "token_usage_events": [
+    {
+      "seq": 11,
+      "input_tokens": 3,
+      "output_tokens": 101,
+      "cached_input_tokens": 15770,
+      "model": "claude-sonnet-4-6",
+      "harness": "claude",
+      "provider": "anthropic"
+    },
+    {
+      "seq": 15,
+      "input_tokens": 1,
+      "output_tokens": 16,
+      "cached_input_tokens": 15898,
+      "model": "claude-sonnet-4-6",
+      "harness": "claude",
+      "provider": "anthropic"
+    }
+  ],
+  "tool_events": [
+    {
+      "seq": 0,
+      "type": "tool_start",
+      "tool_name": "provision",
+      "success": null
+    },
+    {
+      "seq": 1,
+      "type": "tool_end",
+      "tool_name": "provision",
+      "success": true
+    },
+    {
+      "seq": 2,
+      "type": "tool_start",
+      "tool_name": "launch",
+      "success": null
+    },
+    {
+      "seq": 3,
+      "type": "tool_end",
+      "tool_name": "launch",
+      "success": true
+    },
+    {
+      "seq": 4,
+      "type": "tool_start",
+      "tool_name": "submit",
+      "success": null
+    },
+    {
+      "seq": 5,
+      "type": "tool_end",
+      "tool_name": "submit",
+      "success": true
+    },
+    {
+      "seq": 6,
+      "type": "tool_start",
+      "tool_name": "await",
+      "success": null
+    },
+    {
+      "seq": 12,
+      "type": "tool_start",
+      "tool_name": "Bash",
+      "success": null
+    },
+    {
+      "seq": 13,
+      "type": "tool_end",
+      "tool_name": "Bash",
+      "success": true
+    },
+    {
+      "seq": 16,
+      "type": "tool_end",
+      "tool_name": "await",
+      "success": true
+    },
+    {
+      "seq": 17,
+      "type": "tool_start",
+      "tool_name": "capture",
+      "success": null
+    },
+    {
+      "seq": 18,
+      "type": "tool_end",
+      "tool_name": "capture",
+      "success": true
+    }
+  ]
+}

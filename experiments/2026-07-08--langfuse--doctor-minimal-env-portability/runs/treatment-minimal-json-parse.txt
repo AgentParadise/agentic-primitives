@@ -1,0 +1,41 @@
+{
+  "tools": {
+    "claude": {
+      "present": false,
+      "path": ""
+    },
+    "codex": {
+      "present": false,
+      "path": ""
+    },
+    "node": {
+      "present": false,
+      "path": "",
+      "major": 0,
+      "node22_plus": false
+    },
+    "uv": {
+      "present": false,
+      "path": ""
+    },
+    "python3": {
+      "present": true,
+      "path": "/usr/bin/python3"
+    },
+    "cargo": {
+      "present": false,
+      "path": ""
+    }
+  },
+  "fanout": {
+    "file_jsonl_supported": true,
+    "syntropic_jsonl_supported": true,
+    "mcp_server_present": true
+  },
+  "guard": {
+    "trace_to_langfuse_suppression_supported": true,
+    "force_flag_supported": true,
+    "focused_test_status": "skipped",
+    "focused_test_detail": "tests disabled by --no-tests"
+  }
+}

@@ -1,0 +1,41 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.obs-runtime
+#1 transferring dockerfile: 478B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/agentic-workspace-interactive-tmux:latest
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 198.47kB done
+#4 DONE 0.0s
+
+#5 [1/4] FROM docker.io/library/agentic-workspace-interactive-tmux:latest@sha256:05eea4ad804465276070ae9e5757edff8bcc596cee5729806e7683f2794fb903
+#5 resolve docker.io/library/agentic-workspace-interactive-tmux:latest@sha256:05eea4ad804465276070ae9e5757edff8bcc596cee5729806e7683f2794fb903 done
+#5 DONE 0.0s
+
+#6 [2/4] COPY plugins/observability /opt/agentic/plugins/observability
+#6 DONE 0.0s
+
+#7 [3/4] COPY lib/python/agentic_events /opt/agentic/lib/python/agentic_events
+#7 DONE 0.0s
+
+#8 [4/4] RUN chmod -R a+rX /opt/agentic/plugins/observability /opt/agentic/lib/python/agentic_events     && chmod 755 /opt/agentic/plugins/observability/hooks/handlers/observe.py
+#8 DONE 0.2s
+
+#9 exporting to image
+#9 exporting layers 0.0s done
+#9 exporting manifest sha256:7b16d95a2eb235f27d14c63a3de9a67a5fe49ebeb1cf21e6beae4d2bfd77fe01 done
+#9 exporting config sha256:7d20fce9d9a25fc352ab3329d2d6991fdd514feb6a294eea733ccc4028092a00 done
+#9 exporting attestation manifest sha256:aef1e6522b60966e130039713d18e0f0d82341c83f360641d89326fecdd44ff8 done
+#9 exporting manifest list sha256:afec3a90cc2b1859b1635cf56a993b2fa8e87d49da38c4d77170c85c8beb5bad done
+#9 naming to docker.io/library/itmux-obs-runtime-test:20260707 done
+#9 unpacking to docker.io/library/itmux-obs-runtime-test:20260707 0.0s done
+#9 DONE 0.1s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/c9ytuyra95kf03k9mv9feo7z1

@@ -1,0 +1,25 @@
+Diff in /Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/interactive-tmux/driver-rs/src/main.rs:4688:
+ 
+         let summary = summarize_langfuse_trace_response(&response);
+ 
+[32m+        assert_eq!(summary["observation_types"], json!(["GENERATION", "TOOL"]));
+(B[m         assert_eq!(
+[31m-            summary["observation_types"],
+(B[m[31m-            json!(["GENERATION", "TOOL"])
+(B[m[31m-        );
+(B[m[31m-        assert_eq!(
+(B[m             summary["events"]["category_counts"],
+             json!([
+                 {"category": "agent_tool", "count": 2},
+Diff in /Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/interactive-tmux/driver-rs/src/main.rs:4702:
+         assert_eq!(summary["events"]["sequence"][0]["event"], "tool");
+         assert_eq!(summary["events"]["sequence"][0]["category"], "agent_tool");
+         assert_eq!(summary["events"]["sequence"][0]["tool_name"], "Read");
+[31m-        assert_eq!(summary["events"]["sequence"][1]["tool_name"], "exec_command");
+(B[m[32m+        assert_eq!(
+(B[m[32m+            summary["events"]["sequence"][1]["tool_name"],
+(B[m[32m+            "exec_command"
+(B[m[32m+        );
+(B[m         assert_eq!(summary["tools"]["names"], json!(["Read", "exec_command"]));
+         assert_eq!(summary["tools"]["start_count"], 0);
+         assert_eq!(summary["tools"]["end_count"], 2);

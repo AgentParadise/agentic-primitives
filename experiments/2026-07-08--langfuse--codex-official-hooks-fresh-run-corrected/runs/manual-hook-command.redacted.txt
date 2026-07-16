@@ -1,0 +1,1 @@
+LANGFUSE_CODEX_DEBUG=true LANGFUSE_CODEX_FAIL_ON_ERROR=true TRACE_TO_LANGFUSE=true LANGFUSE_BASE_URL=http://localhost:3000 LANGFUSE_PUBLIC_KEY=<redacted> LANGFUSE_SECRET_KEY=<redacted> node <official-plugin-dist-index> < hook payload transcript_path=fresh rollout

@@ -1,0 +1,67 @@
+Run a recipe end-to-end: provision -> submit -> await -> capture -> stop, streaming R6 event JSONL on stdout and emitting a final result
+
+Usage: itmux run [OPTIONS] --recipe <RECIPE> --task <TASK>
+
+Options:
+      --recipe <RECIPE>
+          Path to a recipe directory (EXP-0005 shape)
+
+      --task <TASK>
+          The task text handed to the recipe's default agent
+
+      --image <IMAGE>
+          Container image. Defaults to the interactive-tmux workspace image
+          
+          [default: agentic-workspace-interactive-tmux:latest]
+
+      --codex-mode <CODEX_MODE>
+          How Codex recipes execute. `tui` preserves the current interactive workspace behavior; `exec` uses structured `codex exec --json` telemetry for rich tool/token/cost observability
+
+          Possible values:
+          - tui:  Launch the interactive Codex TUI in the Docker workspace
+          - exec: Run `codex exec --json` and normalize its structured event stream
+          
+          [default: tui]
+
+      --codex-bin <CODEX_BIN>
+          Codex binary used when `--codex-mode exec`
+          
+          [default: codex]
+
+      --codex-sandbox <CODEX_SANDBOX>
+          Sandbox policy passed to `codex exec` when `--codex-mode exec`
+          
+          [default: read-only]
+
+      --json <JSON>
+          Emit event JSONL on stdout (on by default). `--json false` suppresses the event stream and prints only a human result summary
+          
+          [default: true]
+          [possible values: true, false]
+
+      --result-file <RESULT_FILE>
+          Write the final `AgentRunResult` JSON to this file instead of a `type:"result"` line on stdout
+
+      --observability-file <OBSERVABILITY_FILE>
+          Append normalized run events to this JSONL file as an observability artifact. Relative paths resolve in the driver process
+
+      --observability-syntropic-file <OBSERVABILITY_SYNTROPIC_FILE>
+          Append Syntropic137 HookWatcher-compatible JSONL to this file
+
+      --observability-langfuse
+          Enable fallback/collector LangFuse OTLP export using LANGFUSE_* credentials. Prefer official LangFuse Claude/Codex plugins for rich Claude/Codex trace UX
+
+      --observability-langfuse-force
+          Force fallback LangFuse OTLP export even when TRACE_TO_LANGFUSE indicates an official LangFuse plugin is already tracing
+
+      --langfuse-base-url <LANGFUSE_BASE_URL>
+          LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL
+
+      --langfuse-project-id <LANGFUSE_PROJECT_ID>
+          LangFuse project id used to report UI trace links. Defaults to LANGFUSE_PROJECT_ID when set
+
+      --langfuse-label <LANGFUSE_LABEL>
+          Label for the LangFuse observability link in AgentRunResult
+
+  -h, --help
+          Print help (see a summary with '-h')

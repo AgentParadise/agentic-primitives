@@ -1,0 +1,54 @@
+ WARN  This project is configured to use v9.5.0 of pnpm. Your current pnpm is v9.1.4
+ WARN  Unsupported engine: wanted: {"node":">=22"} (current: {"node":"v20.12.0","pnpm":"9.1.4"})
+
+> @langfuse/codex-observability-plugin@0.1.0 test /private/tmp/langfuse-codex-plugin
+> vitest run
+
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:507:36
+    at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:9:49
+    ... 2 lines matching cause stack trace ...
+    at async ModuleLoader.import (node:internal/modules/esm/loader:323:24)
+    at async start (file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/vitest@4.1.8_@opentelemetry+api@1.9.1_@types+node@22.19.19_vite@8.0.16_@types+node@22.19.19_/node_modules/vitest/dist/chunks/cac.C9xsMMkH.js:2339:27)
+    at async CAC.run (file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/vitest@4.1.8_@opentelemetry+api@1.9.1_@types+node@22.19.19_vite@8.0.16_@types+node@22.19.19_/node_modules/vitest/dist/chunks/cac.C9xsMMkH.js:2318:2) {
+  [cause]: Error: Cannot find module '@rolldown/binding-darwin-arm64'
+  Require stack:
+  - /private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1143:15)
+      ... 2 lines matching cause stack trace ...
+      at require (node:internal/modules/helpers:179:18)
+      at requireNative (file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:219:22)
+      at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:475:18
+      at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:9:49
+      at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/parse-Bg2pr2Q5.mjs:3:46
+      at ModuleJob.run (node:internal/modules/esm/module_job:222:25)
+      at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: [
+      '/private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs'
+    ],
+    cause: Error: Cannot find module './rolldown-binding.darwin-arm64.node'
+    Require stack:
+    - /private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs
+        at Module._resolveFilename (node:internal/modules/cjs/loader:1143:15)
+        ... 2 lines matching cause stack trace ...
+        at require (node:internal/modules/helpers:179:18)
+        at requireNative (file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:214:13)
+        at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:475:18
+        at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/binding-CXquf8ay.mjs:9:49
+        at file:///private/tmp/langfuse-codex-plugin/node_modules/.pnpm/rolldown@1.0.3/node_modules/rolldown/dist/shared/parse-Bg2pr2Q5.mjs:3:46
+        at ModuleJob.run (node:internal/modules/esm/module_job:222:25)
+        at async ModuleLoader.import (node:internal/modules/esm/loader:323:24) {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: [Array],
+      cause: [Error]
+    }
+  }
+}
+
+
+
+ ELIFECYCLE  Test failed. See above for more details.
+exit=1

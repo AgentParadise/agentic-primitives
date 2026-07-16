@@ -1,0 +1,72 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/traces?limit=5&page=1",
+    "limit": 5,
+    "page": 1,
+    "harness": "claude",
+    "environment": "local-macbook"
+  },
+  "summary": {
+    "page": 1,
+    "limit": 5,
+    "returned_count": 2,
+    "backend_total_items": 23,
+    "backend_total_pages": 5,
+    "filters": {
+      "harness": "claude",
+      "provider": null,
+      "model": null,
+      "environment": "local-macbook"
+    },
+    "harnesses": [
+      "claude"
+    ],
+    "providers": [
+      "anthropic"
+    ],
+    "models": [
+      "claude-sonnet-4-6"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "total_cost": 0.1141943,
+    "traces": [
+      {
+        "trace_id": "0e553fc833c71639acd03be9807eb616",
+        "run_id": "dfec301e-8152-4566-9253-cc211739b80b",
+        "session_id": "dfec301e-8152-4566-9253-cc211739b80b",
+        "name": "Claude Code - Turn 1 (dfec301e)",
+        "timestamp": "2026-07-08T19:10:14.911Z",
+        "created_at": "2026-07-08T19:10:23.814Z",
+        "updated_at": "2026-07-08T19:10:23.824Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": null,
+        "total_cost": 0.1139603,
+        "latency_s": 6.823,
+        "observation_count": 4,
+        "html_path": "/project/agentic-primitives-local-project/traces/0e553fc833c71639acd03be9807eb616"
+      },
+      {
+        "trace_id": "0cea86b285c18bb156f31a00472ffe60",
+        "run_id": "run-3f9dfb58",
+        "session_id": "run-3f9dfb58",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T04:38:10.000Z",
+        "created_at": "2026-07-08T04:38:15.770Z",
+        "updated_at": "2026-07-08T04:38:15.787Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.000234,
+        "latency_s": 5.001,
+        "observation_count": 16,
+        "html_path": "/project/agentic-primitives-local-project/traces/0cea86b285c18bb156f31a00472ffe60"
+      }
+    ]
+  }
+}

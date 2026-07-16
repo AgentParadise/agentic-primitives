@@ -1,0 +1,6 @@
+{"run_id":"run-c6b55a00","seq":0,"ts":"2026-07-07T19:35:53Z","type":"tool_start","tool_name":"codex_exec.thread","tool_input":{"thread_id":"synthetic-thread"}}
+{"run_id":"run-c6b55a00","seq":1,"ts":"2026-07-07T19:35:53Z","type":"tool_start","tool_name":"codex_exec.turn","tool_input":null}
+{"run_id":"run-c6b55a00","seq":2,"ts":"2026-07-07T19:35:53Z","type":"tool_end","tool_name":"codex_exec.item.agent_message","success":true,"output_summary":"SYNTHETIC_CODEX_OK"}
+{"run_id":"run-c6b55a00","seq":3,"ts":"2026-07-07T19:35:53Z","type":"tool_end","tool_name":"codex_exec.turn","success":true,"output_summary":"turn completed"}
+{"run_id":"run-c6b55a00","seq":4,"ts":"2026-07-07T19:35:53Z","type":"token_usage","input_tokens":10,"output_tokens":3,"cached_input_tokens":0,"reasoning_output_tokens":0,"cost_usd":null}
+{"run_id":"run-c6b55a00","seq":5,"ts":"2026-07-07T19:35:53Z","type":"session_end","outcome":{"success":true,"summary":"codex exec completed successfully"}}

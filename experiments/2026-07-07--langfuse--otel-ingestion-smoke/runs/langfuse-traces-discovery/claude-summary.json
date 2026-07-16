@@ -1,0 +1,140 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/traces?limit=10&page=1",
+    "limit": 10,
+    "page": 1,
+    "harness": "claude"
+  },
+  "summary": {
+    "page": 1,
+    "limit": 10,
+    "returned_count": 6,
+    "backend_total_items": 17,
+    "backend_total_pages": 2,
+    "filters": {
+      "harness": "claude",
+      "provider": null,
+      "model": null,
+      "environment": null
+    },
+    "harnesses": [
+      "claude"
+    ],
+    "providers": [
+      "anthropic"
+    ],
+    "models": [
+      "claude-haiku-4-5-20251001",
+      "claude-sonnet-4-6"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "total_cost": 0.11070784999899999,
+    "traces": [
+      {
+        "trace_id": "ca9adeba40ddbc919e94aec818894214",
+        "run_id": "run-f07cba88",
+        "session_id": "run-f07cba88",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:15:34.000Z",
+        "created_at": "2026-07-08T03:15:40.106Z",
+        "updated_at": "2026-07-08T03:15:40.132Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.001767,
+        "latency_s": 6.001,
+        "observation_count": 21,
+        "html_path": "/project/agentic-primitives-local-project/traces/ca9adeba40ddbc919e94aec818894214"
+      },
+      {
+        "trace_id": "ece65397789bf73998deb6ef508aa92c",
+        "run_id": "run-2e3c7c48",
+        "session_id": "run-2e3c7c48",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:07:38.000Z",
+        "created_at": "2026-07-08T03:12:41.784Z",
+        "updated_at": "2026-07-08T03:12:41.808Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.002051999999,
+        "latency_s": 303.001,
+        "observation_count": 23,
+        "html_path": "/project/agentic-primitives-local-project/traces/ece65397789bf73998deb6ef508aa92c"
+      },
+      {
+        "trace_id": "93268b3ab949a092fc5131ab224367ef",
+        "run_id": "run-ab55ce30",
+        "session_id": "run-ab55ce30",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:18:08.000Z",
+        "created_at": "2026-07-08T02:18:16.872Z",
+        "updated_at": "2026-07-08T02:18:16.891Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.000219,
+        "latency_s": 8.001,
+        "observation_count": 16,
+        "html_path": "/project/agentic-primitives-local-project/traces/93268b3ab949a092fc5131ab224367ef"
+      },
+      {
+        "trace_id": "12b82ea97b95ece3826572dfab5df4b6",
+        "run_id": "run-fdbda648",
+        "session_id": "run-fdbda648",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:11:20.000Z",
+        "created_at": "2026-07-08T02:16:24.358Z",
+        "updated_at": "2026-07-08T02:16:24.428Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.011838,
+        "latency_s": 304.001,
+        "observation_count": 19,
+        "html_path": "/project/agentic-primitives-local-project/traces/12b82ea97b95ece3826572dfab5df4b6"
+      },
+      {
+        "trace_id": "8603e096fe56957c7683d7114499702d",
+        "run_id": "run-0b3f4760",
+        "session_id": "run-0b3f4760",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:49:14.000Z",
+        "created_at": "2026-07-08T01:49:22.677Z",
+        "updated_at": "2026-07-08T01:49:22.695Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.000234,
+        "latency_s": 8.001,
+        "observation_count": 16,
+        "html_path": "/project/agentic-primitives-local-project/traces/8603e096fe56957c7683d7114499702d"
+      },
+      {
+        "trace_id": "78568acaeec8a7753be1d3228546d9a6",
+        "run_id": "run-claude-fixture-redacted",
+        "session_id": "run-claude-fixture-redacted",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:35:08.000Z",
+        "created_at": "2026-07-08T01:35:08.606Z",
+        "updated_at": "2026-07-08T01:35:08.624Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001",
+        "total_cost": 0.09459785,
+        "latency_s": 0.001,
+        "observation_count": 14,
+        "html_path": "/project/agentic-primitives-local-project/traces/78568acaeec8a7753be1d3228546d9a6"
+      }
+    ]
+  }
+}

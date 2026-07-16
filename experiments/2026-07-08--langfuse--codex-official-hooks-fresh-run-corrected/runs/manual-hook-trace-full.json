@@ -1,0 +1,601 @@
+{
+  "ok": true,
+  "request": {
+    "api": "legacy_trace",
+    "endpoint": "http://localhost:3000/api/public/traces/b928a86e0c44784896a2224778c339c4",
+    "trace_id": "b928a86e0c44784896a2224778c339c4",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 100,
+    "include_scores": false,
+    "score_limit": 20,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
+  },
+  "summary": {
+    "trace_id": "b928a86e0c44784896a2224778c339c4",
+    "trace_name": "Codex Turn",
+    "session_id": "019f4370-6474-74a3-825b-2c70d782f3a5",
+    "environment": "local-macbook",
+    "observation_count": 4,
+    "observation_names": [
+      "Codex Turn",
+      "exec_command",
+      "gpt-5.5"
+    ],
+    "observation_types": [
+      "AGENT",
+      "GENERATION",
+      "TOOL"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "harnesses": [
+      "codex"
+    ],
+    "providers": [
+      "openai"
+    ],
+    "models": [
+      "gpt-5.5"
+    ],
+    "model_ids": [
+      "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+    ],
+    "usage": {
+      "input_tokens": 33869,
+      "output_tokens": 81,
+      "total_tokens": 33950
+    },
+    "cost": {
+      "calculated_total_usd": 0.171775
+    },
+    "events": {
+      "sequence_source": null,
+      "category_counts": [
+        {
+          "category": "agent_tool",
+          "count": 1
+        },
+        {
+          "category": "other",
+          "count": 3
+        }
+      ],
+      "sequence": [
+        {
+          "seq": null,
+          "event": "Codex Turn",
+          "name": "Codex Turn",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "gpt-5.5",
+          "name": "gpt-5.5",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "gpt-5.5",
+          "success": null,
+          "total_tokens": 16937,
+          "calculated_total_cost": 0.086285
+        },
+        {
+          "seq": null,
+          "event": "tool",
+          "name": "exec_command",
+          "category": "agent_tool",
+          "tool_name": "exec_command",
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "gpt-5.5",
+          "name": "gpt-5.5",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "gpt-5.5",
+          "success": null,
+          "total_tokens": 17013,
+          "calculated_total_cost": 0.08549
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "tools": {
+      "start_count": 0,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "exec_command"
+      ],
+      "by_name": [
+        {
+          "name": "exec_command",
+          "starts": 0,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "exec_command",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "operations": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "agent_tools": {
+      "start_count": 0,
+      "end_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "names": [
+        "exec_command"
+      ],
+      "by_name": [
+        {
+          "name": "exec_command",
+          "starts": 0,
+          "ends": 1,
+          "successes": 1,
+          "failures": 0
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "event": "tool",
+          "tool_name": "exec_command",
+          "success": true
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "harness_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "generations": {
+      "count": 2,
+      "input_tokens": 33869,
+      "output_tokens": 81,
+      "total_tokens": 33950,
+      "calculated_total_usd": 0.171775,
+      "by_model": [
+        {
+          "model": "gpt-5.5",
+          "model_ids": [
+            "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+          ],
+          "providers": [],
+          "harnesses": [],
+          "count": 2,
+          "input_tokens": 33869,
+          "output_tokens": 81,
+          "total_tokens": 33950,
+          "calculated_total_usd": 0.171775
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "observation_id": "aa06268873bd1742",
+          "name": "gpt-5.5",
+          "model": "gpt-5.5",
+          "model_id": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 16873,
+          "output_tokens": 64,
+          "total_tokens": 16937,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.084365,
+          "calculated_output_cost_usd": 0.00192,
+          "calculated_total_cost_usd": 0.086285,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "9b12296cf9c3b573",
+          "name": "gpt-5.5",
+          "model": "gpt-5.5",
+          "model_id": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 16996,
+          "output_tokens": 17,
+          "total_tokens": 17013,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.08498,
+          "calculated_output_cost_usd": 0.00051,
+          "calculated_total_cost_usd": 0.08549,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        }
+      ],
+      "sequence_truncated": false
+    }
+  },
+  "response": {
+    "id": "b928a86e0c44784896a2224778c339c4",
+    "projectId": "agentic-primitives-local-project",
+    "name": "Codex Turn",
+    "timestamp": "2026-07-08T20:34:27.233Z",
+    "environment": "local-macbook",
+    "tags": [],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "neuralempowerment@gmail.com",
+    "sessionId": "019f4370-6474-74a3-825b-2c70d782f3a5",
+    "public": false,
+    "input": "Run a harmless shell command that prints CODEX_OFFICIAL_HOOKS_READY_1783542866, then reply exactly: CODEX_OFFICIAL_HOOKS_READY_1783542866",
+    "output": "CODEX_OFFICIAL_HOOKS_READY_1783542866",
+    "metadata": {
+      "codex.turn_id": "019f4370-6507-7812-b77f-9278d7f53151",
+      "codex.thread_id": "019f4370-6474-74a3-825b-2c70d782f3a5",
+      "codex.model": "gpt-5.5",
+      "codex.model_provider": "openai",
+      "codex.cli_version": "0.142.5",
+      "codex.aborted": false,
+      "codex.tool_call_count": 1,
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    },
+    "createdAt": "2026-07-08T20:36:51.956Z",
+    "updatedAt": "2026-07-08T20:36:51.968Z",
+    "externalId": null,
+    "scores": [],
+    "latency": 5.167,
+    "observations": [
+      {
+        "id": "1f35687c917a9064",
+        "traceId": "b928a86e0c44784896a2224778c339c4",
+        "startTime": "2026-07-08T20:34:27.233Z",
+        "endTime": "2026-07-08T20:34:32.400Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": null,
+        "type": "AGENT",
+        "environment": "local-macbook",
+        "name": "Codex Turn",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T20:36:51.953Z",
+        "updatedAt": "2026-07-08T20:36:51.961Z",
+        "input": "Run a harmless shell command that prints CODEX_OFFICIAL_HOOKS_READY_1783542866, then reply exactly: CODEX_OFFICIAL_HOOKS_READY_1783542866",
+        "output": "CODEX_OFFICIAL_HOOKS_READY_1783542866",
+        "metadata": {
+          "codex.turn_id": "019f4370-6507-7812-b77f-9278d7f53151",
+          "codex.thread_id": "019f4370-6474-74a3-825b-2c70d782f3a5",
+          "codex.model": "gpt-5.5",
+          "codex.model_provider": "openai",
+          "codex.cli_version": "0.142.5",
+          "codex.aborted": false,
+          "codex.tool_call_count": 1,
+          "resourceAttributes": {
+            "service.name": "unknown_service:node",
+            "telemetry.sdk.language": "nodejs",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "2.7.1"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "5.4.1",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 5.167,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "9b12296cf9c3b573",
+        "traceId": "b928a86e0c44784896a2224778c339c4",
+        "startTime": "2026-07-08T20:34:32.343Z",
+        "endTime": "2026-07-08T20:34:32.390Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "1f35687c917a9064",
+        "type": "GENERATION",
+        "environment": "local-macbook",
+        "name": "gpt-5.5",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T20:36:51.953Z",
+        "updatedAt": "2026-07-08T20:36:51.961Z",
+        "input": [
+          {
+            "name": "exec_command",
+            "output": "Chunk ID: bfad1b\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 10\nOutput:\nCODEX_OFFICIAL_HOOKS_READY_1783542866\n"
+          }
+        ],
+        "output": {
+          "content": "CODEX_OFFICIAL_HOOKS_READY_1783542866"
+        },
+        "metadata": {
+          "codex.step_index": 1,
+          "resourceAttributes": {
+            "service.name": "unknown_service:node",
+            "telemetry.sdk.language": "nodejs",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "2.7.1"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "5.4.1",
+            "attributes": {}
+          }
+        },
+        "model": "gpt-5.5",
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.047,
+        "timeToFirstToken": null,
+        "usageDetails": {
+          "input": 16996,
+          "output": 17,
+          "total": 17013,
+          "cache_read_input_tokens": 16768,
+          "reasoning_tokens": 0
+        },
+        "costDetails": {
+          "input": 0.08498,
+          "output": 0.00051,
+          "total": 0.08549
+        },
+        "usagePricingTierId": "0a8ec527-44e0-4ee3-8005-a1865d712ec6_tier_default",
+        "usagePricingTierName": "Standard",
+        "inputPrice": 5e-6,
+        "outputPrice": 0.00003,
+        "totalPrice": 0,
+        "calculatedInputCost": 0.08498,
+        "calculatedOutputCost": 0.00051,
+        "calculatedTotalCost": 0.08549,
+        "unit": "TOKENS",
+        "promptTokens": 16996,
+        "completionTokens": 17,
+        "totalTokens": 17013,
+        "modelId": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+        "usage": {
+          "unit": "TOKENS",
+          "input": 16996,
+          "output": 17,
+          "total": 17013
+        }
+      },
+      {
+        "id": "f631965fdb73e2bd",
+        "traceId": "b928a86e0c44784896a2224778c339c4",
+        "startTime": "2026-07-08T20:34:30.263Z",
+        "endTime": "2026-07-08T20:34:30.343Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "aa06268873bd1742",
+        "type": "TOOL",
+        "environment": "local-macbook",
+        "name": "exec_command",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T20:36:51.953Z",
+        "updatedAt": "2026-07-08T20:36:51.961Z",
+        "input": {
+          "cmd": "printf '%s\\n' CODEX_OFFICIAL_HOOKS_READY_1783542866",
+          "workdir": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run"
+        },
+        "output": "Chunk ID: bfad1b\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 10\nOutput:\nCODEX_OFFICIAL_HOOKS_READY_1783542866\n",
+        "metadata": {
+          "codex.call_id": "call_S9zcfoAUkeCTNoQ6sBHpJ0SI",
+          "resourceAttributes": {
+            "service.name": "unknown_service:node",
+            "telemetry.sdk.language": "nodejs",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "2.7.1"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "5.4.1",
+            "attributes": {}
+          }
+        },
+        "model": null,
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.08,
+        "timeToFirstToken": null,
+        "usageDetails": {},
+        "costDetails": {},
+        "usagePricingTierId": null,
+        "usagePricingTierName": null,
+        "inputPrice": 0,
+        "outputPrice": 0,
+        "totalPrice": 0,
+        "calculatedInputCost": null,
+        "calculatedOutputCost": null,
+        "calculatedTotalCost": 0,
+        "unit": "TOKENS",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "modelId": null,
+        "usage": {
+          "unit": "TOKENS",
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "aa06268873bd1742",
+        "traceId": "b928a86e0c44784896a2224778c339c4",
+        "startTime": "2026-07-08T20:34:30.263Z",
+        "endTime": "2026-07-08T20:34:30.343Z",
+        "projectId": "agentic-primitives-local-project",
+        "parentObservationId": "1f35687c917a9064",
+        "type": "GENERATION",
+        "environment": "local-macbook",
+        "name": "gpt-5.5",
+        "level": "DEFAULT",
+        "statusMessage": null,
+        "version": null,
+        "createdAt": "2026-07-08T20:36:51.953Z",
+        "updatedAt": "2026-07-08T20:36:51.960Z",
+        "input": "Run a harmless shell command that prints CODEX_OFFICIAL_HOOKS_READY_1783542866, then reply exactly: CODEX_OFFICIAL_HOOKS_READY_1783542866",
+        "output": {
+          "tool_calls": [
+            {
+              "id": "call_S9zcfoAUkeCTNoQ6sBHpJ0SI",
+              "name": "exec_command",
+              "arguments": {
+                "cmd": "printf '%s\\n' CODEX_OFFICIAL_HOOKS_READY_1783542866",
+                "workdir": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run"
+              }
+            }
+          ]
+        },
+        "metadata": {
+          "codex.step_index": 0,
+          "resourceAttributes": {
+            "service.name": "unknown_service:node",
+            "telemetry.sdk.language": "nodejs",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "2.7.1"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "5.4.1",
+            "attributes": {}
+          }
+        },
+        "model": "gpt-5.5",
+        "modelParameters": {},
+        "completionStartTime": null,
+        "promptId": null,
+        "promptName": null,
+        "promptVersion": null,
+        "latency": 0.08,
+        "timeToFirstToken": null,
+        "usageDetails": {
+          "input": 16873,
+          "output": 64,
+          "total": 16937,
+          "cache_read_input_tokens": 9600,
+          "reasoning_tokens": 0
+        },
+        "costDetails": {
+          "input": 0.084365,
+          "output": 0.00192,
+          "total": 0.086285
+        },
+        "usagePricingTierId": "0a8ec527-44e0-4ee3-8005-a1865d712ec6_tier_default",
+        "usagePricingTierName": "Standard",
+        "inputPrice": 5e-6,
+        "outputPrice": 0.00003,
+        "totalPrice": 0,
+        "calculatedInputCost": 0.084365,
+        "calculatedOutputCost": 0.00192,
+        "calculatedTotalCost": 0.086285,
+        "unit": "TOKENS",
+        "promptTokens": 16873,
+        "completionTokens": 64,
+        "totalTokens": 16937,
+        "modelId": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+        "usage": {
+          "unit": "TOKENS",
+          "input": 16873,
+          "output": 64,
+          "total": 16937
+        }
+      }
+    ],
+    "htmlPath": "/project/agentic-primitives-local-project/traces/b928a86e0c44784896a2224778c339c4",
+    "totalCost": 0.171775
+  },
+  "scores_response": null
+}

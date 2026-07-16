@@ -1,0 +1,135 @@
+    Blocking waiting for file lock on package cache
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/experiment/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/standard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/substandard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling itmux v0.1.0 (/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/providers/workspaces/interactive-tmux/driver-rs)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.49s
+     Running unittests src/lib.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/itmux-98432f3a0568f115)
+
+running 3 tests
+test run::observability::tests::langfuse_otlp_config_accepts_otel_base_or_trace_endpoint ... ok
+test run::observability::tests::langfuse_otlp_config_derives_traces_endpoint_and_auth ... ok
+test run::observability::tests::langfuse_otlp_exporter_reports_missing_env_without_secrets ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/itmux-7b3df54baf8fb77f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/auth_parity.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/auth_parity-e895c3d42b9ad0e4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/cancellation.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/cancellation-d8a1fbf2812346ef)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/contract_json.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/contract_json-51ca41825118190f)
+
+running 1 test
+test observability_langfuse_otlp_exporter_round_trips_with_env_refs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.00s
+
+     Running tests/cred_transfer.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/cred_transfer-f7c39ae72c467fc7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/exec_timeout.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/exec_timeout-edd058a8b80c912a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/orchestrator.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/orchestrator-c08caf48820f18b0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/orchestrator_harness_neutral.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/orchestrator_harness_neutral-9e08b3ccc9bfdd40)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/outcome_detection.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/outcome_detection-fa824a8e7a1f8992)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/pane_tail.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/pane_tail-bc6d5c74eeea0421)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/plugin_dirs.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/plugin_dirs-1d13f1f9a1f11507)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/poll_resilience.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/poll_resilience-ac7b3668052b1274)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/readiness.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/readiness-ec345c6aa2b8d0a4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running tests/recipe_loader.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/recipe_loader-fbc656b86e1bd61a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/result_parity.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/result_parity-db9b5ce17e561470)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/send_literal.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/send_literal-6eed0d1773ad773f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/submit_readiness.rs (providers/workspaces/interactive-tmux/driver-rs/target/debug/deps/submit_readiness-09e2180e82703777)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+

@@ -1,0 +1,50 @@
+scripts/langfuse-local.sh
+scripts/build-provider.py
+scripts/langfuse-local.sh
+providers/workspaces/interactive-tmux/driver-rs/README.md:113:When `TRACE_TO_LANGFUSE=true` indicates an official LangFuse plugin is active,
+scripts/build-provider.py:145:    # agentic_memory is the memory contract + doctor (ADR-036)
+docs/issues/closed/001-lsp-entrypoint-test-stdout-pollution.md:48:  composed, memory adapter, memory doctor pass) to stderr, so a `docker run …
+docs/adrs/036-memory-primitive-and-doctor.md:51:This ADR proposes both pieces — the contract and the doctor — together,
+docs/adrs/036-memory-primitive-and-doctor.md:52:because their shapes are coupled. The doctor is what makes the contract's
+docs/adrs/036-memory-primitive-and-doctor.md:68:2. **Memory doctor** — a CLI at `/opt/agentic/memory/doctor` that validates
+docs/adrs/036-memory-primitive-and-doctor.md:72:   via `--fix`. Entrypoint section 5.7 runs full preflight automatically
+docs/adrs/036-memory-primitive-and-doctor.md:78:3. **Audit trail** via host bind-mount at `/var/agentic/memory-doctor/`.
+docs/adrs/036-memory-primitive-and-doctor.md:84:[the spec doc](../superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md).
+docs/adrs/036-memory-primitive-and-doctor.md:136:### Alternative 3: Doctor as a standalone CLI only (no automatic preflight)
+docs/adrs/036-memory-primitive-and-doctor.md:138:**Description**: Add the doctor command, but don't run it at container start.
+docs/adrs/036-memory-primitive-and-doctor.md:151:**Reason for rejection**: The whole point of a doctor is to fail loud where
+docs/adrs/036-memory-primitive-and-doctor.md:159:**Description**: If the doctor reports any failure, the entrypoint logs the
+docs/adrs/036-memory-primitive-and-doctor.md:199:  The doctor JSON output is machine-parseable for orchestrators that want to
+docs/adrs/036-memory-primitive-and-doctor.md:205:- **Backend ownership stays where it belongs.** The doctor explicitly does
+docs/adrs/036-memory-primitive-and-doctor.md:214:  a new provider ships, we need a new adapter script and matching doctor
+docs/adrs/036-memory-primitive-and-doctor.md:221:  until the operator intervenes. Mitigated by the doctor's auto-fix
+docs/adrs/036-memory-primitive-and-doctor.md:224:  doctor.
+docs/adrs/036-memory-primitive-and-doctor.md:234:Phased implementation per the spec doc. Phases 1–2 cover contract + doctor
+docs/adrs/036-memory-primitive-and-doctor.md:248:- [Design spec](../superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md)
+docs/adrs/038-modular-agent-observability.md:129:`TRACE_TO_LANGFUSE` suppresses the Rust `langfuse_otlp` writer while preserving
+docs/adrs/038-modular-agent-observability.md:331:- `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` validated the
+plugins/observability/README.md:14:`.codex/config.toml`, then opts in with `TRACE_TO_LANGFUSE=true` plus
+plugins/observability/README.md:23:`TRACE_TO_LANGFUSE=true`; use `--observability-langfuse-force` only for an
+docs/adrs/037-release-integration-gate.md:31:[ADR-036](036-memory-primitive-and-doctor.md)). `qa.yml` explicitly
+docs/adrs/037-release-integration-gate.md:83:  tests skip. All traversal / injection / doctor-fail hardening (the security
+docs/plans/2026-07-07-observability-primitive-completion-audit.md:29:`TRACE_TO_LANGFUSE` suppresses Rust OTLP while preserving file JSONL unless
+docs/plans/2026-07-07-observability-primitive-completion-audit.md:70:| Single-active-rich-exporter guard exists in `itmux` CLI | Proven locally | `experiments/2026-07-08--langfuse--single-rich-exporter-guard` | `TRACE_TO_LANGFUSE=true` suppresses Rust `langfuse_otlp`, preserves file JSONL, and `--observability-langfuse-force` restores fallback OTLP for deliberate collector/Syntropic137 use. |
+docs/plans/2026-07-07-observability-primitive-completion-audit.md:73:| Endpoint derivation and Basic auth construction work | Local-receiver-proven | `experiments/2026-07-07--langfuse--otel-preflight-local-receiver/results.md`; Rust unit tests in `observability.rs` | Supports origin, `/api/public/otel`, and `/api/public/otel/v1/traces` inputs. |
+docs/plans/2026-07-07-observability-primitive-completion-audit.md:83:| Runtime noise guard preserves JSONL while suppressing fallback OTLP | Proven locally | `experiments/2026-07-08--langfuse--runtime-noise-guard` | With `TRACE_TO_LANGFUSE=true`, `itmux claude-transcript --observability-langfuse` sent zero OTLP receiver requests while file and Syntropic137 JSONL each exported 7 events. Adding `--observability-langfuse-force` sent exactly one OTLP POST and kept both JSONL exporters `ok`. |
+docs/plans/2026-07-07-observability-primitive-implementation.md:15:- `experiments/2026-07-07--langfuse--otel-preflight-local-receiver`
+docs/plans/2026-07-07-observability-primitive-implementation.md:107:  Rust `langfuse_otlp` writer when `TRACE_TO_LANGFUSE=true` indicates an
+docs/plans/2026-07-07-observability-primitive-implementation.md:129:- `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` passed locally:
+docs/plans/2026-07-07-observability-primitive-implementation.md:232:3. Use `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` as local
+docs/guides/langfuse-observability-setup.md:42:- `TRACE_TO_LANGFUSE=true`, used by the official Claude and Codex plugins to
+docs/guides/langfuse-observability-setup.md:119:export TRACE_TO_LANGFUSE=true
+docs/guides/langfuse-observability-setup.md:158:`TRACE_TO_LANGFUSE=true` indicates an official LangFuse plugin is active,
+plugins/docs/skills/system-infographic/assets/template.html:116:  /* ---- setup checklist ---- */
+plugins/experiments/skills/running-experiments/SKILL.md:58:2. **No smoke testing before the hypothesis commit.** A "let me verify the setup works" run leaks the answer. Verify the setup by *reading* code, configs, and the `_template/README.md` pre-flight checklist -- not by running the experiment.
+plugins/experiments/skills/running-experiments/SKILL.md:95:- **Run the `_template/README.md` pre-flight checklist before committing the hypothesis.** Clean working tree, known stack state, empty `.harness/artifacts/<iso_key>/`, documented tool versions. Ladders up by ruling out confounds before they corrupt the hypothesis. See `references/preflight.md`.
+plugins/experiments/skills/running-experiments/SKILL.md:223:5. Walk the `_template/README.md` pre-flight checklist (`references/preflight.md`). Resolve every confound or document it as part of Setup.
+plugins/experiments/skills/running-experiments/SKILL.md:241:- `references/preflight.md`: the pre-flight checklist from `_template/README.md`, with rationale per item and the retrospective each one came from.
+plugins/docs/skills/system-infographic/assets/example-how-it-works.html:183:  /* ---------- setup checklist ---------- */
+plugins/docs/skills/system-infographic/references/aesthetic-system.md:78:- Numbered setup checklist. Ordered steps with copy-able command chips. Color
+plugins/docs/skills/system-infographic/references/aesthetic-system.md:83:pipeline as the centerpiece, phase cards for the sequence, and a setup checklist
+plugins/docs/skills/system-infographic/SKILL.md:31:2. Choose the spine that matches the content. Common spines: a linear pipeline (A to B to C), a perimeter map (what stays inside a trust boundary versus what crosses it), phase blocks (one-time versus per-call versus continuous), and a numbered setup checklist. Most system explainers combine a map centerpiece, phase cards, and a setup checklist. See `references/aesthetic-system.md`.
+plugins/docs/skills/system-infographic/SKILL.md:34:5. Fill the spine with the real content from step 1: a hero stating the one-line thesis, the map or pipeline centerpiece, phase cards for the steps, callout chips for the invariants that make the system work, and a numbered setup checklist with copy-able command chips. Use the actual commands, not placeholders.

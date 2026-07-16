@@ -1,0 +1,47 @@
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/experiment/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/standard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+error: invalid character `{` in package name: `{{slug}}`, the first character must be a Unicode XID start character (most letters or `_`)
+ --> ../../../../.cargo/git/checkouts/agent-paradise-standards-system-b72b09bd8c9a7a30/ce786bc/standards/v1/APS-V1-0000-meta/templates/substandard/skeleton/Cargo.toml:2:8
+  |
+2 | name = "{{slug}}"
+  |        ^^^^^^^^^^
+  |
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running `providers/workspaces/interactive-tmux/driver-rs/target/debug/itmux run --help`
+Run a recipe end-to-end: provision -> submit -> await -> capture -> stop, streaming R6 event JSONL on stdout and emitting a final result
+
+Usage: itmux run [OPTIONS] --recipe <RECIPE> --task <TASK>
+
+Options:
+      --recipe <RECIPE>
+          Path to a recipe directory (EXP-0005 shape)
+      --task <TASK>
+          The task text handed to the recipe's default agent
+      --image <IMAGE>
+          Container image. Defaults to the interactive-tmux workspace image [default: agentic-workspace-interactive-tmux:latest]
+      --json <JSON>
+          Emit event JSONL on stdout (on by default). `--json false` suppresses the event stream and prints only a human result summary [default: true] [possible values: true, false]
+      --result-file <RESULT_FILE>
+          Write the final `AgentRunResult` JSON to this file instead of a `type:"result"` line on stdout
+      --observability-file <OBSERVABILITY_FILE>
+          Append normalized run events to this JSONL file as an observability artifact. Relative paths resolve in the driver process
+      --observability-langfuse
+          Enable LangFuse OTLP trace export using LANGFUSE_* environment variables for credentials
+      --langfuse-base-url <LANGFUSE_BASE_URL>
+          LangFuse origin or OTLP endpoint. Defaults to LANGFUSE_BASE_URL
+      --langfuse-project-id <LANGFUSE_PROJECT_ID>
+          LangFuse project id used to report UI trace links. Defaults to LANGFUSE_PROJECT_ID when set
+      --langfuse-label <LANGFUSE_LABEL>
+          Label for the LangFuse observability link in AgentRunResult
+  -h, --help
+          Print help

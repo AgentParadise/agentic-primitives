@@ -1,0 +1,222 @@
+{
+  "ok": true,
+  "request": {
+    "api": "legacy_trace",
+    "endpoint": "http://localhost:3000/api/public/traces/b3d2561d7c0557c12fd427c02a16e2f3",
+    "trace_id": "b3d2561d7c0557c12fd427c02a16e2f3",
+    "fields": "core,basic,usage,trace_context",
+    "limit": 100,
+    "include_scores": false,
+    "score_limit": 20,
+    "from_start_time": "2020-01-01T00:00:00Z",
+    "to_start_time": "2100-01-01T00:00:00Z"
+  },
+  "summary": {
+    "trace_id": "b3d2561d7c0557c12fd427c02a16e2f3",
+    "trace_name": "Codex Turn",
+    "session_id": "019f4324-c997-72c1-bae9-9eae62d84fc8",
+    "environment": "local-macbook",
+    "observation_count": 4,
+    "observation_names": [
+      "Codex Turn",
+      "exec_command",
+      "gpt-5.5"
+    ],
+    "observation_types": [
+      "AGENT",
+      "GENERATION",
+      "TOOL"
+    ],
+    "environments": [
+      "local-macbook"
+    ],
+    "harnesses": [],
+    "providers": [],
+    "models": [
+      "gpt-5.5"
+    ],
+    "model_ids": [
+      "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+    ],
+    "usage": {
+      "input_tokens": 34341,
+      "output_tokens": 104,
+      "total_tokens": 34445
+    },
+    "cost": {
+      "calculated_total_usd": 0.174825
+    },
+    "events": {
+      "sequence_source": null,
+      "category_counts": [
+        {
+          "category": "other",
+          "count": 4
+        }
+      ],
+      "sequence": [
+        {
+          "seq": null,
+          "event": "Codex Turn",
+          "name": "Codex Turn",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "exec_command",
+          "name": "exec_command",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": null,
+          "success": null,
+          "total_tokens": 0,
+          "calculated_total_cost": 0.0
+        },
+        {
+          "seq": null,
+          "event": "gpt-5.5",
+          "name": "gpt-5.5",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "gpt-5.5",
+          "success": null,
+          "total_tokens": 16014,
+          "calculated_total_cost": 0.08227
+        },
+        {
+          "seq": null,
+          "event": "gpt-5.5",
+          "name": "gpt-5.5",
+          "category": "other",
+          "tool_name": null,
+          "harness": null,
+          "provider": null,
+          "model": "gpt-5.5",
+          "success": null,
+          "total_tokens": 18431,
+          "calculated_total_cost": 0.092555
+        }
+      ],
+      "sequence_truncated": false
+    },
+    "tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "operations": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "agent_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "harness_tools": {
+      "start_count": 0,
+      "end_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "names": [],
+      "by_name": [],
+      "sequence_source": null,
+      "sequence": [],
+      "sequence_truncated": false
+    },
+    "generations": {
+      "count": 2,
+      "input_tokens": 34341,
+      "output_tokens": 104,
+      "total_tokens": 34445,
+      "calculated_total_usd": 0.174825,
+      "by_model": [
+        {
+          "model": "gpt-5.5",
+          "model_ids": [
+            "0a8ec527-44e0-4ee3-8005-a1865d712ec6"
+          ],
+          "providers": [],
+          "harnesses": [],
+          "count": 2,
+          "input_tokens": 34341,
+          "output_tokens": 104,
+          "total_tokens": 34445,
+          "calculated_total_usd": 0.174825
+        }
+      ],
+      "sequence_source": null,
+      "sequence": [
+        {
+          "seq": null,
+          "observation_id": "b7fdd7646cd3b9e2",
+          "name": "gpt-5.5",
+          "model": "gpt-5.5",
+          "model_id": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 15926,
+          "output_tokens": 88,
+          "total_tokens": 16014,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.07963,
+          "calculated_output_cost_usd": 0.00264,
+          "calculated_total_cost_usd": 0.08227,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        },
+        {
+          "seq": null,
+          "observation_id": "cee71cdab64f34a9",
+          "name": "gpt-5.5",
+          "model": "gpt-5.5",
+          "model_id": "0a8ec527-44e0-4ee3-8005-a1865d712ec6",
+          "harness": null,
+          "provider": null,
+          "input_tokens": 18415,
+          "output_tokens": 16,
+          "total_tokens": 18431,
+          "cached_input_tokens": null,
+          "reasoning_output_tokens": null,
+          "calculated_input_cost_usd": 0.092075,
+          "calculated_output_cost_usd": 0.00048,
+          "calculated_total_cost_usd": 0.092555,
+          "pricing_tier": "Standard",
+          "unit": "TOKENS"
+        }
+      ],
+      "sequence_truncated": false
+    }
+  }
+}

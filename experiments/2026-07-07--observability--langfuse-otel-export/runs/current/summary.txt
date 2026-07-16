@@ -1,0 +1,15 @@
+run_success=True
+stdout_count=6
+events_count=6
+match_types=True
+match_seq=True
+exporter_0_kind=file
+exporter_0_status=ok
+exporter_0_events_exported=6
+exporter_0_error=None
+exporter_0_links=1
+exporter_1_kind=langfuse_otlp
+exporter_1_status=failed
+exporter_1_events_exported=0
+exporter_1_error=missing required LangFuse config: LANGFUSE_BASE_URL
+exporter_1_links=0

@@ -36,7 +36,7 @@ The experiment ran successfully (observed in 1 run).
 - **Environment & Setup**: A single `node:22` image seamlessly installed and launched `@anthropic-ai/claude-code`, `@openai/codex`, and `@google/gemini-cli`.
 - **Authentication**: All three agents were successfully authenticated simultaneously by mounting the host's `~/.claude.json`, `~/.codex`, and `~/.gemini` directories. Note: For Claude, the `.claude.json` file needs to be mounted explicitly as it holds the OAuth tokens on the host.
 - **Initialization Gates**:
-  - `claude` requested a "Folder Trust" prompt because the mock folder was used. Sending `Enter` bypassed it successfully.
+  - `claude` requested a "Folder Trust" prompt because the synthetic test folder was used. Sending `Enter` bypassed it successfully.
   - `codex` triggered a "Hooks review" prompt. Sending `Escape` bypassed it.
   - `gemini` started directly with its prompt, thanks to `security.folderTrust.enabled: false` being pre-configured.
 - **Independent Prompt Submission**: 

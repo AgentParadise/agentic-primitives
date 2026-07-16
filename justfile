@@ -228,6 +228,55 @@ ci:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# OBSERVABILITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Clone LangFuse's official Docker Compose setup into .agentic/langfuse/
+[group('observability')]
+langfuse-init:
+    scripts/langfuse-local.sh init
+
+# Start local LangFuse via the official Docker Compose setup
+[group('observability')]
+langfuse-start:
+    scripts/langfuse-local.sh start
+
+# Show local LangFuse compose status
+[group('observability')]
+langfuse-status:
+    scripts/langfuse-local.sh status
+
+# Stop local LangFuse
+[group('observability')]
+langfuse-stop:
+    scripts/langfuse-local.sh stop
+
+# Run the LangFuse exporter smoke against LANGFUSE_BASE_URL
+[group('observability')]
+langfuse-smoke:
+    scripts/langfuse-local.sh smoke
+
+# Initialize the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-self-hosted-init:
+    infra/langfuse/self-hosted/deploy.sh init
+
+# Start the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-self-hosted-up:
+    infra/langfuse/self-hosted/deploy.sh up
+
+# Configure Tailscale Serve for the private self-hosted LangFuse deployment
+[group('observability')]
+langfuse-self-hosted-serve:
+    infra/langfuse/self-hosted/deploy.sh serve
+
+# Check the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-self-hosted-health:
+    infra/langfuse/self-hosted/deploy.sh health
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DOCKER / WORKSPACE IMAGES
 # ═══════════════════════════════════════════════════════════════════════════════
 

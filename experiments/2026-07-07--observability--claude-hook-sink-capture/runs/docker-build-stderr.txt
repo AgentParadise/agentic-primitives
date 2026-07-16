@@ -1,0 +1,45 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.obs-runtime
+#1 transferring dockerfile: 478B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/agentic-workspace-interactive-tmux:latest
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/4] FROM docker.io/library/agentic-workspace-interactive-tmux:latest@sha256:05eea4ad804465276070ae9e5757edff8bcc596cee5729806e7683f2794fb903
+#4 resolve docker.io/library/agentic-workspace-interactive-tmux:latest@sha256:05eea4ad804465276070ae9e5757edff8bcc596cee5729806e7683f2794fb903 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 103.33kB done
+#5 DONE 0.0s
+
+#4 [1/4] FROM docker.io/library/agentic-workspace-interactive-tmux:latest@sha256:05eea4ad804465276070ae9e5757edff8bcc596cee5729806e7683f2794fb903
+#4 CACHED
+
+#6 [2/4] COPY plugins/observability /opt/agentic/plugins/observability
+#6 DONE 0.1s
+
+#7 [3/4] COPY lib/python/agentic_events /opt/agentic/lib/python/agentic_events
+#7 DONE 0.1s
+
+#8 [4/4] RUN chmod -R a+rX /opt/agentic/plugins/observability /opt/agentic/lib/python/agentic_events     && chmod 755 /opt/agentic/plugins/observability/hooks/handlers/observe.py
+#8 DONE 0.2s
+
+#9 exporting to image
+#9 exporting layers 0.1s done
+#9 exporting manifest sha256:0fe27459b1c836e171492ab1bb304b85396612f024fb3537a335ed4c1c340c53 0.0s done
+#9 exporting config sha256:b6a679c9d7a7fef80fa8be433ed60af8bab1a48468bc78b6519eb732bfcd5e11 0.0s done
+#9 exporting attestation manifest sha256:0aa321b52db4d77b6002588ca8a934007883752ddaa4389300c73b2861ba8701 0.0s done
+#9 exporting manifest list sha256:d8619a5c5377f776440f3f5427716cdfdb72a172ea82aa0d6376acd8cb555caf
+#9 exporting manifest list sha256:d8619a5c5377f776440f3f5427716cdfdb72a172ea82aa0d6376acd8cb555caf 0.0s done
+#9 naming to docker.io/library/itmux-obs-runtime-test:20260707 done
+#9 unpacking to docker.io/library/itmux-obs-runtime-test:20260707 0.0s done
+#9 DONE 0.3s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/ktx7fevm2lps8ketr0pvfexxe

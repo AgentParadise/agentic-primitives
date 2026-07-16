@@ -1,0 +1,84 @@
+{
+  "trace_id": "0e553fc833c71639acd03be9807eb616",
+  "name": null,
+  "session_id": "dfec301e-8152-4566-9253-cc211739b80b",
+  "environment": "local-macbook",
+  "total_cost": null,
+  "observation_count": 4,
+  "categories": null,
+  "generations": {
+    "count": 2,
+    "input_tokens": 15445,
+    "output_tokens": 149,
+    "total_tokens": 97804,
+    "calculated_total_usd": 0.1139603,
+    "by_model": [
+      {
+        "model": "claude-sonnet-5",
+        "model_ids": [
+          "7c2e1f89-3a54-4b67-9d21-58e634b79a0c"
+        ],
+        "providers": [],
+        "harnesses": [],
+        "count": 2,
+        "input_tokens": 15445,
+        "output_tokens": 149,
+        "total_tokens": 97804,
+        "calculated_total_usd": 0.1139603
+      }
+    ],
+    "sequence_source": null,
+    "sequence": [
+      {
+        "seq": null,
+        "observation_id": "bbb5d8b9661b717b",
+        "name": "LLM Call 1",
+        "model": "claude-sonnet-5",
+        "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+        "harness": null,
+        "provider": null,
+        "input_tokens": 15443,
+        "output_tokens": 116,
+        "total_tokens": 46240,
+        "cached_input_tokens": null,
+        "reasoning_output_tokens": null,
+        "calculated_input_cost_usd": 0.030886,
+        "calculated_output_cost_usd": 0.00116,
+        "calculated_total_cost_usd": 0.0553701,
+        "pricing_tier": "Standard",
+        "unit": "TOKENS"
+      },
+      {
+        "seq": null,
+        "observation_id": "d11a8864e47cb272",
+        "name": "LLM Call 2",
+        "model": "claude-sonnet-5",
+        "model_id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+        "harness": null,
+        "provider": null,
+        "input_tokens": 2,
+        "output_tokens": 33,
+        "total_tokens": 51564,
+        "cached_input_tokens": null,
+        "reasoning_output_tokens": null,
+        "calculated_input_cost_usd": 0.000004,
+        "calculated_output_cost_usd": 0.00033,
+        "calculated_total_cost_usd": 0.0585902,
+        "pricing_tier": "Standard",
+        "unit": "TOKENS"
+      }
+    ],
+    "sequence_truncated": false
+  },
+  "agent_tools": {
+    "start_count": 0,
+    "end_count": 0,
+    "success_count": 0,
+    "failure_count": 0,
+    "names": [],
+    "by_name": [],
+    "sequence_source": null,
+    "sequence": [],
+    "sequence_truncated": false
+  }
+}

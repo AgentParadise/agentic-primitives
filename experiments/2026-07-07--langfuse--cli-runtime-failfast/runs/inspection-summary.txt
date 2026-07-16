@@ -1,0 +1,10 @@
+run_success=True
+run_summary=codex exec completed successfully
+stdout_lines=6
+stdout_types=tool_start,tool_start,tool_end,tool_end,token_usage,session_end
+stdout_seq=0,1,2,3,4,5
+exporter_kind=langfuse_otlp
+exporter_status=failed
+exporter_events_exported=0
+exporter_error=missing required LangFuse config: LANGFUSE_BASE_URL
+exporter_links=0

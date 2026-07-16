@@ -1,0 +1,5 @@
+{"payload": {"harness": "codex", "session_id": "sess-syn137-compat"}, "run_id": "run-syn137-compat", "seq": 0, "timestamp": "2026-07-08T18:55:00Z", "type": "session_start"}
+{"payload": {"session_id": "sess-syn137-compat", "tool_name": "exec_command", "tool_use_id": "tool-1"}, "run_id": "run-syn137-compat", "seq": 1, "timestamp": "2026-07-08T18:55:01Z", "type": "tool_start"}
+{"payload": {"session_id": "sess-syn137-compat", "success": true, "tool_name": "exec_command", "tool_use_id": "tool-1"}, "run_id": "run-syn137-compat", "seq": 2, "timestamp": "2026-07-08T18:55:02Z", "type": "tool_end"}
+{"payload": {"input_tokens": 100, "output_tokens": 25, "session_id": "sess-syn137-compat"}, "run_id": "run-syn137-compat", "seq": 3, "timestamp": "2026-07-08T18:55:03Z", "type": "token_usage"}
+{"payload": {"session_id": "sess-syn137-compat", "success": true}, "run_id": "run-syn137-compat", "seq": 4, "timestamp": "2026-07-08T18:55:04Z", "type": "session_end"}

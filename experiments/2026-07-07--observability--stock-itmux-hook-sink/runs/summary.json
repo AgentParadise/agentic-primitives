@@ -1,0 +1,24 @@
+{
+  "image_check_exit": "exit_code:0",
+  "image_check_stdout": "0.1.0",
+  "itmux_run_exit": "exit_code:0",
+  "itmux_run_success": true,
+  "itmux_run_summary": "agent settled to a ready state with no error markers (liveness floor; true task-completion detection is a known interactive-TUI limit)",
+  "session_contains_expected_text": true,
+  "session_contains_plugin_launch": true,
+  "session_contains_401": false,
+  "stdout_events": 14,
+  "exporter_events": 14,
+  "stdout_hook_events": 3,
+  "exporter_hook_events": 3,
+  "hook_event_types": [
+    "session_started",
+    "user_prompt_submitted",
+    "agent_stopped"
+  ],
+  "last_stdout_type": "session_end",
+  "raw_standalone_hook_lines": 0,
+  "exporter_status": "ok",
+  "events_exported": 14,
+  "classification": "Stock interactive-tmux image now contains observability runtime and captures Claude hooks as normalized hook_event records"
+}

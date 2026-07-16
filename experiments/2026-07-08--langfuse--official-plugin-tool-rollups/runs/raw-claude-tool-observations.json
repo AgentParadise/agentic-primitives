@@ -1,0 +1,33 @@
+[
+  {
+    "id": "475b0dddfe72e56b",
+    "name": "Tool: Read",
+    "type": "TOOL",
+    "input_type": "object",
+    "output_type": "string",
+    "level": "DEFAULT",
+    "metadata": {
+      "tool_name": "Read",
+      "tool_id": "toolu_012CRneePzWMuC9QNjR8hQz1",
+      "output_meta": {
+        "truncated": false,
+        "orig_len": 12624
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.43.0",
+        "service.instance.id": "d4364b5c-57ea-4006-9300-d049c13af721",
+        "langfuse.environment": "local-macbook",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.13.2",
+        "attributes": {
+          "public_key": "pk-lf-REDACTED"
+        }
+      }
+    }
+  }
+]

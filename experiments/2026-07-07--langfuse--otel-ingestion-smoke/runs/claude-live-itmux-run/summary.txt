@@ -1,0 +1,13 @@
+Run id: run-0b3f4760
+Trace id: 8603e096fe56957c7683d7114499702d
+Observation count: 16
+Observation types: GENERATION,SPAN
+Harness values: claude
+Provider values: anthropic
+Models: claude-sonnet-4-6
+Input tokens: 3
+Output tokens: 15
+Total tokens: 15737
+Calculated total cost: 0.000234
+Event JSONL count: 15
+Result session_log: redacted

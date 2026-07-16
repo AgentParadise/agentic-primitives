@@ -1,0 +1,14 @@
+{
+  "baseline": {
+    "exit": "exit_code:3",
+    "stdout_events": 11,
+    "exported_events": 11,
+    "result_success": false,
+    "result_summary": "harness hard-error detected (error banner \"API Error\")",
+    "exporter_event_count": 11
+  },
+  "treatment": {
+    "not_run": true,
+    "reason": "no exporter implementation and missing LangFuse config"
+  }
+}

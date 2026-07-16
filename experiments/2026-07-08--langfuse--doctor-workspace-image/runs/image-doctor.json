@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-07-08T19:59:56Z",
+  "repo_root": "/repo",
+  "tools": {
+    "claude": {"present": true, "path": "/usr/local/bin/claude"},
+    "codex": {"present": true, "path": "/usr/local/bin/codex"},
+    "node": {"present": true, "path": "/usr/local/bin/node", "major": 22, "node22_plus": true},
+    "uv": {"present": false, "path": ""},
+    "python3": {"present": true, "path": "/usr/bin/python3"},
+    "cargo": {"present": false, "path": ""}
+  },
+  "official_plugins": {
+    "claude": {
+      "command_present": true,
+      "runtime_ok": true,
+      "expected_plugin": "langfuse/Claude-Observability-Plugin",
+      "config_note": "use claude plugin install/configure; secrets are not inspected by this doctor"
+    },
+    "codex": {
+      "command_present": true,
+      "node22_plus": true,
+      "plugin_hooks_enabled": false,
+      "tracing_plugin_configured": false,
+      "expected_plugin": "langfuse/codex-observability-plugin"
+    }
+  },
+  "runtime_env": {
+    "LANGFUSE_BASE_URL": "missing",
+    "LANGFUSE_PUBLIC_KEY": "missing",
+    "LANGFUSE_SECRET_KEY": "missing",
+    "LANGFUSE_TRACING_ENVIRONMENT": "missing",
+    "LANGFUSE_PROJECT_ID": "missing",
+    "TRACE_TO_LANGFUSE": "missing",
+    "required_ready": false,
+    "official_plugin_active": false
+  },
+  "fanout": {
+    "file_jsonl_supported": true,
+    "syntropic_jsonl_supported": true,
+    "mcp_server_present": true
+  },
+  "otlp_noise_guard": {
+    "trace_to_langfuse_suppression_supported": true,
+    "force_flag_supported": true,
+    "focused_test_status": "skipped",
+    "focused_test_detail": "tests disabled by --no-tests"
+  }
+}

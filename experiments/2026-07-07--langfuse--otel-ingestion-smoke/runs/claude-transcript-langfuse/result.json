@@ -1,0 +1,38 @@
+{
+  "result": {
+    "success": true,
+    "summary": "claude transcript normalized successfully"
+  },
+  "output_artifacts": [],
+  "session_log": "claude transcript omitted from result; normalized 12 events from 17 input lines",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "/tmp/agentic-claude-langfuse-redacted-smoke/events.jsonl",
+        "events_exported": 13,
+        "links": [
+          {
+            "label": "claude transcript events",
+            "uri": "file:///tmp/agentic-claude-langfuse-redacted-smoke/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "ok",
+        "target": "http://localhost:3000/api/public/otel/v1/traces",
+        "events_exported": 13,
+        "links": [
+          {
+            "label": "LangFuse trace",
+            "uri": "http://localhost:3000/project/agentic-primitives-local-project/traces/78568acaeec8a7753be1d3228546d9a6"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

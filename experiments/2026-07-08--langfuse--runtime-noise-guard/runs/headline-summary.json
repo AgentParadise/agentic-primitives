@@ -1,0 +1,65 @@
+{
+  "suppressed": {
+    "receiver_requests": 0,
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "events_exported": 7
+      },
+      {
+        "kind": "syntropic_jsonl",
+        "status": "ok",
+        "events_exported": 7
+      }
+    ]
+  },
+  "forced": {
+    "receiver_requests": 1,
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "events_exported": 7
+      },
+      {
+        "kind": "syntropic_jsonl",
+        "status": "ok",
+        "events_exported": 7
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "ok",
+        "events_exported": 7
+      }
+    ]
+  },
+  "real_langfuse": {
+    "claude": {
+      "trace_id": "0e553fc833c71639acd03be9807eb616",
+      "observation_types": [
+        "GENERATION",
+        "SPAN",
+        "TOOL"
+      ],
+      "total_tokens": 97804,
+      "cost": 0.1139603,
+      "agent_tools": [
+        "Read"
+      ]
+    },
+    "codex": {
+      "trace_id": "b3d2561d7c0557c12fd427c02a16e2f3",
+      "observation_types": [
+        "AGENT",
+        "GENERATION",
+        "TOOL"
+      ],
+      "total_tokens": 34445,
+      "cost": 0.174825,
+      "agent_tools": [
+        "exec_command"
+      ]
+    }
+  }
+}

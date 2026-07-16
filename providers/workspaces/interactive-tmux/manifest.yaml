@@ -37,11 +37,12 @@ runtime:
   otel_native: false
 
 # Plugin configuration (ADR-033)
-# First-version interactive-tmux ships with NO baked plugins; the three
-# CLIs run as humans run them. Plugin participation is an orthogonal arc
-# documented in EXP-05's "What this version explicitly does NOT cover".
+# Observability is baked because the interactive Claude TUI does not surface
+# hook stdout/stderr reliably. The hook handler writes to AGENTIC_EVENTS_JSONL,
+# and the host driver drains that sink into normalized AgentRunEvent fanout.
 plugins:
-  include: []
+  include:
+    - observability
   install_path: /opt/agentic/plugins
 
 # Default tool configuration. Mirrors the claude-cli provider's defaults

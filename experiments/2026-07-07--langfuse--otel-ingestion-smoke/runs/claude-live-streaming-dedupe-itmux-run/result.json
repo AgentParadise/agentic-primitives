@@ -1,0 +1,38 @@
+{
+  "result": {
+    "success": true,
+    "summary": "agent settled to a ready state with no error markers (liveness floor; true task-completion detection is a known interactive-TUI limit)"
+  },
+  "output_artifacts": [],
+  "session_log": "<redacted live Claude pane transcript>",
+  "observability": {
+    "exporters": [
+      {
+        "kind": "file",
+        "status": "ok",
+        "target": "experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/claude-live-streaming-dedupe-itmux-run/events.jsonl",
+        "events_exported": 15,
+        "links": [
+          {
+            "label": "itmux run events",
+            "uri": "experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/claude-live-streaming-dedupe-itmux-run/events.jsonl"
+          }
+        ],
+        "error": null
+      },
+      {
+        "kind": "langfuse_otlp",
+        "status": "ok",
+        "target": "http://localhost:3000/api/public/otel/v1/traces",
+        "events_exported": 15,
+        "links": [
+          {
+            "label": "LangFuse trace",
+            "uri": "http://localhost:3000/project/agentic-primitives-local-project/traces/93268b3ab949a092fc5131ab224367ef"
+          }
+        ],
+        "error": null
+      }
+    ]
+  }
+}

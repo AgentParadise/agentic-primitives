@@ -1,0 +1,18 @@
+Command: itmux run --codex-mode exec --observability-langfuse
+Recipe: runs/codex-itmux-run-exec-mode/recipe
+Run id: run-88868068
+Trace id: 37f5920448612df0be0a2228a671a055
+Result success: true
+File exporter: ok, events_exported=6
+LangFuse exporter: ok, events_exported=6
+LangFuse query: ok via itmux langfuse-trace --api legacy-trace --output summary
+Harness: codex
+Provider: openai
+Model: gpt-5.5
+Total tokens: 15943
+Cached input tokens: 4992
+Calculated total cost: 0.080015
+Generation count: 1
+Agent tools: codex_exec.item.agent_message
+Harness tools: codex_exec.thread, codex_exec.turn
+Verdict: standard recipe-driven itmux run can now use the reusable Codex exec observer path for rich LangFuse telemetry. The default Codex TUI mode remains the interactive Docker workspace path and still only has coarse observability.

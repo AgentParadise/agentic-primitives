@@ -1,0 +1,30 @@
+{
+  "events": [
+    {
+      "data": {
+        "agentic_event_seq": 0,
+        "agentic_run_id": "run-test",
+        "output_summary": "created trace artifact",
+        "success": true,
+        "tool_name": "codex.exec"
+      },
+      "event_type": "tool_execution_completed",
+      "session_id": "run-test",
+      "timestamp": "2026-07-07T00:00:00+00:00"
+    },
+    {
+      "data": {
+        "agentic_event_seq": 2,
+        "agentic_run_id": "run-test",
+        "success": true,
+        "summary": "done"
+      },
+      "event_type": "session_ended",
+      "session_id": "run-test",
+      "timestamp": "2026-07-07T00:00:02+00:00"
+    }
+  ],
+  "input_file": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run/experiments/2026-07-08--syntropic137--jsonl-fanout-compat/runs/treatment-syntropic-events.jsonl",
+  "known_limitation": "token_usage is emitted by syntropic_jsonl but skipped by current Syntropic137 HookWatcher HOOK_EVENT_MAP",
+  "parsed_count": 2
+}

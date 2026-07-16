@@ -1,0 +1,9 @@
+FROM agentic-workspace-interactive-tmux:latest
+
+USER root
+COPY plugins/observability /opt/agentic/plugins/observability
+COPY lib/python/agentic_events /opt/agentic/lib/python/agentic_events
+ENV PYTHONPATH=/opt/agentic/lib/python/agentic_events
+RUN chmod -R a+rX /opt/agentic/plugins/observability /opt/agentic/lib/python/agentic_events \
+    && chmod 755 /opt/agentic/plugins/observability/hooks/handlers/observe.py
+USER agent

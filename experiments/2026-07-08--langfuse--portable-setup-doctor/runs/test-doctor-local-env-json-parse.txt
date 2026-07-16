@@ -1,0 +1,18 @@
+{
+  "runtime_env": {
+    "LANGFUSE_BASE_URL": "set",
+    "LANGFUSE_PUBLIC_KEY": "set",
+    "LANGFUSE_SECRET_KEY": "set",
+    "LANGFUSE_TRACING_ENVIRONMENT": "set",
+    "LANGFUSE_PROJECT_ID": "set",
+    "TRACE_TO_LANGFUSE": "true",
+    "required_ready": true,
+    "official_plugin_active": true
+  },
+  "otlp_noise_guard": {
+    "trace_to_langfuse_suppression_supported": true,
+    "force_flag_supported": true,
+    "focused_test_status": "pass",
+    "focused_test_detail": "cli_exporters tests passed"
+  }
+}

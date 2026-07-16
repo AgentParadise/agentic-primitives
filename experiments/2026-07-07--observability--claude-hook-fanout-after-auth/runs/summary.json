@@ -1,0 +1,19 @@
+{
+  "itmux_run_exit": "exit_code:0",
+  "itmux_run_success": true,
+  "itmux_run_summary": "agent settled to a ready state with no error markers (liveness floor; true task-completion detection is a known interactive-TUI limit)",
+  "session_contains_expected_text": true,
+  "session_contains_plugin_launch": true,
+  "session_contains_401": false,
+  "stdout_events": 11,
+  "exporter_events": 11,
+  "exporter_status": "ok",
+  "events_exported": 11,
+  "hook_event_type_seen": {
+    "stdout": false,
+    "exporter": false,
+    "stderr": false,
+    "session": false
+  },
+  "classification": "Claude plugin launch and auth are healthy, but hook event JSONL is not visible to current itmux run/file fanout; claude_hooks observer still required"
+}

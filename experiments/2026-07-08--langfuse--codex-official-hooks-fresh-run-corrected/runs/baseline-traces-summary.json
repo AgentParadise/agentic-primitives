@@ -1,0 +1,20 @@
+{
+  "trace_count": 5,
+  "latest": {
+    "trace_id": "b3d2561d7c0557c12fd427c02a16e2f3",
+    "run_id": "019f4324-c997-72c1-bae9-9eae62d84fc8",
+    "session_id": "019f4324-c997-72c1-bae9-9eae62d84fc8",
+    "name": "Codex Turn",
+    "timestamp": "2026-07-08T19:11:52.386Z",
+    "created_at": "2026-07-08T19:11:58.027Z",
+    "updated_at": "2026-07-08T19:11:58.036Z",
+    "environment": "local-macbook",
+    "harness": "codex",
+    "provider": "openai",
+    "model": null,
+    "total_cost": 0.174825,
+    "latency_s": 5.533,
+    "observation_count": 4,
+    "html_path": "/project/agentic-primitives-local-project/traces/b3d2561d7c0557c12fd427c02a16e2f3"
+  }
+}

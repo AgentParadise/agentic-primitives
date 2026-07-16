@@ -1,0 +1,54 @@
+{
+  "claude": {
+    "agent_tool_failures": 0,
+    "agent_tool_successes": 1,
+    "generation_count": 3,
+    "harnesses": [
+      "claude"
+    ],
+    "is_error": false,
+    "models": [
+      "claude-sonnet-4-6"
+    ],
+    "providers": [
+      "anthropic"
+    ],
+    "score_counts": [
+      0,
+      0
+    ],
+    "total_cost": 0.0020009999999999997,
+    "total_tokens": 47526,
+    "trace_count": 2,
+    "trace_ids": [
+      "0cea86b285c18bb156f31a00472ffe60",
+      "ca9adeba40ddbc919e94aec818894214"
+    ]
+  },
+  "codex": {
+    "agent_tool_failures": 0,
+    "agent_tool_successes": 2,
+    "generation_count": 2,
+    "harnesses": [
+      "codex"
+    ],
+    "is_error": false,
+    "models": [
+      "gpt-5.5"
+    ],
+    "providers": [
+      "openai"
+    ],
+    "score_counts": [
+      0,
+      1
+    ],
+    "total_cost": 0.159975,
+    "total_tokens": 31875,
+    "trace_count": 2,
+    "trace_ids": [
+      "37f5920448612df0be0a2228a671a055",
+      "fe7564993ed4fa5634428123b0f44ccf"
+    ]
+  }
+}

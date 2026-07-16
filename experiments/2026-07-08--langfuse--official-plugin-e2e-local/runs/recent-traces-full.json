@@ -1,0 +1,1682 @@
+{
+  "ok": true,
+  "request": {
+    "endpoint": "http://localhost:3000/api/public/traces?limit=100&page=1",
+    "limit": 100,
+    "page": 1
+  },
+  "summary": {
+    "page": 1,
+    "limit": 100,
+    "returned_count": 21,
+    "backend_total_items": 21,
+    "backend_total_pages": 1,
+    "filters": {
+      "harness": null,
+      "provider": null,
+      "model": null,
+      "environment": null
+    },
+    "harnesses": [
+      "claude",
+      "codex"
+    ],
+    "providers": [
+      "anthropic",
+      "openai"
+    ],
+    "models": [
+      "claude-haiku-4-5-20251001",
+      "claude-sonnet-4-6",
+      "gpt-4o-mini",
+      "gpt-5.5"
+    ],
+    "environments": [
+      "local-macbook",
+      "official-plugin-e2e-local"
+    ],
+    "total_cost": 0.45141799999699994,
+    "traces": [
+      {
+        "trace_id": "37f5920448612df0be0a2228a671a055",
+        "run_id": "run-88868068",
+        "session_id": "run-88868068",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T04:54:34.000Z",
+        "created_at": "2026-07-08T04:54:41.572Z",
+        "updated_at": "2026-07-08T04:54:41.582Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "total_cost": 0.080015,
+        "latency_s": 7.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/37f5920448612df0be0a2228a671a055"
+      },
+      {
+        "trace_id": "0cea86b285c18bb156f31a00472ffe60",
+        "run_id": "run-3f9dfb58",
+        "session_id": "run-3f9dfb58",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T04:38:10.000Z",
+        "created_at": "2026-07-08T04:38:15.770Z",
+        "updated_at": "2026-07-08T04:38:15.787Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.000234,
+        "latency_s": 5.001,
+        "observation_count": 16,
+        "html_path": "/project/agentic-primitives-local-project/traces/0cea86b285c18bb156f31a00472ffe60"
+      },
+      {
+        "trace_id": "fe7564993ed4fa5634428123b0f44ccf",
+        "run_id": "run-f7ae62c8",
+        "session_id": "run-f7ae62c8",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:26:12.000Z",
+        "created_at": "2026-07-08T03:26:14.571Z",
+        "updated_at": "2026-07-08T03:26:14.584Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "total_cost": 0.07996,
+        "latency_s": 2.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/fe7564993ed4fa5634428123b0f44ccf"
+      },
+      {
+        "trace_id": "ca9adeba40ddbc919e94aec818894214",
+        "run_id": "run-f07cba88",
+        "session_id": "run-f07cba88",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:15:34.000Z",
+        "created_at": "2026-07-08T03:15:40.106Z",
+        "updated_at": "2026-07-08T03:15:40.132Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.001767,
+        "latency_s": 6.001,
+        "observation_count": 21,
+        "html_path": "/project/agentic-primitives-local-project/traces/ca9adeba40ddbc919e94aec818894214"
+      },
+      {
+        "trace_id": "ece65397789bf73998deb6ef508aa92c",
+        "run_id": "run-2e3c7c48",
+        "session_id": "run-2e3c7c48",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:07:38.000Z",
+        "created_at": "2026-07-08T03:12:41.784Z",
+        "updated_at": "2026-07-08T03:12:41.808Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.002051999999,
+        "latency_s": 303.001,
+        "observation_count": 23,
+        "html_path": "/project/agentic-primitives-local-project/traces/ece65397789bf73998deb6ef508aa92c"
+      },
+      {
+        "trace_id": "edc4d1b77ac6b59a530c5a0014a0707b",
+        "run_id": "run-40ceea48",
+        "session_id": "run-40ceea48",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:41:51.000Z",
+        "created_at": "2026-07-08T02:41:54.666Z",
+        "updated_at": "2026-07-08T02:41:54.675Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "total_cost": 0.084525,
+        "latency_s": 3.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/edc4d1b77ac6b59a530c5a0014a0707b"
+      },
+      {
+        "trace_id": "6f59f531212bf388960195b763d78245",
+        "run_id": "run-00411d68",
+        "session_id": "run-00411d68",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:39:55.000Z",
+        "created_at": "2026-07-08T02:39:58.601Z",
+        "updated_at": "2026-07-08T02:39:58.618Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 3.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/6f59f531212bf388960195b763d78245"
+      },
+      {
+        "trace_id": "93268b3ab949a092fc5131ab224367ef",
+        "run_id": "run-ab55ce30",
+        "session_id": "run-ab55ce30",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:18:08.000Z",
+        "created_at": "2026-07-08T02:18:16.872Z",
+        "updated_at": "2026-07-08T02:18:16.891Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.000219,
+        "latency_s": 8.001,
+        "observation_count": 16,
+        "html_path": "/project/agentic-primitives-local-project/traces/93268b3ab949a092fc5131ab224367ef"
+      },
+      {
+        "trace_id": "12b82ea97b95ece3826572dfab5df4b6",
+        "run_id": "run-fdbda648",
+        "session_id": "run-fdbda648",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:11:20.000Z",
+        "created_at": "2026-07-08T02:16:24.358Z",
+        "updated_at": "2026-07-08T02:16:24.428Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.011838,
+        "latency_s": 304.001,
+        "observation_count": 19,
+        "html_path": "/project/agentic-primitives-local-project/traces/12b82ea97b95ece3826572dfab5df4b6"
+      },
+      {
+        "trace_id": "8603e096fe56957c7683d7114499702d",
+        "run_id": "run-0b3f4760",
+        "session_id": "run-0b3f4760",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:49:14.000Z",
+        "created_at": "2026-07-08T01:49:22.677Z",
+        "updated_at": "2026-07-08T01:49:22.695Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "total_cost": 0.000234,
+        "latency_s": 8.001,
+        "observation_count": 16,
+        "html_path": "/project/agentic-primitives-local-project/traces/8603e096fe56957c7683d7114499702d"
+      },
+      {
+        "trace_id": "8ff4aa35abdf85b78c9edb8d0d03fe92",
+        "run_id": "run-b6ced2e8",
+        "session_id": "run-b6ced2e8",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:46:42.000Z",
+        "created_at": "2026-07-08T01:46:51.376Z",
+        "updated_at": "2026-07-08T01:46:51.397Z",
+        "environment": "local-macbook",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 9.001,
+        "observation_count": 16,
+        "html_path": "/project/agentic-primitives-local-project/traces/8ff4aa35abdf85b78c9edb8d0d03fe92"
+      },
+      {
+        "trace_id": "78568acaeec8a7753be1d3228546d9a6",
+        "run_id": "run-claude-fixture-redacted",
+        "session_id": "run-claude-fixture-redacted",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:35:08.000Z",
+        "created_at": "2026-07-08T01:35:08.606Z",
+        "updated_at": "2026-07-08T01:35:08.624Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001",
+        "total_cost": 0.09459785,
+        "latency_s": 0.001,
+        "observation_count": 14,
+        "html_path": "/project/agentic-primitives-local-project/traces/78568acaeec8a7753be1d3228546d9a6"
+      },
+      {
+        "trace_id": "41eedb37a10d825b0522048e8ea119a0",
+        "run_id": "run-claude-fixture-rich",
+        "session_id": "run-claude-fixture-rich",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:24:23.000Z",
+        "created_at": "2026-07-08T01:24:23.303Z",
+        "updated_at": "2026-07-08T01:24:23.322Z",
+        "environment": "local-macbook",
+        "harness": "claude",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001",
+        "total_cost": 0.09459785,
+        "latency_s": 0.001,
+        "observation_count": 14,
+        "html_path": "/project/agentic-primitives-local-project/traces/41eedb37a10d825b0522048e8ea119a0"
+      },
+      {
+        "trace_id": "a7d70dbd4b8024793804ebf8a7b35050",
+        "run_id": "run-08ac78b8",
+        "session_id": "run-08ac78b8",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:12:42.000Z",
+        "created_at": "2026-07-08T01:12:42.897Z",
+        "updated_at": "2026-07-08T01:12:42.911Z",
+        "environment": "local-macbook",
+        "harness": "codex",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "total_cost": 3.299999e-6,
+        "latency_s": 0.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/a7d70dbd4b8024793804ebf8a7b35050"
+      },
+      {
+        "trace_id": "e8ec439f180e38c5bcb34c1baad4f978",
+        "run_id": "run-223bc2a0",
+        "session_id": "run-223bc2a0",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:50:27.000Z",
+        "created_at": "2026-07-07T23:50:27.944Z",
+        "updated_at": "2026-07-07T23:50:27.963Z",
+        "environment": "local-macbook",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 0.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/e8ec439f180e38c5bcb34c1baad4f978"
+      },
+      {
+        "trace_id": "586d4447bb60a6e0e3c76f4b4cf56b89",
+        "run_id": "run-63bfa5a8",
+        "session_id": "run-63bfa5a8",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:46:24.000Z",
+        "created_at": "2026-07-07T23:46:24.916Z",
+        "updated_at": "2026-07-07T23:46:24.934Z",
+        "environment": "local-macbook",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 0.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/586d4447bb60a6e0e3c76f4b4cf56b89"
+      },
+      {
+        "trace_id": "e019d575ac4d594bf1b4381e59d32d3e",
+        "run_id": "run-ce31e550",
+        "session_id": "run-ce31e550",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:45:45.000Z",
+        "created_at": "2026-07-07T23:45:45.270Z",
+        "updated_at": "2026-07-07T23:45:45.283Z",
+        "environment": "local-macbook",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 0.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/e019d575ac4d594bf1b4381e59d32d3e"
+      },
+      {
+        "trace_id": "95e21b024e0e88bb702a1deab2f318fa",
+        "run_id": "run-8419d9f0",
+        "session_id": "run-8419d9f0",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:43:35.000Z",
+        "created_at": "2026-07-07T23:43:35.233Z",
+        "updated_at": "2026-07-07T23:43:35.246Z",
+        "environment": "local-macbook",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 0.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/95e21b024e0e88bb702a1deab2f318fa"
+      },
+      {
+        "trace_id": "6905cfb7d1b969a0214e613383748ce7",
+        "run_id": "official-codex-e2e-1783535611",
+        "session_id": "official-codex-e2e-1783535611",
+        "name": "Codex Turn",
+        "timestamp": "2026-06-03T10:00:01.000Z",
+        "created_at": "2026-07-08T18:34:18.031Z",
+        "updated_at": "2026-07-08T18:34:18.041Z",
+        "environment": "official-plugin-e2e-local",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.001374999999,
+        "latency_s": 3.3,
+        "observation_count": 4,
+        "html_path": "/project/agentic-primitives-local-project/traces/6905cfb7d1b969a0214e613383748ce7"
+      },
+      {
+        "trace_id": "76a54f7c977ae138c22ebae34b05e047",
+        "run_id": "official-claude-e2e-1783535611",
+        "session_id": "official-claude-e2e-1783535611",
+        "name": "Claude Code - Turn 1 (official-cla)",
+        "timestamp": "2026-01-01T00:01:00.000Z",
+        "created_at": "2026-07-08T18:33:47.007Z",
+        "updated_at": "2026-07-08T18:33:47.018Z",
+        "environment": "official-plugin-e2e-local",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 3.0,
+        "observation_count": 4,
+        "html_path": "/project/agentic-primitives-local-project/traces/76a54f7c977ae138c22ebae34b05e047"
+      },
+      {
+        "trace_id": "4cc0bddd1121194735ace2bab991eb12",
+        "run_id": "run-42fc8060",
+        "session_id": "run-42fc8060",
+        "name": "agentic_primitives.run",
+        "timestamp": "1970-01-01T00:00:00.000Z",
+        "created_at": "2026-07-07T23:41:47.917Z",
+        "updated_at": "2026-07-07T23:41:47.934Z",
+        "environment": "local-macbook",
+        "harness": null,
+        "provider": null,
+        "model": null,
+        "total_cost": 0.0,
+        "latency_s": 1783467707.001,
+        "observation_count": 7,
+        "html_path": "/project/agentic-primitives-local-project/traces/4cc0bddd1121194735ace2bab991eb12"
+      }
+    ]
+  },
+  "response": {
+    "data": [
+      {
+        "id": "37f5920448612df0be0a2228a671a055",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T04:54:34.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:codex",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-88868068",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-88868068",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-88868068",
+            "langfuse.session.id": "run-88868068",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "codex",
+          "provider": "openai",
+          "model": "gpt-5.5"
+        },
+        "createdAt": "2026-07-08T04:54:41.572Z",
+        "updatedAt": "2026-07-08T04:54:41.582Z",
+        "observations": [
+          "64af731f3c57fd9e",
+          "64af711f3c57fa38",
+          "64af751f3c580104",
+          "64af741f3c57ff51",
+          "7ca46864cc642828",
+          "64af721f3c57fbeb",
+          "64af761f3c5802b7"
+        ],
+        "scores": [],
+        "totalCost": 0.080015,
+        "latency": 7.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/37f5920448612df0be0a2228a671a055",
+        "externalId": null
+      },
+      {
+        "id": "0cea86b285c18bb156f31a00472ffe60",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T04:38:10.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-3f9dfb58",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-3f9dfb58",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-3f9dfb58",
+            "langfuse.session.id": "run-3f9dfb58",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "createdAt": "2026-07-08T04:38:15.770Z",
+        "updatedAt": "2026-07-08T04:38:15.787Z",
+        "observations": [
+          "f136fb291b17d9b4",
+          "f84343d909845990",
+          "ab598e9dad81f183",
+          "f84348d90984620f",
+          "f136f9291b17d64e",
+          "f136fc291b17db67",
+          "f136f2291b17ca69",
+          "f136f1291b17c8b6",
+          "f84344d909845b43",
+          "f136fd291b17dd1a",
+          "f84346d909845ea9",
+          "f136f7291b17d2e8",
+          "f136fa291b17d801",
+          "f136f8291b17d49b",
+          "f136fe291b17decd",
+          "f84345d909845cf6"
+        ],
+        "scores": [],
+        "totalCost": 0.000234,
+        "latency": 5.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/0cea86b285c18bb156f31a00472ffe60",
+        "externalId": null
+      },
+      {
+        "id": "fe7564993ed4fa5634428123b0f44ccf",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:26:12.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:codex",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-f7ae62c8",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-f7ae62c8",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-f7ae62c8",
+            "langfuse.session.id": "run-f7ae62c8",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "codex",
+          "provider": "openai",
+          "model": "gpt-5.5"
+        },
+        "createdAt": "2026-07-08T03:26:14.571Z",
+        "updatedAt": "2026-07-08T03:26:14.584Z",
+        "observations": [
+          "f15977e762655742",
+          "5cc12ec16863600d",
+          "5cc127c168635428",
+          "5cc129c16863578e",
+          "5cc128c1686355db",
+          "5cc12dc168635e5a",
+          "5cc12ac168635941"
+        ],
+        "scores": [
+          "agentic-learning-loop-probe-run-f7ae62c8"
+        ],
+        "totalCost": 0.07996,
+        "latency": 2.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/fe7564993ed4fa5634428123b0f44ccf",
+        "externalId": null
+      },
+      {
+        "id": "ca9adeba40ddbc919e94aec818894214",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:15:34.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-f07cba88",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-f07cba88",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-f07cba88",
+            "langfuse.session.id": "run-f07cba88",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "createdAt": "2026-07-08T03:15:40.106Z",
+        "updatedAt": "2026-07-08T03:15:40.132Z",
+        "observations": [
+          "7cf06fd7cfd44faf",
+          "7cf077d7cfd45d47",
+          "75a9ef9da08d19f3",
+          "75a9fd9da08d31bd",
+          "7cf070d7cfd45162",
+          "75a9f29da08d1f0c",
+          "7cf06cd7cfd44a96",
+          "7cf06ad7cfd44730",
+          "7cf076d7cfd45b94",
+          "75a9f09da08d1ba6",
+          "7cf06dd7cfd44c49",
+          "75a9fc9da08d300a",
+          "75a9f39da08d20bf",
+          "f2e0d84dc74b662f",
+          "75a9ee9da08d1840",
+          "75a9f19da08d1d59",
+          "7cf06ed7cfd44dfc",
+          "75a9f49da08d2272",
+          "7cf06bd7cfd448e3",
+          "7cf071d7cfd45315",
+          "75a9f59da08d2425"
+        ],
+        "scores": [],
+        "totalCost": 0.001767,
+        "latency": 6.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/ca9adeba40ddbc919e94aec818894214",
+        "externalId": null
+      },
+      {
+        "id": "ece65397789bf73998deb6ef508aa92c",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T03:07:38.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-2e3c7c48",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-2e3c7c48",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-2e3c7c48",
+            "langfuse.session.id": "run-2e3c7c48",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "createdAt": "2026-07-08T03:12:41.784Z",
+        "updatedAt": "2026-07-08T03:12:41.808Z",
+        "observations": [
+          "0140e1e78dc14b99",
+          "ba08272dd8e558e9",
+          "0136f1e78db91244",
+          "ba082b2dd8e55fb5",
+          "0140ebe78dc15c97",
+          "ba08332dd8e56d4d",
+          "0140e0e78dc149e6",
+          "0140e4e78dc150b2",
+          "0140e2e78dc14d4c",
+          "ba08292dd8e55c4f",
+          "0140eae78dc15ae4",
+          "ba08242dd8e553d0",
+          "ba08322dd8e56b9a",
+          "ba082a2dd8e55e02",
+          "0136f2e78db913f7",
+          "0140dfe78dc14833",
+          "8f8862e4069b91ff",
+          "0140e5e78dc15265",
+          "0140dee78dc14680",
+          "0140e3e78dc14eff",
+          "ba08282dd8e55a9c",
+          "ba08252dd8e55583",
+          "ba08262dd8e55736"
+        ],
+        "scores": [],
+        "totalCost": 0.002051999999,
+        "latency": 303.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/ece65397789bf73998deb6ef508aa92c",
+        "externalId": null
+      },
+      {
+        "id": "edc4d1b77ac6b59a530c5a0014a0707b",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:41:51.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:codex",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-40ceea48",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-40ceea48",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-40ceea48",
+            "langfuse.session.id": "run-40ceea48",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "codex",
+          "provider": "openai",
+          "model": "gpt-5.5"
+        },
+        "createdAt": "2026-07-08T02:41:54.666Z",
+        "updatedAt": "2026-07-08T02:41:54.675Z",
+        "observations": [
+          "d038358622835ace",
+          "d03839862283619a",
+          "d038388622835fe7",
+          "d038368622835c81",
+          "cf75089bb8f0ae86",
+          "d038378622835e34",
+          "d0383a862283634d"
+        ],
+        "scores": [],
+        "totalCost": 0.084525,
+        "latency": 3.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/edc4d1b77ac6b59a530c5a0014a0707b",
+        "externalId": null
+      },
+      {
+        "id": "6f59f531212bf388960195b763d78245",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:39:55.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:codex",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-00411d68",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-00411d68",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-00411d68",
+            "langfuse.session.id": "run-00411d68",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "codex",
+          "provider": "openai"
+        },
+        "createdAt": "2026-07-08T02:39:58.601Z",
+        "updatedAt": "2026-07-08T02:39:58.618Z",
+        "observations": [
+          "5f31801ff7df3aa0",
+          "2568c733df28697f",
+          "2568c233df286100",
+          "2568c533df286619",
+          "2568c433df286466",
+          "2568c633df2867cc",
+          "2568c333df2862b3"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 3.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/6f59f531212bf388960195b763d78245",
+        "externalId": null
+      },
+      {
+        "id": "93268b3ab949a092fc5131ab224367ef",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:18:08.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-ab55ce30",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-ab55ce30",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-ab55ce30",
+            "langfuse.session.id": "run-ab55ce30",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "createdAt": "2026-07-08T02:18:16.872Z",
+        "updatedAt": "2026-07-08T02:18:16.891Z",
+        "observations": [
+          "57d9aacb895c533c",
+          "57d9b1cb895c5f21",
+          "a329b5da67dbc06c",
+          "a329b6da67dbc21f",
+          "57d9accb895c56a2",
+          "a329b7da67dbc3d2",
+          "57d9abcb895c54ef",
+          "57d9a7cb895c4e23",
+          "57d9a8cb895c4fd6",
+          "57d9a9cb895c5189",
+          "57d9b0cb895c5d6e",
+          "29a90372a1489ada",
+          "a329b3da67dbbd06",
+          "a329b8da67dbc585",
+          "57d9a6cb895c4c70",
+          "57d9adcb895c5855"
+        ],
+        "scores": [],
+        "totalCost": 0.000219,
+        "latency": 8.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/93268b3ab949a092fc5131ab224367ef",
+        "externalId": null
+      },
+      {
+        "id": "12b82ea97b95ece3826572dfab5df4b6",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T02:11:20.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-fdbda648",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-fdbda648",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-fdbda648",
+            "langfuse.session.id": "run-fdbda648",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "createdAt": "2026-07-08T02:16:24.358Z",
+        "updatedAt": "2026-07-08T02:16:24.428Z",
+        "observations": [
+          "577eac209f576ead",
+          "577ea8209f5767e1",
+          "577eab209f576cfa",
+          "577eaa209f576b47",
+          "2035dfc2d66d9399",
+          "0398946ec17f6b71",
+          "577e9d209f575530",
+          "577e9e209f5756e3",
+          "0398986ec17f723d",
+          "0398936ec17f69be",
+          "0398916ec17f6658",
+          "577ea9209f576994",
+          "577ea7209f57662e",
+          "0398976ec17f708a",
+          "577ea6209f57647b",
+          "0398926ec17f680b",
+          "0398966ec17f6ed7",
+          "0398956ec17f6d24",
+          "577ea5209f5762c8"
+        ],
+        "scores": [],
+        "totalCost": 0.011838,
+        "latency": 304.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/12b82ea97b95ece3826572dfab5df4b6",
+        "externalId": null
+      },
+      {
+        "id": "8603e096fe56957c7683d7114499702d",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:49:14.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-0b3f4760",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-0b3f4760",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-0b3f4760",
+            "langfuse.session.id": "run-0b3f4760",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "createdAt": "2026-07-08T01:49:22.677Z",
+        "updatedAt": "2026-07-08T01:49:22.695Z",
+        "observations": [
+          "2400047dce2ed82f",
+          "5acea2c5598a9680",
+          "5acea4c5598a99e6",
+          "5acea5c5598a9b99",
+          "5acea3c5598a9833",
+          "2400007dce2ed163",
+          "2400027dce2ed4c9",
+          "2400067dce2edb95",
+          "2400057dce2ed9e2",
+          "2400037dce2ed67c",
+          "23ffff7dce2ecfb0",
+          "a1a18b1adb4bca10",
+          "5acea6c5598a9d4c",
+          "2400017dce2ed316",
+          "2400077dce2edd48",
+          "2400087dce2edefb"
+        ],
+        "scores": [],
+        "totalCost": 0.000234,
+        "latency": 8.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/8603e096fe56957c7683d7114499702d",
+        "externalId": null
+      },
+      {
+        "id": "8ff4aa35abdf85b78c9edb8d0d03fe92",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:46:42.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-b6ced2e8",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-b6ced2e8",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-b6ced2e8",
+            "langfuse.session.id": "run-b6ced2e8",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          }
+        },
+        "createdAt": "2026-07-08T01:46:51.376Z",
+        "updatedAt": "2026-07-08T01:46:51.397Z",
+        "observations": [
+          "633062177fb42393",
+          "3f67e8edff241a9d",
+          "3f67e5edff241584",
+          "633061177fb421e0",
+          "633065177fb428ac",
+          "63306d177fb43644",
+          "3f67e7edff2418ea",
+          "3f67e4edff2413d1",
+          "3f67e6edff241737",
+          "633064177fb426f9",
+          "633067177fb42c12",
+          "633066177fb42a5f",
+          "63306e177fb437f7",
+          "633063177fb42546",
+          "6e4a5bd1276f8e65",
+          "633068177fb42dc5"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 9.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/8ff4aa35abdf85b78c9edb8d0d03fe92",
+        "externalId": null
+      },
+      {
+        "id": "78568acaeec8a7753be1d3228546d9a6",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:35:08.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-claude-fixture-redacted",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "run_id": "run-claude-fixture-redacted",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-claude-fixture-redacted",
+            "langfuse.session.id": "run-claude-fixture-redacted",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          }
+        },
+        "createdAt": "2026-07-08T01:35:08.606Z",
+        "updatedAt": "2026-07-08T01:35:08.624Z",
+        "observations": [
+          "f03c8e26d6fdea78",
+          "f03c8d26d6fde8c5",
+          "34b849ff51614ef9",
+          "f03c8826d6fde046",
+          "f03c8a26d6fde3ac",
+          "f03c8b26d6fde55f",
+          "f03c8c26d6fde712",
+          "f03c8726d6fdde93",
+          "f03c8626d6fddce0",
+          "f03c8f26d6fdec2b",
+          "91542f308beb02c1",
+          "34b848ff51614d46",
+          "34b847ff51614b93",
+          "f03c8926d6fde1f9"
+        ],
+        "scores": [],
+        "totalCost": 0.09459785,
+        "latency": 0.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/78568acaeec8a7753be1d3228546d9a6",
+        "externalId": null
+      },
+      {
+        "id": "41eedb37a10d825b0522048e8ea119a0",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:24:23.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:claude",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-claude-fixture-rich",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "event_type": "token_usage",
+          "harness": "claude",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "run_id": "run-claude-fixture-rich",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-claude-fixture-rich",
+            "langfuse.session.id": "run-claude-fixture-rich",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          }
+        },
+        "createdAt": "2026-07-08T01:24:23.303Z",
+        "updatedAt": "2026-07-08T01:24:23.322Z",
+        "observations": [
+          "b57b1747beb23f5b",
+          "1cb005fb74f66e55",
+          "1cb004fb74f66ca2",
+          "1caffffb74f66423",
+          "b57b1947beb242c1",
+          "1cb003fb74f66aef",
+          "1cb000fb74f665d6",
+          "1cb002fb74f6693c",
+          "1caffefb74f66270",
+          "c16998b9113a3adb",
+          "1cb001fb74f66789",
+          "1cb009fb74f67521",
+          "1cb008fb74f6736e",
+          "b57b1647beb23da8"
+        ],
+        "scores": [],
+        "totalCost": 0.09459785,
+        "latency": 0.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/41eedb37a10d825b0522048e8ea119a0",
+        "externalId": null
+      },
+      {
+        "id": "a7d70dbd4b8024793804ebf8a7b35050",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-08T01:12:42.000Z",
+        "environment": "local-macbook",
+        "tags": [
+          "agentic-primitives",
+          "harness:codex",
+          "itmux"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-08ac78b8",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "event_type": "token_usage",
+          "harness": "codex",
+          "provider": "openai",
+          "model": "gpt-4o-mini",
+          "run_id": "run-08ac78b8",
+          "observer": "itmux",
+          "attributes": {
+            "session.id": "run-08ac78b8",
+            "langfuse.session.id": "run-08ac78b8",
+            "langfuse.trace.name": "agentic_primitives.run",
+            "langfuse.trace.tags": "agentic-primitives,itmux"
+          }
+        },
+        "createdAt": "2026-07-08T01:12:42.897Z",
+        "updatedAt": "2026-07-08T01:12:42.911Z",
+        "observations": [
+          "25f7afd680f1afbb",
+          "d43e1af0448dcb36",
+          "d43e19f0448dc983",
+          "d43e18f0448dc7d0",
+          "d43e1ff0448dd3b5",
+          "d43e1ef0448dd202",
+          "d43e1bf0448dcce9"
+        ],
+        "scores": [],
+        "totalCost": 3.299999e-6,
+        "latency": 0.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/a7d70dbd4b8024793804ebf8a7b35050",
+        "externalId": null
+      },
+      {
+        "id": "e8ec439f180e38c5bcb34c1baad4f978",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:50:27.000Z",
+        "environment": "local-macbook",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-223bc2a0",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-223bc2a0",
+          "attributes": {
+            "session.id": "run-223bc2a0",
+            "langfuse.session.id": "run-223bc2a0",
+            "langfuse.trace.name": "agentic_primitives.run"
+          }
+        },
+        "createdAt": "2026-07-07T23:50:27.944Z",
+        "updatedAt": "2026-07-07T23:50:27.963Z",
+        "observations": [
+          "9e482fd0f94a0340",
+          "9e4832d0f94a0859",
+          "9e4835d0f94a0d72",
+          "9e4830d0f94a04f3",
+          "e582f39c25ceaa6b",
+          "9e4836d0f94a0f25",
+          "9e4831d0f94a06a6"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 0.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/e8ec439f180e38c5bcb34c1baad4f978",
+        "externalId": null
+      },
+      {
+        "id": "586d4447bb60a6e0e3c76f4b4cf56b89",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:46:24.000Z",
+        "environment": "local-macbook",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-63bfa5a8",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-63bfa5a8",
+          "attributes": {
+            "session.id": "run-63bfa5a8",
+            "langfuse.session.id": "run-63bfa5a8",
+            "langfuse.trace.name": "agentic_primitives.run"
+          }
+        },
+        "createdAt": "2026-07-07T23:46:24.916Z",
+        "updatedAt": "2026-07-07T23:46:24.934Z",
+        "observations": [
+          "bacb918d2adac754",
+          "bacb8d8d2adac088",
+          "bacb8e8d2adac23b",
+          "bacb948d2adacc6d",
+          "2d6c43671806a5fc",
+          "bacb938d2adacaba",
+          "bacb928d2adac907"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 0.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/586d4447bb60a6e0e3c76f4b4cf56b89",
+        "externalId": null
+      },
+      {
+        "id": "e019d575ac4d594bf1b4381e59d32d3e",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:45:45.000Z",
+        "environment": "local-macbook",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-ce31e550",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-ce31e550",
+          "attributes": {
+            "session.id": "run-ce31e550",
+            "langfuse.session.id": "run-ce31e550",
+            "langfuse.trace.name": "agentic_primitives.run"
+          }
+        },
+        "createdAt": "2026-07-07T23:45:45.270Z",
+        "updatedAt": "2026-07-07T23:45:45.283Z",
+        "observations": [
+          "a3412ed13b024b91",
+          "a3412cd13b02482b",
+          "a3412fd13b024d44",
+          "a34130d13b024ef7",
+          "6ff157c497613489",
+          "a3412bd13b024678",
+          "a3412dd13b0249de"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 0.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/e019d575ac4d594bf1b4381e59d32d3e",
+        "externalId": null
+      },
+      {
+        "id": "95e21b024e0e88bb702a1deab2f318fa",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "2026-07-07T23:43:35.000Z",
+        "environment": "local-macbook",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-8419d9f0",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          },
+          "run_id": "run-8419d9f0",
+          "attributes": {
+            "session.id": "run-8419d9f0",
+            "langfuse.session.id": "run-8419d9f0",
+            "langfuse.trace.name": "agentic_primitives.run"
+          }
+        },
+        "createdAt": "2026-07-07T23:43:35.233Z",
+        "updatedAt": "2026-07-07T23:43:35.246Z",
+        "observations": [
+          "303583d145d91a45",
+          "15dfb339d1765d40",
+          "15dfb839d17665bf",
+          "15dfba39d1766925",
+          "15dfb939d1766772",
+          "15dfb739d176640c",
+          "15dfb439d1765ef3"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 0.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/95e21b024e0e88bb702a1deab2f318fa",
+        "externalId": null
+      },
+      {
+        "id": "6905cfb7d1b969a0214e613383748ce7",
+        "projectId": "agentic-primitives-local-project",
+        "name": "Codex Turn",
+        "timestamp": "2026-06-03T10:00:01.000Z",
+        "environment": "official-plugin-e2e-local",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": "agentic-official-plugin-e2e",
+        "sessionId": "official-codex-e2e-1783535611",
+        "public": false,
+        "input": "List the files in the repo",
+        "output": "There are two files: file1.txt and file2.txt.",
+        "metadata": {
+          "codex.turn_id": "turn-1",
+          "codex.thread_id": "official-codex-e2e-1783535611",
+          "codex.model": "gpt-5.4",
+          "codex.model_provider": "openai",
+          "codex.cli_version": "0.123.0",
+          "codex.aborted": false,
+          "codex.tool_call_count": 1,
+          "resourceAttributes": {
+            "service.name": "unknown_service:node",
+            "telemetry.sdk.language": "nodejs",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "2.7.1"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "5.4.1",
+            "attributes": {}
+          }
+        },
+        "createdAt": "2026-07-08T18:34:18.031Z",
+        "updatedAt": "2026-07-08T18:34:18.041Z",
+        "observations": [
+          "302fd962b703cb07",
+          "858952b4049ec99d",
+          "900370644fd7ecb9",
+          "da67190068d775bd"
+        ],
+        "scores": [],
+        "totalCost": 0.001374999999,
+        "latency": 3.3,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/6905cfb7d1b969a0214e613383748ce7",
+        "externalId": null
+      },
+      {
+        "id": "76a54f7c977ae138c22ebae34b05e047",
+        "projectId": "agentic-primitives-local-project",
+        "name": "Claude Code - Turn 1 (official-cla)",
+        "timestamp": "2026-01-01T00:01:00.000Z",
+        "environment": "official-plugin-e2e-local",
+        "tags": [
+          "claude-code"
+        ],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": "agentic-official-plugin-e2e",
+        "sessionId": "official-claude-e2e-1783535611",
+        "public": false,
+        "input": {
+          "role": "user",
+          "content": "Read the file."
+        },
+        "output": {
+          "role": "assistant",
+          "content": "The file starts with a heading."
+        },
+        "metadata": {
+          "source": "claude-code",
+          "session_id": "official-claude-e2e-1783535611",
+          "turn_number": 1,
+          "transcript_path": "claude-tool-turn.jsonl",
+          "user_text": {
+            "truncated": false,
+            "orig_len": 14
+          },
+          "assistant_message_count": 2,
+          "cwd": "/repo",
+          "git_branch": "feature/test",
+          "resourceAttributes": {
+            "telemetry.sdk.language": "python",
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.version": "1.43.0",
+            "service.instance.id": "39512917-334f-41c8-b346-f442c4237b68",
+            "langfuse.environment": "official-plugin-e2e-local",
+            "service.name": "unknown_service"
+          },
+          "scope": {
+            "name": "langfuse-sdk",
+            "version": "4.13.2",
+            "attributes": {
+              "public_key": "<redacted-public-key>"
+            }
+          }
+        },
+        "createdAt": "2026-07-08T18:33:47.007Z",
+        "updatedAt": "2026-07-08T18:33:47.018Z",
+        "observations": [
+          "b8e444bdcd8ad984",
+          "c7f8468093a53152",
+          "5da4e7805e690c6c",
+          "e0a6a7aa0fed787e"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 3,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/76a54f7c977ae138c22ebae34b05e047",
+        "externalId": null
+      },
+      {
+        "id": "4cc0bddd1121194735ace2bab991eb12",
+        "projectId": "agentic-primitives-local-project",
+        "name": "agentic_primitives.run",
+        "timestamp": "1970-01-01T00:00:00.000Z",
+        "environment": "local-macbook",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": "run-42fc8060",
+        "public": false,
+        "input": null,
+        "output": null,
+        "metadata": {
+          "run_id": "run-42fc8060",
+          "attributes": {
+            "session.id": "run-42fc8060",
+            "langfuse.session.id": "run-42fc8060",
+            "langfuse.trace.name": "agentic_primitives.run"
+          },
+          "resourceAttributes": {
+            "service.name": "agentic-primitives",
+            "deployment.environment.name": "local-macbook",
+            "langfuse.environment": "local-macbook"
+          },
+          "scope": {
+            "name": "itmux",
+            "attributes": {}
+          }
+        },
+        "createdAt": "2026-07-07T23:41:47.917Z",
+        "updatedAt": "2026-07-07T23:41:47.934Z",
+        "observations": [
+          "dab50773efd9b78b",
+          "dab50673efd9b5d8",
+          "b4f2afb7b4a042ad",
+          "dab50c73efd9c00a",
+          "dab50d73efd9c1bd",
+          "dab50b73efd9be57",
+          "dab50a73efd9bca4"
+        ],
+        "scores": [],
+        "totalCost": 0,
+        "latency": 1783467707.001,
+        "htmlPath": "/project/agentic-primitives-local-project/traces/4cc0bddd1121194735ace2bab991eb12",
+        "externalId": null
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 100,
+      "totalItems": 21,
+      "totalPages": 1
+    }
+  }
+}

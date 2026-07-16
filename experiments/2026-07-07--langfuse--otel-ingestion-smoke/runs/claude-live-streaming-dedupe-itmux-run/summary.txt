@@ -1,0 +1,21 @@
+Run id: run-ab55ce30
+Trace id: 93268b3ab949a092fc5131ab224367ef
+Observation count: 16
+Observation types: GENERATION,SPAN
+Harness values: claude
+Provider values: anthropic
+Models: claude-sonnet-4-6
+Input tokens: 3
+Output tokens: 14
+Total tokens: 15735
+Calculated total cost: 0.000219
+Events exported: 15
+Observed before await end: 4
+Token usage events: 1
+Tool sequence source: agentic.event.seq
+Tool sequence seqs: 0,1,2,3,4,5,6,11,12,13
+Result session_log: <redacted live Claude pane transcript>
+event_categories=hook:3,operation:10,root:1,session:1,usage:1
+operation_names=await,capture,launch,provision,submit
+agent_tool_names=
+harness_tool_names=

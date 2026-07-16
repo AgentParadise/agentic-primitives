@@ -1,0 +1,68 @@
+{
+  "run_id": null,
+  "trace_id": "0cea86b285c18bb156f31a00472ffe60",
+  "harnesses": [
+    "claude"
+  ],
+  "models": [
+    "claude-sonnet-4-6"
+  ],
+  "usage": {
+    "input_tokens": 3,
+    "output_tokens": 15,
+    "total_tokens": 15737
+  },
+  "cost": {
+    "calculated_total_usd": 0.000234
+  },
+  "generations": {
+    "count": 1,
+    "input_tokens": 3,
+    "output_tokens": 15,
+    "total_tokens": 15737,
+    "calculated_total_usd": 0.000234,
+    "by_model": [
+      {
+        "model": "claude-sonnet-4-6",
+        "model_ids": [
+          "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed"
+        ],
+        "providers": [
+          "anthropic"
+        ],
+        "harnesses": [
+          "claude"
+        ],
+        "count": 1,
+        "input_tokens": 3,
+        "output_tokens": 15,
+        "total_tokens": 15737,
+        "calculated_total_usd": 0.000234
+      }
+    ],
+    "sequence_source": "agentic.event.seq",
+    "sequence": [
+      {
+        "seq": 10,
+        "observation_id": "f84344d909845b43",
+        "name": "token_usage",
+        "model": "claude-sonnet-4-6",
+        "model_id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed",
+        "harness": "claude",
+        "provider": "anthropic",
+        "input_tokens": 3,
+        "output_tokens": 15,
+        "total_tokens": 15737,
+        "cached_input_tokens": 15719,
+        "reasoning_output_tokens": null,
+        "calculated_input_cost_usd": 0.000009,
+        "calculated_output_cost_usd": 0.000225,
+        "calculated_total_cost_usd": 0.000234,
+        "pricing_tier": "Standard",
+        "unit": "TOKENS"
+      }
+    ],
+    "sequence_truncated": false
+  },
+  "observation_count": 16
+}

@@ -1,0 +1,7 @@
+{"run_id":"runtime-noise-guard-forced","seq":0,"ts":"2026-07-08T19:33:45Z","type":"tool_start","tool_name":"Read","tool_input":{"redacted":true,"kind":"object","keys":["file_path"]}}
+{"run_id":"runtime-noise-guard-forced","seq":1,"ts":"2026-07-08T19:33:45Z","type":"tool_end","tool_name":"Read","success":false,"output_summary":"<redacted claude tool result: 53 chars>"}
+{"run_id":"runtime-noise-guard-forced","seq":2,"ts":"2026-07-08T19:33:45Z","type":"tool_start","tool_name":"Bash","tool_input":{"redacted":true,"kind":"object","keys":["command","description"]}}
+{"run_id":"runtime-noise-guard-forced","seq":3,"ts":"2026-07-08T19:33:45Z","type":"tool_end","tool_name":"Bash","success":true,"output_summary":"<redacted claude tool result: 98 chars>"}
+{"run_id":"runtime-noise-guard-forced","seq":4,"ts":"2026-07-08T19:33:45Z","type":"token_usage","input_tokens":1139,"output_tokens":136,"cached_input_tokens":0,"reasoning_output_tokens":null,"cost_usd":0.001819,"harness":"claude","provider":"anthropic","model":"claude-haiku-4-5-20251001"}
+{"run_id":"runtime-noise-guard-forced","seq":5,"ts":"2026-07-08T19:33:45Z","type":"token_usage","input_tokens":912,"output_tokens":393,"cached_input_tokens":54519,"reasoning_output_tokens":null,"cost_usd":0.02706705,"harness":"claude","provider":"anthropic","model":"claude-sonnet-4-5-20250929"}
+{"run_id":"runtime-noise-guard-forced","seq":6,"ts":"2026-07-08T19:33:45Z","type":"session_end","outcome":{"success":true,"summary":"claude transcript normalized successfully"}}

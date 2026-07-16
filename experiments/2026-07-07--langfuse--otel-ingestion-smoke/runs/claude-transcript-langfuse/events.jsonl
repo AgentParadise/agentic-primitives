@@ -1,0 +1,13 @@
+{"run_id":"run-claude-fixture-redacted","seq":0,"ts":"2026-07-08T01:35:08Z","type":"tool_start","tool_name":"TodoWrite","tool_input":{"redacted":true,"kind":"object","keys":["todos"]}}
+{"run_id":"run-claude-fixture-redacted","seq":1,"ts":"2026-07-08T01:35:08Z","type":"tool_end","tool_name":"TodoWrite","success":true,"output_summary":"<redacted claude tool result: 160 chars>"}
+{"run_id":"run-claude-fixture-redacted","seq":2,"ts":"2026-07-08T01:35:08Z","type":"tool_start","tool_name":"Write","tool_input":{"redacted":true,"kind":"object","keys":["content","file_path"]}}
+{"run_id":"run-claude-fixture-redacted","seq":3,"ts":"2026-07-08T01:35:08Z","type":"tool_end","tool_name":"Write","success":true,"output_summary":"<redacted claude tool result: 57 chars>"}
+{"run_id":"run-claude-fixture-redacted","seq":4,"ts":"2026-07-08T01:35:08Z","type":"tool_start","tool_name":"TodoWrite","tool_input":{"redacted":true,"kind":"object","keys":["todos"]}}
+{"run_id":"run-claude-fixture-redacted","seq":5,"ts":"2026-07-08T01:35:08Z","type":"tool_end","tool_name":"TodoWrite","success":true,"output_summary":"<redacted claude tool result: 160 chars>"}
+{"run_id":"run-claude-fixture-redacted","seq":6,"ts":"2026-07-08T01:35:08Z","type":"tool_start","tool_name":"Bash","tool_input":{"redacted":true,"kind":"object","keys":["command","description"]}}
+{"run_id":"run-claude-fixture-redacted","seq":7,"ts":"2026-07-08T01:35:08Z","type":"tool_end","tool_name":"Bash","success":true,"output_summary":"<redacted claude tool result: 449 chars>"}
+{"run_id":"run-claude-fixture-redacted","seq":8,"ts":"2026-07-08T01:35:08Z","type":"tool_start","tool_name":"TodoWrite","tool_input":{"redacted":true,"kind":"object","keys":["todos"]}}
+{"run_id":"run-claude-fixture-redacted","seq":9,"ts":"2026-07-08T01:35:08Z","type":"tool_end","tool_name":"TodoWrite","success":true,"output_summary":"<redacted claude tool result: 160 chars>"}
+{"run_id":"run-claude-fixture-redacted","seq":10,"ts":"2026-07-08T01:35:08Z","type":"token_usage","input_tokens":1315,"output_tokens":50,"cached_input_tokens":0,"reasoning_output_tokens":null,"cost_usd":0.001565,"harness":"claude","provider":"anthropic","model":"claude-haiku-4-5-20251001"}
+{"run_id":"run-claude-fixture-redacted","seq":11,"ts":"2026-07-08T01:35:08Z","type":"token_usage","input_tokens":33,"output_tokens":2168,"cached_input_tokens":118706,"reasoning_output_tokens":null,"cost_usd":0.09303285,"harness":"claude","provider":"anthropic","model":"claude-sonnet-4-5-20250929"}
+{"run_id":"run-claude-fixture-redacted","seq":12,"ts":"2026-07-08T01:35:08Z","type":"session_end","outcome":{"success":true,"summary":"claude transcript normalized successfully"}}

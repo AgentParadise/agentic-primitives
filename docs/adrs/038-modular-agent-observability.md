@@ -1,0 +1,512 @@
+---
+title: "ADR-038: Modular Agent Observability"
+status: proposed
+created: 2026-07-07
+updated: 2026-07-08
+author: Neural
+tags: [architecture, observability, workspaces, langfuse, otel, plugins]
+---
+
+# ADR-038: Modular Agent Observability
+
+## Status
+
+**Proposed**
+
+- Created: 2026-07-07
+- Updated: 2026-07-07
+- Author(s): Neural
+- Related: ADR-022, ADR-027, ADR-033, ADR-035, ADR-037
+- Partially superseded by: ADR-039 for the Rust OTLP-to-LangFuse exporter
+  decision. ADR-038 still stands for normalized local events, JSONL fanout,
+  Syntropic137 projection, and LangFuse query/score tooling.
+- OKRs: `okrs-51p.6` blocks `okrs-51p.9`
+- Completion audit:
+  `docs/plans/2026-07-07-observability-primitive-completion-audit.md`
+
+## Context
+
+The workspace standard needs observability that works in all execution places:
+developer Macs, a Mac Mini, VPS hosts, and isolated Docker workspaces. The first
+Rust `itmux run` contract gives us a normalized run event stream and a final
+`AgentRunResult`, but observability cannot be only an `itmux` stdout detail.
+It needs to be a reusable agentic primitive that other workspace providers and
+future harnesses can use.
+
+The source data is not uniform across harnesses:
+
+- Claude Code has plugin hooks and can be launched with `--plugin-dir`, so
+  lifecycle/tool events can come from a Claude plugin.
+- `interactive-tmux` already supports Claude plugin directories through
+  `ITMUX_CLAUDE_PLUGIN_DIRS` and recipe `claude_plugin_dirs`.
+- Claude token/cost data is not fully captured by hook events alone; transcript
+  or native stream/OTEL data must be considered separately.
+- Codex currently has no equivalent `--plugin-dir` path in the interactive
+  tmux adapter, so Codex observability likely needs a watcher or adapter-owned
+  log/transcript parser.
+- Codex non-interactive execution has a stronger structured surface through
+  `codex exec --json`, including usage on `turn.completed`; this should be a
+  separate `codex_exec` observer from the `codex_tui` observer.
+- LangFuse now maintains official marketplace plugins for both Claude Code and
+  Codex. These plugins read each harness transcript/rollout and emit
+  LangFuse-native turn, generation, and tool observations. They are a better
+  primary path for rich LangFuse trace UX than replaying our normalized
+  low-level events as generic OTLP spans.
+- Future harnesses will have their own hook, log, transcript, or native OTEL
+  surfaces.
+
+The destination side is also intentionally plural:
+
+- Local JSONL artifacts are useful for debugging, tests, and offline replay.
+- LangFuse is the primary observability backend for the learning loop, expected
+  to be self-hosted on the Mac Mini eventually.
+- Syntropic137 and other consumers may need their own collector or event store.
+- OpenTelemetry gives a vendor-neutral path to backends that accept OTLP.
+
+The key design pressure is keeping these two axes independent. Harness-specific
+collection should not know about every backend. Backend exporters should not know
+how each harness emits or stores its raw events.
+
+## Decision
+
+We will split agent observability into three layers:
+
+1. **Harness observers** collect raw lifecycle/tool/transcript/token signals for
+   one harness and normalize them into shared agent event types.
+2. **The normalized event stream** is the workspace-owned contract. For `itmux
+   run`, this starts with `AgentRunEvent` JSONL plus final
+   `AgentRunResult.observability` exporter reports.
+3. **Exporter fanout** sends normalized events to one or more destinations:
+   file JSONL, LangFuse/OTEL, Syntropic137 collector, or future webhooks.
+4. **Agent-facing backend queries and feedback** let agents discover traces,
+   inspect compact summaries, and attach evaluator/operator scores back to the
+   same backend records.
+
+The architecture is:
+
+```text
+Claude hooks / transcript watcher ┐
+Codex log or transcript watcher   ├─> normalized agent events ─> fanout exporters
+Future harness observer           ┘                         ├─ file JSONL
+                                                            ├─ LangFuse / OTEL
+                                                            └─ syn137 collector
+```
+
+The `itmux` Rust driver owns the first reusable fanout primitive:
+
+- `ObservabilityExporter` is a typed configuration enum.
+- `ObservabilityFanout` receives the same normalized events that stdout sees.
+- `ObservabilityBundle` reports exporter status, event counts, targets, and
+  links for UI/navigation.
+- The first exporter is `file`, which appends event JSONL to a configured path
+  that can live on a Mac, VPS, or Docker-mounted filesystem.
+- `syntropic_jsonl` is a projection exporter for Syntropic137's existing
+  HookWatcher shape. It does not replace the canonical `file` artifact; it
+  emits top-level `event_type`/`session_id`/`timestamp` JSONL for session/tool
+  timeline ingestion.
+
+LangFuse support originally had two tiers, but ADR-039 supersedes the direct
+Rust OTLP writer for the public Claude/Codex rich-trace path. The current
+supported shape is:
+
+1. **Canonical rich tracing for supported harnesses** uses the official
+   LangFuse marketplace plugins:
+   - Claude Code:
+     `langfuse/Claude-Observability-Plugin`
+   - Codex:
+     `langfuse/codex-observability-plugin`
+2. **Local evidence and portability** use backend-independent JSONL fanout:
+   canonical `file` JSONL plus `syntropic_jsonl` for Syntropic137 ingestion.
+
+The official plugins are canonical for Claude and Codex because they reconstruct
+the native harness transcript/rollout into LangFuse-native root turn/agent
+observations, generation observations, tool observations, token usage, timings,
+and session grouping. The historical Rust OTLP work remains useful design
+evidence for what not to expose as a rich trace path: it produced generic,
+low-value spans compared with the official plugins.
+
+This is a noise-control boundary. For any one Claude/Codex run, the official
+plugin should be the only rich LangFuse writer. JSONL can run in parallel as
+durable local evidence. The current `itmux` public run surface removes the
+direct LangFuse writer flags and schema variant instead of hiding them behind a
+force flag.
+
+LangFuse also acts as a learning-loop store. `itmux langfuse-traces` gives
+agents a discovery path, `itmux langfuse-trace` gives compact trace summaries,
+and `itmux langfuse-score`/`itmux langfuse-scores` provide trace-scoped
+feedback write/read paths through the public scores API. Scores are not part of
+the exporter fanout; they are deliberate post-run annotations by evaluators,
+operators, or later agents. `itmux langfuse-trace --include-scores` can fold
+those trace-scoped scores into the same compact trace summary when an agent
+needs a single retrospective payload. The observability plugin also exposes an
+`agentic-langfuse` MCP server that delegates to these same CLI commands, so
+Claude, Codex, and later MCP-capable agents can query trace summaries and
+write/read scores through tools without duplicating LangFuse API logic. The
+compact trace summary also exposes a
+`generations` section with `by_model` totals and an ordered per-generation
+sequence so agents can attribute model usage and cost by harness, provider,
+model id, cached-token fields, pricing tier, and split input/output/total cost
+for both Codex and Claude traces.
+
+LangFuse's native OTEL integration accepts OTLP over HTTP/protobuf at
+`/api/public/otel`; gRPC should not be assumed for the first implementation.
+OTLP authentication uses Basic auth derived from
+`LANGFUSE_PUBLIC_KEY:LANGFUSE_SECRET_KEY`. Useful resource and span attributes
+to preserve for filtering and trace reconstruction include `session.id`,
+`langfuse.session.id`, `langfuse.trace.name`, `langfuse.trace.metadata.*`,
+`service.name`, `deployment.environment.name`, and `langfuse.environment`.
+
+Harness observers should be named by their actual collection surface, not only
+by vendor. The initial observer set is:
+
+- `claude_hooks`: reads events emitted by the Claude observability plugin.
+- `claude_stream_json`: normalizes Claude headless stream JSON where available.
+- `codex_exec_json`: normalizes `codex exec --json` events, including usage.
+- `codex_tui`: watches runtime outputs available inside the workspace container
+  or host tmux adapter; parity is experimental until proven. Standard
+  recipe-driven Codex runs can opt into the rich `codex_exec_json` path with
+  `itmux run --codex-mode exec`.
+
+Secrets must not be embedded in specs, examples, CLI args, or committed files.
+LangFuse credentials should come from environment injection, keychain-backed
+env setup on Macs, or an external redacted config path. The operator procedure
+is documented in `docs/guides/langfuse-observability-setup.md`:
+
+- `LANGFUSE_BASE_URL`
+- `LANGFUSE_PUBLIC_KEY`
+- `LANGFUSE_SECRET_KEY`
+
+## Alternatives Considered
+
+### Alternative 1: One LangFuse Plugin Per Harness
+
+**Description**: Build a Claude LangFuse plugin, a Codex LangFuse plugin, and
+future harness-specific LangFuse plugins.
+
+**Pros**:
+
+- Straightforward for Claude where plugin hooks already exist.
+- Closely matches some existing LangFuse community patterns.
+- Fast path for a single harness proof of concept.
+
+**Cons**:
+
+- Couples harness collection directly to one backend.
+- Duplicates mapping logic across harnesses.
+- Does not help local JSONL, Syntropic137 collector, or other backends.
+- Codex currently lacks the same plugin loading model, so the pattern does not
+  generalize cleanly.
+
+**Reason for update**: We should not build and own duplicate rich LangFuse
+plugins for Claude and Codex now that official LangFuse plugins exist. The
+accepted variant is to wrap, configure, validate, and document the official
+plugins, while preserving JSONL and Rust OTLP for local durability, fallback,
+and Syntropic137/collector use.
+
+### Alternative 2: Only Use OpenTelemetry Everywhere
+
+**Description**: Require every harness observer to emit OTEL spans directly and
+send them to LangFuse or another OTEL backend.
+
+**Pros**:
+
+- Vendor-neutral backend protocol.
+- LangFuse accepts OTLP.
+- Existing observability tools understand traces/spans.
+
+**Cons**:
+
+- Forces every harness adapter to understand OTEL and backend credentials.
+- Makes local replay/debugging harder than JSONL.
+- Does not naturally represent raw hook events before schema decisions settle.
+- Adds complexity to simple tests and offline runs.
+
+**Reason for rejection**: OTEL is a good exporter target, not the only internal
+contract.
+
+### Alternative 3: Parse Terminal Pane Output Only
+
+**Description**: Treat tmux pane capture as the only source of truth and infer
+events from visible terminal output.
+
+**Pros**:
+
+- Works for every interactive harness at the transport level.
+- Does not require plugin support.
+- Useful as a fallback for readiness and final transcript capture.
+
+**Cons**:
+
+- Loses structured tool inputs/results.
+- Weak token/cost fidelity.
+- Fragile across TUI changes.
+- Hard to distinguish lifecycle, tool, and model events reliably.
+
+**Reason for rejection**: Pane capture is useful evidence, but it is not a full
+observability system.
+
+## Consequences
+
+### Positive Consequences
+
+- **Reusable primitive**: Backends plug into one fanout interface instead of
+  each harness.
+- **Portable setup**: File JSONL works immediately on Macs, VPS hosts, and
+  Docker-mounted paths.
+- **Backend flexibility**: LangFuse, local replay, and Syntropic137 can coexist.
+- **Testability**: File exporter and local receivers make acceptance tests cheap.
+- **Clear failure reporting**: Exporter failures can be surfaced in
+  `AgentRunResult.observability` without corrupting stdout JSONL.
+
+### Negative Consequences
+
+- **More components**: Harness observers, normalized event vocabulary, and
+  exporters are separate modules.
+- **Codex uncertainty**: Codex token/cost and hook surfaces need empirical
+  validation before parity can be promised.
+- **Two data mechanisms**: Hooks provide lifecycle/tool events, while transcript
+  or stream watchers may be needed for token/cost.
+- **Version drift risk**: Harness observers must track CLI/hook format changes.
+
+### Neutral Consequences
+
+- Claude can use plugin hooks where available.
+- Codex may use a watcher or adapter parser until its plugin story is clearer.
+- LangFuse can be self-hosted later without changing the internal event stream.
+
+## Implementation Notes
+
+Current branch `feat/observability-exporter-primitive` starts this decision:
+
+- `providers/workspaces/interactive-tmux/driver-rs/src/run/contract.rs`
+  defines typed observability exporters and exporter reports.
+- `providers/workspaces/interactive-tmux/driver-rs/src/run/harness_observer.rs`
+  defines the first observer boundary and a `codex_exec_json` parser that maps
+  `codex exec --json` lifecycle and `turn.completed.usage` events into
+  normalized payloads.
+- `itmux codex-exec` is the first runnable observer path: it runs
+  `codex exec --json`, envelopes observed payloads as `AgentRunEvent`s, and
+  feeds them through the same file exporter/final result reporting layer.
+- `itmux run --codex-mode exec` reuses the same Codex observer and exporter
+  fanout from the standard recipe-driven run surface for Codex recipes. The
+  default Codex `tui` mode remains the interactive Docker workspace path.
+- `providers/workspaces/interactive-tmux/driver-rs/src/run/observability.rs`
+  implements file fanout.
+- `workspace_executor.rs` fans out `AgentRunEvent`s while preserving stdout
+  purity.
+- `itmux run --observability-file <path>` enables the portable file exporter.
+
+## Experiment Results, 2026-07-07
+
+The first hypothesis-first probes produced these architecture constraints:
+
+- `experiments/2026-07-07--observability--claude-hook-file-fanout` validated
+  the file exporter: stdout event count and exported event count matched
+  exactly in baseline and treatment. It did not validate Claude hook-derived
+  events because Claude launched and then failed with Anthropic `API Error:
+  401`. The treatment did prove that recipe-driven `itmux run` can launch
+  `claude --plugin-dir /workspace/plugins/observability`.
+- `experiments/2026-07-07--observability--codex-token-cost-surface` showed
+  that Codex TUI currently provides only coarse driver/pane observability in
+  `itmux run`. A separate `codex exec --json` probe produced structured
+  `thread.started`, `turn.started`, `item.completed`, and `turn.completed`
+  events, with `turn.completed.usage` carrying token counts. Therefore
+  `codex_exec_json` is the first viable Codex usage observer; `codex_tui`
+  remains a coarse observer until another live source is proven. A later
+  recipe-driven proof connected that rich observer back to standard
+  `itmux run` through explicit `--codex-mode exec`.
+- `experiments/2026-07-07--langfuse--otel-ingestion-smoke` generated the local
+  synthetic root span plus three child spans, but did not export because no
+  LangFuse base URL or credentials were present. The later direct-writer smoke
+  work is superseded by ADR-039; `.9` now closes on official-plugin traces plus
+  CLI/MCP queryability against the chosen LangFuse backend.
+- `experiments/2026-07-07--observability--langfuse-otel-export` originally
+  confirmed the backend gap when the substrate only fanned out to `file`. It
+  was later rerun against the now-superseded direct writer path. Its useful
+  residue is the failure-isolation lesson: backend setup failure must not break
+  local JSONL evidence.
+- `experiments/2026-07-07--langfuse--otel-preflight-local-receiver` validated the
+  locally testable LangFuse exporter contract without a backend: derived
+  `/api/public/otel/v1/traces`, `POST`, `application/x-protobuf`, Basic auth,
+  non-empty body, required attributes, and redacted evidence. It does not prove
+  real LangFuse ingestion or trace discoverability.
+- `experiments/2026-07-07--langfuse--exporter-config-failfast` validated the
+  first historical `.9` implementation slice. That config path is superseded by
+  ADR-039, but its redaction/fail-fast requirements still inform the setup
+  doctor and query tooling.
+- `experiments/2026-07-07--langfuse--otlp-transport-local-receiver` validated the actual
+  Rust exporter transport path against a local receiver: buffered
+  `AgentRunEvent`s are encoded into an OTLP HTTP/protobuf request, sent to
+  `/api/public/otel/v1/traces` with Basic auth and
+  `x-langfuse-ingestion-version: 4`, and a 2xx response yields an `ok`
+  exporter report.
+- `experiments/2026-07-07--observability--codex-exec-observer-wiring` passed:
+  `itmux codex-exec` produced normalized lifecycle events, one `token_usage`
+  event, exact stdout/exporter event parity, and a successful file exporter
+  report from a real `codex exec --json` run.
+- `experiments/2026-07-07--observability--claude-credential-health` classified
+  the Claude 401 blocker. Host `claude -p` succeeds because
+  `CLAUDE_CODE_OAUTH_TOKEN` is set, while the Docker workspace receives staged
+  disk credentials whose access token is expired and whose refresh token is
+  empty after Claude starts. Recipe-driven `itmux run` therefore fails on first
+  prompt submission with `API Error: 401`.
+- `experiments/2026-07-07--observability--claude-env-token-passthrough`
+  validated the credential fix: pass `CLAUDE_CODE_OAUTH_TOKEN` through Docker
+  by env var name (`-e NAME`, not `NAME=value`). The same recipe-driven Claude
+  prompt exited 0, returned the expected text, and preserved 11/11
+  stdout-to-file exporter parity.
+- `experiments/2026-07-07--observability--claude-hook-fanout-after-auth`
+  removed auth from the Claude hook question: the plugin recipe launched with
+  `claude --plugin-dir /workspace/plugins/observability`, the prompt succeeded,
+  and exporter parity held, but no raw hook `event_type` JSONL appeared in
+  stdout, stderr, session log, or exporter output.
+- `experiments/2026-07-07--observability--baked-claude-hook-runtime` isolated
+  runtime packaging from capture semantics. A derived image containing
+  `plugins/observability` and `agentic_events` could run `observe.py` directly
+  and emit `event_type = session_started`, but `itmux run` still saw no hook
+  JSONL through stdout, stderr, session log, or file exporter. Therefore
+  Claude hook support needs an explicit sink/capture path.
+- `experiments/2026-07-07--observability--claude-hook-sink-capture` validated
+  that explicit path: `observe.py` tees hook JSONL to
+  `AGENTIC_EVENTS_JSONL`, the driver drains the file before teardown, and
+  stdout/file fanout receive normalized `hook_event` records. The live run
+  emitted 3 hook events (`session_started`, `user_prompt_submitted`,
+  `agent_stopped`) with `session_end` still last.
+- `experiments/2026-07-07--observability--stock-itmux-hook-sink` then proved
+  the same path on the stock interactive-tmux provider image after baking
+  `plugins/observability` and the `agentic_events` wheel. The stock image run
+  emitted the same 3 normalized hook events with 14/14 stdout-to-file parity.
+
+These results preserve the original three-layer architecture and validate two
+end-to-end paths: `codex_exec_json` observer -> normalized `AgentRunEvent` ->
+file fanout -> `ObservabilityBundle`, and Claude hook sink -> normalized
+`hook_event` -> file fanout -> `ObservabilityBundle`. Historical `.9` direct
+Rust OTLP work proved endpoint/auth/fail-fast mechanics, but ADR-039 removed
+that writer from the active public run path. The current LangFuse path is
+official plugins for writes plus `itmux langfuse-*`/MCP for query and feedback
+loops.
+
+Validated gates and follow-ups for `okrs-51p.6`:
+
+1. Harness observer boundary and runnable `codex_exec_json` path are proven by
+   `itmux codex-exec`.
+2. Backend-independent file exporter fanout and `ObservabilityBundle` reporting
+   are proven end to end, including mixed-exporter isolation when LangFuse is
+   misconfigured.
+3. Claude plugin launch, credential passthrough, explicit hook sink/drain, and
+   stock provider packaging are empirically proven.
+4. The observability plugin README now documents stderr plus
+   `AGENTIC_EVENTS_JSONL` sink semantics, preserving `itmux run` stdout purity.
+5. Remaining follow-ups are not `.6` blockers: Codex TUI token/cost parity,
+   Claude full token/cost parity through transcript/native stream work, and
+   richer backend exporters.
+6. Preserve relative path behavior in reports, but document and test that only
+   absolute file exporter paths can produce `file://` links.
+
+Current status for `okrs-51p.9`:
+
+1. Official Claude/Codex plugins are the canonical LangFuse write path for rich
+   traces.
+2. Direct Rust OTLP writer flags and schema entries are removed from the active
+   public run path.
+3. Local JSONL and Syntropic JSONL exporters remain available for durable
+   evidence.
+4. First agent-facing trace query utility is implemented as
+   `itmux langfuse-trace`. It can derive the deterministic trace id from an
+   `itmux` run id, queries bounded LangFuse observation rows, supports a
+   legacy trace endpoint for self-host compatibility, fails safely with
+   redacted missing-config JSON, and is local-receiver-proven through the actual CLI
+   GET/auth/JSON response path. It now supports `--output summary`, which
+   returns only the agent-facing `{ok, request, summary}` shape and avoids
+   pulling the raw LangFuse backend response into learning-loop context. Trace
+   discovery is implemented as `itmux langfuse-traces`, which lists recent run
+   ids with harness/provider/model, cost, observation counts, and optional
+   filters before agents drill into a single trace.
+5. `scripts/langfuse-local.sh smoke` now runs the setup/readiness doctor
+   against the local ignored LangFuse environment instead of exercising the
+   removed direct writer.
+6. Local official-plugin traces are proven for both Claude and Codex, and the
+   compact query path returns harness/provider/model, usage/cost, and tool
+   rollups including Claude `Read` and Codex `exec_command`.
+7. The observability plugin now registers an `agentic-langfuse` MCP server for
+    agent tool access to trace discovery, compact trace summaries, score reads,
+    and score write-back. The server is intentionally a wrapper around
+    `itmux langfuse-*` so there is one implementation of LangFuse auth,
+    endpoint compatibility, and summary shaping.
+
+## Experiment Results, 2026-07-08
+
+`experiments/2026-07-08--langfuse--official-plugin-trace-shape` validated the
+architecture pivot requested after LangFuse UI inspection.
+`experiments/2026-07-08--langfuse--official-plugin-e2e-local` then validated
+that pivot end to end against the local self-hosted LangFuse stack without
+global plugin installation.
+
+Findings:
+
+- The official Claude plugin is source- and test-proven locally. Its hook reads
+  transcript JSONL on `Stop`/`SessionEnd`, creates a root conversational-turn
+  observation with input/output, creates `generation` observations with model
+  and usage when present, and creates `tool` observations with semantic tool
+  names, input/output, and backdated timings. Its local test suite passed
+  48/48 tests.
+- The official Codex plugin is source-proven locally. It reads rollout JSONL
+  from a `Stop` hook, reconstructs turns/model steps/tool calls/subagents,
+  emits `Codex Turn` as an `agent` observation with input/output, emits
+  `generation` observations with model and `usageDetails`, emits `tool`
+  observations with actual tool names/input/output/error/timing, and uses a
+  sidecar file to avoid duplicate completed-turn uploads. Its local test suite
+  was not executed successfully in this `/tmp` shell because of a local
+  Node/pnpm/native-binding mismatch, so runtime test validation remains a
+  follow-up.
+- The historical Rust OTLP exporter was useful as design evidence but too
+  low-level for default rich LangFuse UX: root trace input/output is absent,
+  child spans are named
+  `tool_start`, `tool_end`, `token_usage`, etc., tool start/end are unpaired
+  one-millisecond spans, and usage/cost is attached to a generic event span
+  rather than a LangFuse generation observation.
+
+Decision from this experiment:
+
+- Official LangFuse plugins are canonical for rich Claude/Codex traces.
+- JSONL fanout remains the portable local source of truth and the simplest
+  Syntropic137 input.
+- Rust OTLP should not be restored as the public Claude/Codex rich-trace path.
+- Local JSONL/Syntropic fanout plus official plugin traces cover the current
+  setup.
+- The local E2E run proved the official hook entrypoints can export rich traces
+  directly: Claude produced root input/output, two `GENERATION` observations,
+  and `Tool: Read`; Codex produced a `Codex Turn` `AGENT` observation, two
+  `GENERATION` observations with usage, an `exec_command` `TOOL` observation,
+  total cost, and sidecar dedup state. No `itmux ... --observability-langfuse`
+  writer path or direct Rust OTLP exporter ran during that experiment.
+
+Remaining gate for production deployment:
+
+1. Convert the local direct-hook validation into documented setup using the
+   official Claude/Codex marketplace install flows for real sessions.
+2. Keep workspace/bootstrap config aligned with the removed direct writer path.
+3. Move the same Compose/bootstrap pattern to the durable Mac Mini host with
+   persistent secrets, storage, backups, and upgrade policy.
+4. Decide whether `.9` closes on local real-backend proof or waits for the Mac
+   Mini deployment proof. The current smoke has satisfied backend acceptance,
+   generated URL resolution, and `itmux langfuse-trace` queryability on this
+   MacBook.
+5. Only after that, broaden richer backend-specific discovery utilities.
+
+## References
+
+- ADR-022: Git Hook Observability Architecture
+- ADR-027: Provider-Based Workspace Images
+- ADR-033: Plugin-Native Workspace Images
+- ADR-035: Workspace Injection Contract
+- ADR-037: Release Integration Gate
+- `docs/handoffs/20260707-handoff_langfuse-observability-exporters.md`
+- `providers/workspaces/interactive-tmux/driver-rs/src/run/observability.rs`
+- `plugins/observability/hooks/handlers/observe.py`
+- `providers/workspaces/interactive-tmux/manifest.yaml`
+- `providers/workspaces/claude-cli/manifest.yaml`
+- LangFuse OpenTelemetry integration: https://langfuse.com/integrations/native/opentelemetry
+- LangFuse SDK overview: https://langfuse.com/docs/observability/sdk/overview
+- LangFuse Claude Code integration: https://langfuse.com/integrations/developer-tools/claude-code
+- LangFuse Codex integration: https://langfuse.com/integrations/developer-tools/codex

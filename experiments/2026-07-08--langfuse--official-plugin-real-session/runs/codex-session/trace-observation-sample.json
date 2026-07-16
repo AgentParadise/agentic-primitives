@@ -1,0 +1,340 @@
+[
+  {
+    "name": "Codex Turn",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "exec_command",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "gpt-5.5",
+    "type": null,
+    "model": "gpt-5.5",
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "gpt-5.5",
+    "type": null,
+    "model": "gpt-5.5",
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "gpt-5.5",
+    "type": null,
+    "model": "gpt-5.5",
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "gpt-5.5",
+    "type": null,
+    "model": "gpt-5.5",
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "Codex Turn",
+    "type": null,
+    "model": null,
+    "input": "Read README.md, then reply with exactly this marker and no extra prose: CODEX_OFFICIAL_REAL_SESSION_OK_1783537912",
+    "output": "CODEX_OFFICIAL_REAL_SESSION_OK_1783537912",
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": {
+      "codex.turn_id": "019f4324-ca29-73b0-b32f-f15642243d10",
+      "codex.thread_id": "019f4324-c997-72c1-bae9-9eae62d84fc8",
+      "codex.model": "gpt-5.5",
+      "codex.model_provider": "openai",
+      "codex.cli_version": "0.142.5",
+      "codex.aborted": false,
+      "codex.tool_call_count": 1,
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    }
+  },
+  {
+    "name": "langfuse-sdk",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "gpt-5.5",
+    "type": "GENERATION",
+    "model": "gpt-5.5",
+    "input": "Read README.md, then reply with exactly this marker and no extra prose: CODEX_OFFICIAL_REAL_SESSION_OK_1783537912",
+    "output": {
+      "tool_calls": [
+        {
+          "id": "call_osPzQbBnz0Fq6EJzIRZjSN0h",
+          "name": "exec_command",
+          "arguments": {
+            "cmd": "pwd && sed -n '1,220p' README.md",
+            "workdir": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run",
+            "yield_time_ms": 10000,
+            "max_output_tokens": 20000
+          }
+        }
+      ]
+    },
+    "usage": {
+      "unit": "TOKENS",
+      "input": 15926,
+      "output": 88,
+      "total": 16014
+    },
+    "cost": null,
+    "startTime": "2026-07-08T19:11:56.342Z",
+    "endTime": "2026-07-08T19:11:56.413Z",
+    "metadata": {
+      "codex.step_index": 0,
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    }
+  },
+  {
+    "name": "exec_command",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "langfuse-sdk",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "gpt-5.5",
+    "type": "GENERATION",
+    "model": "gpt-5.5",
+    "input": [
+      {
+        "name": "exec_command",
+        "output": "Chunk ID: 8aaa88\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 2456\nOutput:\n/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run\n# Agentic Primitives\n\n> Atomic building blocks for AI agent systems\n\n[![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)\n[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)\n\n---\n\n## What Are Agentic Primitives?\n\nAtomic building blocks for AI agent systems — packaged as Claude Code plugins and Python libraries.\n\nDesigned to work in two contexts:\n- **Human-in-the-loop** — a developer using Claude Code in the terminal, invoking commands explicitly, staying in control\n- **Headless workspaces** — fully automated agents running in isolation with no human present, where tool scoping and policy hooks are the safety layer\n\nThe same primitives serve both. The difference is configuration: which tools are allowed, which hooks fire, which agents are trusted.\n\n---\n\n## The Primitives\n\n### Commands\nExplicit user-invocable slash commands (`/sdlc:git_push`). Granular, predictable, human-triggered. The developer stays in the loop.\n\n→ Lives in: `plugins/<plugin>/commands/<name>.md`\n\n### Skills\nReusable workflows Claude invokes automatically when a task matches the description — or that you invoke as `/sdlc:git`. Consolidated, intent-driven, works in both human and headless contexts.\n\n→ Lives in: `plugins/<plugin>/skills/<name>/SKILL.md`\n\n### Agents\nNamed specialist subagents with a scoped system prompt, explicit allowed/disallowed tools, and optional persistent memory. The tool scope is the key primitive — it determines what an agent *can* do, not just what it *should* do. Agents can preload skills and delegate to other agents via the `Task` tool.\n\n→ Lives in: `plugins/<plugin>/agents/<name>/agent.md`\n\n### Hooks\nEvent-driven automation that fires on Claude Code lifecycle events (`PreToolUse`, `PostToolUse`, `SubagentStop`, `SessionStart`, etc.). Observe, modify, or block — enforcing policies and emitting telemetry without touching workflow code.\n\n→ Lives in: `plugins/<plugin>/hooks/hooks.json` + handlers\n\n### Lib\nPython packages that power agent runtimes — isolation, events, logging, security. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.\n\n→ Lives in: `lib/python/`\n\n---\n\n### How They Compose\n\n```\nUser: /sdlc:git_push          ← Command (explicit, human-in-loop)\n  or\nClaude detects push needed    ← Skill (auto-invoked, headless-friendly)\n       │\n       ├─► PreToolUse Hook validates git commands before execution\n       │\n       ├─► Skill delegates review to env-reviewer Agent (Task tool)\n       │         ├─ tools: Read, Grep, Glob only (cannot modify anything)\n       │         ├─ disallowedTools: Write, Edit (enforced, not just instructed)\n       │         └─ SubagentStop Hook records telemetry\n       │\n       └─► PostToolUse Hook emits structured JSONL event (Lib: agentic-events)\n```\n\n**The pattern:**\n- **Commands** give humans direct control at the right granularity\n- **Skills** orchestrate work for agents — consolidated, intent-driven\n- **Agents** specialize with enforced tool scopes — least privilege by design\n- **Hooks** enforce policies and observability without touching workflow code\n- **Lib** provides the runtime substrate — isolation, events, structured logging\n\n---\n\n## Quick Start\n\n### Prerequisites\n\n- [Python 3.11+](https://www.python.org/)\n- [uv](https://docs.astral.sh/uv/) — fast Python package manager\n- [just](https://github.com/casey/just) — command runner (optional, recommended)\n\n### Install Plugins\n\nPlugins are installed via Claude Code's built-in plugin system. Requires Claude Code v1.0.33+.\n\nYou can also do all of this interactively by typing `/plugin` inside Claude Code.\n\n**1. Add the marketplace (one-time setup):**\n\n```bash\nclaude plugin marketplace add AgentParadise/agentic-primitives\n```\n\n**2. Install the plugins you need:**\n\n```bash\n# Install globally (available in all projects)\nclaude plugin install sdlc@agentic-primitives --scope user\n\n# Or install to current project only\nclaude plugin install sdlc@agentic-primitives --scope project\n```\n\n**3. Update to the latest version:**\n\n```bash\n# Refresh the marketplace catalog first\nclaude plugin marketplace update agentic-primitives\n\n# Then update the plugin\nclaude plugin update sdlc@agentic-primitives\n```\n\nPlugins are pinned to a version and never auto-update. Updates require both steps above.\n\n**4. Disable / enable without uninstalling:**\n\n```bash\nclaude plugin disable sdlc@agentic-primitives\nclaude plugin enable sdlc@agentic-primitives\n```\n\n**5. Uninstall:**\n\n```bash\nclaude plugin uninstall sdlc@agentic-primitives\n```\n\n**6. Verify security hooks are active:**\n\n```bash\n# Inside a Claude Code session, run:\n/sdlc:validate_security-hooks\n```\n\nReplace `sdlc` with any plugin name from the [Available Plugins](#available-plugins) table in the commands above.\n\n---\n\n## Available Plugins\n\n| Plugin | Install | Description |\n|--------|---------|-------------|\n| **sdlc** | `claude plugin install sdlc@agentic-primitives --scope user` | Software Development Lifecycle |\n| **workspace** | `claude plugin install workspace@agentic-primitives --scope user` | Observable isolated workspaces |\n| **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |\n| **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |\n| **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |\n| **notifications** | `claude plugin install notifications@agentic-primitives --scope user` | Push notifications (ntfy, macOS, Pushover) |\n| **observability** | `claude plugin install observability@agentic-primitives --scope user` | Full-spectrum JSONL event observability |\n| **delegation** | `claude plugin install delegation@agentic-primitives --scope user` | Delegating work — `claude -p`, Codex, and session handoffs |\n| **experiments** | `claude plugin install experiments@agentic-primitives --scope user` | Hypothesis-first experiment workflow |\n\n### What's in each plugin\n\n| Plugin | Commands | Skills | Agents | Hooks |\n|--------|----------|--------|--------|-------|\n| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks`, `browser`, `browser_ui-review` | `git`, `git-worktree`, `commit`, `pre-commit-qa`, `qa-setup`, `testing-expert`, `review`, `prioritize`, `env-management`, `centralized-configuration`, `macos-keychain-secrets`, `browser` | `env-reviewer`, `browser-qa-agent` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |\n| **workspace** | -- | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |\n| **research** | `scrape_docs` | -- | -- | -- |\n| **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |\n| **docs** | -- | `fuma` (Fumadocs integration), `system-infographic` | -- | -- |\n| **notifications** | -- | -- | -- | Notification, Stop, TaskCompleted → ntfy/macOS/Pushover with sound themes |\n| **observability** | -- | -- | -- | All 14 lifecycle events → structured JSONL via agentic_events |\n| **delegation** | -- | `delegating-to-claude-p`, `delegating-to-codex`, `writing-handoffs` | -- | -- |\n| **experiments** | -- | `running-experiments` | -- | -- |\n\n---\n\n## Python Packages\n\nInfrastructure primitives in `lib/python/`, installable via `pip` or `uv`:\n\n| Package | Version | Description |\n|---------|---------|-------------|\n| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.3.0 | Docker workspace sandboxing for agent execution |\n| [`agentic-events`](lib/python/agentic_events/) | 0.1.0 | Zero-dependency JSONL event emission |\n| [`agentic-logging`](lib/python/agentic_logging/) | 0.1.0 | Structured logging for agents and humans |\n\n```bash\n# Install a package for development\ncd lib/python/agentic_isolation\nuv sync --all-extras\n\n# Run tests\nuv run pytest -x -q\n```\n\n---\n\n## Repository Structure\n\n```\nagentic-primitives/\n├── plugins/                    # Prompt Primitives\n│   ├── sdlc/                   #   SDLC plugin\n│   │   ├── commands/           #     Explicit user-invocable slash commands\n│   │   ├── skills/             #     Agent-invocable workflows\n│   │   ├── agents/             #     Named subagents with scoped tools\n│   │   └── hooks/              #     Lifecycle event handlers\n│   ├── workspace/              #   Workspace observability hooks\n│   ├── research/               #   Research tools (firecrawl, doc-scraper)\n│   ├── meta/                   #   Primitive generators\n│   └── docs/                   #   Documentation tools\n├── lib/python/                 # Infrastructure Primitives\n│   ├── agentic_isolation/      #   Docker workspace sandboxing\n│   ├── agentic_events/         #   JSONL event emission\n│   └── agentic_logging/        #   Structured logging\n├── providers/                  # Workspace providers & model data\n│   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace\n│   ├── models/                 #   Model cards (pricing, context windows)\n│   └── agents/                 #   Agent configuration templates\n├── scripts/                    # QA runner, benchmark tools\n├── tests/                      # Integration & unit tests\n├── docs/adrs/                  # Architecture Decision Records (32 ADRs)\n├── VERSION                     # Repo version (3.0.1)\n"
+      }
+    ],
+    "output": {
+      "content": "CODEX_OFFICIAL_REAL_SESSION_OK_1783537912"
+    },
+    "usage": {
+      "unit": "TOKENS",
+      "input": 18415,
+      "output": 16,
+      "total": 18431
+    },
+    "cost": null,
+    "startTime": "2026-07-08T19:11:57.882Z",
+    "endTime": "2026-07-08T19:11:57.919Z",
+    "metadata": {
+      "codex.step_index": 1,
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    }
+  },
+  {
+    "name": "exec_command",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": "Chunk ID: 8aaa88\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 2456\nOutput:\n/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run\n# Agentic Primitives\n\n> Atomic building blocks for AI agent systems\n\n[![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)\n[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)\n\n---\n\n## What Are Agentic Primitives?\n\nAtomic building blocks for AI agent systems — packaged as Claude Code plugins and Python libraries.\n\nDesigned to work in two contexts:\n- **Human-in-the-loop** — a developer using Claude Code in the terminal, invoking commands explicitly, staying in control\n- **Headless workspaces** — fully automated agents running in isolation with no human present, where tool scoping and policy hooks are the safety layer\n\nThe same primitives serve both. The difference is configuration: which tools are allowed, which hooks fire, which agents are trusted.\n\n---\n\n## The Primitives\n\n### Commands\nExplicit user-invocable slash commands (`/sdlc:git_push`). Granular, predictable, human-triggered. The developer stays in the loop.\n\n→ Lives in: `plugins/<plugin>/commands/<name>.md`\n\n### Skills\nReusable workflows Claude invokes automatically when a task matches the description — or that you invoke as `/sdlc:git`. Consolidated, intent-driven, works in both human and headless contexts.\n\n→ Lives in: `plugins/<plugin>/skills/<name>/SKILL.md`\n\n### Agents\nNamed specialist subagents with a scoped system prompt, explicit allowed/disallowed tools, and optional persistent memory. The tool scope is the key primitive — it determines what an agent *can* do, not just what it *should* do. Agents can preload skills and delegate to other agents via the `Task` tool.\n\n→ Lives in: `plugins/<plugin>/agents/<name>/agent.md`\n\n### Hooks\nEvent-driven automation that fires on Claude Code lifecycle events (`PreToolUse`, `PostToolUse`, `SubagentStop`, `SessionStart`, etc.). Observe, modify, or block — enforcing policies and emitting telemetry without touching workflow code.\n\n→ Lives in: `plugins/<plugin>/hooks/hooks.json` + handlers\n\n### Lib\nPython packages that power agent runtimes — isolation, events, logging, security. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.\n\n→ Lives in: `lib/python/`\n\n---\n\n### How They Compose\n\n```\nUser: /sdlc:git_push          ← Command (explicit, human-in-loop)\n  or\nClaude detects push needed    ← Skill (auto-invoked, headless-friendly)\n       │\n       ├─► PreToolUse Hook validates git commands before execution\n       │\n       ├─► Skill delegates review to env-reviewer Agent (Task tool)\n       │         ├─ tools: Read, Grep, Glob only (cannot modify anything)\n       │         ├─ disallowedTools: Write, Edit (enforced, not just instructed)\n       │         └─ SubagentStop Hook records telemetry\n       │\n       └─► PostToolUse Hook emits structured JSONL event (Lib: agentic-events)\n```\n\n**The pattern:**\n- **Commands** give humans direct control at the right granularity\n- **Skills** orchestrate work for agents — consolidated, intent-driven\n- **Agents** specialize with enforced tool scopes — least privilege by design\n- **Hooks** enforce policies and observability without touching workflow code\n- **Lib** provides the runtime substrate — isolation, events, structured logging\n\n---\n\n## Quick Start\n\n### Prerequisites\n\n- [Python 3.11+](https://www.python.org/)\n- [uv](https://docs.astral.sh/uv/) — fast Python package manager\n- [just](https://github.com/casey/just) — command runner (optional, recommended)\n\n### Install Plugins\n\nPlugins are installed via Claude Code's built-in plugin system. Requires Claude Code v1.0.33+.\n\nYou can also do all of this interactively by typing `/plugin` inside Claude Code.\n\n**1. Add the marketplace (one-time setup):**\n\n```bash\nclaude plugin marketplace add AgentParadise/agentic-primitives\n```\n\n**2. Install the plugins you need:**\n\n```bash\n# Install globally (available in all projects)\nclaude plugin install sdlc@agentic-primitives --scope user\n\n# Or install to current project only\nclaude plugin install sdlc@agentic-primitives --scope project\n```\n\n**3. Update to the latest version:**\n\n```bash\n# Refresh the marketplace catalog first\nclaude plugin marketplace update agentic-primitives\n\n# Then update the plugin\nclaude plugin update sdlc@agentic-primitives\n```\n\nPlugins are pinned to a version and never auto-update. Updates require both steps above.\n\n**4. Disable / enable without uninstalling:**\n\n```bash\nclaude plugin disable sdlc@agentic-primitives\nclaude plugin enable sdlc@agentic-primitives\n```\n\n**5. Uninstall:**\n\n```bash\nclaude plugin uninstall sdlc@agentic-primitives\n```\n\n**6. Verify security hooks are active:**\n\n```bash\n# Inside a Claude Code session, run:\n/sdlc:validate_security-hooks\n```\n\nReplace `sdlc` with any plugin name from the [Available Plugins](#available-plugins) table in the commands above.\n\n---\n\n## Available Plugins\n\n| Plugin | Install | Description |\n|--------|---------|-------------|\n| **sdlc** | `claude plugin install sdlc@agentic-primitives --scope user` | Software Development Lifecycle |\n| **workspace** | `claude plugin install workspace@agentic-primitives --scope user` | Observable isolated workspaces |\n| **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |\n| **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |\n| **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |\n| **notifications** | `claude plugin install notifications@agentic-primitives --scope user` | Push notifications (ntfy, macOS, Pushover) |\n| **observability** | `claude plugin install observability@agentic-primitives --scope user` | Full-spectrum JSONL event observability |\n| **delegation** | `claude plugin install delegation@agentic-primitives --scope user` | Delegating work — `claude -p`, Codex, and session handoffs |\n| **experiments** | `claude plugin install experiments@agentic-primitives --scope user` | Hypothesis-first experiment workflow |\n\n### What's in each plugin\n\n| Plugin | Commands | Skills | Agents | Hooks |\n|--------|----------|--------|--------|-------|\n| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks`, `browser`, `browser_ui-review` | `git`, `git-worktree`, `commit`, `pre-commit-qa`, `qa-setup`, `testing-expert`, `review`, `prioritize`, `env-management`, `centralized-configuration`, `macos-keychain-secrets`, `browser` | `env-reviewer`, `browser-qa-agent` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |\n| **workspace** | -- | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |\n| **research** | `scrape_docs` | -- | -- | -- |\n| **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |\n| **docs** | -- | `fuma` (Fumadocs integration), `system-infographic` | -- | -- |\n| **notifications** | -- | -- | -- | Notification, Stop, TaskCompleted → ntfy/macOS/Pushover with sound themes |\n| **observability** | -- | -- | -- | All 14 lifecycle events → structured JSONL via agentic_events |\n| **delegation** | -- | `delegating-to-claude-p`, `delegating-to-codex`, `writing-handoffs` | -- | -- |\n| **experiments** | -- | `running-experiments` | -- | -- |\n\n---\n\n## Python Packages\n\nInfrastructure primitives in `lib/python/`, installable via `pip` or `uv`:\n\n| Package | Version | Description |\n|---------|---------|-------------|\n| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.3.0 | Docker workspace sandboxing for agent execution |\n| [`agentic-events`](lib/python/agentic_events/) | 0.1.0 | Zero-dependency JSONL event emission |\n| [`agentic-logging`](lib/python/agentic_logging/) | 0.1.0 | Structured logging for agents and humans |\n\n```bash\n# Install a package for development\ncd lib/python/agentic_isolation\nuv sync --all-extras\n\n# Run tests\nuv run pytest -x -q\n```\n\n---\n\n## Repository Structure\n\n```\nagentic-primitives/\n├── plugins/                    # Prompt Primitives\n│   ├── sdlc/                   #   SDLC plugin\n│   │   ├── commands/           #     Explicit user-invocable slash commands\n│   │   ├── skills/             #     Agent-invocable workflows\n│   │   ├── agents/             #     Named subagents with scoped tools\n│   │   └── hooks/              #     Lifecycle event handlers\n│   ├── workspace/              #   Workspace observability hooks\n│   ├── research/               #   Research tools (firecrawl, doc-scraper)\n│   ├── meta/                   #   Primitive generators\n│   └── docs/                   #   Documentation tools\n├── lib/python/                 # Infrastructure Primitives\n│   ├── agentic_isolation/      #   Docker workspace sandboxing\n│   ├── agentic_events/         #   JSONL event emission\n│   └── agentic_logging/        #   Structured logging\n├── providers/                  # Workspace providers & model data\n│   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace\n│   ├── models/                 #   Model cards (pricing, context windows)\n│   └── agents/                 #   Agent configuration templates\n├── scripts/                    # QA runner, benchmark tools\n├── tests/                      # Integration & unit tests\n├── docs/adrs/                  # Architecture Decision Records (32 ADRs)\n├── VERSION                     # Repo version (3.0.1)\n",
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "langfuse-sdk",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "exec_command",
+    "type": "TOOL",
+    "model": null,
+    "input": {
+      "cmd": "pwd && sed -n '1,220p' README.md",
+      "workdir": "/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run",
+      "yield_time_ms": 10000,
+      "max_output_tokens": 20000
+    },
+    "output": "Chunk ID: 8aaa88\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 2456\nOutput:\n/Users/neural/Code/Syntropic137/agentic-primitives_worktrees/20260707_itmux-run\n# Agentic Primitives\n\n> Atomic building blocks for AI agent systems\n\n[![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)\n[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)\n\n---\n\n## What Are Agentic Primitives?\n\nAtomic building blocks for AI agent systems — packaged as Claude Code plugins and Python libraries.\n\nDesigned to work in two contexts:\n- **Human-in-the-loop** — a developer using Claude Code in the terminal, invoking commands explicitly, staying in control\n- **Headless workspaces** — fully automated agents running in isolation with no human present, where tool scoping and policy hooks are the safety layer\n\nThe same primitives serve both. The difference is configuration: which tools are allowed, which hooks fire, which agents are trusted.\n\n---\n\n## The Primitives\n\n### Commands\nExplicit user-invocable slash commands (`/sdlc:git_push`). Granular, predictable, human-triggered. The developer stays in the loop.\n\n→ Lives in: `plugins/<plugin>/commands/<name>.md`\n\n### Skills\nReusable workflows Claude invokes automatically when a task matches the description — or that you invoke as `/sdlc:git`. Consolidated, intent-driven, works in both human and headless contexts.\n\n→ Lives in: `plugins/<plugin>/skills/<name>/SKILL.md`\n\n### Agents\nNamed specialist subagents with a scoped system prompt, explicit allowed/disallowed tools, and optional persistent memory. The tool scope is the key primitive — it determines what an agent *can* do, not just what it *should* do. Agents can preload skills and delegate to other agents via the `Task` tool.\n\n→ Lives in: `plugins/<plugin>/agents/<name>/agent.md`\n\n### Hooks\nEvent-driven automation that fires on Claude Code lifecycle events (`PreToolUse`, `PostToolUse`, `SubagentStop`, `SessionStart`, etc.). Observe, modify, or block — enforcing policies and emitting telemetry without touching workflow code.\n\n→ Lives in: `plugins/<plugin>/hooks/hooks.json` + handlers\n\n### Lib\nPython packages that power agent runtimes — isolation, events, logging, security. Used by the [Agentic Engineering Framework (AEF)](https://github.com/AgentParadise/agentic-engineering-framework) as its foundation.\n\n→ Lives in: `lib/python/`\n\n---\n\n### How They Compose\n\n```\nUser: /sdlc:git_push          ← Command (explicit, human-in-loop)\n  or\nClaude detects push needed    ← Skill (auto-invoked, headless-friendly)\n       │\n       ├─► PreToolUse Hook validates git commands before execution\n       │\n       ├─► Skill delegates review to env-reviewer Agent (Task tool)\n       │         ├─ tools: Read, Grep, Glob only (cannot modify anything)\n       │         ├─ disallowedTools: Write, Edit (enforced, not just instructed)\n       │         └─ SubagentStop Hook records telemetry\n       │\n       └─► PostToolUse Hook emits structured JSONL event (Lib: agentic-events)\n```\n\n**The pattern:**\n- **Commands** give humans direct control at the right granularity\n- **Skills** orchestrate work for agents — consolidated, intent-driven\n- **Agents** specialize with enforced tool scopes — least privilege by design\n- **Hooks** enforce policies and observability without touching workflow code\n- **Lib** provides the runtime substrate — isolation, events, structured logging\n\n---\n\n## Quick Start\n\n### Prerequisites\n\n- [Python 3.11+](https://www.python.org/)\n- [uv](https://docs.astral.sh/uv/) — fast Python package manager\n- [just](https://github.com/casey/just) — command runner (optional, recommended)\n\n### Install Plugins\n\nPlugins are installed via Claude Code's built-in plugin system. Requires Claude Code v1.0.33+.\n\nYou can also do all of this interactively by typing `/plugin` inside Claude Code.\n\n**1. Add the marketplace (one-time setup):**\n\n```bash\nclaude plugin marketplace add AgentParadise/agentic-primitives\n```\n\n**2. Install the plugins you need:**\n\n```bash\n# Install globally (available in all projects)\nclaude plugin install sdlc@agentic-primitives --scope user\n\n# Or install to current project only\nclaude plugin install sdlc@agentic-primitives --scope project\n```\n\n**3. Update to the latest version:**\n\n```bash\n# Refresh the marketplace catalog first\nclaude plugin marketplace update agentic-primitives\n\n# Then update the plugin\nclaude plugin update sdlc@agentic-primitives\n```\n\nPlugins are pinned to a version and never auto-update. Updates require both steps above.\n\n**4. Disable / enable without uninstalling:**\n\n```bash\nclaude plugin disable sdlc@agentic-primitives\nclaude plugin enable sdlc@agentic-primitives\n```\n\n**5. Uninstall:**\n\n```bash\nclaude plugin uninstall sdlc@agentic-primitives\n```\n\n**6. Verify security hooks are active:**\n\n```bash\n# Inside a Claude Code session, run:\n/sdlc:validate_security-hooks\n```\n\nReplace `sdlc` with any plugin name from the [Available Plugins](#available-plugins) table in the commands above.\n\n---\n\n## Available Plugins\n\n| Plugin | Install | Description |\n|--------|---------|-------------|\n| **sdlc** | `claude plugin install sdlc@agentic-primitives --scope user` | Software Development Lifecycle |\n| **workspace** | `claude plugin install workspace@agentic-primitives --scope user` | Observable isolated workspaces |\n| **research** | `claude plugin install research@agentic-primitives --scope user` | Information gathering |\n| **meta** | `claude plugin install meta@agentic-primitives --scope user` | Primitive generators |\n| **docs** | `claude plugin install docs@agentic-primitives --scope user` | Documentation tools |\n| **notifications** | `claude plugin install notifications@agentic-primitives --scope user` | Push notifications (ntfy, macOS, Pushover) |\n| **observability** | `claude plugin install observability@agentic-primitives --scope user` | Full-spectrum JSONL event observability |\n| **delegation** | `claude plugin install delegation@agentic-primitives --scope user` | Delegating work — `claude -p`, Codex, and session handoffs |\n| **experiments** | `claude plugin install experiments@agentic-primitives --scope user` | Hypothesis-first experiment workflow |\n\n### What's in each plugin\n\n| Plugin | Commands | Skills | Agents | Hooks |\n|--------|----------|--------|--------|-------|\n| **sdlc** | `git_push`, `git_merge`, `git_merge-cycle`, `git_fetch`, `git_worktree`, `git_set-attributions`, `review`, `validate_security-hooks`, `browser`, `browser_ui-review` | `git`, `git-worktree`, `commit`, `pre-commit-qa`, `qa-setup`, `testing-expert`, `review`, `prioritize`, `env-management`, `centralized-configuration`, `macos-keychain-secrets`, `browser` | `env-reviewer`, `browser-qa-agent` | PreToolUse security validators, UserPromptSubmit PII detection, git hooks |\n| **workspace** | -- | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |\n| **research** | `scrape_docs` | -- | -- | -- |\n| **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |\n| **docs** | -- | `fuma` (Fumadocs integration), `system-infographic` | -- | -- |\n| **notifications** | -- | -- | -- | Notification, Stop, TaskCompleted → ntfy/macOS/Pushover with sound themes |\n| **observability** | -- | -- | -- | All 14 lifecycle events → structured JSONL via agentic_events |\n| **delegation** | -- | `delegating-to-claude-p`, `delegating-to-codex`, `writing-handoffs` | -- | -- |\n| **experiments** | -- | `running-experiments` | -- | -- |\n\n---\n\n## Python Packages\n\nInfrastructure primitives in `lib/python/`, installable via `pip` or `uv`:\n\n| Package | Version | Description |\n|---------|---------|-------------|\n| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.3.0 | Docker workspace sandboxing for agent execution |\n| [`agentic-events`](lib/python/agentic_events/) | 0.1.0 | Zero-dependency JSONL event emission |\n| [`agentic-logging`](lib/python/agentic_logging/) | 0.1.0 | Structured logging for agents and humans |\n\n```bash\n# Install a package for development\ncd lib/python/agentic_isolation\nuv sync --all-extras\n\n# Run tests\nuv run pytest -x -q\n```\n\n---\n\n## Repository Structure\n\n```\nagentic-primitives/\n├── plugins/                    # Prompt Primitives\n│   ├── sdlc/                   #   SDLC plugin\n│   │   ├── commands/           #     Explicit user-invocable slash commands\n│   │   ├── skills/             #     Agent-invocable workflows\n│   │   ├── agents/             #     Named subagents with scoped tools\n│   │   └── hooks/              #     Lifecycle event handlers\n│   ├── workspace/              #   Workspace observability hooks\n│   ├── research/               #   Research tools (firecrawl, doc-scraper)\n│   ├── meta/                   #   Primitive generators\n│   └── docs/                   #   Documentation tools\n├── lib/python/                 # Infrastructure Primitives\n│   ├── agentic_isolation/      #   Docker workspace sandboxing\n│   ├── agentic_events/         #   JSONL event emission\n│   └── agentic_logging/        #   Structured logging\n├── providers/                  # Workspace providers & model data\n│   ├── workspaces/claude-cli/  #   Claude CLI Docker workspace\n│   ├── models/                 #   Model cards (pricing, context windows)\n│   └── agents/                 #   Agent configuration templates\n├── scripts/                    # QA runner, benchmark tools\n├── tests/                      # Integration & unit tests\n├── docs/adrs/                  # Architecture Decision Records (32 ADRs)\n├── VERSION                     # Repo version (3.0.1)\n",
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    },
+    "cost": null,
+    "startTime": "2026-07-08T19:11:56.342Z",
+    "endTime": "2026-07-08T19:11:56.413Z",
+    "metadata": {
+      "codex.call_id": "call_osPzQbBnz0Fq6EJzIRZjSN0h",
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    }
+  },
+  {
+    "name": "langfuse-sdk",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  },
+  {
+    "name": "Codex Turn",
+    "type": "AGENT",
+    "model": null,
+    "input": "Read README.md, then reply with exactly this marker and no extra prose: CODEX_OFFICIAL_REAL_SESSION_OK_1783537912",
+    "output": "CODEX_OFFICIAL_REAL_SESSION_OK_1783537912",
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    },
+    "cost": null,
+    "startTime": "2026-07-08T19:11:52.386Z",
+    "endTime": "2026-07-08T19:11:57.919Z",
+    "metadata": {
+      "codex.turn_id": "019f4324-ca29-73b0-b32f-f15642243d10",
+      "codex.thread_id": "019f4324-c997-72c1-bae9-9eae62d84fc8",
+      "codex.model": "gpt-5.5",
+      "codex.model_provider": "openai",
+      "codex.cli_version": "0.142.5",
+      "codex.aborted": false,
+      "codex.tool_call_count": 1,
+      "resourceAttributes": {
+        "service.name": "unknown_service:node",
+        "telemetry.sdk.language": "nodejs",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "2.7.1"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "5.4.1",
+        "attributes": {}
+      }
+    }
+  },
+  {
+    "name": "langfuse-sdk",
+    "type": null,
+    "model": null,
+    "input": null,
+    "output": null,
+    "usage": null,
+    "cost": null,
+    "startTime": null,
+    "endTime": null,
+    "metadata": null
+  }
+]

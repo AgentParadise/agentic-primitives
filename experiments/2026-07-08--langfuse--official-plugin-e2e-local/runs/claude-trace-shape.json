@@ -1,0 +1,22 @@
+{
+  "trace_id": "76a54f7c977ae138c22ebae34b05e047",
+  "name": null,
+  "input_present": true,
+  "output_present": true,
+  "observation_count": 4,
+  "observation_types": [
+    "GENERATION",
+    "SPAN",
+    "TOOL"
+  ],
+  "observation_names": [
+    "LLM Call 1",
+    "LLM Call 2",
+    "Conversational Turn",
+    "Tool: Read"
+  ],
+  "models": [
+    "claude-test"
+  ],
+  "total_cost": 0
+}

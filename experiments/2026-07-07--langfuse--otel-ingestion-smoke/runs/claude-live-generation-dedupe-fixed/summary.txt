@@ -1,0 +1,24 @@
+Claude live generation dedupe evidence
+
+Command:
+- itmux run --recipe experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/claude-live-streaming-dedupe-itmux-run/recipe --task 'Reply exactly: CLAUDE_GENERATION_DEDUPE_FIXED' --json true --observability-file experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/claude-live-generation-dedupe-fixed/events.jsonl --observability-langfuse --result-file experiments/2026-07-07--langfuse--otel-ingestion-smoke/runs/claude-live-generation-dedupe-fixed/result.json
+
+Run:
+- run id: run-3f9dfb58
+- trace id: 0cea86b285c18bb156f31a00472ffe60
+- exit status: 0
+- file exporter: ok, 15 events exported
+- LangFuse OTLP exporter: ok, 15 events exported
+
+LangFuse query:
+- command: itmux langfuse-trace --api legacy-trace --output summary --run-id run-3f9dfb58
+- observation count: 16
+- harness: claude
+- model: claude-sonnet-4-6
+- generations.count: 1
+- tokens: input 3, output 15, total 15737
+- cached input tokens: 15719
+- cost: input 0.000009, output 0.000225, total 0.000234
+
+Result:
+- Passed: live Claude export emitted exactly one generation for the model call, so message-level usage is no longer double-counted with a terminal cumulative result rollup.
