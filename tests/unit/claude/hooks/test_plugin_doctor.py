@@ -339,3 +339,79 @@ class TestSessionStartHandler:
             }
         )
         assert result == {}
+
+    def test_refresh_subprocess_is_actually_invoked_when_due(self, tmp_path):
+        """Prove _refresh_marketplace() really calls subprocess.run(["claude", ...])
+        by putting a fake `claude` executable on PATH and checking it ran."""
+        fake_bin_dir = tmp_path / "fake-bin"
+        fake_bin_dir.mkdir()
+        marker_path = tmp_path / "claude-was-invoked.marker"
+        fake_claude = fake_bin_dir / "claude"
+        fake_claude.write_text(f"#!/bin/sh\ntouch {marker_path}\nexit 0\n")
+        fake_claude.chmod(0o755)
+
+        cache_root = tmp_path / "cache"
+        cache_root.mkdir()
+        marketplace_root = tmp_path / "marketplace"
+        marketplace_root.mkdir()
+        state_path = tmp_path / "state.json"
+        old_timestamp = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        state_path.write_text(json.dumps({"last_checked_at": old_timestamp}))
+
+        handler_path = PLUGIN_DOCTOR_HANDLERS / "session-start.py"
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_bin_dir}:{env['PATH']}"
+        env["PLUGIN_DOCTOR_CACHE_DIR"] = str(cache_root)
+        env["PLUGIN_DOCTOR_MARKETPLACE_DIR"] = str(marketplace_root)
+        env["PLUGIN_DOCTOR_STATE_PATH"] = str(state_path)
+        env["PLUGIN_DOCTOR_SKIP_REFRESH"] = "0"
+
+        result = subprocess.run(
+            [sys.executable, str(handler_path)],
+            input=json.dumps({"session_id": "test"}).encode(),
+            capture_output=True,
+            env=env,
+            timeout=5,
+        )
+
+        assert result.returncode == 0
+        assert marker_path.exists()
+
+    def test_missing_claude_executable_fails_open(self, tmp_path):
+        """When `claude` isn't on PATH, subprocess.run raises FileNotFoundError
+        (a subclass of OSError); _refresh_marketplace must swallow it and the
+        handler must still complete without crashing."""
+        empty_bin_dir = tmp_path / "empty-bin"
+        empty_bin_dir.mkdir()
+
+        cache_root = tmp_path / "cache"
+        cache_root.mkdir()
+        marketplace_root = tmp_path / "marketplace"
+        marketplace_root.mkdir()
+        state_path = tmp_path / "state.json"
+        # No state file -> is_check_due() returns True.
+
+        handler_path = PLUGIN_DOCTOR_HANDLERS / "session-start.py"
+        env = dict(os.environ)
+        env["PATH"] = str(empty_bin_dir)
+        env["PLUGIN_DOCTOR_CACHE_DIR"] = str(cache_root)
+        env["PLUGIN_DOCTOR_MARKETPLACE_DIR"] = str(marketplace_root)
+        env["PLUGIN_DOCTOR_STATE_PATH"] = str(state_path)
+        env["PLUGIN_DOCTOR_SKIP_REFRESH"] = "0"
+
+        result = subprocess.run(
+            [sys.executable, str(handler_path)],
+            input=json.dumps({"session_id": "test"}).encode(),
+            capture_output=True,
+            env=env,
+            timeout=5,
+        )
+
+        assert result.returncode == 0
+        stdout = result.stdout.decode().strip()
+        if stdout:
+            parsed = json.loads(stdout)
+            assert isinstance(parsed, dict)
+        # State should still have been written despite the refresh failure.
+        assert state_path.exists()
+        assert "last_checked_at" in json.loads(state_path.read_text())
