@@ -111,6 +111,8 @@ def get_catalog_versions(marketplace_plugins_root: Path) -> dict[str, str]:
             data = json.loads(manifest_path.read_text())
         except (OSError, json.JSONDecodeError):
             continue
+        if not isinstance(data, dict):
+            continue
         version = data.get("version")
         if isinstance(version, str) and parse_semver(version) is not None:
             catalog[plugin_dir.name] = version

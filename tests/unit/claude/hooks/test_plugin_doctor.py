@@ -183,6 +183,15 @@ class TestGetInstalledVersions:
         (tmp_path / "sdlc" / "unknown").mkdir(parents=True)
         assert freshness.get_installed_versions(tmp_path) == {}
 
+    def test_semver_ordering_1_10_0_beats_1_9_0(self, tmp_path):
+        """Regression test for Finding 2: verify 1.10.0 > 1.9.0 by semver, not string.
+        String comparison would incorrectly pick '1.9.0' (lexicographically), but
+        tuple comparison (semver) correctly picks '1.10.0'."""
+        freshness = load_freshness()
+        (tmp_path / "sdlc" / "1.9.0").mkdir(parents=True)
+        (tmp_path / "sdlc" / "1.10.0").mkdir(parents=True)
+        assert freshness.get_installed_versions(tmp_path) == {"sdlc": "1.10.0"}
+
 
 class TestGetCatalogVersions:
     def test_missing_marketplace_root_returns_empty_dict(self, tmp_path):
@@ -210,6 +219,41 @@ class TestGetCatalogVersions:
         (manifest_dir / "plugin.json").write_text("{not valid json")
         assert freshness.get_catalog_versions(tmp_path) == {}
 
+    def test_skips_valid_json_array_manifest_but_reads_other_plugins(self, tmp_path):
+        """Regression test for Finding 1: non-dict valid JSON should not crash
+        or blank out the entire catalog. A structurally valid but wrong-shape
+        manifest (e.g., []) must not raise AttributeError when calling .get()."""
+        freshness = load_freshness()
+        # Create first plugin with valid JSON array (wrong shape, should be skipped)
+        bad_manifest_dir = tmp_path / "bad-plugin" / ".claude-plugin"
+        bad_manifest_dir.mkdir(parents=True)
+        (bad_manifest_dir / "plugin.json").write_text("[]")
+        # Create second plugin with valid manifest
+        good_manifest_dir = tmp_path / "good-plugin" / ".claude-plugin"
+        good_manifest_dir.mkdir(parents=True)
+        (good_manifest_dir / "plugin.json").write_text(
+            json.dumps({"name": "good-plugin", "version": "1.5.0"})
+        )
+        # Should return only the good plugin and NOT raise
+        assert freshness.get_catalog_versions(tmp_path) == {"good-plugin": "1.5.0"}
+
+    def test_skips_valid_json_null_manifest_but_reads_other_plugins(self, tmp_path):
+        """Regression test for Finding 1 with null: non-dict valid JSON should not
+        crash. A manifest containing just `null` must not raise AttributeError."""
+        freshness = load_freshness()
+        # Create first plugin with valid JSON null (wrong shape)
+        bad_manifest_dir = tmp_path / "null-plugin" / ".claude-plugin"
+        bad_manifest_dir.mkdir(parents=True)
+        (bad_manifest_dir / "plugin.json").write_text("null")
+        # Create second plugin with valid manifest
+        good_manifest_dir = tmp_path / "good-plugin" / ".claude-plugin"
+        good_manifest_dir.mkdir(parents=True)
+        (good_manifest_dir / "plugin.json").write_text(
+            json.dumps({"name": "good-plugin", "version": "2.0.0"})
+        )
+        # Should return only the good plugin and NOT raise
+        assert freshness.get_catalog_versions(tmp_path) == {"good-plugin": "2.0.0"}
+
 
 class TestDiffOutdated:
     def test_flags_plugin_behind_catalog(self):
@@ -228,6 +272,21 @@ class TestDiffOutdated:
     def test_unparsable_versions_not_flagged(self):
         freshness = load_freshness()
         assert freshness.diff_outdated({"sdlc": "unknown"}, {"sdlc": "1.5.0"}) == {}
+
+    def test_semver_ordering_1_9_0_lt_1_10_0_flagged_outdated(self):
+        """Regression test for Finding 2: 1.9.0 should be flagged as outdated
+        when catalog is 1.10.0. Tuple comparison (semver) correctly handles this;
+        string comparison would incorrectly say 1.9.0 >= 1.10.0 lexicographically."""
+        freshness = load_freshness()
+        outdated = freshness.diff_outdated({"sdlc": "1.9.0"}, {"sdlc": "1.10.0"})
+        assert outdated == {"sdlc": ("1.9.0", "1.10.0")}
+
+    def test_semver_ordering_1_10_0_not_outdated_vs_1_9_0(self):
+        """Regression test for Finding 2: 1.10.0 should NOT be flagged as outdated
+        when catalog is 1.9.0. Verifies the comparison direction is correct."""
+        freshness = load_freshness()
+        outdated = freshness.diff_outdated({"sdlc": "1.10.0"}, {"sdlc": "1.9.0"})
+        assert outdated == {}
 
 
 class TestFormatContext:
