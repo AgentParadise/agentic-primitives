@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,9 +90,10 @@ def _fetch_release_commit_date(plugin: str, version: str) -> str | None:
     the GitHub commits API. Returns None on any failure -- network error,
     non-2xx response (including 404 for an untagged version), or an
     unexpected response shape."""
+    sha = urllib.parse.quote(f"{plugin}/v{version}", safe="")
     url = (
         f"{_github_api_base()}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/commits"
-        f"?sha={plugin}/v{version}&per_page=1"
+        f"?sha={sha}&per_page=1"
     )
     try:
         req = urllib.request.Request(
