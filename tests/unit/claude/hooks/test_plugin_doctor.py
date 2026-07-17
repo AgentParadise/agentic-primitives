@@ -306,6 +306,47 @@ class TestFormatContext:
 
 
 # ============================================================================
+# Release-age gate: is_release_old_enough (pure function)
+# ============================================================================
+
+
+class TestIsReleaseOldEnough:
+    def test_none_input_is_not_old_enough(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 17, tzinfo=timezone.utc)
+        assert freshness.is_release_old_enough(None, now) is False
+
+    def test_unparseable_date_is_not_old_enough(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 17, tzinfo=timezone.utc)
+        assert freshness.is_release_old_enough("not-a-date", now) is False
+
+    def test_recent_commit_is_not_old_enough(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 17, tzinfo=timezone.utc)
+        commit_date = (now - timedelta(hours=10)).isoformat().replace("+00:00", "Z")
+        assert freshness.is_release_old_enough(commit_date, now) is False
+
+    def test_commit_exactly_48_hours_old_is_old_enough(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 17, tzinfo=timezone.utc)
+        commit_date = (now - timedelta(hours=48)).isoformat().replace("+00:00", "Z")
+        assert freshness.is_release_old_enough(commit_date, now) is True
+
+    def test_commit_older_than_48_hours_is_old_enough(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 17, tzinfo=timezone.utc)
+        commit_date = (now - timedelta(hours=72)).isoformat().replace("+00:00", "Z")
+        assert freshness.is_release_old_enough(commit_date, now) is True
+
+    def test_custom_min_age_hours(self):
+        freshness = load_freshness()
+        now = datetime(2026, 7, 17, tzinfo=timezone.utc)
+        commit_date = (now - timedelta(hours=5)).isoformat().replace("+00:00", "Z")
+        assert freshness.is_release_old_enough(commit_date, now, min_age_hours=1) is True
+
+
+# ============================================================================
 # Task 3: session-start.py handler (end-to-end via subprocess)
 # ============================================================================
 

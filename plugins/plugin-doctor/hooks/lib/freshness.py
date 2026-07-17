@@ -159,3 +159,24 @@ def format_context(outdated: dict[str, tuple[str, str]]) -> str:
         "agreeing first."
     )
     return "\n".join(lines)
+
+
+def is_release_old_enough(
+    commit_date_iso: str | None, now: datetime, min_age_hours: int = 48
+) -> bool:
+    """True if commit_date_iso represents a timestamp at least
+    min_age_hours before now.
+
+    Returns False (fail-safe) if commit_date_iso is None or unparseable.
+    This backs a supply-chain-safety gate: an unknown release age must
+    never be treated as "old enough to recommend."
+    """
+    if not commit_date_iso:
+        return False
+    try:
+        commit_date = datetime.fromisoformat(commit_date_iso.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    if commit_date.tzinfo is None:
+        commit_date = commit_date.replace(tzinfo=timezone.utc)
+    return now - commit_date >= timedelta(hours=min_age_hours)
