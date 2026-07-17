@@ -14,8 +14,11 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 PLUGIN_DOCTOR = PROJECT_ROOT / "plugins" / "plugin-doctor"
@@ -55,6 +58,48 @@ def run_session_start(env_overrides: dict) -> dict:
     if not stdout:
         return {}
     return json.loads(stdout)
+
+
+class _FixtureGitHubHandler(BaseHTTPRequestHandler):
+    """Serves canned GitHub commits-API responses for a single test.
+
+    Subclassed per-test via start_fixture_server() with a `responses`
+    dict mapping the "sha" query param value (e.g. "sdlc/v1.5.0") to
+    (status_code, json_body). A sha with no matching entry gets a 404,
+    matching GitHub's real behavior for a nonexistent ref.
+    """
+
+    responses: dict = {}
+
+    def do_GET(self):
+        query = parse_qs(urlparse(self.path).query)
+        sha = query.get("sha", [None])[0]
+        if sha in self.responses:
+            status, body = self.responses[sha]
+        else:
+            status, body = 404, {"message": "Not Found"}
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode())
+
+    def log_message(self, format, *args):
+        pass  # silence default request logging to stderr
+
+
+def start_fixture_server(responses: dict) -> tuple[str, HTTPServer]:
+    """Start a background HTTP server for one test.
+
+    Returns (base_url, server). Caller must call server.shutdown() (and
+    server.server_close(), which shutdown() triggers via the thread
+    target) when done -- a `try/finally` around the test body is the
+    simplest way to guarantee that.
+    """
+    handler_class = type("_Handler", (_FixtureGitHubHandler,), {"responses": responses})
+    server = HTTPServer(("127.0.0.1", 0), handler_class)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return f"http://127.0.0.1:{server.server_port}", server
 
 
 # ============================================================================
@@ -373,7 +418,43 @@ class TestSessionStartHandler:
         )
         assert result == {}
 
-    def test_emits_context_when_plugin_outdated(self, tmp_path):
+    def test_outdated_plugin_old_enough_release_is_surfaced(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.5.0"}))
+        state_path = tmp_path / "state.json"  # missing -> due
+
+        old_commit_date = (
+            (datetime.now(timezone.utc) - timedelta(hours=72))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        base_url, server = start_fixture_server(
+            {"sdlc/v1.5.0": (200, [{"commit": {"committer": {"date": old_commit_date}}}])}
+        )
+        try:
+            result = run_session_start(
+                {
+                    "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                    "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                    "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+                    "PLUGIN_DOCTOR_GITHUB_API_BASE": base_url,
+                }
+            )
+        finally:
+            server.shutdown()
+
+        assert result["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+        assert (
+            "sdlc: 1.4.0 -> 1.5.0" in result["hookSpecificOutput"]["additionalContext"]
+        )
+        written = json.loads(state_path.read_text())
+        assert written["release_ages"]["sdlc"] == {"version": "1.5.0", "old_enough": True}
+
+    def test_outdated_plugin_too_recent_release_is_suppressed(self, tmp_path):
         cache_root = tmp_path / "cache"
         (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
         marketplace_root = tmp_path / "marketplace"
@@ -381,8 +462,103 @@ class TestSessionStartHandler:
         manifest_dir.mkdir(parents=True)
         (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.5.0"}))
         state_path = tmp_path / "state.json"
+
+        recent_commit_date = (
+            (datetime.now(timezone.utc) - timedelta(hours=5))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        base_url, server = start_fixture_server(
+            {
+                "sdlc/v1.5.0": (
+                    200,
+                    [{"commit": {"committer": {"date": recent_commit_date}}}],
+                )
+            }
+        )
+        try:
+            result = run_session_start(
+                {
+                    "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                    "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                    "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+                    "PLUGIN_DOCTOR_GITHUB_API_BASE": base_url,
+                }
+            )
+        finally:
+            server.shutdown()
+
+        assert result == {}
+        written = json.loads(state_path.read_text())
+        assert written["release_ages"]["sdlc"] == {"version": "1.5.0", "old_enough": False}
+
+    def test_outdated_plugin_untagged_version_is_suppressed(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.5.0"}))
+        state_path = tmp_path / "state.json"
+
+        base_url, server = start_fixture_server({})  # no matching sha -> 404
+        try:
+            result = run_session_start(
+                {
+                    "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                    "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                    "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+                    "PLUGIN_DOCTOR_GITHUB_API_BASE": base_url,
+                }
+            )
+        finally:
+            server.shutdown()
+
+        assert result == {}
+        written = json.loads(state_path.read_text())
+        assert written["release_ages"]["sdlc"]["old_enough"] is False
+
+    def test_outdated_plugin_unreachable_github_is_suppressed(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.5.0"}))
+        state_path = tmp_path / "state.json"
+
+        closed_server = HTTPServer(("127.0.0.1", 0), _FixtureGitHubHandler)
+        unreachable_url = f"http://127.0.0.1:{closed_server.server_port}"
+        closed_server.server_close()  # bound and closed -- nothing is listening
+
+        result = run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+                "PLUGIN_DOCTOR_GITHUB_API_BASE": unreachable_url,
+            }
+        )
+        assert result == {}
+
+    def test_stale_release_ages_entry_for_old_version_is_not_reused(self, tmp_path):
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.6.0"}))
+        state_path = tmp_path / "state.json"
+        # Recent last_checked_at -> NOT due, so no fresh age-check runs this
+        # session. The cached entry is for 1.5.0, but the catalog now shows
+        # 1.6.0 -- a version the cache never verified.
         state_path.write_text(
-            json.dumps({"last_checked_at": datetime.now(timezone.utc).isoformat()})
+            json.dumps(
+                {
+                    "last_checked_at": datetime.now(timezone.utc).isoformat(),
+                    "release_ages": {"sdlc": {"version": "1.5.0", "old_enough": True}},
+                }
+            )
         )
 
         result = run_session_start(
@@ -392,8 +568,83 @@ class TestSessionStartHandler:
                 "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
             }
         )
+        assert result == {}
+
+    def test_non_due_session_reuses_cached_release_ages_without_network_call(
+        self, tmp_path
+    ):
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.4.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.5.0"}))
+        state_path = tmp_path / "state.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "last_checked_at": datetime.now(timezone.utc).isoformat(),  # NOT due
+                    "release_ages": {"sdlc": {"version": "1.5.0", "old_enough": True}},
+                }
+            )
+        )
+
+        # Point at an unreachable GitHub API base. If the handler tried to
+        # hit the network here, the fetch would fail and (per the fail-safe
+        # rule) old_enough would come back False -- suppressing the result.
+        # Asserting the cached True value is still honored proves the
+        # handler never attempted a network call on this non-due session.
+        closed_server = HTTPServer(("127.0.0.1", 0), _FixtureGitHubHandler)
+        unreachable_url = f"http://127.0.0.1:{closed_server.server_port}"
+        closed_server.server_close()
+
+        result = run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+                "PLUGIN_DOCTOR_GITHUB_API_BASE": unreachable_url,
+            }
+        )
         assert result["hookSpecificOutput"]["hookEventName"] == "SessionStart"
-        assert "sdlc: 1.4.0 -> 1.5.0" in result["hookSpecificOutput"]["additionalContext"]
+        assert (
+            "sdlc: 1.4.0 -> 1.5.0" in result["hookSpecificOutput"]["additionalContext"]
+        )
+
+    def test_due_session_recomputes_release_ages_dropping_stale_entries(
+        self, tmp_path
+    ):
+        # sdlc is now up to date, but state still has a stale release_ages
+        # entry for it from a previous (now-resolved) outdated check.
+        cache_root = tmp_path / "cache"
+        (cache_root / "sdlc" / "1.5.0").mkdir(parents=True)
+        marketplace_root = tmp_path / "marketplace"
+        manifest_dir = marketplace_root / "sdlc" / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "plugin.json").write_text(json.dumps({"version": "1.5.0"}))
+        state_path = tmp_path / "state.json"
+        old_timestamp = (
+            datetime.now(timezone.utc) - timedelta(days=10)
+        ).isoformat()  # due
+        state_path.write_text(
+            json.dumps(
+                {
+                    "last_checked_at": old_timestamp,
+                    "release_ages": {"sdlc": {"version": "1.4.0", "old_enough": True}},
+                }
+            )
+        )
+
+        result = run_session_start(
+            {
+                "PLUGIN_DOCTOR_CACHE_DIR": str(cache_root),
+                "PLUGIN_DOCTOR_MARKETPLACE_DIR": str(marketplace_root),
+                "PLUGIN_DOCTOR_STATE_PATH": str(state_path),
+            }
+        )
+        assert result == {}
+        written = json.loads(state_path.read_text())
+        assert written["release_ages"] == {}
 
     def test_writes_state_when_check_is_due(self, tmp_path):
         cache_root = tmp_path / "cache"
