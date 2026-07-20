@@ -1,5 +1,13 @@
 # Changelog - delegation plugin
 
+## 1.2.1 - 2026-07-15
+
+- Adds the structured, read-only Claude Code PR review recipe to
+  `delegating-to-claude-p`: capture `--output-format json` to a caller-owned
+  temporary artifact, validate the terminal result, extract `.result`, and
+  never treat blank output as approval. This provides a durable review/comment
+  handoff contract alongside the existing write-capable delegation recipe.
+
 ## 1.2.0 - 2026-06-08
 
 - Adds `delegating-to-codex` skill: the validated non-interactive `codex exec`

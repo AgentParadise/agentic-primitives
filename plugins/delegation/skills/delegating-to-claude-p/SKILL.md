@@ -24,6 +24,40 @@ claude -p --verbose \
   "$TASK_PROMPT"
 ```
 
+## Read-only PR review with a durable result artifact
+
+For an independent code review, constrain Claude to read-only tools and write
+its machine-readable terminal result to a caller-owned temporary file. This is
+the reliable review contract: the wrapper reads `.result`, posts it to the PR
+if useful, and treats a missing or invalid artifact as a failed review -- never
+as approval.
+
+```sh
+review_json="/tmp/claude-pr-review-$(date +%s).json"
+
+claude -p \
+  --safe-mode \
+  --no-session-persistence \
+  --output-format json \
+  --tools 'Bash,Read,Glob,Grep' \
+  --permission-mode bypassPermissions \
+  --max-budget-usd 3 \
+  "Review the current branch against its merge base. Do not edit files.
+Return actionable findings ordered by severity with file:line references, or
+exactly NO MATERIAL FINDINGS." >"$review_json" 2>&1
+
+jq -e '.type == "result" and (.is_error | not)' "$review_json" >/dev/null
+jq -r '.result' "$review_json"
+```
+
+Use this review-specific form instead of the write-capable autonomous recipe
+above. `--safe-mode` disables project hooks, plugins, and project customisation;
+the explicit tool list lets Claude inspect the checkout without editing it.
+`--output-format json` gives the caller a single terminal artifact containing
+the conclusion, session ID, turns, and cost. For long reviews, poll the file
+until it becomes non-empty; do not launch duplicate reviewers or accept a
+blank file as a clean result.
+
 ### Per-flag rationale
 
 - **`--verbose` + `--output-format stream-json`** - required *together*. Text mode hides tool calls and is unscoreable (S7 footgun: stream-json with `--print` errors without `--verbose`). If you only set one, the transcript is useless for triage.
@@ -71,6 +105,8 @@ Use conventional commits. N commits total (Part 1 then Part 2 if applicable).
 | Hung past budget | macOS lacks `timeout`; no time-based bound | `--max-budget-usd` is the only hard cap |
 | Project-local skill never dispatched | `.claude/skills/` is NOT auto-enumerated in `-p` | Name the skill explicitly in the task prompt (bare unnamespaced name dispatches local files) |
 | `tee`-style epilogue lines break JSONL parsing | `echo ... | tee -a transcript.jsonl` writes plain text into JSONL | Write epilogue to a sibling `.txt` file (G-29) |
+| Review wrapper prints no usable conclusion | Text/stream output was not captured as a terminal artifact | Use the read-only JSON review recipe; require `.type == "result"`, then parse `.result` |
+| Review appears clean because its output file is blank | The subprocess is still running or failed before a terminal result | Poll for a non-empty valid JSON result; blank/invalid is a failed review, never approval |
 
 ## Recipe templates
 
