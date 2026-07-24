@@ -4,7 +4,7 @@
 # See ADR-027: Provider-Based Workspace Images
 
 name: claude-cli
-version: "1.1.1"
+version: "1.2.0"
 description: Claude CLI workspace with native OpenTelemetry support
 
 # Image build configuration
@@ -36,6 +36,7 @@ plugins:
     - sdlc
     - workspace
     - observability
+    - delegation
   # Install location in the image
   install_path: /opt/agentic/plugins
 
