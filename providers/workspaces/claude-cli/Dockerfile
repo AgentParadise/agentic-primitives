@@ -104,6 +104,9 @@ ARG CODEX_CLI_VERSION
 RUN npm install -g @openai/codex@${CODEX_CLI_VERSION}
 RUN claude --version && codex --version
 
+# Install the skills CLI globally via npm. Pin exact version deliberately.
+RUN npm install -g skills@1.5.14
+
 # =============================================================================
 # LSP: Language Servers for code intelligence
 # Plugins: pyright-lsp, typescript-lsp, rust-analyzer-lsp (claude-plugins-official)
