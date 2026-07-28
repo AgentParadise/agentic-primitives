@@ -60,10 +60,18 @@ def _resolve_session_id(lines: list[str], source_path: str) -> str:
     for line in lines:
         try:
             parsed = json.loads(line)
-        except Exception:  # noqa: BLE001 - a single malformed line (deeply
-            # nested JSON raises RecursionError, a RuntimeError subclass,
-            # not a ValueError - see issue #792 finding 1) must never lose
-            # the rest of the file's lines.
+        except (json.JSONDecodeError, ValueError, RecursionError):
+            # These are the expected "this line is not usable JSON" shapes:
+            # `json.JSONDecodeError` (a `ValueError` subclass, listed
+            # explicitly for clarity) for ordinary malformed JSON, and
+            # `RecursionError` (a `RuntimeError` subclass, NOT a
+            # `ValueError`) for deeply nested JSON - see issue #792 finding
+            # 1. A single line in either shape must never lose the rest of
+            # the file's lines, so it is skipped silently. Anything else is
+            # a genuine parser/programming defect and must propagate to the
+            # outer `extract()` boundary, where it IS recorded in `errors`
+            # (issue #792 round 3 finding 2: a bare `except Exception` here
+            # previously swallowed unexpected errors without a trace).
             continue
         if not isinstance(parsed, dict):
             continue
@@ -77,9 +85,13 @@ def _resolve_session_id(lines: list[str], source_path: str) -> str:
 class ClaudeTranscriptSource:
     """`TranscriptSource` for the `claude` harness.
 
-    `extract()` MUST NEVER raise (see `TranscriptSource.extract`): every
-    exec and every file read is wrapped so one bad transcript can never
-    lose the others or abort a workspace teardown.
+    `extract()` MUST NEVER raise (see `TranscriptSource.extract`): its
+    entire body runs inside one outer `try`/`except Exception` in
+    `extract()` itself (issue #792 round 3 finding 1), so nothing after
+    the exec awaits - reading `find_result` fields, string processing,
+    building dataclasses - can escape either. Per-file guards inside
+    `_extract()` still exist on top of that outer boundary so one bad
+    transcript can never lose the others.
     """
 
     _exec_fn: ExecFn
@@ -92,8 +104,28 @@ class ClaudeTranscriptSource:
         errors: list[str] = []
 
         try:
+            return await self._extract(errors)
+        except Exception as exc:  # noqa: BLE001 - a transcript harvest must
+            # never abort a workspace teardown, so this is the ONE outer
+            # boundary wrapping the entire body of `extract()`: not just the
+            # exec awaits, but everything after them too (reading
+            # `find_result.success`/`.stdout`/`.stderr`, `.strip()`,
+            # `.splitlines()`, building error strings, constructing
+            # dataclasses, appending results) - issue #792 round 3 finding
+            # 1. `BaseException` (`KeyboardInterrupt`, `SystemExit`) is
+            # deliberately NOT caught here - swallowing those would be a
+            # defect, not a fix. Inner per-file guards below still exist so
+            # one bad file cannot lose its siblings; this outer guard exists
+            # for whatever they don't anticipate.
+            errors.append(f"unexpected error extracting claude transcripts: {exc}")
+            return TranscriptExtractionResult(transcripts=[], errors=errors)
+
+    async def _extract(self, errors: list[str]) -> TranscriptExtractionResult:
+        try:
             find_result = await self._exec_fn(_FIND_TRANSCRIPTS_COMMAND)
-        except Exception as exc:  # noqa: BLE001 - extract() must never raise
+        except Exception as exc:  # noqa: BLE001 - reported with a specific
+            # "failed to list" message before falling through to the outer
+            # boundary in `extract()`.
             errors.append(f"failed to list claude transcripts: {exc}")
             return TranscriptExtractionResult(transcripts=[], errors=errors)
 
@@ -120,7 +152,8 @@ class ClaudeTranscriptSource:
         for path in paths:
             try:
                 read_result = await exec_argv(self._exec_fn, ["cat", path])
-            except Exception as exc:  # noqa: BLE001 - extract() must never raise
+            except Exception as exc:  # noqa: BLE001 - one bad file's exec
+                # failure must never lose the other files' transcripts.
                 errors.append(f"failed to read {path}: {exc}")
                 continue
 
@@ -133,10 +166,10 @@ class ClaudeTranscriptSource:
             lines = [line for line in read_result.stdout.splitlines() if line.strip()]
             try:
                 session_id = _resolve_session_id(lines, path)
-            except Exception as exc:  # noqa: BLE001 - extract() must never
-                # raise; if session id resolution somehow fails despite its
-                # own guard, fall back to the filename stem instead of
-                # aborting the whole harvest (issue #792 finding 1).
+            except Exception as exc:  # noqa: BLE001 - if session id
+                # resolution somehow fails despite its own guard, fall back
+                # to the filename stem instead of losing the whole file
+                # (issue #792 finding 1).
                 errors.append(f"failed to resolve session id for {path}: {exc}")
                 session_id = Path(path).stem
             transcripts.append(

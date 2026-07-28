@@ -266,6 +266,60 @@ class TestDeeplyNestedJsonNeverEscapesExtract:
         assert result.transcripts[0].session_id == "deeply-nested"
 
 
+class TestMalformedJsonLineFallsBackSilently:
+    async def test_malformed_json_line_falls_back_to_stem_without_recording_error(
+        self,
+    ) -> None:
+        """A genuinely malformed (not-JSON-at-all) line is an expected
+        "this line is not usable JSON" shape (`json.JSONDecodeError`) and
+        must fall back to the filename stem WITHOUT recording an error -
+        issue #792 round 3 finding 2."""
+        path = "/home/user/.claude/projects/proj1/malformed.jsonl"
+        content = "{not valid json at all\n"
+        exec_fn = _FakeExec(find_stdout=path + "\n", file_contents={path: content})
+        source = ClaudeTranscriptSource(exec_fn)
+
+        result = await source.extract()
+
+        assert result.success is True
+        assert result.errors == []
+        assert len(result.transcripts) == 1
+        assert result.transcripts[0].session_id == "malformed"
+
+
+class TestUnexpectedParseErrorIsRecordedNotSwallowed:
+    async def test_unexpected_error_during_line_parsing_is_recorded_in_errors(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A genuine parser/programming defect (anything other than
+        malformed-JSON/deeply-nested-JSON) raised while parsing a line
+        must NOT be silently swallowed - issue #792 round 3 finding 2: the
+        previous bare `except Exception` around `json.loads` traded one
+        silent-failure mode (unresolved session id escaping `extract()`)
+        for another (an unexpected defect vanishing without a trace). It
+        must propagate out of `_resolve_session_id` and be caught (and
+        recorded in `errors`) by the surrounding per-file guard in
+        `extract()` instead."""
+        path = "/home/user/.claude/projects/proj1/unexpected.jsonl"
+        content = json.dumps({"sessionId": "s1"}) + "\n"
+        exec_fn = _FakeExec(find_stdout=path + "\n", file_contents={path: content})
+        source = ClaudeTranscriptSource(exec_fn)
+
+        def _boom(*_args: object, **_kwargs: object) -> object:
+            raise TypeError("boom: not a malformed-JSON error")
+
+        monkeypatch.setattr("agentic_isolation.harnesses.claude.transcripts.json.loads", _boom)
+
+        result = await source.extract()
+
+        assert result.success is False
+        assert len(result.errors) == 1
+        assert "unexpected.jsonl" in result.errors[0]
+        assert "boom" in result.errors[0]
+        assert len(result.transcripts) == 1
+        assert result.transcripts[0].session_id == "unexpected"
+
+
 class TestExecFnProtocolMatch:
     def test_fake_exec_matches_execfn_shape(self) -> None:
         exec_fn: ExecFn = _FakeExec()

@@ -13,6 +13,8 @@ from __future__ import annotations
 import ast
 import inspect
 import pkgutil
+import subprocess
+import sys
 from dataclasses import dataclass
 
 import pytest
@@ -173,6 +175,13 @@ class TestEveryHarnessPackageIsRegistered:
     The residual requirement to also add a new `AgentName` member is a
     known, accepted limitation - see the `harnesses/__init__.py` module
     docstring.
+
+    Cheap complement only, NOT authoritative (round 3 finding 3): this
+    proves a same-named `Import`/`ImportFrom` node exists in the
+    function's source, but that is satisfiable by `import unrelated.claude`
+    or an import gated behind `if False`, neither of which actually
+    registers anything. `TestEveryHarnessPackageResolvesInAFreshInterpreter`
+    below is the exact, authoritative check.
     """
 
     def test_every_harness_subpackage_is_imported_by_bundled_registration(self) -> None:
@@ -210,3 +219,54 @@ class TestEveryHarnessPackageIsRegistered:
         imported = _imported_leaf_names(fake_source)
         assert imported == {"claude"}
         assert "gemini" not in imported
+
+
+class TestEveryHarnessPackageResolvesInAFreshInterpreter:
+    """Issue #792 round 3 finding 3: the AST guard above proves only that
+    a same-named `Import`/`ImportFrom` node exists somewhere in
+    `_register_bundled_harnesses()`'s source - it would accept `import
+    unrelated.claude` or an import gated behind `if False`, neither of
+    which actually calls `register_harness()`. This test is the exact,
+    authoritative check.
+
+    A runtime assertion against `get_harness()` in THIS process would be
+    order-dependent: `_REGISTRY` is shared, mutable, module-level state,
+    and sibling tests in this file (e.g. `test_registry_round_trips`,
+    `test_registry_rejects_names_agentname_does_not_know`) deliberately
+    mutate it with fakes / bad names. Spawning a FRESH interpreter via
+    `subprocess` sidesteps that entirely: nothing this test suite has
+    already done to `_REGISTRY` can leak into the child process, so the
+    check is both exact (a real runtime `get_harness()` call, not an AST
+    proxy for one) and immune to test execution order.
+    """
+
+    def test_every_bundled_harness_resolves_via_get_harness(self) -> None:
+        harnesses_path = harnesses_pkg.__path__
+        subpackage_names = [
+            module_info.name
+            for module_info in pkgutil.iter_modules(harnesses_path)
+            if module_info.ispkg
+        ]
+        assert subpackage_names, "expected at least one harness subpackage to scan"
+
+        script_lines = [
+            "import agentic_isolation",
+            "from agentic_isolation.harnesses import get_harness",
+        ]
+        for name in subpackage_names:
+            message = f"get_harness({name!r}) resolved to None in a fresh interpreter"
+            script_lines.append(f"assert get_harness({name!r}) is not None, {message!r}")
+        script = "\n".join(script_lines)
+
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0, (
+            "fresh-interpreter registration check failed for bundled harness "
+            f"package(s) {subpackage_names}:\n"
+            f"stdout: {completed.stdout}\nstderr: {completed.stderr}"
+        )
