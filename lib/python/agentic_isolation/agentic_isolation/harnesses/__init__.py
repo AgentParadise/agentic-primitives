@@ -234,3 +234,22 @@ def get_harness(name: str) -> HarnessPlugin | None:
 def iter_harnesses() -> tuple[HarnessPlugin, ...]:
     """All registered harness plugins."""
     return tuple(_REGISTRY.values())
+
+
+def _register_bundled_harnesses() -> None:
+    """Import the bundled harness packages for their registration side effect.
+
+    `harnesses.claude` / `harnesses.codex` each call `register_harness()` at
+    module scope, so importing them here (once, at the bottom of this
+    module, after every name they import from this module is already
+    defined) is enough to make `get_harness("claude")` / `get_harness("codex")`
+    resolve for any consumer that only does `import agentic_isolation` -
+    no separate opt-in import required. Not a circular import: these
+    submodules import names (`AgentName`, `register_harness`, ...) that are
+    already bound in this module's namespace by the time this function runs.
+    """
+    from agentic_isolation.harnesses import claude as _claude  # noqa: F401
+    from agentic_isolation.harnesses import codex as _codex  # noqa: F401
+
+
+_register_bundled_harnesses()

@@ -10,9 +10,12 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from agentic_isolation.config import WorkspaceConfig
+
+if TYPE_CHECKING:
+    from agentic_isolation.harnesses import TranscriptSource
 
 logger = logging.getLogger(__name__)
 
@@ -343,6 +346,14 @@ class BaseProvider(ABC):
         local) don't support interactive prompt round-trips. Providers
         that do (e.g. `InteractiveTmuxProvider`) should override this to
         return an object satisfying the `InteractiveSession` protocol.
+        """
+        return None
+
+    def transcript_source(self, workspace: Workspace, agent: str) -> TranscriptSource | None:
+        """Return a `TranscriptSource` for `agent` in `workspace`, if supported.
+
+        Default returns None: a provider that cannot run commands inside the
+        workspace cannot recover harness transcripts.
         """
         return None
 
