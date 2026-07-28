@@ -16,6 +16,17 @@ today, and later harness-specific output parsing - never to launch or auth.
 
 v1 fills the transcript-extraction slot. See issue #792.
 
+Known limitation (codex review, 2026-07-28): adding a THIRD bundled
+harness package still requires two central edits - a new `AgentName`
+member above, and a new import line in `_register_bundled_harnesses()`
+below. A forgotten import is a silent, not a loud, failure: the package
+exists and type-checks but `get_harness()` never resolves it. There is
+no fully automatic discovery mechanism today; `tests/test_harness_contract.py`
+(`test_every_harness_package_is_registered`) makes a forgotten import a
+loud CI failure by scanning `harnesses/` for `HarnessPlugin`
+implementations and asserting each is reachable through `get_harness()`.
+Treat that test as the enforcement point, not this docstring.
+
 Reconciliation note (2026-07-28, codex recon): `AgentRecipe.agent`
 (`recipe.py`) is still `Literal["claude", "codex"]`, a second authority
 alongside `AgentName` below. Unifying them was attempted here and reverted:
@@ -120,7 +131,7 @@ class HarnessTranscript:
     conflated.
     """
 
-    agent: str
+    agent: AgentName
     session_id: str
     lines: list[str] = field(default_factory=list)
     source_path: str = ""
@@ -166,7 +177,7 @@ class TranscriptSource(Protocol):
     """
 
     @property
-    def agent(self) -> str: ...
+    def agent(self) -> AgentName: ...
 
     async def extract(self) -> TranscriptExtractionResult:
         """Recover all transcripts. MUST NOT raise.
@@ -190,7 +201,7 @@ class HarnessPlugin(Protocol):
     """
 
     @property
-    def name(self) -> str: ...
+    def name(self) -> AgentName: ...
 
     def transcript_source(self, exec_fn: ExecFn) -> TranscriptSource | None:
         """A source for this harness's transcripts, or None if it persists none."""

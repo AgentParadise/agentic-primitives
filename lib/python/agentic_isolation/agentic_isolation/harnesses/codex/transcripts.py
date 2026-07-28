@@ -40,21 +40,43 @@ from agentic_isolation.harnesses import (
     exec_argv,
 )
 
+_TRANSCRIPT_ROOT_ABSENT_EXIT_CODE = 9
+"""Sentinel exit code meaning "the codex sessions root does not exist".
+
+Distinguishes a legitimate empty harvest (codex ran with `--ephemeral`,
+or the sessions root was never created) from a real transport failure
+(permission denied, unreachable filesystem, ...). Only this exit code
+normalizes to a clean empty `TranscriptExtractionResult`; every other
+non-zero exit is a real error and is reported through `errors` - see
+issue #792 (finding 1: the listing command used to unconditionally
+force a zero exit code, swallowing every `find` failure as a clean
+empty result and making transport failures unreportable).
+"""
+
 _FIND_TRANSCRIPTS_COMMAND = (
-    "find \"${CODEX_HOME:-$HOME/.codex}/sessions\" -name 'rollout-*.jsonl' -type f 2>/dev/null"
-    " || true"
+    'root="${CODEX_HOME:-$HOME/.codex}/sessions"; '
+    f'if [ ! -d "$root" ]; then exit {_TRANSCRIPT_ROOT_ABSENT_EXIT_CODE}; fi; '
+    "find \"$root\" -name 'rollout-*.jsonl' -type f"
 )
+
+_SESSION_META_TYPE = "session_meta"
+"""The only rollout line `type` that carries `payload.session_id` (see
+issue #792 finding 2: reading `payload.session_id` off ANY line let an
+unrelated record type - or a malformed rollout - yield the wrong id)."""
 
 
 def _resolve_session_id(lines: list[str], source_path: str) -> str:
     """Prefer the `session_meta` line's `payload.session_id`; fall back
     to the filename stem.
 
-    Only the `session_meta` line (observed first in every real rollout
-    file inspected) carries a session id - other line types
-    (`event_msg`, `response_item`, `turn_context`, `world_state`) do
-    not. All lines are still scanned, tolerant of a reordered or
-    truncated file, rather than assuming position.
+    Only a line whose top-level `type` is `session_meta` (observed
+    first in every real rollout file inspected) carries a session id -
+    other line types (`event_msg`, `response_item`, `turn_context`,
+    `world_state`) do not, even if they happen to contain a
+    `payload.session_id`-shaped field. All lines are still scanned,
+    tolerant of a reordered or truncated file, rather than assuming
+    position - but the `type` check is what actually authorizes reading
+    the field.
     """
     for line in lines:
         try:
@@ -62,6 +84,8 @@ def _resolve_session_id(lines: list[str], source_path: str) -> str:
         except (json.JSONDecodeError, ValueError):
             continue
         if not isinstance(parsed, dict):
+            continue
+        if parsed.get("type") != _SESSION_META_TYPE:
             continue
         payload = parsed.get("payload")
         if not isinstance(payload, dict):
@@ -87,8 +111,16 @@ class CodexTranscriptSource:
     _exec_fn: ExecFn
 
     @property
-    def agent(self) -> str:
-        return AgentName.CODEX
+    def agent(self) -> AgentName:
+        # The `# type: ignore[return-value]` below is a pre-existing
+        # baseline gap, not a real type error: mypy's `python_version =
+        # "3.10"` target predates `enum.StrEnum` (added in 3.11), so it
+        # treats `AgentName`'s own base as `Any` and infers
+        # `AgentName.CODEX` as plain `str` (see the identical baseline
+        # error already on `AgentName`'s own class statement in
+        # `harnesses/__init__.py`). The runtime type is correct - a
+        # `python_version = "3.11"` bump removes the need for this.
+        return AgentName.CODEX  # type: ignore[return-value]
 
     async def extract(self) -> TranscriptExtractionResult:
         errors: list[str] = []
@@ -100,10 +132,16 @@ class CodexTranscriptSource:
             return TranscriptExtractionResult(transcripts=[], errors=errors)
 
         if not find_result.success:
-            # A non-zero find is an empty result, not an error: codex
-            # may legitimately have persisted nothing (e.g. run with
-            # `--ephemeral`), or the sessions root does not exist yet.
-            return TranscriptExtractionResult(transcripts=[], errors=[])
+            if find_result.exit_code == _TRANSCRIPT_ROOT_ABSENT_EXIT_CODE:
+                # codex may legitimately have persisted nothing (e.g.
+                # run with `--ephemeral`), or the sessions root does
+                # not exist yet - a clean empty harvest, not an error.
+                return TranscriptExtractionResult(transcripts=[], errors=[])
+            errors.append(
+                f"failed to list codex transcripts: exit {find_result.exit_code}: "
+                f"{find_result.stderr}"
+            )
+            return TranscriptExtractionResult(transcripts=[], errors=errors)
 
         paths = [line.strip() for line in find_result.stdout.splitlines() if line.strip()]
 
@@ -125,7 +163,7 @@ class CodexTranscriptSource:
             session_id = _resolve_session_id(lines, path)
             transcripts.append(
                 HarnessTranscript(
-                    agent=AgentName.CODEX,
+                    agent=AgentName.CODEX,  # type: ignore[arg-type]  # see `agent` above
                     session_id=session_id,
                     lines=lines,
                     source_path=path,

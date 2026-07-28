@@ -34,8 +34,12 @@ class CodexHarness:
     """`HarnessPlugin` for the `codex` (OpenAI Codex CLI) harness."""
 
     @property
-    def name(self) -> str:
-        return AgentName.CODEX
+    def name(self) -> AgentName:
+        # See `CodexTranscriptSource.agent` (transcripts.py) for why
+        # this needs `# type: ignore[return-value]`: a pre-existing
+        # baseline gap from mypy's `python_version = "3.10"` target
+        # predating `enum.StrEnum`, not a real type error.
+        return AgentName.CODEX  # type: ignore[return-value]
 
     def transcript_source(self, exec_fn: ExecFn) -> TranscriptSource | None:
         return CodexTranscriptSource(exec_fn)

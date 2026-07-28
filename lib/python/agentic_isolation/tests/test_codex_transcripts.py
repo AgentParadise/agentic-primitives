@@ -40,6 +40,7 @@ class _FakeExec:
 
     find_stdout: str = ""
     find_exit_code: int = 0
+    find_stderr: str = ""
     file_contents: dict[str, str] = field(default_factory=dict)
     read_errors: dict[str, Exception] = field(default_factory=dict)
     raise_on_find: Exception | None = None
@@ -57,7 +58,11 @@ class _FakeExec:
         if "find" in command:
             if self.raise_on_find is not None:
                 raise self.raise_on_find
-            return ExecuteResult(exit_code=self.find_exit_code, stdout=self.find_stdout, stderr="")
+            return ExecuteResult(
+                exit_code=self.find_exit_code,
+                stdout=self.find_stdout,
+                stderr=self.find_stderr,
+            )
         for path, err in self.read_errors.items():
             if path in command:
                 raise err
@@ -85,17 +90,23 @@ def _session_meta_line(session_id: str) -> str:
     )
 
 
-def _event_msg_line() -> str:
+def _event_msg_line(*, spoofed_session_id: str | None = None) -> str:
+    payload: dict[str, object] = {
+        "type": "task_started",
+        "turn_id": "019faa94-52f9-7052-98fa-7138c4527a1a",
+        "started_at": 1785273275,
+        "model_context_window": 258400,
+    }
+    if spoofed_session_id is not None:
+        # A non-`session_meta` line that happens to carry a
+        # `payload.session_id`-shaped field - must NOT be read as the
+        # session id (issue #792 finding 2).
+        payload["session_id"] = spoofed_session_id
     return json.dumps(
         {
             "timestamp": "2026-07-28T21:14:35.154Z",
             "type": "event_msg",
-            "payload": {
-                "type": "task_started",
-                "turn_id": "019faa94-52f9-7052-98fa-7138c4527a1a",
-                "started_at": 1785273275,
-                "model_context_window": 258400,
-            },
+            "payload": payload,
         }
     )
 
@@ -157,10 +168,13 @@ class TestMissingSessionsDirIsCleanEmpty:
         assert result.transcripts == []
         assert result.errors == []
 
-    async def test_nonzero_find_exit_code_yields_empty_not_error(self) -> None:
+    async def test_absent_root_exit_code_yields_empty_not_error(self) -> None:
         """A missing sessions dir is a legitimate outcome (e.g. codex ran
-        with `--ephemeral` and persisted nothing) - not an error."""
-        exec_fn = _FakeExec(find_stdout="", find_exit_code=1)
+        with `--ephemeral` and persisted nothing) - not an error. The
+        source shell script signals this with the dedicated
+        `_TRANSCRIPT_ROOT_ABSENT_EXIT_CODE` sentinel, not any non-zero
+        exit (issue #792 finding 1)."""
+        exec_fn = _FakeExec(find_stdout="", find_exit_code=9)
         source = CodexTranscriptSource(exec_fn)
 
         result = await source.extract()
@@ -168,6 +182,28 @@ class TestMissingSessionsDirIsCleanEmpty:
         assert result.success is True
         assert result.transcripts == []
         assert result.errors == []
+
+
+class TestRealListingFailureIsAnError:
+    async def test_nonabsent_nonzero_exit_is_reported_as_error(self) -> None:
+        """Any non-zero `find` exit OTHER than the "root absent" sentinel
+        is a real transport failure (permission denied, unreachable
+        filesystem, ...) and must populate `errors` - issue #792 finding
+        1: a bare `|| true` used to swallow this into a clean empty
+        result."""
+        exec_fn = _FakeExec(
+            find_stdout="",
+            find_exit_code=1,
+            find_stderr="find: '/root/.codex/sessions': Permission denied",
+        )
+        source = CodexTranscriptSource(exec_fn)
+
+        result = await source.extract()
+
+        assert result.success is False
+        assert len(result.errors) == 1
+        assert "Permission denied" in result.errors[0]
+        assert result.transcripts == []
 
 
 class TestExecRaises:
@@ -229,6 +265,42 @@ class TestSessionIdFallback:
         assert result.success is True
         assert len(result.transcripts) == 1
         assert result.transcripts[0].session_id == "rollout-fallback-stem"
+
+    async def test_falls_back_to_filename_stem_even_if_a_non_session_meta_line_has_session_id(
+        self,
+    ) -> None:
+        """A `payload.session_id`-shaped field on a non-`session_meta`
+        line must not be read - issue #792 finding 2."""
+        path = "/root/.codex/sessions/2026/07/28/rollout-spoofed.jsonl"
+        content = _event_msg_line(spoofed_session_id="not-the-real-session") + "\n"
+        exec_fn = _FakeExec(find_stdout=path + "\n", file_contents={path: content})
+        source = CodexTranscriptSource(exec_fn)
+
+        result = await source.extract()
+
+        assert result.success is True
+        assert len(result.transcripts) == 1
+        assert result.transcripts[0].session_id == "rollout-spoofed"
+
+
+class TestSessionMetaTypeIsAuthoritative:
+    async def test_session_meta_id_wins_over_spoofed_event_msg_id(self) -> None:
+        """A non-`session_meta` line carrying `payload.session_id` must
+        never override the real `session_meta` id - issue #792 finding
+        2."""
+        path = "/root/.codex/sessions/2026/07/28/rollout-precedence.jsonl"
+        real_session_id = "019faa94-5284-7391-a40b-1b4667c416d9"
+        spoofed_line = _event_msg_line(spoofed_session_id="not-the-real-session")
+        meta_line = _session_meta_line(real_session_id)
+        content = f"{spoofed_line}\n{meta_line}\n"
+        exec_fn = _FakeExec(find_stdout=path + "\n", file_contents={path: content})
+        source = CodexTranscriptSource(exec_fn)
+
+        result = await source.extract()
+
+        assert result.success is True
+        assert len(result.transcripts) == 1
+        assert result.transcripts[0].session_id == real_session_id
 
 
 class TestExecFnProtocolMatch:

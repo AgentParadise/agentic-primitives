@@ -24,8 +24,23 @@ from agentic_isolation.harnesses import (
     exec_argv,
 )
 
+_TRANSCRIPT_ROOT_ABSENT_EXIT_CODE = 9
+"""Sentinel exit code meaning "the transcript root does not exist".
+
+Distinguishes a legitimate empty harvest (workspace never wrote
+`~/.claude/projects`) from a real transport failure (permission denied,
+unreachable filesystem, ...). Only this exit code normalizes to a clean
+empty `TranscriptExtractionResult`; every other non-zero exit is a real
+error and is reported through `errors` - see issue #792 (finding 1: the
+listing command used to unconditionally force a zero exit code,
+swallowing every `find` failure as a clean empty result and making
+transport failures unreportable).
+"""
+
 _FIND_TRANSCRIPTS_COMMAND = (
-    "find \"$HOME/.claude/projects\" -name '*.jsonl' -type f 2>/dev/null || true"
+    'root="$HOME/.claude/projects"; '
+    f'if [ ! -d "$root" ]; then exit {_TRANSCRIPT_ROOT_ABSENT_EXIT_CODE}; fi; '
+    "find \"$root\" -name '*.jsonl' -type f"
 )
 
 
@@ -61,8 +76,16 @@ class ClaudeTranscriptSource:
     _exec_fn: ExecFn
 
     @property
-    def agent(self) -> str:
-        return AgentName.CLAUDE
+    def agent(self) -> AgentName:
+        # The `# type: ignore[return-value]` below is a pre-existing
+        # baseline gap, not a real type error: mypy's `python_version =
+        # "3.10"` target predates `enum.StrEnum` (added in 3.11), so it
+        # treats `AgentName`'s own base as `Any` and infers
+        # `AgentName.CLAUDE` as plain `str` (see the identical baseline
+        # error already on `AgentName`'s own class statement in
+        # `harnesses/__init__.py`). The runtime type is correct - a
+        # `python_version = "3.11"` bump removes the need for this.
+        return AgentName.CLAUDE  # type: ignore[return-value]
 
     async def extract(self) -> TranscriptExtractionResult:
         errors: list[str] = []
@@ -74,9 +97,15 @@ class ClaudeTranscriptSource:
             return TranscriptExtractionResult(transcripts=[], errors=errors)
 
         if not find_result.success:
-            # A non-zero find is an empty result, not an error: the
-            # transcript root may simply not exist yet in this workspace.
-            return TranscriptExtractionResult(transcripts=[], errors=[])
+            if find_result.exit_code == _TRANSCRIPT_ROOT_ABSENT_EXIT_CODE:
+                # The transcript root does not exist yet in this
+                # workspace - a legitimate empty harvest, not an error.
+                return TranscriptExtractionResult(transcripts=[], errors=[])
+            errors.append(
+                f"failed to list claude transcripts: exit {find_result.exit_code}: "
+                f"{find_result.stderr}"
+            )
+            return TranscriptExtractionResult(transcripts=[], errors=errors)
 
         paths = [line.strip() for line in find_result.stdout.splitlines() if line.strip()]
 
@@ -98,7 +127,7 @@ class ClaudeTranscriptSource:
             session_id = _resolve_session_id(lines, path)
             transcripts.append(
                 HarnessTranscript(
-                    agent=AgentName.CLAUDE,
+                    agent=AgentName.CLAUDE,  # type: ignore[arg-type]  # see `agent` above
                     session_id=session_id,
                     lines=lines,
                     source_path=path,

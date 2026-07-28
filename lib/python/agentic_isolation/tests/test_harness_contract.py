@@ -3,15 +3,20 @@
 Covers: HarnessPlugin and TranscriptSource are structurally satisfiable;
 optional slots return None rather than raising; the registry round-trips
 and rejects names AgentName does not recognize; the exec_argv helper
-shell-quotes argv exactly once.
+shell-quotes argv exactly once; every bundled harness package is
+actually registered (finding 3); `HarnessPlugin.name` and
+`HarnessTranscript.agent` are typed `AgentName`, not `str` (finding 4).
 """
 
 from __future__ import annotations
 
+import inspect
+import pkgutil
 from dataclasses import dataclass
 
 import pytest
 
+import agentic_isolation.harnesses as harnesses_pkg
 from agentic_isolation.harnesses import (
     AgentName,
     ExecFn,
@@ -21,6 +26,7 @@ from agentic_isolation.harnesses import (
     TranscriptSource,
     exec_argv,
     get_harness,
+    iter_harnesses,
     register_harness,
 )
 from agentic_isolation.providers.base import ExecuteResult
@@ -28,10 +34,10 @@ from agentic_isolation.providers.base import ExecuteResult
 
 @dataclass
 class _FakeSource:
-    _agent: str = "claude"
+    _agent: AgentName = AgentName.CLAUDE
 
     @property
-    def agent(self) -> str:
+    def agent(self) -> AgentName:
         return self._agent
 
     async def extract(self) -> TranscriptExtractionResult:
@@ -40,10 +46,10 @@ class _FakeSource:
 
 @dataclass
 class _FakeHarness:
-    _name: str = "claude"
+    _name: AgentName = AgentName.CLAUDE
 
     @property
-    def name(self) -> str:
+    def name(self) -> AgentName:
         return self._name
 
     def transcript_source(self, exec_fn: ExecFn) -> TranscriptSource | None:
@@ -86,19 +92,85 @@ class TestHarnessContract:
 
     def test_registry_rejects_names_agentname_does_not_know(self) -> None:
         """A harness must not register under a name the rest of the
-        system (AgentName) would never recognize - see issue #792."""
+        system (AgentName) would never recognize - see issue #792.
+
+        A raw string is passed here on purpose (not an `AgentName`
+        member) to exercise a plugin that lies about its own name; the
+        `AgentPlugin` contract types `name` as `AgentName`, but nothing
+        stops a buggy third-party `HarnessPlugin` from returning
+        something else at runtime, which is exactly the case
+        `register_harness` must guard against.
+        """
+        bad_harness = _FakeHarness(_name="not-a-real-harness")  # type: ignore[arg-type]
         with pytest.raises(ValueError, match="unknown harness name"):
-            register_harness(_FakeHarness(_name="not-a-real-harness"))
+            register_harness(bad_harness)
 
     def test_result_success_flips_on_errors(self) -> None:
         assert TranscriptExtractionResult().success is True
         assert TranscriptExtractionResult(errors=["x"]).success is False
 
     def test_transcript_to_dict(self) -> None:
-        t = HarnessTranscript(agent="claude", session_id="s1", lines=["{}"], source_path="/p")
+        t = HarnessTranscript(
+            agent=AgentName.CLAUDE, session_id="s1", lines=["{}"], source_path="/p"
+        )
         assert t.to_dict()["session_id"] == "s1"
+
+    def test_transcript_agent_is_agentname(self) -> None:
+        """`HarnessTranscript.agent` is the canonical `AgentName` type,
+        not a plain `str` - issue #792 finding 4."""
+        t = HarnessTranscript(agent=AgentName.CODEX, session_id="s1")
+        assert isinstance(t.agent, AgentName)
+        assert t.agent is AgentName.CODEX
+
+    def test_bundled_harness_names_are_agentname(self) -> None:
+        """Every bundled harness plugin reports its identity as
+        `AgentName`, not `str` - issue #792 finding 4."""
+        for plugin in iter_harnesses():
+            assert isinstance(plugin.name, AgentName)
 
     async def test_exec_argv_shell_quotes_once(self) -> None:
         recorder = _RecordingExec()
         await exec_argv(recorder, ["echo", "hello world"])
         assert recorder.commands == ["echo 'hello world'"]
+
+
+class TestEveryHarnessPackageIsRegistered:
+    """Issue #792 finding 3: adding a harness package without wiring it
+    into `_register_bundled_harnesses()` is a silent failure today - the
+    package imports and type-checks fine, but `get_harness()` never
+    resolves it because nothing ever imports it for the module-scope
+    `register_harness()` side effect.
+
+    This is a static check on `_register_bundled_harnesses()`'s own
+    source rather than a runtime registry check: the registry
+    (`_REGISTRY`) is shared, mutable, module-level state that other
+    tests in this file (e.g. `test_registry_round_trips`) deliberately
+    overwrite with fakes, so asserting against `iter_harnesses()` here
+    would be order-dependent. Scanning the function's source for an
+    import of every `harnesses/` subpackage is exact and immune to that
+    pollution.
+
+    The residual requirement to also add a new `AgentName` member is a
+    known, accepted limitation - see the `harnesses/__init__.py` module
+    docstring.
+    """
+
+    def test_every_harness_subpackage_is_imported_by_bundled_registration(self) -> None:
+        from agentic_isolation.harnesses import _register_bundled_harnesses
+
+        harnesses_path = harnesses_pkg.__path__
+        subpackage_names = [
+            module_info.name
+            for module_info in pkgutil.iter_modules(harnesses_path)
+            if module_info.ispkg
+        ]
+        assert subpackage_names, "expected at least one harness subpackage to scan"
+
+        source = inspect.getsource(_register_bundled_harnesses)
+        missing = [name for name in subpackage_names if name not in source]
+        assert not missing, (
+            f"harness subpackage(s) {missing} are not imported by "
+            "_register_bundled_harnesses() in harnesses/__init__.py - a package that "
+            "exists but is never imported here silently never registers "
+            "(issue #792 finding 3)"
+        )

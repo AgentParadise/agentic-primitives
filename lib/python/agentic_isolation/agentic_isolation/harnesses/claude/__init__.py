@@ -16,8 +16,12 @@ class ClaudeHarness:
     """`HarnessPlugin` for the `claude` (Claude Code CLI) harness."""
 
     @property
-    def name(self) -> str:
-        return AgentName.CLAUDE
+    def name(self) -> AgentName:
+        # See `ClaudeTranscriptSource.agent` (transcripts.py) for why
+        # this needs `# type: ignore[return-value]`: a pre-existing
+        # baseline gap from mypy's `python_version = "3.10"` target
+        # predating `enum.StrEnum`, not a real type error.
+        return AgentName.CLAUDE  # type: ignore[return-value]
 
     def transcript_source(self, exec_fn: ExecFn) -> TranscriptSource | None:
         return ClaudeTranscriptSource(exec_fn)

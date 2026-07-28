@@ -29,6 +29,7 @@ class _FakeExec:
 
     find_stdout: str = ""
     find_exit_code: int = 0
+    find_stderr: str = ""
     file_contents: dict[str, str] = field(default_factory=dict)
     read_errors: dict[str, Exception] = field(default_factory=dict)
     raise_on_find: Exception | None = None
@@ -44,7 +45,11 @@ class _FakeExec:
         if "find" in command:
             if self.raise_on_find is not None:
                 raise self.raise_on_find
-            return ExecuteResult(exit_code=self.find_exit_code, stdout=self.find_stdout, stderr="")
+            return ExecuteResult(
+                exit_code=self.find_exit_code,
+                stdout=self.find_stdout,
+                stderr=self.find_stderr,
+            )
         # A "cat"-style read of a specific path.
         for path, err in self.read_errors.items():
             if path in command:
@@ -118,13 +123,39 @@ class TestNoFiles:
         assert result.transcripts == []
         assert result.errors == []
 
-    async def test_nonzero_find_exit_code_yields_empty_not_error(self) -> None:
-        exec_fn = _FakeExec(find_stdout="", find_exit_code=1)
+    async def test_absent_root_exit_code_yields_empty_not_error(self) -> None:
+        """The dedicated "root absent" sentinel exit code normalizes to
+        a clean empty harvest - not any non-zero exit (issue #792
+        finding 1)."""
+        exec_fn = _FakeExec(find_stdout="", find_exit_code=9)
         source = ClaudeTranscriptSource(exec_fn)
 
         result = await source.extract()
 
         assert result.success is True
+        assert result.transcripts == []
+        assert result.errors == []
+
+
+class TestRealListingFailureIsAnError:
+    async def test_nonabsent_nonzero_exit_is_reported_as_error(self) -> None:
+        """Any non-zero `find` exit OTHER than the "root absent"
+        sentinel is a real transport failure (permission denied,
+        unreachable filesystem, ...) and must populate `errors` - issue
+        #792 finding 1: a bare `|| true` used to swallow this into a
+        clean empty result."""
+        exec_fn = _FakeExec(
+            find_stdout="",
+            find_exit_code=1,
+            find_stderr="find: '/home/user/.claude/projects': Permission denied",
+        )
+        source = ClaudeTranscriptSource(exec_fn)
+
+        result = await source.extract()
+
+        assert result.success is False
+        assert len(result.errors) == 1
+        assert "Permission denied" in result.errors[0]
         assert result.transcripts == []
 
 
