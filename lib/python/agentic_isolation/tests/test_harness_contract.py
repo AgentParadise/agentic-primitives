@@ -10,6 +10,7 @@ actually registered (finding 3); `HarnessPlugin.name` and
 
 from __future__ import annotations
 
+import ast
 import inspect
 import pkgutil
 from dataclasses import dataclass
@@ -134,6 +135,23 @@ class TestHarnessContract:
         assert recorder.commands == ["echo 'hello world'"]
 
 
+def _imported_leaf_names(source: str) -> set[str]:
+    """Return the leaf module name of every REAL `import` / `from ...
+    import ...` statement in `source` - parsed via `ast`, not substring
+    matching, so a name appearing only in a comment or docstring does not
+    count (issue #792 round 2 finding 3)."""
+    tree = ast.parse(source)
+    leaf_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                leaf_names.add(alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                leaf_names.add(alias.name.rsplit(".", 1)[-1])
+    return leaf_names
+
+
 class TestEveryHarnessPackageIsRegistered:
     """Issue #792 finding 3: adding a harness package without wiring it
     into `_register_bundled_harnesses()` is a silent failure today - the
@@ -146,8 +164,10 @@ class TestEveryHarnessPackageIsRegistered:
     (`_REGISTRY`) is shared, mutable, module-level state that other
     tests in this file (e.g. `test_registry_round_trips`) deliberately
     overwrite with fakes, so asserting against `iter_harnesses()` here
-    would be order-dependent. Scanning the function's source for an
-    import of every `harnesses/` subpackage is exact and immune to that
+    would be order-dependent. Parsing the function's source into an AST
+    and inspecting actual `Import` / `ImportFrom` nodes (round 2 finding
+    3 - substring matching would pass even if a subpackage name appeared
+    only in a comment or docstring) is exact and immune to that
     pollution.
 
     The residual requirement to also add a new `AgentName` member is a
@@ -167,10 +187,26 @@ class TestEveryHarnessPackageIsRegistered:
         assert subpackage_names, "expected at least one harness subpackage to scan"
 
         source = inspect.getsource(_register_bundled_harnesses)
-        missing = [name for name in subpackage_names if name not in source]
+        imported = _imported_leaf_names(source)
+        missing = [name for name in subpackage_names if name not in imported]
         assert not missing, (
-            f"harness subpackage(s) {missing} are not imported by "
-            "_register_bundled_harnesses() in harnesses/__init__.py - a package that "
-            "exists but is never imported here silently never registers "
-            "(issue #792 finding 3)"
+            f"harness subpackage(s) {missing} are not actually imported (by a real "
+            "Import/ImportFrom AST node) by _register_bundled_harnesses() in "
+            "harnesses/__init__.py - a package that exists but is never imported here "
+            "silently never registers (issue #792 finding 3)"
         )
+
+    def test_guard_rejects_a_name_only_present_in_a_comment_or_docstring(self) -> None:
+        """A subpackage name that appears only in a comment/docstring -
+        never as a real import - must NOT satisfy the guard. This is the
+        exact gap round 2 finding 3 identified in the old substring-based
+        check."""
+        fake_source = (
+            "def _register_bundled_harnesses() -> None:\n"
+            '    """Docstring mentioning gemini, but never importing it."""\n'
+            "    # TODO: also wire up gemini eventually\n"
+            "    from agentic_isolation.harnesses import claude as _claude\n"
+        )
+        imported = _imported_leaf_names(fake_source)
+        assert imported == {"claude"}
+        assert "gemini" not in imported

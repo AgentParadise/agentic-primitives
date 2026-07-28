@@ -12,9 +12,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+import pytest
+
 from agentic_isolation.harnesses import ExecFn, TranscriptSource
 from agentic_isolation.harnesses.claude import ClaudeHarness
-from agentic_isolation.harnesses.claude.transcripts import ClaudeTranscriptSource
+from agentic_isolation.harnesses.claude.transcripts import (
+    _TRANSCRIPT_ROOT_ABSENT_MARKER,
+    ClaudeTranscriptSource,
+)
 from agentic_isolation.providers.base import ExecuteResult
 
 
@@ -123,11 +128,13 @@ class TestNoFiles:
         assert result.transcripts == []
         assert result.errors == []
 
-    async def test_absent_root_exit_code_yields_empty_not_error(self) -> None:
-        """The dedicated "root absent" sentinel exit code normalizes to
-        a clean empty harvest - not any non-zero exit (issue #792
-        finding 1)."""
-        exec_fn = _FakeExec(find_stdout="", find_exit_code=9)
+    async def test_absent_root_marker_yields_empty_not_error(self) -> None:
+        """The dedicated "root absent" stdout marker (exit 0) normalizes
+        to a clean empty harvest - not any exit code (issue #792 round 2
+        finding 2: an exit code alone is not an authenticated sentinel,
+        since `ExecFn` may reuse any exit code for an unrelated transport
+        failure)."""
+        exec_fn = _FakeExec(find_stdout=_TRANSCRIPT_ROOT_ABSENT_MARKER + "\n")
         source = ClaudeTranscriptSource(exec_fn)
 
         result = await source.extract()
@@ -139,11 +146,10 @@ class TestNoFiles:
 
 class TestRealListingFailureIsAnError:
     async def test_nonabsent_nonzero_exit_is_reported_as_error(self) -> None:
-        """Any non-zero `find` exit OTHER than the "root absent"
-        sentinel is a real transport failure (permission denied,
-        unreachable filesystem, ...) and must populate `errors` - issue
-        #792 finding 1: a bare `|| true` used to swallow this into a
-        clean empty result."""
+        """Any non-zero `find` exit is a real transport failure
+        (permission denied, unreachable filesystem, ...) and must
+        populate `errors` - issue #792 finding 1: a bare `|| true` used
+        to swallow this into a clean empty result."""
         exec_fn = _FakeExec(
             find_stdout="",
             find_exit_code=1,
@@ -156,6 +162,29 @@ class TestRealListingFailureIsAnError:
         assert result.success is False
         assert len(result.errors) == 1
         assert "Permission denied" in result.errors[0]
+        assert result.transcripts == []
+
+    async def test_transport_failure_reusing_the_old_sentinel_exit_code_is_still_an_error(
+        self,
+    ) -> None:
+        """A transport failure that happens to exit with the same code
+        the old (removed) "root absent" sentinel used (9), but without
+        the stdout marker, MUST be treated as a real error - not
+        misread as a clean empty harvest. This is the specific
+        regression from relying on an exit code alone as an
+        authenticated sentinel (issue #792 round 2 finding 2)."""
+        exec_fn = _FakeExec(
+            find_stdout="",
+            find_exit_code=9,
+            find_stderr="find: transport closed unexpectedly",
+        )
+        source = ClaudeTranscriptSource(exec_fn)
+
+        result = await source.extract()
+
+        assert result.success is False
+        assert len(result.errors) == 1
+        assert "transport closed unexpectedly" in result.errors[0]
         assert result.transcripts == []
 
 
@@ -205,6 +234,36 @@ class TestSessionIdFallback:
         assert result.success is True
         assert len(result.transcripts) == 1
         assert result.transcripts[0].session_id == "fallback-stem"
+
+
+class TestDeeplyNestedJsonNeverEscapesExtract:
+    def test_deeply_nested_json_raises_recursion_error_when_parsed_directly(self) -> None:
+        """Sanity check that this test is not vacuous: a raw `json.loads`
+        on the fixture below genuinely raises `RecursionError` - a
+        `RuntimeError` subclass, NOT a `ValueError` - before `extract()`
+        gets anywhere near it (issue #792 round 2 finding 1)."""
+        nested = '{"a":' * 50000 + "1" + "}" * 50000
+        with pytest.raises(RecursionError):
+            json.loads(nested)
+
+    async def test_deeply_nested_json_line_never_escapes_extract(self) -> None:
+        """The same deeply-nested-JSON line, fed through `extract()`,
+        must not raise: the old code only caught `json.JSONDecodeError`
+        and `ValueError`, so `RecursionError` escaped `extract()`
+        entirely - violating the "MUST NEVER RAISE" contract (issue #792
+        round 2 finding 1)."""
+        path = "/home/user/.claude/projects/proj1/deeply-nested.jsonl"
+        nested = '{"a":' * 50000 + "1" + "}" * 50000
+        exec_fn = _FakeExec(find_stdout=path + "\n", file_contents={path: nested + "\n"})
+        source = ClaudeTranscriptSource(exec_fn)
+
+        result = await source.extract()
+
+        assert result.success is True
+        assert len(result.transcripts) == 1
+        # No line carried a resolvable sessionId, so the fallback stem
+        # is used - the important assertion is that nothing raised.
+        assert result.transcripts[0].session_id == "deeply-nested"
 
 
 class TestExecFnProtocolMatch:

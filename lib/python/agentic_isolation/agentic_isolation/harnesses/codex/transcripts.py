@@ -40,22 +40,29 @@ from agentic_isolation.harnesses import (
     exec_argv,
 )
 
-_TRANSCRIPT_ROOT_ABSENT_EXIT_CODE = 9
-"""Sentinel exit code meaning "the codex sessions root does not exist".
+_TRANSCRIPT_ROOT_ABSENT_MARKER = "__agentic_isolation_codex_transcript_root_absent__"
+"""Unique stdout marker meaning "the codex sessions root does not exist".
 
 Distinguishes a legitimate empty harvest (codex ran with `--ephemeral`,
 or the sessions root was never created) from a real transport failure
-(permission denied, unreachable filesystem, ...). Only this exit code
-normalizes to a clean empty `TranscriptExtractionResult`; every other
-non-zero exit is a real error and is reported through `errors` - see
-issue #792 (finding 1: the listing command used to unconditionally
-force a zero exit code, swallowing every `find` failure as a clean
-empty result and making transport failures unreportable).
+(permission denied, unreachable filesystem, ...). An exit code alone
+cannot carry this distinction: `ExecFn` itself may fail transport with
+any exit code (including one a shell script happens to pick for
+"absent"), and `find` reserves no exit code for "the directory never
+existed" - see issue #792 (round 2 finding 2). Only an EXACT stdout match
+against this marker (exit 0) normalizes to a clean empty
+`TranscriptExtractionResult`; any non-zero exit is unconditionally a real
+error reported through `errors`. The listing command used to
+unconditionally force a zero exit code on `find` failure via a bare
+`|| true`, and later a fixed "absent" exit code that a transport failure
+could coincidentally reproduce - both swallowed real failures as a clean
+empty result.
 """
 
 _FIND_TRANSCRIPTS_COMMAND = (
     'root="${CODEX_HOME:-$HOME/.codex}/sessions"; '
-    f'if [ ! -d "$root" ]; then exit {_TRANSCRIPT_ROOT_ABSENT_EXIT_CODE}; fi; '
+    'if [ ! -d "$root" ]; then '
+    f"printf '%s\\\\n' '{_TRANSCRIPT_ROOT_ABSENT_MARKER}'; exit 0; fi; "
     "find \"$root\" -name 'rollout-*.jsonl' -type f"
 )
 
@@ -81,7 +88,10 @@ def _resolve_session_id(lines: list[str], source_path: str) -> str:
     for line in lines:
         try:
             parsed = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
+        except Exception:  # noqa: BLE001 - a single malformed line (deeply
+            # nested JSON raises RecursionError, a RuntimeError subclass,
+            # not a ValueError - see issue #792 finding 1) must never lose
+            # the rest of the file's lines.
             continue
         if not isinstance(parsed, dict):
             continue
@@ -124,16 +134,22 @@ class CodexTranscriptSource:
             return TranscriptExtractionResult(transcripts=[], errors=errors)
 
         if not find_result.success:
-            if find_result.exit_code == _TRANSCRIPT_ROOT_ABSENT_EXIT_CODE:
-                # codex may legitimately have persisted nothing (e.g.
-                # run with `--ephemeral`), or the sessions root does
-                # not exist yet - a clean empty harvest, not an error.
-                return TranscriptExtractionResult(transcripts=[], errors=[])
+            # A non-zero exit is unconditionally a real transport failure -
+            # no exit code is treated as an "absent root" sentinel, since
+            # `ExecFn` may fail for unrelated reasons and reuse any exit
+            # code (issue #792 round 2 finding 2).
             errors.append(
                 f"failed to list codex transcripts: exit {find_result.exit_code}: "
                 f"{find_result.stderr}"
             )
             return TranscriptExtractionResult(transcripts=[], errors=errors)
+
+        if find_result.stdout.strip() == _TRANSCRIPT_ROOT_ABSENT_MARKER:
+            # codex may legitimately have persisted nothing (e.g. run with
+            # `--ephemeral`), or the sessions root does not exist yet -
+            # authenticated by the exact marker, not merely a zero exit -
+            # a clean empty harvest, not an error.
+            return TranscriptExtractionResult(transcripts=[], errors=[])
 
         paths = [line.strip() for line in find_result.stdout.splitlines() if line.strip()]
 
@@ -152,7 +168,14 @@ class CodexTranscriptSource:
                 continue
 
             lines = [line for line in read_result.stdout.splitlines() if line.strip()]
-            session_id = _resolve_session_id(lines, path)
+            try:
+                session_id = _resolve_session_id(lines, path)
+            except Exception as exc:  # noqa: BLE001 - extract() must never
+                # raise; if session id resolution somehow fails despite its
+                # own guard, fall back to the filename stem instead of
+                # aborting the whole harvest (issue #792 finding 1).
+                errors.append(f"failed to resolve session id for {path}: {exc}")
+                session_id = Path(path).stem
             transcripts.append(
                 HarnessTranscript(
                     agent=AgentName.CODEX,
