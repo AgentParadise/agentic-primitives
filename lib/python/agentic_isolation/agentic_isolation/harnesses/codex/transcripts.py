@@ -112,15 +112,7 @@ class CodexTranscriptSource:
 
     @property
     def agent(self) -> AgentName:
-        # The `# type: ignore[return-value]` below is a pre-existing
-        # baseline gap, not a real type error: mypy's `python_version =
-        # "3.10"` target predates `enum.StrEnum` (added in 3.11), so it
-        # treats `AgentName`'s own base as `Any` and infers
-        # `AgentName.CODEX` as plain `str` (see the identical baseline
-        # error already on `AgentName`'s own class statement in
-        # `harnesses/__init__.py`). The runtime type is correct - a
-        # `python_version = "3.11"` bump removes the need for this.
-        return AgentName.CODEX  # type: ignore[return-value]
+        return AgentName.CODEX
 
     async def extract(self) -> TranscriptExtractionResult:
         errors: list[str] = []
@@ -163,7 +155,7 @@ class CodexTranscriptSource:
             session_id = _resolve_session_id(lines, path)
             transcripts.append(
                 HarnessTranscript(
-                    agent=AgentName.CODEX,  # type: ignore[arg-type]  # see `agent` above
+                    agent=AgentName.CODEX,
                     session_id=session_id,
                     lines=lines,
                     source_path=path,
