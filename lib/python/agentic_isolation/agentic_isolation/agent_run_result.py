@@ -41,9 +41,17 @@ class AgentRunResult(BaseModel):
     """The outcome of executing a AgentRunSpec.
 
     `result` carries the pass/fail summary, `output_artifacts` lists
-    any files the run produced, and `session_log` is the raw
-    harness transcript (e.g. JSONL stdout). `observability` is an
-    optional placeholder bundle (see `ObservabilityBundle`).
+    any files the run produced, and `session_log` is the raw output of
+    THIS LIVE run (e.g. JSONL stdout captured while the harness process
+    executed). `observability` is an optional placeholder bundle (see
+    `ObservabilityBundle`).
+
+    `session_log` is not the same concept as `HarnessTranscript`
+    (`harnesses/__init__.py`): `session_log` is captured live, during
+    execution, by the run executor; a `HarnessTranscript` is harvested
+    afterward from whatever a harness persisted to disk, and a single
+    run can produce zero, one, or several of them (e.g. a delegated
+    child session's own file). Do not conflate the two.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

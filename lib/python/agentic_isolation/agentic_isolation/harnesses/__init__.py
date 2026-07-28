@@ -2,32 +2,92 @@
 
 A workspace may host several agent harnesses (claude, codex, gemini). They
 differ in every dimension that matters: where transcripts are written (or
-whether they are written at all), how hook events are emitted, how auth is
-staged, how the CLI is launched. Scattering that knowledge across the codebase
-makes adding a harness a nine-file change and misleads readers about which
-paths are live.
+whether they are written at all), how hook events are emitted, how the CLI
+parses its own output. Scattering that knowledge across the codebase makes
+adding a harness a nine-file change and misleads readers about which paths
+are live.
 
-A `HarnessPlugin` bundles everything about ONE harness. Slots are optional: a
-harness that cannot do a thing returns None rather than raising, so capability
-is discovered rather than assumed.
+A `HarnessPlugin` bundles everything the system needs to know about ONE
+harness's own output. It does NOT own launch or auth: `RunExecutor` already
+launches a harness process and `WorkspaceExecutor` already stages
+credentials into the workspace (see `agent_run_spec.py` /
+`agent_run_result.py`). `HarnessPlugin` is scoped to transcript extraction
+today, and later harness-specific output parsing - never to launch or auth.
 
-v1 fills the transcript-extraction slot. Hook integration, auth staging and
-launch are declared migration targets, not yet moved. See issue #792.
+v1 fills the transcript-extraction slot. See issue #792.
+
+Reconciliation note (2026-07-28, codex recon): `AgentRecipe.agent`
+(`recipe.py`) is still `Literal["claude", "codex"]`, a second authority
+alongside `AgentName` below. Unifying them was attempted here and reverted:
+`tests/test_recipe.py::test_unknown_agent_rejected` mirrors the APSS Agent
+Recipe Standard's invalid-example fixture and requires `agent="gemini"` to
+be REJECTED by `AgentRecipe`, whereas `AgentName` already knows `GEMINI` as
+a valid harness (a workspace can host a gemini harness before the recipe
+spec accepts gemini recipes). Making `AgentRecipe` consume `AgentName`
+as-is would silently flip that spec-conformance test to green for the
+wrong reason. Reconciling the two needs either a recipe-scoped subset type
+or an update to the APSS spec fixtures, not a one-line type swap. Left as
+a follow-up; `AgentRecipe` is unchanged.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import shlex
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
-ExecFn = Callable[[list[str]], Awaitable[tuple[int, str]]]
-"""Run a command inside the workspace, returning (exit_code, stdout)."""
+from agentic_isolation.providers.base import ExecuteResult
+
+
+class ExecFn(Protocol):
+    """Run a command inside a workspace.
+
+    Matches `Workspace.execute` / `WorkspaceProvider.execute`
+    (`workspace.py`, `providers/base.py`) exactly: a shell `command`
+    string in, an `ExecuteResult` out. A bound `workspace.execute` method
+    can be passed directly as an `ExecFn`, no adapter required.
+
+    Harnesses that want to build a command from an argument list should
+    use `exec_argv()` below rather than repeating shell-quoting logic.
+    """
+
+    async def __call__(
+        self,
+        command: str,
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> ExecuteResult: ...
+
+
+async def exec_argv(
+    exec_fn: ExecFn,
+    argv: Sequence[str],
+    *,
+    timeout: float | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> ExecuteResult:
+    """Run `argv` through `exec_fn` as a single shell-quoted command.
+
+    `Workspace.execute` / `WorkspaceProvider.execute` take a shell string,
+    not argv. This is the ONE place that does `shlex.join(argv)` so every
+    harness implementation builds commands the same, safe way instead of
+    each reinventing shell quoting.
+    """
+    return await exec_fn(shlex.join(argv), timeout=timeout, cwd=cwd, env=env)
 
 
 class AgentName(StrEnum):
-    """Known agent harnesses that can run inside a workspace."""
+    """Known agent harnesses that can run inside a workspace.
+
+    The single canonical harness-name authority for the transcript
+    contract in this module. See the module docstring for the current
+    (deliberate) gap with `AgentRecipe.agent`.
+    """
 
     CLAUDE = "claude"
     CODEX = "codex"
@@ -48,7 +108,17 @@ class AgentName(StrEnum):
 
 @dataclass(frozen=True)
 class HarnessTranscript:
-    """One transcript recovered from a workspace."""
+    """One DURABLE transcript recovered from a workspace after the fact.
+
+    Contrast with `AgentRunResult.session_log` (`agent_run_result.py`),
+    which is the LIVE run's own output captured by the executor during
+    execution. `HarnessTranscript` is produced later, by harvesting
+    whatever a harness persisted to disk (or nothing, if it persists
+    nothing) - a parent run can have zero, one, or several of these
+    (e.g. a delegated child session writes its own file with a distinct
+    `session_id`). The two are never the same object and must not be
+    conflated.
+    """
 
     agent: str
     session_id: str
@@ -66,7 +136,11 @@ class HarnessTranscript:
 
 @dataclass(frozen=True)
 class TranscriptExtractionResult:
-    """Outcome of recovering every transcript one harness left behind."""
+    """Outcome of recovering every DURABLE transcript one harness left behind.
+
+    See `HarnessTranscript` for how this differs from the live run's
+    `AgentRunResult.session_log`.
+    """
 
     transcripts: list[HarnessTranscript] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -85,7 +159,11 @@ class TranscriptExtractionResult:
 
 @runtime_checkable
 class TranscriptSource(Protocol):
-    """Recovers every transcript one harness left in a workspace."""
+    """Recovers every DURABLE transcript one harness left in a workspace.
+
+    Not the live run's output (see `HarnessTranscript`) - a harvest that
+    runs after the fact, typically just before workspace teardown.
+    """
 
     @property
     def agent(self) -> str: ...
@@ -102,11 +180,13 @@ class TranscriptSource(Protocol):
 
 @runtime_checkable
 class HarnessPlugin(Protocol):
-    """Everything the system needs to know about one agent harness.
+    """Everything the system needs to know about one harness's own output.
 
-    Optional slots return None when unsupported. Future slots (hook
-    integration, auth staging, launch spec) are added here so a new harness
-    remains a single-package change.
+    Scoped to transcript extraction today, and later harness-specific
+    output parsing. It does NOT own launch (that is `RunExecutor`'s job)
+    or credential staging (that is `WorkspaceExecutor`'s job) - see the
+    module docstring. Optional slots return None when unsupported, so
+    capability is discovered rather than assumed.
     """
 
     @property
@@ -117,17 +197,38 @@ class HarnessPlugin(Protocol):
         ...
 
 
-_REGISTRY: dict[str, HarnessPlugin] = {}
+_REGISTRY: dict[AgentName, HarnessPlugin] = {}
+"""Typed registry of the bundled harness plugins, keyed by `AgentName`.
+
+Not a free-form `dict[str, HarnessPlugin]`: a plugin can only be
+registered under a name `AgentName` already recognizes, so `AgentName`
+stays the single arbiter of "is this a real harness name" for this
+registry (`register_harness()` used to accept any string, which let a
+harness register under a name `AgentRecipe`/`AgentName` would both
+reject - see issue #792). No third-party (out-of-tree) harness has been
+identified yet; if one shows up, this is the extension point.
+"""
 
 
 def register_harness(plugin: HarnessPlugin) -> None:
-    """Register `plugin`. A new harness joins by registering here."""
-    _REGISTRY[plugin.name] = plugin
+    """Register `plugin` under its own `name`.
+
+    Raises `ValueError` if `plugin.name` is not a known `AgentName` - a
+    harness cannot register itself under a name the rest of the system
+    would never recognize.
+    """
+    parsed = AgentName.parse(plugin.name)
+    if parsed is None:
+        raise ValueError(f"unknown harness name: {plugin.name!r}")
+    _REGISTRY[parsed] = plugin
 
 
 def get_harness(name: str) -> HarnessPlugin | None:
     """Return the plugin for `name`, or None if unsupported."""
-    return _REGISTRY.get(name)
+    parsed = AgentName.parse(name)
+    if parsed is None:
+        return None
+    return _REGISTRY.get(parsed)
 
 
 def iter_harnesses() -> tuple[HarnessPlugin, ...]:
