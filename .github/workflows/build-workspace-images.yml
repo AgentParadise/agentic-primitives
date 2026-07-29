@@ -94,7 +94,7 @@ jobs:
       - name: Run entrypoint integration tests
         working-directory: lib/python/agentic_isolation
         run: |
-          uv sync --all-extras
+          uv sync --locked --all-extras
           uv run python -m pytest ../../../tests/integration -q
 
   build-push:

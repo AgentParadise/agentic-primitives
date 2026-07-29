@@ -11,6 +11,13 @@ concurrency:
   group: qa-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Single source of truth for the ruff used by the standalone hook-file check.
+  # Every pyproject.toml that declares ruff must pin this exact version - the
+  # ruff-version-consistency job enforces it, so the hook check and the
+  # per-package checks can never format against different ruff releases.
+  RUFF_VERSION: "0.16.0"
+
 jobs:
   #############################################################################
   # PYTHON JOBS - Matrix strategy for all packages
@@ -56,7 +63,10 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./${{ matrix.package.path }}
-        run: uv sync --all-extras
+        # --locked fails loudly when uv.lock is stale relative to pyproject.toml
+        # instead of silently re-resolving, which makes CI and local machines
+        # install different versions of the same commit's dependencies.
+        run: uv sync --locked --all-extras
 
       - name: Check formatting
         working-directory: ./${{ matrix.package.path }}
@@ -93,14 +103,14 @@ jobs:
 
       - name: Check Hook Files
         run: |
-          uv tool install ruff
+          uv tool install "ruff==${RUFF_VERSION}"
           uv tool run ruff format --check plugins/sdlc/hooks/**/*.py plugins/workspace/hooks/handlers/*.py
           uv tool run ruff check plugins/sdlc/hooks/**/*.py plugins/workspace/hooks/handlers/*.py
 
       - name: Run Unit Tests
         working-directory: ./tests/unit/claude/hooks
         run: |
-          uv sync --all-extras
+          uv sync --locked --all-extras
           uv run pytest -x -q
 
   consumer-contracts:
@@ -122,11 +132,58 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./tests/consumer_contracts
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
 
       - name: Run contract tests
         working-directory: ./tests/consumer_contracts
         run: uv run pytest -v
+
+  #############################################################################
+  # RUFF VERSION CONSISTENCY - One ruff for the whole repo
+  #############################################################################
+
+  ruff-version-consistency:
+    name: Ruff Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+
+      - name: Check every pyproject pins ruff==${{ env.RUFF_VERSION }}
+        run: |
+          failed=0
+          found=0
+
+          while IFS= read -r pyproject; do
+            declaration=$(grep -oE '"ruff[^"]*"' "$pyproject" || true)
+            if [[ -z "$declaration" ]]; then
+              continue
+            fi
+            found=$((found + 1))
+
+            if [[ "$declaration" == "\"ruff==${RUFF_VERSION}\"" ]]; then
+              echo "✓ ${pyproject} — ${declaration}"
+            else
+              echo "✗ ${pyproject} — ${declaration} (expected \"ruff==${RUFF_VERSION}\")"
+              failed=1
+            fi
+          done < <(find . -name pyproject.toml -not -path './node_modules/*' -not -path './.git/*')
+
+          if [[ "$found" -eq 0 ]]; then
+            echo "ERROR: no pyproject.toml declares ruff — the guard is not checking anything."
+            exit 1
+          fi
+
+          if [[ "$failed" -eq 1 ]]; then
+            echo ""
+            echo "ERROR: ruff versions disagree across the repo."
+            echo "The hook check installs ruff==${RUFF_VERSION} (RUFF_VERSION in .github/workflows/qa.yml)."
+            echo "A package resolving a different ruff means 'ruff format --check' can pass in one"
+            echo "job and fail in another for identical code. Pin them all to the same version."
+            exit 1
+          fi
+
+          echo ""
+          echo "All ${found} ruff declarations pinned to ${RUFF_VERSION}."
 
   #############################################################################
   # PLUGIN STRUCTURE VALIDATION - Ensure plugins work in local + Docker
@@ -448,6 +505,7 @@ jobs:
       - python-packages
       - python-hooks
       - consumer-contracts
+      - ruff-version-consistency
       - plugin-validate
       - plugin-version-check
     runs-on: ubuntu-latest
@@ -457,6 +515,7 @@ jobs:
           if [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
              [[ "${{ needs.consumer-contracts.result }}" == "failure" ]] || \
+             [[ "${{ needs.ruff-version-consistency.result }}" == "failure" ]] || \
              [[ "${{ needs.plugin-validate.result }}" == "failure" ]] || \
              [[ "${{ needs.plugin-version-check.result }}" == "failure" ]]; then
             echo "QA checks failed"
@@ -466,6 +525,7 @@ jobs:
           if [[ "${{ needs.python-packages.result }}" == "cancelled" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "cancelled" ]] || \
              [[ "${{ needs.consumer-contracts.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.ruff-version-consistency.result }}" == "cancelled" ]] || \
              [[ "${{ needs.plugin-validate.result }}" == "cancelled" ]] || \
              [[ "${{ needs.plugin-version-check.result }}" == "cancelled" ]]; then
             echo "QA checks were cancelled"
@@ -483,5 +543,6 @@ jobs:
           echo "| Python Packages | ${{ needs.python-packages.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Hooks | ${{ needs.python-hooks.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Consumer Contracts | ${{ needs.consumer-contracts.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ruff Version Consistency | ${{ needs.ruff-version-consistency.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Plugin Validation | ${{ needs.plugin-validate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Plugin Version Check | ${{ needs.plugin-version-check.result }} |" >> $GITHUB_STEP_SUMMARY
