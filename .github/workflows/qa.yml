@@ -93,7 +93,9 @@ jobs:
 
       - name: Check Hook Files
         run: |
-          uv tool install ruff
+          # Pin ruff to an exact version so a new ruff release cannot turn
+          # this job red without any code change in this repo.
+          uv tool install ruff==0.14.6
           uv tool run ruff format --check plugins/sdlc/hooks/**/*.py plugins/workspace/hooks/handlers/*.py
           uv tool run ruff check plugins/sdlc/hooks/**/*.py plugins/workspace/hooks/handlers/*.py
 
