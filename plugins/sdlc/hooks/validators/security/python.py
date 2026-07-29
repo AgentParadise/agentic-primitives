@@ -25,7 +25,10 @@ DANGEROUS_INLINE_PATTERNS: list[tuple[str, str]] = [
     (r"\bshutil\.rmtree\s*\(", "shutil.rmtree() (recursive deletion)"),
     (r"\bshutil\.move\s*\(", "shutil.move() (file move)"),
     # Subprocess execution
-    (r"\bsubprocess\.(run|call|check_call|check_output|Popen)\s*\(", "subprocess execution"),
+    (
+        r"\bsubprocess\.(run|call|check_call|check_output|Popen)\s*\(",
+        "subprocess execution",
+    ),
     # Code injection / dynamic execution
     (r"\b__import__\s*\(", "__import__() (dynamic import)"),
     (r"\bcompile\s*\(.*exec", "compile() + exec (dynamic code execution)"),
@@ -39,10 +42,19 @@ DANGEROUS_INLINE_PATTERNS: list[tuple[str, str]] = [
     (r"\bopen\s*\(.*\/etc\/shadow", "reading /etc/shadow"),
     (r"\bopen\s*\(.*\/etc\/passwd", "reading /etc/passwd"),
     # Network exfiltration combined with file reads
-    (r"\b(urllib|requests|http\.client|socket)\b.*\bopen\b", "network + file access (potential exfiltration)"),
-    (r"\bopen\b.*\b(urllib|requests|http\.client|socket)\b", "file + network access (potential exfiltration)"),
+    (
+        r"\b(urllib|requests|http\.client|socket)\b.*\bopen\b",
+        "network + file access (potential exfiltration)",
+    ),
+    (
+        r"\bopen\b.*\b(urllib|requests|http\.client|socket)\b",
+        "file + network access (potential exfiltration)",
+    ),
     # Reverse shells
-    (r"\bsocket\b.*\bconnect\b.*\b(dup2|subprocess|os\.system)\b", "reverse shell pattern"),
+    (
+        r"\bsocket\b.*\bconnect\b.*\b(dup2|subprocess|os\.system)\b",
+        "reverse shell pattern",
+    ),
 ]
 
 # Suspicious but not blocked patterns
@@ -57,7 +69,9 @@ SUSPICIOUS_INLINE_PATTERNS: list[tuple[str, str]] = [
 ]
 
 
-def _check_dangerous_patterns(targets: list[str], command: str) -> dict[str, Any] | None:
+def _check_dangerous_patterns(
+    targets: list[str], command: str
+) -> dict[str, Any] | None:
     for target in targets:
         for pattern, description in DANGEROUS_INLINE_PATTERNS:
             if re.search(pattern, target, re.IGNORECASE | re.DOTALL):
