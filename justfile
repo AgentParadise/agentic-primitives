@@ -73,6 +73,20 @@ python-sync:
     uv run python scripts/python_qa.py sync
     @echo '{{ GREEN }}✓ Python dependencies synced{{ NORMAL }}'
 
+# Check every uv.lock is current with its pyproject.toml (what CI enforces)
+[group('python')]
+python-lock-check:
+    @echo '{{ YELLOW }}Checking uv lockfiles...{{ NORMAL }}'
+    uv run python scripts/python_qa.py lock
+    @echo '{{ GREEN }}✓ All uv lockfiles current{{ NORMAL }}'
+
+# Regenerate stale uv.lock files (commit the result)
+[group('python')]
+python-lock-update:
+    @echo '{{ YELLOW }}Regenerating uv lockfiles...{{ NORMAL }}'
+    uv run python scripts/python_qa.py lock --update
+    @echo '{{ GREEN }}✓ uv lockfiles regenerated{{ NORMAL }}'
+
 # Format Python code
 [group('python')]
 python-fmt:
@@ -188,6 +202,8 @@ qa:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}Running Full QA Suite{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just python-lock-check
+    @echo ''
     just fmt-check
     @echo ''
     just lint
@@ -220,6 +236,7 @@ ci:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}Running CI Pipeline{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just python-lock-check
     just fmt-check
     just lint
     just test

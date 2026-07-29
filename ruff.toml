@@ -1,0 +1,14 @@
+# Repo-root ruff config.
+#
+# Packages under lib/python/ carry their own [tool.ruff] section in their
+# pyproject.toml, which takes precedence for their files. This file governs
+# the standalone files CI lints directly - the plugin hook handlers - which
+# have no owning Python project and therefore inherited whatever the default
+# rule set of the day happened to be.
+
+[lint.per-file-ignores]
+# Hook handlers MUST fail open: a crashing hook must never block the user's
+# Claude Code session. The plugin-validate job actively enforces that every
+# handler has a top-level `except Exception`, so a blind except (BLE001) that
+# swallows the error (S110) is the required shape here, not a defect.
+"plugins/*/hooks/**/*.py" = ["BLE001", "S110"]
