@@ -45,7 +45,21 @@ failures as a clean empty result.
 _FIND_TRANSCRIPTS_COMMAND = (
     'root="$HOME/.claude/projects"; '
     'if [ ! -d "$root" ]; then '
-    f"printf '%s\\\\n' '{_TRANSCRIPT_ROOT_ABSENT_MARKER}'; exit 0; fi; "
+    # A single backslash reaches the shell here (Python source needs one
+    # escaped backslash, `\\n`, to produce that): POSIX `printf` then
+    # interprets `\n` in the format string as a real newline. An earlier
+    # version had an extra level of escaping (`\\\\n` in the Python
+    # source), which put a LITERAL two-character `\n` (backslash then
+    # `n`) into the shell command instead of an escape sequence - `printf`
+    # emitted that pair verbatim as text, never a newline, so the marker
+    # line could never exactly match `_TRANSCRIPT_ROOT_ABSENT_MARKER` and
+    # the absent-root path never actually worked in a real shell (issue
+    # #792, found by a live-container proof run; every existing test used
+    # a fake `exec_fn` that returned the marker directly, so the real
+    # shell was never exercised). Proven byte-for-byte with `od -c` after
+    # the fix: exactly the marker followed by one `\n` (0x0a), nothing
+    # else.
+    f"printf '%s\\n' '{_TRANSCRIPT_ROOT_ABSENT_MARKER}'; exit 0; fi; "
     "find \"$root\" -name '*.jsonl' -type f"
 )
 

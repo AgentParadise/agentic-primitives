@@ -10,13 +10,17 @@ transcript, and the filename-stem fallback for session id.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 
 from agentic_isolation.harnesses import ExecFn, TranscriptSource
 from agentic_isolation.harnesses.claude import ClaudeHarness
 from agentic_isolation.harnesses.claude.transcripts import (
+    _FIND_TRANSCRIPTS_COMMAND,
     _TRANSCRIPT_ROOT_ABSENT_MARKER,
     ClaudeTranscriptSource,
 )
@@ -324,3 +328,60 @@ class TestExecFnProtocolMatch:
     def test_fake_exec_matches_execfn_shape(self) -> None:
         exec_fn: ExecFn = _FakeExec()
         assert callable(exec_fn)
+
+
+class TestRealShellNeverFakeExecFn:
+    """`_FakeExec` above returns the marker string directly - it can never
+    catch a shell-level escaping defect in `_FIND_TRANSCRIPTS_COMMAND`
+    itself. These tests run the ACTUAL generated command through a real
+    `sh` subprocess instead, closing that structural gap (issue #792: a
+    `printf '%s\\\\n'` double-escaping defect in the Python source reached
+    the shell as a literal backslash-n, not a newline, so the absent-root
+    marker could never exactly match in a real shell - every existing test
+    used a fake `exec_fn` and so never exercised real shell escaping)."""
+
+    def test_absent_root_emits_exactly_the_marker_plus_one_newline(self, tmp_path: Path) -> None:
+        fake_home = tmp_path / "definitely_absent_home"
+        env = dict(os.environ)
+        env["HOME"] = str(fake_home)
+
+        result = subprocess.run(
+            ["sh", "-lc", _FIND_TRANSCRIPTS_COMMAND],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+
+        assert result.returncode == 0
+        # Exact byte-for-byte check: a literal `\n` (backslash + `n`, two
+        # characters) instead of a real newline (`\n`, one 0x0a byte) is
+        # exactly the regression this test exists to catch - `.strip()`
+        # alone would not distinguish the two, so the assertion below
+        # checks the raw stdout, not a stripped version.
+        assert result.stdout == _TRANSCRIPT_ROOT_ABSENT_MARKER + "\n"
+        assert result.stdout.strip() == _TRANSCRIPT_ROOT_ABSENT_MARKER
+
+    def test_present_root_with_matching_files_lists_them_without_the_marker(
+        self, tmp_path: Path
+    ) -> None:
+        fake_home = tmp_path / "real_home"
+        project_dir = fake_home / ".claude" / "projects" / "proj1"
+        project_dir.mkdir(parents=True)
+        transcript_path = project_dir / "session-abc.jsonl"
+        transcript_path.write_text(json.dumps({"sessionId": "session-abc"}) + "\n")
+
+        env = dict(os.environ)
+        env["HOME"] = str(fake_home)
+
+        result = subprocess.run(
+            ["sh", "-lc", _FIND_TRANSCRIPTS_COMMAND],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+
+        assert result.returncode == 0
+        assert str(transcript_path) in result.stdout
+        assert _TRANSCRIPT_ROOT_ABSENT_MARKER not in result.stdout
