@@ -22,6 +22,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from agentic_isolation.config import SecurityConfig, WorkspaceConfig
+from agentic_isolation.harnesses import ExecFn, TranscriptSource, get_harness
 from agentic_isolation.providers.base import (
     BaseProvider,
     ExecuteResult,
@@ -474,6 +475,31 @@ class WorkspaceDockerProvider(BaseProvider):
             return False
 
         return (Path(workspace_dir) / path).exists()
+
+    def transcript_source(self, workspace: Workspace, agent: str) -> TranscriptSource | None:
+        """Return a `TranscriptSource` for `agent` in `workspace`.
+
+        `None` if `agent` names a harness this build does not know (see
+        `AgentName.parse` - lenient by design, never raises). The bound
+        `exec_fn` below satisfies the `ExecFn` protocol by calling this
+        provider's own `execute()` against `workspace`, exactly like any
+        other consumer of `WorkspaceProvider.execute`.
+        """
+        plugin = get_harness(agent)
+        if plugin is None:
+            return None
+
+        async def exec_fn(
+            command: str,
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: dict[str, str] | None = None,
+        ) -> ExecuteResult:
+            return await self.execute(workspace, command, timeout=timeout, cwd=cwd, env=env)
+
+        exec_fn_typed: ExecFn = exec_fn
+        return plugin.transcript_source(exec_fn_typed)
 
     async def _ensure_network(self, network_name: str) -> None:
         """Ensure Docker network exists."""

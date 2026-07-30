@@ -11,6 +11,16 @@ Available providers:
 
 from typing import TYPE_CHECKING, Any
 
+from agentic_isolation.harnesses import (
+    AgentName,
+    HarnessPlugin,
+    HarnessTranscript,
+    TranscriptExtractionResult,
+    TranscriptSource,
+    exec_argv,
+    get_harness,
+    register_harness,
+)
 from agentic_isolation.providers.base import (
     AwaitResult,
     ExecuteResult,
@@ -54,4 +64,13 @@ __all__ = [
     "WorkspaceLocalProvider",
     "WorkspaceDockerProvider",
     "InteractiveTmuxProvider",
+    # Harness contract (see agentic_isolation.harnesses, issue #792)
+    "AgentName",
+    "HarnessPlugin",
+    "HarnessTranscript",
+    "TranscriptExtractionResult",
+    "TranscriptSource",
+    "exec_argv",
+    "get_harness",
+    "register_harness",
 ]
