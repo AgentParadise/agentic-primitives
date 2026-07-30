@@ -7,6 +7,8 @@ Usage:
     python scripts/python_qa.py test
     python scripts/python_qa.py test --integration
     python scripts/python_qa.py check  # lint + test
+    python scripts/python_qa.py lock  # fail if any uv.lock is stale
+    python scripts/python_qa.py lock --update  # regenerate stale locks
 """
 
 import argparse
@@ -26,6 +28,10 @@ TEST_DIRS = [
     Path("tests/unit/claude/hooks"),
     Path("tests/consumer_contracts"),
 ]
+
+# Every directory with its own pyproject.toml + uv.lock pair. CI installs each
+# of these with `uv sync --locked`, so a stale lock here is a CI failure.
+UV_PROJECTS = PACKAGES + TEST_DIRS
 
 
 def run_cmd(cmd: list[str], cwd: Path) -> bool:
@@ -103,8 +109,37 @@ def sync() -> bool:
             print(f"⚠️  Skipping {pkg} (not found)")
             continue
 
-        if not run_cmd(["uv", "sync", "--all-extras"], pkg):
+        # --locked mirrors CI: a stale lock fails loudly instead of silently
+        # re-resolving to a different dependency set than CI installs.
+        if not run_cmd(["uv", "sync", "--locked", "--all-extras"], pkg):
             all_passed = False
+
+    return all_passed
+
+
+def lock(update: bool = False) -> bool:
+    """Check that every uv.lock is current, or regenerate them with --update."""
+    action = "Regenerating" if update else "Checking"
+    print(f"\n🔒 {action} uv lockfiles...")
+    all_passed = True
+    stale: list[Path] = []
+
+    for project in UV_PROJECTS:
+        if not project.exists():
+            print(f"⚠️  Skipping {project} (not found)")
+            continue
+
+        cmd = ["uv", "lock"] if update else ["uv", "lock", "--check"]
+        if not run_cmd(cmd, project):
+            all_passed = False
+            stale.append(project)
+
+    if stale:
+        print("\n❌ Lockfiles out of date with their pyproject.toml:")
+        for project in stale:
+            print(f"   - {project}/uv.lock")
+        print("\nRun `just python-lock-update` and commit the result.")
+        print("CI installs with `uv sync --locked`, so a stale lock fails the build.")
 
     return all_passed
 
@@ -113,7 +148,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Python QA runner")
     parser.add_argument(
         "command",
-        choices=["lint", "test", "check", "sync"],
+        choices=["lint", "test", "check", "sync", "lock"],
         help="Command to run",
     )
     parser.add_argument(
@@ -126,12 +161,19 @@ def main() -> int:
         action="store_true",
         help="Include integration tests",
     )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Regenerate lockfiles instead of only checking them",
+    )
     args = parser.parse_args()
 
     success = True
 
     if args.command == "sync":
         success = sync()
+    elif args.command == "lock":
+        success = lock(update=args.update)
     elif args.command == "lint":
         success = lint(fix=args.fix)
     elif args.command == "test":

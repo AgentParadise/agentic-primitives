@@ -24,11 +24,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20.1" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = "==2.3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "python-json-logger", specifier = ">=2.0.7" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.10" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.0" },
 ]
 provides-extras = ["dev"]
 
