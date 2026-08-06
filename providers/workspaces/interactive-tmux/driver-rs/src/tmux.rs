@@ -5,10 +5,82 @@
 //! without a docker daemon (the per-agent readiness logic lives in
 //! `adapter` and only needs strings).
 
-use std::io::{Error, Result};
-use std::process::{Command, Output};
+use std::io::{Error, ErrorKind, Result, Write};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::time::Duration;
 
 pub const TMUX_SESSION: &str = "agents";
+
+/// Bound for one `docker exec` / `tmux` operation. Mirrors the Python
+/// driver's `DEFAULT_EXEC_TIMEOUT_S` (PY:86): a single wedged exec must not
+/// be able to hang the workflow forever.
+pub const DEFAULT_EXEC_TIMEOUT_S: f64 = 15.0;
+
+/// Bound for `docker run` / `docker rm -f`. Mirrors the Python driver's
+/// `DEFAULT_RUN_TIMEOUT_S` (PY:87).
+pub const DEFAULT_RUN_TIMEOUT_S: f64 = 30.0;
+
+/// Run `cmd`, bounding its execution to `timeout`.
+///
+/// std-only, no `unsafe`: spawns the child (stdout/stderr always piped, so
+/// the returned `Output` is populated the same way `Command::output()`
+/// would populate it), then waits for it on a dedicated thread and races
+/// that wait against `timeout` via `mpsc::recv_timeout`. On timeout the
+/// child is best-effort killed and an `ErrorKind::TimedOut` error is
+/// returned. Mirrors Python's `subprocess.run(..., timeout=...)` bound
+/// (PY:222-280, PY:576-626) without pulling in an async runtime or a new
+/// dependency.
+pub fn run_bounded(mut cmd: Command, timeout: Duration) -> Result<Output> {
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    let child = cmd.spawn()?;
+    wait_bounded(child, timeout)
+}
+
+/// Wait on an already-spawned `child`, bounded by `timeout`.
+///
+/// Shared by `run_bounded` and the stdin-writer path
+/// (`docker_exec_with_stdin`), which needs to feed the child's stdin from
+/// its own thread before this bound takes over waiting on exit.
+///
+/// On timeout, the child is killed (best-effort - `Child::kill` is a plain
+/// signal send, not a guarantee the process has fully exited by the time
+/// this function returns) and the waiter thread is left to finish and drop
+/// its result on the floor; we do not block joining it; the timeout error
+/// is returned immediately so a wedged process can never make this
+/// function itself hang.
+pub fn wait_bounded(child: Child, timeout: Duration) -> Result<Output> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = child.wait_with_output();
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(_) => {
+            // Best-effort: ask the process (and, since docker/tmux
+            // children are frequently themselves a fork/exec wrapper,
+            // just its own pid - not a process group) to die. We do not
+            // have a `Child` handle here anymore (it was moved into the
+            // waiter thread so that thread can drain stdout/stderr without
+            // deadlocking on a full pipe buffer), so killing by pid via
+            // the `kill` utility is the only std-only, `unsafe`-free way
+            // to reach it from this side.
+            let _ = Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+            Err(Error::new(
+                ErrorKind::TimedOut,
+                format!("command timed out after {timeout:?}"),
+            ))
+        }
+    }
+}
 
 fn check_output(out: Output, what: &str) -> Result<Output> {
     if out.status.success() {
@@ -43,15 +115,77 @@ fn redact_args(args: &[&str]) -> String {
     parts.join(" ")
 }
 
-/// Run `docker exec <container> <args...>` and return its `Output`.
-pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
+/// Run `docker exec <container> <args...>` and return its `Output`, bounded
+/// by `DEFAULT_EXEC_TIMEOUT_S` (PY:86) so a wedged exec can't hang forever.
+pub fn docker_exec_timeout(container: &str, args: &[&str], timeout: Duration) -> Result<Output> {
     let mut cmd = Command::new("docker");
     cmd.arg("exec").arg(container);
     cmd.args(args);
-    let out = cmd.output()?;
+    let out = run_bounded(cmd, timeout)?;
     check_output(
         out,
         &format!("docker exec {container} {}", redact_args(args)),
+    )
+}
+
+pub fn docker_exec(container: &str, args: &[&str]) -> Result<Output> {
+    docker_exec_timeout(
+        container,
+        args,
+        Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S),
+    )
+}
+
+/// `docker exec -i <container> <args...>`, feeding `stdin_data` to the
+/// process's stdin and returning its `Output`.
+///
+/// Used by credential transfer (`auth::stage_into_container`) to push file
+/// bytes / base64 payloads into the container without ever putting them in
+/// argv (PY:1506-1517) - argv is world-readable via `ps` /
+/// `/proc/<pid>/cmdline` for the lifetime of the exec; stdin is not.
+pub fn docker_exec_with_stdin_timeout(
+    container: &str,
+    args: &[&str],
+    stdin_data: &[u8],
+    timeout: Duration,
+) -> Result<Output> {
+    let mut cmd = Command::new("docker");
+    cmd.arg("exec").arg("-i").arg(container);
+    cmd.args(args);
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    let mut child = cmd.spawn()?;
+    // Feed stdin from a dedicated thread so a payload larger than the pipe
+    // buffer can't deadlock against `wait_with_output` reading stdout/stderr
+    // (classic "write blocks because the child is blocked writing its own
+    // full stdout pipe, which we haven't started draining yet" deadlock).
+    let mut stdin = child
+        .stdin
+        .take()
+        .expect("stdin piped above via Stdio::piped()");
+    let payload = stdin_data.to_vec();
+    let writer = std::thread::spawn(move || stdin.write_all(&payload));
+    // Bounded wait (PY:86 `DEFAULT_EXEC_TIMEOUT_S`): if this times out, `?`
+    // returns immediately and the writer thread is left detached - once the
+    // killed child's stdin pipe closes its `write_all` fails fast and the
+    // thread exits on its own; there is nothing useful left to join.
+    let out = wait_bounded(child, timeout)?;
+    writer
+        .join()
+        .map_err(|_| Error::other("stdin-writer thread panicked"))??;
+    check_output(
+        out,
+        &format!("docker exec -i {container} {}", redact_args(args)),
+    )
+}
+
+pub fn docker_exec_with_stdin(container: &str, args: &[&str], stdin_data: &[u8]) -> Result<Output> {
+    docker_exec_with_stdin_timeout(
+        container,
+        args,
+        stdin_data,
+        Duration::from_secs_f64(DEFAULT_EXEC_TIMEOUT_S),
     )
 }
 
@@ -66,19 +200,163 @@ pub fn send_keys(container: &str, window: &str, keys: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// `docker exec <container> tmux send-keys -l -t <session>:<window> <text>`.
+/// Bound above which `send-keys -l` is skipped in favour of the
+/// load-buffer/paste-buffer path. Mirrors the Python driver's
+/// `TMUX_SEND_KEYS_MAX_BYTES` (PY:91): tmux's `send-keys -l` has a ~16KB
+/// cap and silently truncates larger payloads, so anything bigger is
+/// staged through a tmux paste buffer instead (PY:645-707).
+pub const TMUX_SEND_KEYS_MAX_BYTES: usize = 12_000;
+
+/// Monotonic per-process counter feeding the unique paste-buffer name.
+/// Combined with the process id it makes each large-payload send use its
+/// own named tmux buffer, so concurrent sends never race on the shared
+/// default buffer (Python uses a `uuid4` token for the same reason,
+/// PY:684-686). `std`-only, no `unsafe`, no new deps.
+static PASTE_BUFFER_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// The command plan `send_literal` will execute for a given payload,
+/// factored out as a pure, assertable value so tests can cover the
+/// threshold logic without a docker daemon.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SendLiteralPlan {
+    /// `tmux send-keys -t <pane> -l -- <text>` - payload at or under
+    /// `TMUX_SEND_KEYS_MAX_BYTES` (PY:666 uses `<=` for this path).
+    SendKeys { pane: String, text: String },
+    /// `tmux load-buffer -b <buffer> -` (fed `payload` via stdin) followed
+    /// by `tmux paste-buffer -p -b <buffer> -d -t <pane>` - payload over
+    /// the threshold (PY:683-702). `-p` sends a bracketed paste so a
+    /// multiline prompt is delivered atomically instead of each newline
+    /// submitting early; `-b <buffer>` uses a unique named buffer to avoid
+    /// racing the shared default buffer; `-d` deletes that buffer after
+    /// pasting, covering Python's `finally` cleanup.
+    PasteBuffer {
+        pane: String,
+        buffer: String,
+        payload: Vec<u8>,
+    },
+}
+
+impl SendLiteralPlan {
+    /// `tmux load-buffer` argv for the large path (stdin carries the
+    /// payload). Empty for the `SendKeys` variant.
+    pub fn load_buffer_args(&self) -> Vec<String> {
+        match self {
+            SendLiteralPlan::SendKeys { .. } => Vec::new(),
+            SendLiteralPlan::PasteBuffer { buffer, .. } => {
+                vec![
+                    "tmux".into(),
+                    "load-buffer".into(),
+                    "-b".into(),
+                    buffer.clone(),
+                    "-".into(),
+                ]
+            }
+        }
+    }
+
+    /// `tmux paste-buffer` argv for the large path. Empty for the
+    /// `SendKeys` variant.
+    pub fn paste_buffer_args(&self) -> Vec<String> {
+        match self {
+            SendLiteralPlan::SendKeys { .. } => Vec::new(),
+            SendLiteralPlan::PasteBuffer { pane, buffer, .. } => {
+                vec![
+                    "tmux".into(),
+                    "paste-buffer".into(),
+                    "-p".into(),
+                    "-b".into(),
+                    buffer.clone(),
+                    "-d".into(),
+                    "-t".into(),
+                    pane.clone(),
+                ]
+            }
+        }
+    }
+}
+
+/// Derive a unique-per-call tmux buffer name. `std`-only: process id plus a
+/// monotonic counter, prefixed to mirror the Python driver's `itmux-<hex>`
+/// naming (PY:686). Two sends from the same process get distinct counter
+/// values; two sends from different processes get distinct pids.
+fn next_paste_buffer_name() -> String {
+    let seq = PASTE_BUFFER_SEQ.fetch_add(1, Ordering::Relaxed);
+    format!("itmux-{}-{seq}", std::process::id())
+}
+
+/// Decide how `text` should be delivered into `pane`, without touching
+/// docker or tmux. Mirrors the Python driver's byte-length branch
+/// (PY:665-666): the threshold is measured against the UTF-8 byte length
+/// of the payload, not its character count. The large path mints a unique
+/// buffer name so concurrent callers never collide.
+pub fn plan_send_literal(pane: &str, text: &str) -> SendLiteralPlan {
+    let payload = text.as_bytes();
+    if payload.len() <= TMUX_SEND_KEYS_MAX_BYTES {
+        SendLiteralPlan::SendKeys {
+            pane: pane.to_string(),
+            text: text.to_string(),
+        }
+    } else {
+        SendLiteralPlan::PasteBuffer {
+            pane: pane.to_string(),
+            buffer: next_paste_buffer_name(),
+            payload: payload.to_vec(),
+        }
+    }
+}
+
+/// `docker exec <container> tmux send-keys -l -t <session>:<window> <text>`,
+/// or - for payloads over `TMUX_SEND_KEYS_MAX_BYTES` - a
+/// `load-buffer`/`paste-buffer` round trip that avoids tmux's ~16KB
+/// `send-keys -l` truncation cap (PY:645-707).
 ///
 /// The `-l` flag tells tmux to deliver the bytes literally (no special-key
-/// interpretation) — the canonical pattern for the body of a user message.
+/// interpretation) - the canonical pattern for the body of a user message.
+fn run_send_literal_plan<F>(plan: &SendLiteralPlan, mut exec: F) -> Result<()>
+where
+    F: FnMut(&[&str], Option<&[u8]>) -> Result<()>,
+{
+    match plan {
+        SendLiteralPlan::SendKeys { pane, text } => {
+            // `--` ends option parsing so a prompt beginning with `-` (e.g.
+            // "-R", "--help") is treated as literal text, not a tmux
+            // send-keys flag.
+            exec(&["tmux", "send-keys", "-t", pane, "-l", "--", text], None)?;
+        }
+        SendLiteralPlan::PasteBuffer {
+            pane,
+            buffer,
+            payload,
+        } => {
+            // `load-buffer -b <name> -` reads the buffer contents from
+            // stdin (which `docker_exec_with_stdin` already pipes in - no
+            // container-side temp file needed) into a unique named buffer.
+            exec(&["tmux", "load-buffer", "-b", buffer, "-"], Some(payload))?;
+            // `-p` = bracketed paste (atomic multiline); `-d` deletes the
+            // named buffer afterwards so large sends don't accumulate stale
+            // buffers and can't leak payload bytes into a later paste.
+            if let Err(error) = exec(
+                &["tmux", "paste-buffer", "-p", "-b", buffer, "-d", "-t", pane],
+                None,
+            ) {
+                // `-d` only cleans up after a successful paste. If the paste
+                // command itself fails, remove the named buffer best-effort so
+                // its prompt payload cannot remain readable in the container.
+                let _ = exec(&["tmux", "delete-buffer", "-b", buffer], None);
+                return Err(error);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn send_literal(container: &str, window: &str, text: &str) -> Result<()> {
     let target = format!("{TMUX_SESSION}:{window}");
-    // `--` ends option parsing so a prompt beginning with `-` (e.g. "-R",
-    // "--help") is treated as literal text, not a tmux send-keys flag.
-    docker_exec(
-        container,
-        &["tmux", "send-keys", "-t", &target, "-l", "--", text],
-    )?;
-    Ok(())
+    let plan = plan_send_literal(&target, text);
+    run_send_literal_plan(&plan, |args, stdin| match stdin {
+        Some(payload) => docker_exec_with_stdin(container, args, payload).map(|_| ()),
+        None => docker_exec(container, args).map(|_| ()),
+    })
 }
 
 /// Capture the full pane buffer including scrollback.
@@ -115,7 +393,7 @@ pub fn capture_pane(container: &str, window: &str) -> Result<String> {
 /// Mirrors the Python driver's `_pane_tail`: with the full-scrollback
 /// capture above, the buffer contains every prompt and every prior
 /// generation. The per-agent `is_started` / `is_ready` predicates would
-/// be fooled by old text — `"esc to interrupt" not in pane` flips false
+/// be fooled by old text - `"esc to interrupt" not in pane` flips false
 /// after the first generation, and Claude's empty-chevron regex matches
 /// against ancient prompts. Evaluating against the tail preserves the
 /// pre-fix "check the visible window" semantics on a full-history capture.
@@ -188,5 +466,30 @@ mod tests {
     fn redact_args_leaves_non_literal_commands_intact() {
         let args = ["tmux", "capture-pane", "-p", "-t", "agents:claude"];
         assert_eq!(redact_args(&args), "tmux capture-pane -p -t agents:claude");
+    }
+
+    #[test]
+    fn failed_paste_buffer_is_followed_by_best_effort_delete() {
+        let plan = plan_send_literal("agents:0", &"x".repeat(TMUX_SEND_KEYS_MAX_BYTES + 1));
+        let mut calls = Vec::new();
+        let err = run_send_literal_plan(&plan, |args, _stdin| {
+            calls.push(
+                args.iter()
+                    .map(|arg| (*arg).to_string())
+                    .collect::<Vec<_>>(),
+            );
+            if args.get(1) == Some(&"paste-buffer") {
+                return Err(Error::other("paste failed"));
+            }
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Other);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0][1], "load-buffer");
+        assert_eq!(calls[1][1], "paste-buffer");
+        assert_eq!(calls[2][0..3], ["tmux", "delete-buffer", "-b"]);
+        assert_eq!(calls[2][3], calls[1][4]);
     }
 }

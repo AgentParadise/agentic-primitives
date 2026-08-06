@@ -1,0 +1,43 @@
+name: Rust
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs on same PR/branch
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: providers/workspaces/interactive-tmux/driver-rs
+
+jobs:
+  itmux:
+    name: itmux (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2.9.1
+        with:
+          workspaces: "providers/workspaces/interactive-tmux/driver-rs -> target"
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test

@@ -68,7 +68,7 @@ logger.info(
         "user_id": 123,
         "action": "file_upload",
         "duration_ms": 450,
-    }
+    },
 )
 
 # With session tracking
@@ -311,7 +311,7 @@ logger.info(
         "endpoint": request.path,
         "duration_ms": elapsed_time,
         "status_code": response.status,
-    }
+    },
 )
 ```
 
@@ -359,9 +359,10 @@ from agentic_logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def process_data(data):
     logger.info("Processing started", extra={"data_size": len(data)})
-    
+
     try:
         result = expensive_operation(data)
         logger.info("Processing completed", extra={"result_size": len(result)})
@@ -379,12 +380,13 @@ from agentic_logging import get_logger
 
 logger = get_logger(__name__)  # Logger name: hooks.core.hooks_collector
 
+
 def collect_hooks():
     logger.debug("Starting hook collection")
-    
+
     for hook in discover_hooks():
         logger.debug("Found hook", extra={"hook_name": hook.name, "hook_path": hook.path})
-    
+
     logger.info("Hook collection complete", extra={"total_hooks": len(hooks)})
 ```
 
@@ -401,19 +403,21 @@ python main.py
 from agentic_logging import get_logger
 import uuid
 
+
 def handle_request(request):
     # Generate unique session ID for this request
     session_id = str(uuid.uuid4())
     logger = get_logger(__name__, session_id=session_id)
-    
+
     logger.info("Request received", extra={"method": request.method, "path": request.path})
-    
+
     # Call other services/functions
     data = fetch_data()  # Also uses logger with same session_id
     result = process_data(data)  # Logs will have same session_id
-    
+
     logger.info("Request completed", extra={"status": 200})
     return result
+
 
 # Later, find all logs for this request:
 # jq 'select(.session_id=="abc-123-def")' logs/agentic.jsonl
@@ -426,17 +430,18 @@ from agentic_logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def process_items(items):
     logger.info("Batch processing started", extra={"batch_size": len(items)})
-    
+
     for i, item in enumerate(items):
         # DEBUG logs only appear when LOG_LEVEL_PROCESSOR=DEBUG
         logger.debug("Processing item", extra={"index": i, "item_id": item.id})
-        
+
         if item.needs_attention():
             # WARNING always appears (default level)
             logger.warning("Item requires attention", extra={"item_id": item.id})
-    
+
     logger.info("Batch processing complete")
 ```
 
@@ -492,6 +497,7 @@ echo $LOG_FILE
 **Solution**: Verify component name normalization
 ```python
 import logging
+
 logger = logging.getLogger("my.module.name")
 print(logger.name)  # Use this name
 
@@ -546,6 +552,7 @@ logger = get_logger(__name__, session_id="abc123")
 
 # Option 2: Context
 from agentic_logging import set_session_context
+
 set_session_context("abc123")
 logger = get_logger(__name__)  # Will include session_id
 ```

@@ -25,6 +25,7 @@ pub mod adapter;
 pub mod auth;
 pub mod registry;
 pub mod result;
+pub mod run;
 pub mod tmux;
 pub mod workspace;
 

@@ -73,6 +73,20 @@ python-sync:
     uv run python scripts/python_qa.py sync
     @echo '{{ GREEN }}✓ Python dependencies synced{{ NORMAL }}'
 
+# Check every uv.lock is current with its pyproject.toml (what CI enforces)
+[group('python')]
+python-lock-check:
+    @echo '{{ YELLOW }}Checking uv lockfiles...{{ NORMAL }}'
+    uv run python scripts/python_qa.py lock
+    @echo '{{ GREEN }}✓ All uv lockfiles current{{ NORMAL }}'
+
+# Regenerate stale uv.lock files (commit the result)
+[group('python')]
+python-lock-update:
+    @echo '{{ YELLOW }}Regenerating uv lockfiles...{{ NORMAL }}'
+    uv run python scripts/python_qa.py lock --update
+    @echo '{{ GREEN }}✓ uv lockfiles regenerated{{ NORMAL }}'
+
 # Format Python code
 [group('python')]
 python-fmt:
@@ -115,20 +129,60 @@ python-test-integration:
     @echo '{{ GREEN }}✓ Python integration tests passed{{ NORMAL }}'
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RUST (itmux driver)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Run itmux Rust tests
+[group('rust')]
+rust-test:
+    @echo '{{ YELLOW }}Running itmux Rust tests...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo test
+    @echo '{{ GREEN }}✓ itmux Rust tests passed{{ NORMAL }}'
+
+# Lint itmux Rust code
+[group('rust')]
+rust-lint:
+    @echo '{{ YELLOW }}Linting itmux Rust code...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo clippy --all-targets -- -D warnings
+    @echo '{{ GREEN }}✓ itmux Rust linting complete{{ NORMAL }}'
+
+# Check itmux Rust formatting
+[group('rust')]
+rust-fmt-check:
+    @echo '{{ YELLOW }}Checking itmux Rust formatting...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo fmt -- --check
+
+# Format itmux Rust code
+[group('rust')]
+rust-fmt:
+    @echo '{{ YELLOW }}Formatting itmux Rust code...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo fmt
+    @echo '{{ GREEN }}✓ itmux Rust formatting complete{{ NORMAL }}'
+
+# Run the LIVE itmux run acceptance battery (E1-E7). Needs docker + valid host
+# credentials (~/.claude/.credentials.json, ~/.codex/auth.json). These cases
+# are gated out of `cargo test`; this is the only entry point that runs them.
+[group('rust')]
+eval-live:
+    @echo '{{ YELLOW }}Running LIVE itmux run acceptance battery (docker + token required)...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && AGENTIC_LIVE_EVAL=1 cargo test --test live_eval -- --ignored --test-threads=1 --nocapture
+    @echo '{{ GREEN }}✓ itmux live acceptance battery complete{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # COMBINED OPERATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Format all code
 [group('all')]
-fmt: python-fmt
+fmt: python-fmt rust-fmt
 
 # Check all formatting
 [group('all')]
-fmt-check: python-fmt-check
+fmt-check: python-fmt-check rust-fmt-check
 
 # Lint all code
 [group('all')]
-lint: python-lint
+lint: python-lint rust-lint
 
 # Auto-fix linting issues
 [group('all')]
@@ -136,7 +190,7 @@ lint-fix: python-lint-fix
 
 # Run all tests
 [group('all')]
-test: python-test
+test: python-test rust-test
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUALITY ASSURANCE
@@ -148,6 +202,8 @@ qa:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}Running Full QA Suite{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just python-lock-check
+    @echo ''
     just fmt-check
     @echo ''
     just lint
@@ -180,6 +236,7 @@ ci:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}Running CI Pipeline{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just python-lock-check
     just fmt-check
     just lint
     just test

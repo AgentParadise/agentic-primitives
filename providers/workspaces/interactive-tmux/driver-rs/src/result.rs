@@ -73,6 +73,28 @@ impl AwaitResult {
         }
     }
 
+    /// The workspace target itself is GONE (dead container, vanished tmux
+    /// session/server) rather than a transient capture hiccup. Mirrors the
+    /// Python driver's `AwaitResult(reason="container_dead", ...)`
+    /// constructed in `_wait_for_started`/`await_completion` (PY:1962-1987,
+    /// PY:2110-2138) once `_container_death_reason` finds a death marker.
+    pub fn container_dead(
+        duration_ms: f64,
+        stable: u32,
+        pane: String,
+        err: impl Into<String>,
+    ) -> Self {
+        Self {
+            ready: false,
+            timed_out: false,
+            reason: "container_dead".to_string(),
+            duration_ms,
+            stable_polls_observed: stable,
+            pane,
+            error: Some(err.into()),
+        }
+    }
+
     /// Convenience for CLI `await` exit codes (mirrors Python: 0 if ready, 2 if not).
     pub const fn cli_exit_code(&self) -> i32 {
         if self.ready {
