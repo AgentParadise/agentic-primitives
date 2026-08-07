@@ -39,6 +39,9 @@
 # tool names (Agent vs Task), stream-json event schema, hook event names.
 # See ClaudeToolName in agentic_events.types.
 ARG CLAUDE_CLI_VERSION=2.1.126
+# Codex CLI is installed alongside claude so a phase's primary agent can
+# delegate one-shot to the other harness (opt-in via agent.allow_delegation).
+ARG CODEX_CLI_VERSION=0.144.6
 
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
@@ -96,6 +99,10 @@ RUN uv python install 3.12.13 \
 # Install Claude CLI globally via npm. Version pinned via global ARG above.
 ARG CLAUDE_CLI_VERSION
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}
+# Install Codex CLI globally (delegation target). Pinned via global ARG above.
+ARG CODEX_CLI_VERSION
+RUN npm install -g @openai/codex@${CODEX_CLI_VERSION}
+RUN claude --version && codex --version
 
 # Install the skills CLI globally via npm. Pin exact version deliberately.
 RUN npm install -g skills@1.5.14
@@ -251,6 +258,8 @@ ENV HOME=/home/agent \
 # before any FROM — build args are stage-scoped and don't carry across.
 ARG CLAUDE_CLI_VERSION
 LABEL agentic.claude_cli_version=${CLAUDE_CLI_VERSION}
+ARG CODEX_CLI_VERSION
+LABEL agentic.codex_cli_version=${CODEX_CLI_VERSION}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \
