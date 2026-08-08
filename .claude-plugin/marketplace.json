@@ -59,6 +59,12 @@
       "description": "Hypothesis-first experiment workflow — scaffolding, eval packs, results, verdicts, and the two-commit discipline",
       "source": "./plugins/experiments",
       "category": "development"
+    },
+    {
+      "name": "plugin-doctor",
+      "description": "Warns when installed agentic-primitives plugins have updates available, checked weekly. Never auto-updates.",
+      "source": "./plugins/plugin-doctor",
+      "category": "observability"
     }
   ]
 }
