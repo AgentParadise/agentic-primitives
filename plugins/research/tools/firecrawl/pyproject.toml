@@ -18,7 +18,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.0",
     "mypy==2.3.0",
-    "ruff==0.16.0",
+    "ruff==0.16.1",
 ]
 
 # Note: impl.local.py follows agentic-primitives naming convention
