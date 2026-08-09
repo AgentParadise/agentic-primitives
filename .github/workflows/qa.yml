@@ -16,7 +16,7 @@ env:
   # Every pyproject.toml that declares ruff must pin this exact version - the
   # ruff-version-consistency job enforces it, so the hook check and the
   # per-package checks can never format against different ruff releases.
-  RUFF_VERSION: "0.16.0"
+  RUFF_VERSION: "0.16.1"
 
 jobs:
   #############################################################################

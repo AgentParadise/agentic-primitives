@@ -1,7 +1,7 @@
 {
   "name": "sdlc",
-  "version": "1.4.1",
-  "description": "Software Development Lifecycle — commit, review, QA, testing, security hooks, git hooks, and infrastructure configuration for Claude Code agents",
+  "version": "1.4.2",
+  "description": "Software Development Lifecycle \u2014 commit, review, QA, testing, security hooks, git hooks, and infrastructure configuration for Claude Code agents",
   "author": {
     "name": "NeuralEmpowerment"
   },
