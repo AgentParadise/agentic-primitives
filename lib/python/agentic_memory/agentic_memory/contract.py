@@ -13,7 +13,34 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
+
+
+CAPABILITY = "memory"
+"""This capability's registry name, as it appears in AGENTIC_CAPABILITIES."""
+
+
+def capability_env_name(capability: str, field_name: str) -> str:
+    """Build an env var name per the ADR-038 rule: AGENTIC_<CAP>_<FIELD>.
+
+    The entrypoint derives the same name in shell (see
+    `__capability_env_prefix`), so this function and that shell helper are
+    the two implementations of one rule. The conformance test in
+    tests/test_contract.py pins them together.
+    """
+    normalize = lambda part: part.upper().replace("-", "_")  # noqa: E731
+    return f"AGENTIC_{normalize(capability)}_{normalize(field_name)}"
+
+
+class Env(StrEnum):
+    """Every env var the memory capability reads. Single source of truth."""
+
+    PROVIDER = "AGENTIC_MEMORY_PROVIDER"
+    NAMESPACE = "AGENTIC_MEMORY_NAMESPACE"
+    NAMESPACE_KIND = "AGENTIC_MEMORY_NAMESPACE_KIND"
+    URL = "AGENTIC_MEMORY_URL"
+    AUTH = "AGENTIC_MEMORY_AUTH"
+    CONFIG_JSON = "AGENTIC_MEMORY_CONFIG_JSON"
 
 
 NAMESPACE_PATTERN = re.compile(r"^[a-zA-Z0-9._:-]+$")
@@ -22,8 +49,8 @@ underscore, colon, hyphen. No spaces, no slashes, no shell metacharacters."""
 
 PROVIDER_PATTERN = re.compile(r"^[a-zA-Z0-9._-]+$")
 """Allowed characters in AGENTIC_MEMORY_PROVIDER — provider names map to
-directories under /opt/agentic/memory, so slashes and shell metacharacters are
-not allowed."""
+directories under /opt/agentic/capabilities/memory, so slashes and shell
+metacharacters are not allowed."""
 
 
 class NamespaceKind(str, Enum):
@@ -82,11 +109,11 @@ class MemoryContract:
         """
         e = env if env is not None else os.environ
 
-        provider = e.get("AGENTIC_MEMORY_PROVIDER", "").strip()
+        provider = e.get(Env.PROVIDER, "").strip()
         if not provider or provider.lower() == "none":
             return None
 
-        config_json = e.get("AGENTIC_MEMORY_CONFIG_JSON")
+        config_json = e.get(Env.CONFIG_JSON)
         config_dict: dict | None = None
         if config_json:
             try:
@@ -98,10 +125,10 @@ class MemoryContract:
 
         return cls(
             provider=provider,
-            namespace=e.get("AGENTIC_MEMORY_NAMESPACE", "").strip(),
-            url=e.get("AGENTIC_MEMORY_URL", "").strip() or None,
-            namespace_kind=NamespaceKind.parse(e.get("AGENTIC_MEMORY_NAMESPACE_KIND")),
-            auth=e.get("AGENTIC_MEMORY_AUTH") or None,
+            namespace=e.get(Env.NAMESPACE, "").strip(),
+            url=e.get(Env.URL, "").strip() or None,
+            namespace_kind=NamespaceKind.parse(e.get(Env.NAMESPACE_KIND)),
+            auth=e.get(Env.AUTH) or None,
             config_json=config_json,
             config_dict=config_dict,
         )

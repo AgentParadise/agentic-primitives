@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentic_memory.contract import MemoryContract
+from agentic_memory.contract import Env, MemoryContract
 from agentic_memory.doctor import (
     AdapterExistsCheck,
     BackendDnsCheck,
@@ -34,9 +34,9 @@ from agentic_memory.doctor import (
 
 def _contract(**overrides) -> MemoryContract:
     base = {
-        "AGENTIC_MEMORY_PROVIDER": "hindsight",
-        "AGENTIC_MEMORY_NAMESPACE": "task-abc",
-        "AGENTIC_MEMORY_URL": "http://nonexistent.invalid.example:9999",
+        Env.PROVIDER: "hindsight",
+        Env.NAMESPACE: "task-abc",
+        Env.URL: "http://nonexistent.invalid.example:9999",
     }
     base.update({k: v for k, v in overrides.items()})
     return MemoryContract.from_env(base)
@@ -53,12 +53,12 @@ class TestEnvContractCheck:
     def test_fails_when_namespace_missing(self):
         r = EnvContractCheck().run(_contract(AGENTIC_MEMORY_NAMESPACE=""))
         assert r.status == CheckStatus.FAIL
-        assert "AGENTIC_MEMORY_NAMESPACE" in r.details["missing"]
+        assert Env.NAMESPACE in r.details["missing"]
 
     def test_fails_when_url_missing(self):
         r = EnvContractCheck().run(_contract(AGENTIC_MEMORY_URL=""))
         assert r.status == CheckStatus.FAIL
-        assert "AGENTIC_MEMORY_URL" in r.details["missing"]
+        assert Env.URL in r.details["missing"]
 
 
 class TestNamespaceWellFormedCheck:
@@ -261,7 +261,7 @@ class TestRunChecks:
 
 class TestCli:
     def test_main_no_provider_returns_zero(self, monkeypatch, capsys):
-        monkeypatch.delenv("AGENTIC_MEMORY_PROVIDER", raising=False)
+        monkeypatch.delenv(Env.PROVIDER, raising=False)
         exit_code = main([])
         assert exit_code == 0
         captured = capsys.readouterr()

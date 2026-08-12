@@ -8,8 +8,9 @@
 # AGENTIC_MEMORY_PROVIDER=hindsight. Sourced into the parent shell so the
 # exports propagate to subsequent process spawns.
 #
-# Provider-specific failure modes are caught by /opt/agentic/memory/doctor
-# via this directory's `doctor.sh` (called from section 5.7).
+# Provider-specific failure modes are caught by
+# /opt/agentic/capabilities/memory/doctor via this directory's `doctor.sh`
+# (called from section 5.7).
 
 set -e
 

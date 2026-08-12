@@ -194,26 +194,30 @@ COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 # and hooks/hooks.json using ${CLAUDE_PLUGIN_ROOT} for path resolution.
 COPY plugins/ /opt/agentic/plugins/
 
-# Copy memory primitive adapters (ADR-036)
-# The /opt/agentic/memory/ tree holds:
-#   - doctor       — bash entry that exec's `python -m agentic_memory.doctor`
+# Copy capability adapters (ADR-038)
+# The /opt/agentic/capabilities/ tree holds one directory per registered
+# capability (memory, session-store, ...), each with:
+#   - doctor               — bash entry that exec's `python -m <pkg>.doctor`
 #   - <provider>/init.sh   — env-var translation for each supported provider
 #   - <provider>/doctor.sh — provider-specific health checks (optional)
-# The Python agentic_memory package itself is installed into /opt/venv via
-# the wheel staging in stage 3. The audit directory /var/agentic/memory-doctor/
-# is created by the entrypoint at first use; orchestrators bind-mount it for
-# durable audit logs.
-COPY memory/ /opt/agentic/memory/
-RUN mkdir -p /var/agentic/memory-doctor \
+# The Python packages themselves (agentic_memory, agentic_session_store) are
+# installed into /opt/venv via the wheel staging in stage 3. Audit
+# directories under /var/agentic/<capability>-doctor/ are created by the
+# entrypoint at first use; orchestrators bind-mount them for durable audit
+# logs.
+COPY capabilities/ /opt/agentic/capabilities/
+RUN mkdir -p /var/agentic \
     && chown -R agent:agent /var/agentic
 
-# Set permissions on plugins, entrypoint, memory adapters, and workspace-shipped hooks
+# Set permissions on plugins, entrypoint, capability adapters, and workspace-shipped hooks.
+# Globbed rather than named individually so future entry scripts (e.g.
+# finalize.sh) pick up the same permissions with no Dockerfile change.
 RUN chmod -R 755 /opt/agentic/plugins /opt/agentic/git-hooks \
     && find /opt/agentic/plugins -name "*.py" -exec chmod 755 {} \; \
-    && chmod 755 /opt/agentic/entrypoint.sh \
-    && chmod 755 /opt/agentic/memory/doctor \
-    && find /opt/agentic/memory -name "init.sh" -exec chmod 755 {} \; \
-    && find /opt/agentic/memory -name "doctor.sh" -exec chmod 755 {} \; \
+    && find /opt/agentic -maxdepth 1 -name "*.sh" -exec chmod 755 {} \; \
+    && find /opt/agentic/capabilities -mindepth 2 -maxdepth 2 -name "doctor" -exec chmod 755 {} \; \
+    && find /opt/agentic/capabilities -name "init.sh" -exec chmod 755 {} \; \
+    && find /opt/agentic/capabilities -name "doctor.sh" -exec chmod 755 {} \; \
     && chown -R agent:agent /opt/agentic
 
 # Verify core installations (before security hardening)
@@ -240,6 +244,10 @@ ENV HOME=/home/agent \
     WORKSPACE_DIR=/workspace \
     # Plugins location (ADR-033)
     AGENTIC_PLUGINS_DIR=/opt/agentic/plugins \
+    # Capability registry (ADR-038): space-separated list of capability
+    # names the entrypoint's 5.6/5.7 loops iterate. A listed capability
+    # with no AGENTIC_<CAP>_PROVIDER set is a silent no-op.
+    AGENTIC_CAPABILITIES="memory session-store" \
     # Disable Claude Code attribution in commits/PRs
     ANTHROPIC_NO_ATTRIBUTION=1 \
     # Python lives in /opt/venv — installed and managed by uv (not apt).

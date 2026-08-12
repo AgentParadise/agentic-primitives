@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Hindsight provider-specific health checks (ADR-036 check 8).
 #
-# Called by /opt/agentic/memory/doctor's ProviderSpecificCheck. Reports
+# Called by /opt/agentic/capabilities/memory/doctor's ProviderSpecificCheck. Reports
 # JSON to stdout describing findings; exit 0 = pass, exit 1 = fail.
 #
 # Checks:

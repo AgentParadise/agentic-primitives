@@ -26,6 +26,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from agentic_memory.contract import (
+    CAPABILITY,
+    Env,
     MemoryContract,
     is_namespace_well_formed,
     is_provider_well_formed,
@@ -33,7 +35,7 @@ from agentic_memory.contract import (
 )
 
 
-PROVIDER_REGISTRY_ROOT = "/opt/agentic/memory"
+PROVIDER_REGISTRY_ROOT = "/opt/agentic/capabilities/memory"
 """Where per-provider adapter directories live in the workspace image."""
 
 BACKEND_HEALTH_TIMEOUT_SECONDS = 5
@@ -88,11 +90,11 @@ class EnvContractCheck(Check):
     def run(self, contract: MemoryContract) -> CheckResult:
         missing = []
         if not contract.provider:
-            missing.append("AGENTIC_MEMORY_PROVIDER")
+            missing.append(Env.PROVIDER)
         if not contract.namespace:
-            missing.append("AGENTIC_MEMORY_NAMESPACE")
+            missing.append(Env.NAMESPACE)
         if not contract.url:
-            missing.append("AGENTIC_MEMORY_URL")
+            missing.append(Env.URL)
 
         if missing:
             return CheckResult(
@@ -119,7 +121,7 @@ class NamespaceWellFormedCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_NAMESPACE is unset (covered by env_contract).",
+                message=f"{Env.NAMESPACE} is unset (covered by env_contract).",
             )
 
         if is_namespace_well_formed(contract.namespace):
@@ -142,7 +144,7 @@ class NamespaceWellFormedCheck(Check):
 
 
 class ProviderKnownCheck(Check):
-    """Verify the provider directory exists under /opt/agentic/memory/."""
+    """Verify the provider directory exists under /opt/agentic/capabilities/memory/."""
 
     def __init__(self, registry_root: str = PROVIDER_REGISTRY_ROOT) -> None:
         super().__init__(name="provider_known")
@@ -153,14 +155,14 @@ class ProviderKnownCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_PROVIDER unset.",
+                message=f"{Env.PROVIDER} unset.",
             )
 
         if not is_provider_well_formed(contract.provider):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                message=f"{Env.PROVIDER} must be a provider name, not a path.",
                 details={"provider": contract.provider},
             )
 
@@ -198,14 +200,14 @@ class AdapterExistsCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_PROVIDER unset.",
+                message=f"{Env.PROVIDER} unset.",
             )
 
         if not is_provider_well_formed(contract.provider):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                message=f"{Env.PROVIDER} must be a provider name, not a path.",
                 details={"provider": contract.provider},
             )
 
@@ -242,7 +244,7 @@ class ConfigJsonValidCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_CONFIG_JSON not set.",
+                message=f"{Env.CONFIG_JSON} not set.",
             )
         try:
             parsed = json.loads(contract.config_json)
@@ -250,14 +252,14 @@ class ConfigJsonValidCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message=f"AGENTIC_MEMORY_CONFIG_JSON does not parse: {e}",
+                message=f"{Env.CONFIG_JSON} does not parse: {e}",
                 details={"error": str(e)},
             )
         if not isinstance(parsed, dict):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_CONFIG_JSON must be a JSON object.",
+                message=f"{Env.CONFIG_JSON} must be a JSON object.",
                 details={"type": type(parsed).__name__},
             )
         return CheckResult(
@@ -278,7 +280,7 @@ class BackendDnsCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_URL unset (covered by env_contract).",
+                message=f"{Env.URL} unset (covered by env_contract).",
             )
         host = urlparse(contract.url).hostname
         if not host:
@@ -316,14 +318,14 @@ class BackendHealthCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_URL unset (covered by env_contract).",
+                message=f"{Env.URL} unset (covered by env_contract).",
             )
         parsed = urlparse(contract.url)
         if parsed.scheme not in {"http", "https"}:
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_URL must use http or https.",
+                message=f"{Env.URL} must use http or https.",
                 details={"url": contract.url, "scheme": parsed.scheme},
             )
         if not parsed.hostname:
@@ -398,13 +400,13 @@ class ProviderSpecificCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_PROVIDER unset.",
+                message=f"{Env.PROVIDER} unset.",
             )
         if not is_provider_well_formed(contract.provider):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                message=f"{Env.PROVIDER} must be a provider name, not a path.",
                 details={"provider": contract.provider},
             )
         script = os.path.join(self.registry_root, contract.provider, "doctor.sh")
@@ -535,7 +537,7 @@ def _redact(s: str) -> str:
 def _format_pretty(contract: MemoryContract | None, results: list[CheckResult], verbose: bool) -> str:
     """Human-readable report to stderr."""
     if contract is None:
-        return "[memory-doctor] AGENTIC_MEMORY_PROVIDER unset — memory not opted in. No checks run.\n"
+        return f"[{CAPABILITY}-doctor] {Env.PROVIDER} unset — memory not opted in. No checks run.\n"
 
     lines: list[str] = []
     lines.append("[memory-doctor] Memory contract diagnostics")
@@ -604,11 +606,11 @@ def main(argv: list[str] | None = None) -> int:
     # Apply CLI overrides into env before parsing the contract.
     env = os.environ.copy()
     if args.provider is not None:
-        env["AGENTIC_MEMORY_PROVIDER"] = args.provider
+        env[Env.PROVIDER] = args.provider
     if args.namespace is not None:
-        env["AGENTIC_MEMORY_NAMESPACE"] = args.namespace
+        env[Env.NAMESPACE] = args.namespace
     if args.url is not None:
-        env["AGENTIC_MEMORY_URL"] = args.url
+        env[Env.URL] = args.url
 
     contract = MemoryContract.from_env(env)
     results, exit_code = run_checks(contract)

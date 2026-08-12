@@ -250,7 +250,7 @@ __inject_safe_context() {
     return 0
 }
 
-__memory_provider_safe() {
+__capability_provider_safe() {
     local provider="$1"
     case "${provider}" in
         *[!a-zA-Z0-9._-]*|*..*|.*|"") return 1 ;;
@@ -299,54 +299,75 @@ if [ -d "${INJECT_MOUNT}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 5.6 Memory adapter initialization
+# 5.6 Capability adapter initialization
 # -----------------------------------------------------------------------------
-# Per ADR-036. Translates the AGENTIC_MEMORY_* contract into provider-specific
-# env vars (e.g. HINDSIGHT_BANK_ID). No-op when AGENTIC_MEMORY_PROVIDER is
-# unset; the doctor in section 5.7 hard-fails if it's set but misconfigured.
+# Per ADR-038. Each registered capability translates its AGENTIC_<CAP>_*
+# contract into provider-native env. No-op when a capability's provider is
+# unset. Section 5.7 hard-fails if a provider is set but misconfigured.
+#
+# Deviation from the generic template: a successful `. "${__init}"` also
+# exports "${__prefix}_READY=1" (e.g. AGENTIC_MEMORY_READY=1). This mirrors
+# the memory primitive's pre-existing, tested contract (ADR-036) — adapters
+# and downstream tooling read that var to know initialization succeeded —
+# so migrating memory into this generic loop must not drop it.
 
-if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
-    if ! __memory_provider_safe "${AGENTIC_MEMORY_PROVIDER}"; then
-        echo "[entrypoint] invalid memory provider name: ${AGENTIC_MEMORY_PROVIDER}" >&2
-    else
-        AGENTIC_MEMORY_ADAPTER="/opt/agentic/memory/${AGENTIC_MEMORY_PROVIDER}/init.sh"
-        if [ -f "${AGENTIC_MEMORY_ADAPTER}" ]; then
-            echo "[entrypoint] memory adapter: ${AGENTIC_MEMORY_PROVIDER}" >&2
-            # shellcheck disable=SC1090
-            if . "${AGENTIC_MEMORY_ADAPTER}"; then
-                export AGENTIC_MEMORY_READY=1
-            else
-                echo "[entrypoint] memory adapter init failed (exit $?); doctor in 5.7 will surface the cause." >&2
-            fi
-        else
-            echo "[entrypoint] no adapter at ${AGENTIC_MEMORY_ADAPTER}" >&2
-        fi
-    fi
-fi
+__capability_env_prefix() {
+    printf 'AGENTIC_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"
+}
 
-# -----------------------------------------------------------------------------
-# 5.7 Memory doctor preflight
-# -----------------------------------------------------------------------------
-# Per ADR-036. Full preflight when memory is opted in. Hard-fail on any check
-# failure — opting into memory is opting into loud failure. JSON appended to
-# /var/agentic/memory-doctor/<date>.jsonl when the orchestrator bind-mounts
-# that directory.
+for __cap in ${AGENTIC_CAPABILITIES:-}; do
+    __capability_provider_safe "${__cap}" || continue
+    __prefix="$(__capability_env_prefix "${__cap}")"
+    eval "__provider=\${${__prefix}_PROVIDER:-}"
+    [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
 
-if [ -n "${AGENTIC_MEMORY_PROVIDER:-}" ] && [ "${AGENTIC_MEMORY_PROVIDER}" != "none" ]; then
-    AGENTIC_MEMORY_AUDIT_DIR="${AGENTIC_MEMORY_AUDIT_DIR:-/var/agentic/memory-doctor}"
-    mkdir -p "${AGENTIC_MEMORY_AUDIT_DIR}" 2>/dev/null || true
-    AGENTIC_MEMORY_AUDIT_FILE="${AGENTIC_MEMORY_AUDIT_DIR}/$(date -u +%Y-%m-%d).jsonl"
-
-    # Run the doctor. Pretty output → stderr (always shown). JSON → audit log
-    # (appended). Exit non-zero = workspace stops.
-    if /opt/agentic/memory/doctor --json >> "${AGENTIC_MEMORY_AUDIT_FILE}"; then
-        echo "[entrypoint] memory doctor: pass (audit: ${AGENTIC_MEMORY_AUDIT_FILE})" >&2
-    else
-        echo "[entrypoint] memory doctor: FAIL (audit: ${AGENTIC_MEMORY_AUDIT_FILE})" >&2
-        echo "[entrypoint] Unset AGENTIC_MEMORY_PROVIDER to bypass the memory contract entirely." >&2
+    if ! __capability_provider_safe "${__provider}"; then
+        # Deliberately do NOT echo ${__provider} here: a path-traversal
+        # payload (e.g. "../../../workspace/evil") would otherwise leak the
+        # attempted escape target into the log/audit stream verbatim.
+        echo "[entrypoint] invalid ${__cap} provider name (rejected before path resolution)" >&2
         exit 1
     fi
-fi
+
+    __init="/opt/agentic/capabilities/${__cap}/${__provider}/init.sh"
+    if [ -f "${__init}" ]; then
+        echo "[entrypoint] ${__cap} adapter: ${__provider}" >&2
+        # shellcheck disable=SC1090
+        if . "${__init}"; then
+            eval "export ${__prefix}_READY=1"
+        else
+            echo "[entrypoint] ${__cap} adapter init failed (exit $?); doctor in 5.7 will surface the cause." >&2
+        fi
+    else
+        echo "[entrypoint] no ${__cap} adapter for provider: ${__provider}" >&2
+        exit 1
+    fi
+done
+
+# -----------------------------------------------------------------------------
+# 5.7 Capability doctor preflight
+# -----------------------------------------------------------------------------
+# Hard-fail on any check failure. Opting into a capability is opting into
+# loud failure, and failing here is free because no agent work has happened.
+
+for __cap in ${AGENTIC_CAPABILITIES:-}; do
+    __capability_provider_safe "${__cap}" || continue
+    __prefix="$(__capability_env_prefix "${__cap}")"
+    eval "__provider=\${${__prefix}_PROVIDER:-}"
+    [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
+
+    __audit_dir="${AGENTIC_CAPABILITY_AUDIT_DIR:-/var/agentic/${__cap}-doctor}"
+    mkdir -p "${__audit_dir}" 2>/dev/null || true
+    __audit_file="${__audit_dir}/$(date -u +%Y-%m-%d).jsonl"
+
+    if /opt/agentic/capabilities/"${__cap}"/doctor --json >> "${__audit_file}"; then
+        echo "[entrypoint] ${__cap} doctor: pass (audit: ${__audit_file})" >&2
+    else
+        echo "[entrypoint] ${__cap} doctor: FAIL (audit: ${__audit_file})" >&2
+        echo "[entrypoint] Unset ${__prefix}_PROVIDER to bypass the ${__cap} capability." >&2
+        exit 1
+    fi
+done
 
 # -----------------------------------------------------------------------------
 # 6. Execute CMD

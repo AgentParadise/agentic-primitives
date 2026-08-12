@@ -114,25 +114,25 @@ def stage_scripts(provider: str, build_context: Path) -> None:
             print(f"  ✓ Script: {path.relative_to(scripts_dst)}")
 
 
-def stage_memory(provider: str, build_context: Path) -> None:
-    """Copy the memory/ adapter directory to the build context (ADR-036).
+def stage_capabilities(provider: str, build_context: Path) -> None:
+    """Copy the capabilities/ adapter directory to the build context (ADR-038).
 
-    Mirrors stage_scripts. The Dockerfile then COPYs build_context/memory/
-    to /opt/agentic/memory/ where the entrypoint section 5.6 + 5.7 expects it.
+    Mirrors stage_scripts. The Dockerfile then COPYs build_context/capabilities/
+    to /opt/agentic/capabilities/ where the entrypoint section 5.6 + 5.7 expects it.
     """
-    memory_src = PROVIDERS_DIR / provider / "memory"
-    if not memory_src.exists():
-        print("  ⊘ No memory adapters configured")
+    capabilities_src = PROVIDERS_DIR / provider / "capabilities"
+    if not capabilities_src.exists():
+        print("  ⊘ No capabilities configured")
         return
 
-    memory_dst = build_context / "memory"
-    if memory_dst.exists():
-        shutil.rmtree(memory_dst)
-    shutil.copytree(memory_src, memory_dst)
+    capabilities_dst = build_context / "capabilities"
+    if capabilities_dst.exists():
+        shutil.rmtree(capabilities_dst)
+    shutil.copytree(capabilities_src, capabilities_dst)
 
-    for path in sorted(memory_dst.rglob("*")):
+    for path in sorted(capabilities_dst.rglob("*")):
         if path.is_file():
-            print(f"  ✓ Memory: {path.relative_to(memory_dst)}")
+            print(f"  ✓ Capability: {path.relative_to(capabilities_dst)}")
 
 
 def build_wheels(build_context: Path) -> None:
@@ -142,8 +142,9 @@ def build_wheels(build_context: Path) -> None:
 
     # Packages to include in the image
     # agentic_events is the core observability package used by plugin hooks
-    # agentic_memory is the memory contract + doctor (ADR-036)
-    required_packages = ["agentic_events", "agentic_memory"]
+    # agentic_memory is the memory capability contract + doctor (ADR-036)
+    # agentic_session_store is the session-store capability contract + doctor (ADR-038)
+    required_packages = ["agentic_events", "agentic_memory", "agentic_session_store"]
 
     for pkg_name in required_packages:
         pkg_path = PYTHON_PACKAGES_DIR / pkg_name
@@ -264,7 +265,7 @@ def main():
     stage_dockerfile(provider, build_context)
     stage_scripts(provider, build_context)
     stage_plugins(manifest, build_context)
-    stage_memory(provider, build_context)
+    stage_capabilities(provider, build_context)
     build_wheels(build_context)
 
     if args.stage_only:
