@@ -1,21 +1,52 @@
 ---
 title: "ADR-036: Memory Primitive and Doctor"
-status: draft
+status: superseded
 created: 2026-05-13
-updated: 2026-05-13
+updated: 2026-08-12
 author: NeuralEmpowerment
+superseded_by: ADR-038 (in mechanism only)
 tags: [memory, workspace, contracts, agentic-isolation, claude-cli, hindsight, observability]
 ---
 
 # ADR-036: Memory Primitive and Doctor
 
+> **Amendment, 2026-08-12: superseded in mechanism by
+> [ADR-038](038-workspace-capability-modules.md), retained for its
+> reasoning.**
+>
+> ADR-038 generalizes the memory-only plumbing described below into a
+> capability-module system, so this ADR's *mechanism* is no longer the
+> shipped one. What remains fully in force is this ADR's **reasoning**, in
+> particular the rejection of Alternative 3 (a doctor nobody runs
+> automatically is a break-glass tool) and Alternative 4 (opting in IS
+> opting into hard fail, and a second env var to ignore the first is a
+> workaround for a contract that was not designed sharply). ADR-038 inherits
+> both verdicts unchanged and applies them to every capability.
+>
+> Paths and variable names in this document have been updated in place to
+> match what shipped. Three interfaces moved, which is why the workspace
+> image went to 2.0.0:
+>
+> - `/opt/agentic/memory/` is now `/opt/agentic/capabilities/memory/`.
+> - `AGENTIC_MEMORY_AUDIT_DIR` is now `AGENTIC_CAPABILITY_AUDIT_DIR`,
+>   applying to every capability rather than only memory.
+> - `AGENTIC_MEMORY_PROVIDER` alone no longer activates memory; `memory`
+>   must also appear in `AGENTIC_CAPABILITIES` (the image default provides
+>   it).
+>
+> See ADR-038's Migration section for the operator-facing version, and
+> [`docs/workspace-capabilities.md`](../workspace-capabilities.md) for how
+> to author a capability today. Nothing in the original reasoning below has
+> been deleted.
+
 ## Status
 
-**Draft**
+**Superseded in mechanism by ADR-038. Reasoning retained.**
 
 - Created: 2026-05-13
-- Updated: 2026-05-13
+- Updated: 2026-08-12
 - Author(s): NeuralEmpowerment
+- Superseded by: [ADR-038: Workspace Capability Modules](038-workspace-capability-modules.md) (mechanism only)
 
 ## Context
 
@@ -62,10 +93,10 @@ two coordinated extensions of the workspace injection contract (ADR-035):
    (`AGENTIC_MEMORY_PROVIDER`, `AGENTIC_MEMORY_NAMESPACE`, `AGENTIC_MEMORY_URL`)
    plus three optional (`NAMESPACE_KIND`, `AUTH`, `CONFIG_JSON`).
    Translation logic lives in per-provider adapter scripts at
-   `/opt/agentic/memory/<provider>/init.sh`, baked into the image.
-   Entrypoint section 5.6 sources the adapter.
+   `/opt/agentic/capabilities/memory/<provider>/init.sh`, baked into the
+   image. Entrypoint section 5.6 sources the adapter.
 
-2. **Memory doctor** — a CLI at `/opt/agentic/memory/doctor` that validates
+2. **Memory doctor** — a CLI at `/opt/agentic/capabilities/memory/doctor` that validates
    the contract is wired correctly, sniffs the backend's reachability,
    surfaces actionable diagnostics in both human-readable and
    machine-readable form, and optionally auto-corrects client-side issues
@@ -246,6 +277,8 @@ pattern from `test_entrypoint_workspace_injection.py`.
 ## References
 
 - [Design spec](../superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md)
+- [ADR-038: Workspace Capability Modules](038-workspace-capability-modules.md) (supersedes this ADR's mechanism)
+- [Authoring guide: workspace capabilities](../workspace-capabilities.md)
 - [ADR-035: Workspace Injection Contract](035-workspace-injection-contract.md)
 - [agentic-memory/docs/architecture/memory-contract.md](../../../../agentic-memory/docs/architecture/memory-contract.md) — sibling design doc with consumer-side adapter examples
 - [hindsight bank derivation modes probe](../../../../agentic-memory/experiments/2026-05-12--claude-code--hindsight--bank-derivation-modes/results.md) — empirical evidence informing the adapter's env var choices

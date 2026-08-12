@@ -1,6 +1,6 @@
 [project]
 name = "agentic-memory"
-version = "0.1.0"
+version = "0.2.0"
 description = "Memory primitive contract + doctor for agentic-primitives workspaces"
 readme = "README.md"
 license = { text = "MIT" }

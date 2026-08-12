@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# /opt/agentic/memory/doctor — workspace-image entry for the memory doctor.
+# /opt/agentic/capabilities/memory/doctor — workspace-image entry for the
+# memory doctor (ADR-038; was /opt/agentic/memory/doctor under ADR-036).
 #
 # Thin wrapper that exec's the Python module. Pass any flags through.
 # See lib/python/agentic_memory/ for the implementation and
