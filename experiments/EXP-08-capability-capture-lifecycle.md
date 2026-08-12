@@ -143,7 +143,20 @@ The prediction about my own accuracy was itself the first thing falsified.
 **`go`, with three required design changes and one scope reduction.**
 
 1. **The entrypoint wrapper must use a bounded wait with KILL escalation.** The plain double-`wait` in the original spec loses every sweep on graceful shutdown, silently. Do not simplify it back.
-2. **`init.sh` must persist the tag string to `$PART_DIR/.capture-env`,** and `finalize.sh` must source it when `SESSION_STORE_TAGS` is unset. Without this the partitioned spool does not survive a crash with attribution, which was its entire justification.
+2. **`init.sh` must persist the tag string to `$PART_DIR/.capture-env`,** and `finalize.sh` must recover it when `SESSION_STORE_TAGS` is unset. Without this the partitioned spool does not survive a crash with attribution, which was its entire justification.
+
+   > **Correction, 2026-08-12 (post-verdict).** This line originally said
+   > `finalize.sh` must **source** that file. That guidance was unsafe and must
+   > not be followed. Tags are opaque orchestrator input, so sourcing them is
+   > arbitrary code execution in a process that holds `SESSIONS_WRITE_TOKEN`.
+   > Demonstrated during the Tasks 5+6 review: a tag of
+   > `workflow:$(touch /tmp/PWNED)` executed on source, and any tag containing a
+   > space truncated the value to empty — destroying the very attribution this
+   > file exists to preserve. `.capture-env` is **data, parsed** (e.g.
+   > `sed -n 's/^SESSION_STORE_TAGS=//p'`), never shell that is sourced. See
+   > `providers/workspaces/claude-cli/capabilities/session-store/README.md`
+   > for the parse contract. The experiment's findings are unchanged; only this
+   > implementation instruction was wrong.
 3. **Re-verify the metadata-reconcile repair path** against a server build that includes 03e94fb.
 4. **Scope reduction: headless only.** Interactive-tmux workspaces cannot receive the capability contract. Record in ADR-038 rather than extending that provider.
 
