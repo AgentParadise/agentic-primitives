@@ -114,8 +114,39 @@ Frozen. Each arm writes evidence under `experiments/EXP-08/runs/`.
 
 ## Results
 
-Pending. Populated in the `run` commit.
+| Arm | Headline | Evidence |
+|---|---|---|
+| A1/A2 wrapper signals | Plain double-`wait` hangs the full 10s grace, is SIGKILLed, and **never runs finalize**. Bounded wait + KILL escalation works against both cooperative (exit 3, 0.32s) and stubborn (137, 5.24s) agents, finalize running in both. | `runs/a1-a2-wrapper-signal-matrix.txt` |
+| A3 interactive-tmux | `ValueError` on both `environment` and `secrets`; empty control flags nothing. Capability contract cannot reach that mode. | `runs/a3-interactive-tmux-config.txt` |
+| A4 docker exec | `discovered=3 uploaded=3 accepted=3`, store 9 → 12, nested subagent captured, tags correct, `origin_host` left as the real hostname. | `runs/a4-a5-a6-exporter-arms.txt` |
+| A5 crash recovery | Spool survives SIGKILL, but a recovery sweep without env uploads with **no tags**. Fixed by a `.capture-env` file written at init; fix verified. | `runs/a4-a5-a6-exporter-arms.txt` |
+| A6 re-sweep | No-op through both gates: `skipped_unchanged=3` with state intact, `duplicate=3 accepted=0` with state deleted. Count unchanged at 12 both times. | `runs/a4-a5-a6-exporter-arms.txt` |
+
+## Hypothesis scorecard
+
+Predicted 5 confirmed / 1 refuted. **Actual: 3 confirmed, 1 partial, 2 wrong.**
+The prediction about my own accuracy was itself the first thing falsified.
+
+| ID | Predicted | Observed | Score | Note |
+|---|---|---|---|---|
+| P1 | Wrapper sweeps within the 10s grace | True only for a *corrected* wrapper; the specified one failed | 🟡 partial | The mechanism works; my implementation of it did not. |
+| P2 | Double-`wait` recovers the real exit code | Hangs on a child that has not died, burns the grace, SIGKILLed, finalize never runs | ❌ wrong | Strictly worse than the naive version. `agent_trapped=0` throughout: bash defers traps while a foreground child runs, so the agent never processed TERM. Wrapper correctness cannot assume prompt agent signal handling. |
+| P3 | Capability unavailable in interactive-tmux | `ValueError` on `environment` and `secrets` | ✅ correct | Right answer, wrong reason. I first framed this as a stdin hazard; the real cause is config rejection, and the `sleep infinity` model means the agent is never the wrapper's child anyway. |
+| P4 | docker exec captures the same set | 3/3, tags correct, `origin_host` untouched | ✅ correct | |
+| P5 | Partitioned spool keeps attribution across a crash | Path keeps *location*; tags come from env and were lost. Recovery landed `<NULL>` tags | ❌ wrong | The load-bearing miss. The design claim was false as written. Fixed by persisting the opaque tag string to `.capture-env` at init, verified working. |
+| P6 | Re-sweep is a clean no-op | Confirmed through both the fingerprint gate and the content-hash gate | ✅ correct | |
+
+**Confound recorded, not concluded from.** The A5 repair sub-arm ran against a server image built 2026-08-11T17:10:10Z, ~7.5h *before* the reconcile-on-duplicate fix (03e94fb). That arm therefore says nothing about whether reconciliation works. Code reading confirms `reconcile_metadata()` does the right thing. Re-run against a current build before relying on the repair path.
 
 ## Verdict
 
-Pending. Populated in the `run` commit.
+**`go`, with three required design changes and one scope reduction.**
+
+1. **The entrypoint wrapper must use a bounded wait with KILL escalation.** The plain double-`wait` in the original spec loses every sweep on graceful shutdown, silently. Do not simplify it back.
+2. **`init.sh` must persist the tag string to `$PART_DIR/.capture-env`,** and `finalize.sh` must source it when `SESSION_STORE_TAGS` is unset. Without this the partitioned spool does not survive a crash with attribution, which was its entire justification.
+3. **Re-verify the metadata-reconcile repair path** against a server build that includes 03e94fb.
+4. **Scope reduction: headless only.** Interactive-tmux workspaces cannot receive the capability contract. Record in ADR-038 rather than extending that provider.
+
+**Trigger selection: either mechanism is now viable.** A4 (`docker exec`) worked cleanly with no signal complexity. The wrapper also works, given change 1. Recommend **Task 7A (wrapper)**, because it is the only option that captures sessions when no orchestrator is driving, which serves the goal of capturing agent work both inside and outside Syntropic137. Task 7B remains a valid fallback and is strictly simpler.
+
+**What this probe was worth:** two of six predictions were wrong, and both would have shipped as silent data-loss defects. That is the return on running it before implementing.

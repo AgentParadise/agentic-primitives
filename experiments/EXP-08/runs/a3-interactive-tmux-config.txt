@@ -1,0 +1,8 @@
+[environment] _unsupported_config_fields -> ['environment']
+    create() -> ValueError: InteractiveTmuxProvider does not support these WorkspaceConfig fields (set to non-default values): environment. Honored fields: working_dir, labels['agents'], auto_cleanup, keep_on_error. Use the provider constructor kwargs (default_image=, default_claude_plugin_dirs=, ...) for image/plugin customization.
+[secrets] _unsupported_config_fields -> ['secrets']
+    create() -> ValueError: InteractiveTmuxProvider does not support these WorkspaceConfig fields (set to non-default values): secrets. Honored fields: working_dir, labels['agents'], auto_cleanup, keep_on_error. Use the provider constructor kwargs (default_image=, default_claude_plugin_dirs=, ...) for image/plugin customization.
+[both] _unsupported_config_fields -> ['secrets', 'environment']
+    create() -> ValueError: InteractiveTmuxProvider does not support these WorkspaceConfig fields (set to non-default values): secrets, environment. Honored fields: working_dir, labels['agents'], auto_cleanup, keep_on_error. Use the provider constructor kwargs (default_image=, default_claude_plugin_dirs=, ...) for image/plugin customization.
+[neither (control)] _unsupported_config_fields -> []
+    (create() not called for control: would spin a real container)

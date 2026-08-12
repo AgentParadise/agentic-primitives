@@ -21,6 +21,7 @@ overlays specific to per-agent probes) remain on their source branches.
 | EXP-05-review | codex lead's cross-review of the EXP-05 provider implementation | `go` (no blockers; 4 majors + 2 minors all applied on `agentprims-exp05` @ 8e4d621) | `agentprims-exp02` @ 44ca031 | `experiments/EXP-05-review-codex.md`                                 |
 | EXP-05a  | claude auth-file matrix (`.credentials.json` vs `.claude.json` — 2×2 mount probe) | `go` (both files required) | `agentprims-exp02` @ 44ca031                      | `experiments/EXP-05a-claude-auth-matrix.md`                          |
 | EXP-06   | fresh-agent validation of `interactive-tmux` provider docs           | `go` (6/6 agents × paths; 4 small README gaps, all patched on `agentprims-exp05` @ 6373b8e) | `agentprims-exp06` @ 05d926b | `experiments/EXP-06-fresh-agent-validation.md`                       |
+| EXP-08   | workspace capability capture lifecycle (wrapper vs docker-exec trigger)  | `go` (2/6 predictions wrong; bounded-wait + `.capture-env` required) | `feat/workspace-capability-modules` @ f10a669 | `experiments/EXP-08-capability-capture-lifecycle.md`                  |
 
 ## Companion files
 

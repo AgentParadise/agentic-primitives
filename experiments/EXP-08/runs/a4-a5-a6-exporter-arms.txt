@@ -1,0 +1,62 @@
+EXP-08 arms A4/A5/A6 — exporter trigger, crash recovery, idempotency
+Store: local exp07 stack, 127.0.0.1:18091 (NOT the Mini). Baseline: 9 sessions.
+Spool: /tmp/exp08-spool, partitioned <workflow>/<phase>.
+Fixtures: synthetic Claude JSONL (2 main + 1 nested subagent).
+
+--- A4: docker exec sweep before teardown ---
+run: discovered=3 skipped_unchanged=0 uploaded=3 accepted=3 duplicate=0 failed=0
+store count: 9 -> 12
+Nested subagent transcript picked up (walk recurses), as EXP-07 found.
+
+tags + origin_host on the ingested rows:
+  agent-deadbeef                        | c79c268ed3ed | ["workflow:wf-alpha", "phase:phase-1"]
+  aaaaaaaa-0000-4000-8000-00000000a001  | c79c268ed3ed | ["workflow:wf-alpha", "phase:phase-1"]
+  aaaaaaaa-0000-4000-8000-00000000a002  | c79c268ed3ed | ["workflow:wf-alpha", "phase:phase-1"]
+
+  origin_host is the real container hostname, NOT overloaded with phase
+  identity. Contrast with EXP-07-era rows in the same table, which show the
+  old abuse pattern:
+  agent-a389ad5deeae8dee3 | exp07-phase-alpha | <no tags>
+
+--- A6: re-sweep idempotency (both gates) ---
+A6a state file intact:
+  run: discovered=3 skipped_unchanged=3 uploaded=0 accepted=0 duplicate=0
+  count: 12 (unchanged)
+A6b state file deleted (forces the content_hash gate):
+  run: discovered=3 skipped_unchanged=0 uploaded=3 accepted=0 duplicate=3
+  count: 12 (unchanged)
+
+--- A5: SIGKILL crash recovery ---
+docker kill -s KILL -> container exited/137, no sweep ran.
+Spool survived on the host volume: 1 transcript at wf-beta/phase-9.
+
+Recovery sweep WITHOUT tags in env (the realistic case):
+  run: discovered=1 uploaded=1 accepted=1
+  bbbbbbbb-0000-4000-8000-00000000b001 | f1d7ae5f6c96 | <NULL>
+
+  *** P5 REFUTED. The partition PATH records which sweep a transcript
+  belongs to, but the TAGS come from the environment at sweep time. A
+  recovery sweep that lost its environment uploads an unattributable
+  session - the exact EXP-07-P9 failure the partitioned spool was meant
+  to prevent. ***
+
+Repair attempt (same content, correct tags, state file deleted):
+  run: discovered=1 uploaded=1 accepted=0 duplicate=1
+  tags after: <NULL>  -- NOT reconciled
+
+  CONFOUND, recorded rather than concluded from: the running server image
+  was built 2026-08-11T17:10:10Z; the reconcile-on-duplicate fix (03e94fb)
+  landed 2026-08-12T00:41:08Z, ~7.5h later. This arm tested a binary that
+  PREDATES the fix, so it does not show reconciliation is broken. Reading
+  03e94fb confirms reconcile_metadata() UPDATEs metadata on a content-hash
+  match with `IS DISTINCT FROM` so a true no-op stays write-free.
+  Re-run against a current build before relying on the repair path.
+
+--- A5-fix: .capture-env makes the partition self-describing ---
+init writes $PART_DIR/.capture-env holding the opaque tag string.
+Recovery sweep, no tags in env, .capture-env present:
+  [finalize] recovered tags from .capture-env
+  run: discovered=1 uploaded=1 accepted=1
+  cccccccc-0000-4000-8000-00000000c001 | ["workflow:wf-gamma", "phase:phase-3"]
+
+  Fix verified. Attribution survives a SIGKILL.

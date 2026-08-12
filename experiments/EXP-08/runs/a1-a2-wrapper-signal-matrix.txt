@@ -1,0 +1,33 @@
+EXP-08 arms A1 + A2 — wrapper signal handling and exit-code propagation
+Image: agentic-workspace-claude-cli:latest
+Method: entrypoint override (docker run --entrypoint bash -v <wrapper>:/w.sh)
+Stop: docker stop -t 10 (Docker default grace)
+
+--- Normal exit, no signal (both variants correct, non-discriminating) ---
+variant=naive  agent_exit=0 observed=0 finalize=1
+variant=naive  agent_exit=7 observed=7 finalize=1
+variant=double agent_exit=0 observed=0 finalize=1
+variant=double agent_exit=7 observed=7 finalize=1
+
+--- SIGTERM via docker stop (the discriminator) ---
+agent: bash -c 'trap "echo agent-caught-TERM >&2; exit 3" TERM; sleep 300'
+
+variant=naive   exit_code=143 elapsed=0.134s finalize_ran=1 agent_trapped=0
+variant=double  exit_code=137 elapsed=10.134s finalize_ran=0 agent_trapped=0
+
+  naive:  reports 143 (signal) instead of the agent's code. finalize ran.
+  double: HUNG. The second `wait` blocked on a child that had not died,
+          consumed the entire 10s grace, was SIGKILLed (137), and
+          NEVER RAN FINALIZE. Strictly worse than naive.
+
+  agent_trapped=0 in both: bash defers trap execution while a foreground
+  child (sleep) runs, so the agent never processed TERM. Wrapper
+  correctness therefore cannot assume the agent handles signals promptly.
+
+--- Corrected: bounded wait with KILL escalation ---
+case=wellbehaved (trap TERM -> exit 3)  exit=3   elapsed=0.321s finalize=1
+case=stubborn    (trap "" TERM, ignores) exit=137 elapsed=5.243s finalize=1
+
+  Recovers the real exit code when the agent cooperates.
+  Escalates to KILL at the 5s bound when it does not, and still runs
+  finalize inside the 10s Docker grace.
