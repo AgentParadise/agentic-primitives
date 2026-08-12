@@ -22,7 +22,9 @@ import os
 import shutil
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from agentic_session_store.contract import CAPABILITY, Env, SessionStoreContract
@@ -68,7 +70,7 @@ def _spool_writable(contract: SessionStoreContract) -> CheckResult:
         with open(probe, "w") as f:
             f.write("")
         os.remove(probe)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         return CheckResult(
             name="spool_writable",
             passed=False,
@@ -131,10 +133,17 @@ def _exporter_present(contract: SessionStoreContract) -> CheckResult:  # noqa: A
 
 def _store_reachable(contract: SessionStoreContract) -> CheckResult:
     health_url = contract.url.rstrip("/") + "/healthz"
-    req = urllib.request.Request(health_url, method="GET")  # noqa: S310 - controlled URL
-    if contract.auth:
-        req.add_header("Authorization", f"Bearer {contract.auth}")
+    parsed = urllib.parse.urlparse(health_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return CheckResult(
+            name="store_reachable",
+            passed=False,
+            detail=f"{health_url} is not a valid http(s) URL (missing scheme or host)",
+        )
     try:
+        req = urllib.request.Request(health_url, method="GET")  # noqa: S310 - controlled URL
+        if contract.auth:
+            req.add_header("Authorization", f"Bearer {contract.auth}")
         with urllib.request.urlopen(req, timeout=STORE_HEALTH_TIMEOUT_SECONDS) as resp:  # noqa: S310
             status_code = resp.status
     except urllib.error.HTTPError as e:
@@ -143,7 +152,7 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
             passed=False,
             detail=f"{health_url} returned HTTP {e.code}",
         )
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
         return CheckResult(
             name="store_reachable",
             passed=False,
@@ -158,19 +167,40 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
     return CheckResult(name="store_reachable", passed=True, detail=f"{health_url} -> 200")
 
 
+CHECKS: list[tuple[str, Callable[[SessionStoreContract], CheckResult]]] = [
+    ("contract_parses", _contract_parses),
+    ("spool_writable", _spool_writable),
+    ("symlinks_correct", _symlinks_correct),
+    ("exporter_present", _exporter_present),
+    ("store_reachable", _store_reachable),
+]
+
+
 def run_checks(contract: SessionStoreContract) -> list[CheckResult]:
     """Run all five checks against a validated contract, in order.
 
-    All five always run, even after an earlier one fails, so a single
-    invocation gives the operator the full picture.
+    All five always run, even after an earlier one fails or raises, so a
+    single invocation gives the operator the full picture. Each check is
+    called through this outer guard: a check that raises (a malformed URL,
+    an embedded null byte in a path, anything unanticipated) is converted
+    into a failed CheckResult rather than propagating and killing the other
+    four checks along with it. Individual checks additionally catch their
+    own expected failure modes so the detail string is specific rather than
+    a generic "raised: ..." message.
     """
-    return [
-        _contract_parses(contract),
-        _spool_writable(contract),
-        _symlinks_correct(contract),
-        _exporter_present(contract),
-        _store_reachable(contract),
-    ]
+    results: list[CheckResult] = []
+    for name, check in CHECKS:
+        try:
+            results.append(check(contract))
+        except Exception as e:  # noqa: BLE001 - a doctor must not crash
+            results.append(
+                CheckResult(
+                    name=name,
+                    passed=False,
+                    detail=f"check raised {type(e).__name__}: {e}",
+                )
+            )
+    return results
 
 
 def _format_pretty(contract: SessionStoreContract | None, results: list[CheckResult]) -> str:
