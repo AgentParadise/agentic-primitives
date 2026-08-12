@@ -14,12 +14,25 @@ if [ -z "${SESSION_STORE_URL:-}" ]; then
     exit 0
 fi
 
+# Partition directory, computed once up front and reused everywhere below
+# via this one :-guarded variable. EXPORTER_STATE_FILE is normally exported
+# by init.sh, but this hook is also meant to run standalone -- a recovery
+# sweep of a partition left behind by a SIGKILLed container (see below) --
+# where it is unset. A bare `${EXPORTER_STATE_FILE%/*}` in that case trips
+# `set -u` and aborts the script, breaking the "always exit 0" contract on
+# exactly the failure path this recovery mechanism exists to handle.
+if [ -n "${EXPORTER_STATE_FILE:-}" ]; then
+    __part_dir="${EXPORTER_STATE_FILE%/*}"
+else
+    __part_dir="<unset>"
+fi
+
 # Recovery path (EXP-08 arm A5): when invoked without the adapter's env - a
 # sweep of a partition left behind by a SIGKILLed container - recover the tags
 # the partition was created with. Without this the session uploads untagged
 # and is unattributable.
 if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
-    __capture_env="${EXPORTER_STATE_FILE%/*}/.capture-env"
+    __capture_env="${__part_dir}/.capture-env"
     if [ -r "${__capture_env}" ]; then
         # PARSE, never source. Tags are opaque orchestrator input; sourcing
         # them is arbitrary code execution at sweep time, with the store
@@ -36,8 +49,14 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
     fi
 fi
 
-if ! SeshMagicSessionExporter 2>&1; then
-    echo "[finalize] session-store upload FAILED; spool retained at ${EXPORTER_STATE_FILE%/*}" >&2
+# Both the exporter's stdout and stderr go to OUR stderr, never our stdout.
+# Under the old `exec "$@"`, container stdout was exclusively the agent's;
+# now that finalize runs after the agent exits, letting exporter chatter
+# reach stdout would corrupt anything parsing it (e.g. an agent CMD invoked
+# with a structured --output-format). `>&2 2>&1` (in that order) sends both
+# streams to whatever fd2 already points at, not the other way around.
+if ! SeshMagicSessionExporter >&2 2>&1; then
+    echo "[finalize] session-store upload FAILED; spool retained at ${__part_dir}" >&2
     exit 0
 fi
 
@@ -54,7 +73,6 @@ echo "[finalize] session-store upload complete" >&2
 # so a misconfigured EXPORTER_STATE_FILE (e.g. "/state.json", dirname "/")
 # can't turn this into `rm -rf /` or `rm -rf /spool`.
 if [ -n "${EXPORTER_STATE_FILE:-}" ]; then
-    __part_dir="${EXPORTER_STATE_FILE%/*}"
     case "${__part_dir}" in
         /*/*)
             rm -rf "${__part_dir}"

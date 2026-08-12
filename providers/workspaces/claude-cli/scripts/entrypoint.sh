@@ -429,17 +429,37 @@ __run_finalizers() {
         __prefix="$(__capability_env_prefix "${__cap}")"
         eval "__provider=\${${__prefix}_PROVIDER:-}"
         [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
+        # 5.6 rejects an unsafe provider name and exits before CMD ever
+        # runs -- but only on the *hard*-fail path. Its init-failure branch
+        # (unreadable/missing init.sh, adapter returning non-zero) only
+        # warns and continues, so an unsafe provider string can still be
+        # sitting in "${__provider}" when we get here. One more check is
+        # cheap; a path built from an unvalidated provider name is not.
+        __capability_provider_safe "${__provider}" || continue
         __fin="/opt/agentic/capabilities/${__cap}/${__provider}/finalize.sh"
         [ -f "${__fin}" ] || continue
         "${__fin}" || true
     done
 }
 
-readonly __TERM_GRACE_TICKS=50   # 50 x 0.1s = 5s, half of Docker's 10s default
+# Coupled with lib/python/agentic_isolation/agentic_isolation/providers/
+# docker.py's `docker stop -t 5` (see the matching comment there). This
+# MUST stay strictly below that grace, with headroom for finalize's own
+# work (a real transcript upload, not just process teardown) to run
+# afterward -- if the two ever tie, docker's own SIGKILL can land in the
+# same instant as this loop's, and finalize never gets to run at all.
+# 15 x 0.1s = 1.5s leaves ~3.5s for finalize after the kill.
+readonly __TERM_GRACE_TICKS=15
 
 "$@" <&0 &
 __child=$!
-trap 'kill -TERM "${__child}" 2>/dev/null' TERM INT
+# Forward the signal actually received, not always TERM: under
+# `docker run -it` job control is off, the child shares PID 1's process
+# group and already receives the tty's SIGINT directly. Also sending it a
+# synthesized SIGTERM would mean Ctrl-C -- how Claude Code interrupts
+# generation -- kills the whole session instead of just the current turn.
+trap 'kill -TERM "${__child}" 2>/dev/null' TERM
+trap 'kill -INT "${__child}" 2>/dev/null' INT
 # `set -e` is in effect for this whole script (line 30). A bare
 # `wait "${__child}"; __rc=$?` is a classic set -e trap: if the child exits
 # non-zero, `wait`'s own non-zero status is a simple command not shielded by

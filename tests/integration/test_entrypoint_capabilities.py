@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 import urllib.error
@@ -569,16 +570,40 @@ def test_missing_finalize_is_silent_skip():
 
 
 @pytest.mark.integration
-def test_finalize_parses_capture_env_never_sources_it(tmp_path: Path):
+@pytest.mark.parametrize(
+    "malicious_tag",
+    [
+        pytest.param(
+            "workflow:$(touch /tmp/PWNED) it's,phase:c",
+            id="quoted-parse-error-under-source",
+        ),
+        pytest.param(
+            "workflow:$(touch /tmp/PWNED) safe,phase:c",
+            id="unquoted-clean-under-source",
+        ),
+    ],
+)
+def test_finalize_parses_capture_env_never_sources_it(tmp_path: Path, malicious_tag: str):
     """Regression test for the Task 5/6 review finding, now that a real
     consumer of `.capture-env` (finalize.sh) exists to regress.
 
-    A tag value containing `$(touch /tmp/PWNED)`, a space, and a single
-    quote must:
-      - never execute (no /tmp/PWNED),
-      - round-trip byte-identical through finalize.sh's parse,
-      - be visible to a CHILD process finalize.sh spawns (the exporter),
-        not just finalize.sh's own shell.
+    Two payloads, both containing `$(touch /tmp/PWNED)` and a space:
+
+    - "quoted-parse-error-under-source": also has an unbalanced single
+      quote. Sourced as shell, that line is a *syntax error* -- bash never
+      reaches expansion, so $(...) never runs even under a broken
+      `source`-based implementation. The no-injection assertion is
+      vacuous for this payload alone: it would pass whether the consumer
+      parses correctly OR sources incorrectly.
+    - "unquoted-clean-under-source": no unbalanced quote, so the line is
+      syntactically valid shell. A `source`-based implementation WOULD
+      execute the substitution and create /tmp/PWNED here. Only this
+      payload makes the no-injection assertion load-bearing.
+
+    Both must round-trip byte-identical (anchored, not substring -- so
+    trailing corruption after the value can't slip through) and be visible
+    to a CHILD process finalize.sh spawns (the exporter), not just
+    finalize.sh's own shell.
 
     This calls finalize.sh directly (not through the full capability
     registration + doctor preflight) so it needs neither a reachable store
@@ -590,18 +615,20 @@ def test_finalize_parses_capture_env_never_sources_it(tmp_path: Path):
     spool = tmp_path / "spool"
     part_dir = spool / "recovery-test"
     part_dir.mkdir(parents=True)
-    malicious_tag = "workflow:$(touch /tmp/PWNED) it's,phase:c"
     capture_env = part_dir / ".capture-env"
     capture_env.write_text(f"SESSION_STORE_TAGS={malicious_tag}\n")
     os.chmod(capture_env, 0o600)
 
     fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+    # Delimiters bracket the captured value exactly, so the Python-side
+    # comparison is anchored (regex-extracted, then `==`) rather than a
+    # substring check that a trailing-corruption bug could still satisfy.
     script = f"""
 set -e
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
-printf 'CHILD_SAW=%s\\n' "$SESSION_STORE_TAGS"
+printf 'CHILD_SAW_START%sCHILD_SAW_END\\n' "$SESSION_STORE_TAGS"
 exit 0
 FAKE_EXPORTER_EOF
 chmod +x /tmp/fakebin/SeshMagicSessionExporter
@@ -617,9 +644,49 @@ test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
         extra_mounts=[f"{spool}:/spool"],
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    assert f"CHILD_SAW={malicious_tag}" in result.stdout, result.stdout
+    # The exporter's own stdout is intentionally routed to finalize.sh's
+    # stderr (F3 fix: `SeshMagicSessionExporter >&2 2>&1`), so the fake
+    # exporter's CHILD_SAW markers land in stderr here, not stdout.
+    match = re.search(r"CHILD_SAW_START(.*?)CHILD_SAW_END", result.stderr, re.DOTALL)
+    assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert match.group(1) == malicious_tag, (
+        f"tag corrupted in round-trip: got {match.group(1)!r}, want {malicious_tag!r}"
+    )
     assert "NO_INJECTION" in result.stdout
     assert "INJECTION_OCCURRED" not in result.stdout
+
+
+@pytest.mark.integration
+def test_finalize_survives_unset_exporter_state_file_on_failure():
+    """Regression test: finalize.sh must not crash under `set -u` when
+    EXPORTER_STATE_FILE is unset and the exporter fails.
+
+    This is the standalone recovery-sweep shape .capture-env exists to
+    serve (see the parse test above) -- SESSION_STORE_URL set, but no
+    adapter env at all otherwise. finalize.sh's own failure-path log line
+    used to reference `${EXPORTER_STATE_FILE%/*}` unguarded, unlike every
+    other reference to that var in the file; under `set -u` that aborts
+    the script with a nonzero exit, which breaks the one contract this
+    hook cannot break ("finalize.sh must always exit 0").
+    """
+    fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+    script = f"""
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+exit 1
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export SESSION_STORE_URL=http://unused.invalid
+unset EXPORTER_STATE_FILE
+{fin}
+echo "FINALIZE_RC=$?"
+"""
+    result = _run(["bash", "-c", script])
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, result.stdout
 
 
 @pytest.mark.integration
@@ -695,29 +762,34 @@ echo "FINALIZE_RC=$?"
 # with its own code) and a stubborn one (`trap "" TERM`, must be escalated
 # to SIGKILL). Both must still run finalize.
 
-# entrypoint.sh's own escalation window (__TERM_GRACE_TICKS) is sized as
-# half of *Docker's classic 10s default* stop grace -- that comment is the
-# design assumption the wrapper is built against, not a fact about any
-# particular daemon. This local daemon was measured (empirically, with a
-# plain busybox container ignoring SIGTERM) to default `docker stop` to
-# ~1s, far short of 10s -- which would SIGKILL the whole container before
-# the wrapper's own 5s escalation ever got a chance to run finalize. Pin
-# the grace explicitly so the test exercises the assumption the design
-# actually depends on, not whatever this daemon happens to be configured
-# with today.
-_DOCKER_STOP_GRACE_S = 10
-_DOCKER_STOP_TIMEOUT_S = _DOCKER_STOP_GRACE_S + 20
+# entrypoint.sh's __TERM_GRACE_TICKS (15 x 0.1s = 1.5s) is coupled to this
+# repo's OWN orchestrator teardown value -- docker.py's `docker stop -t 5`
+# (lib/python/agentic_isolation/agentic_isolation/providers/docker.py) --
+# not to "Docker's 10s default", which is merely the bare-CLI default and
+# is NOT what this repo actually uses in production. Getting that coupling
+# wrong is exactly the failure this review caught: with `-t 5` and the
+# escalation window at 5s (half of the *wrong* 10s reference), the
+# wrapper's own SIGKILL and docker's outer SIGKILL land in the same
+# instant and finalize never runs. `-t 10` alone can't catch this, because
+# 10s gives so much slack that almost any escalation window looks fine;
+# `-t 5` is what actually exercises the constraint entrypoint.sh depends
+# on. Test both: `-t 5` because it's the repo's real value, `-t 10` because
+# it's the more forgiving/traditional one and a useful sanity check.
+_DOCKER_STOP_GRACES_S = (5, 10)
+_DOCKER_STOP_TIMEOUT_S = max(_DOCKER_STOP_GRACES_S) + 20
 
 
 def _docker_stop_scenario(
     agent_script: str,
     container_name: str,
+    grace_s: int,
     env: dict[str, str] | None = None,
     extra_mounts: list[str] | None = None,
     add_host_gateway: bool = False,
 ) -> tuple[int, float, str]:
     """Start the workspace image detached running agent_script as CMD,
-    `docker stop` it, and return (exit_code, elapsed_seconds, combined logs).
+    `docker stop -t grace_s` it, and return (exit_code, elapsed_seconds,
+    combined logs).
     """
     subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
     run_cmd = [
@@ -741,7 +813,7 @@ def _docker_stop_scenario(
 
         start = time.monotonic()
         subprocess.run(
-            ["docker", "stop", "-t", str(_DOCKER_STOP_GRACE_S), container_name],
+            ["docker", "stop", "-t", str(grace_s), container_name],
             capture_output=True, text=True, timeout=_DOCKER_STOP_TIMEOUT_S,
         )
         elapsed = time.monotonic() - start
@@ -762,7 +834,10 @@ def _docker_stop_scenario(
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
-def test_docker_stop_cooperative_agent_exits_with_own_code_and_runs_finalize(tmp_path: Path):
+@pytest.mark.parametrize("grace_s", _DOCKER_STOP_GRACES_S)
+def test_docker_stop_cooperative_agent_exits_with_own_code_and_runs_finalize(
+    tmp_path: Path, grace_s: int
+):
     """Agent traps TERM and exits 3 promptly. The wrapper must NOT wait for
     docker's own SIGKILL: it should return the agent's real exit code
     quickly (EXP-08 measured ~0.32s), and finalize must still have run.
@@ -771,13 +846,14 @@ def test_docker_stop_cooperative_agent_exits_with_own_code_and_runs_finalize(tmp
     spool.mkdir()
     exit_code, elapsed, logs = _docker_stop_scenario(
         'trap "exit 3" TERM; while true; do :; done',
-        "wrapper-sigterm-cooperative-test",
+        f"wrapper-sigterm-cooperative-test-{grace_s}",
+        grace_s,
         env={
             "AGENTIC_CAPABILITIES": "session-store",
             "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
             "AGENTIC_SESSION_STORE_URL": STORE_URL,
             "AGENTIC_SESSION_STORE_SPOOL": "/spool",
-            "AGENTIC_SESSION_STORE_PARTITION": "docker-stop-cooperative",
+            "AGENTIC_SESSION_STORE_PARTITION": f"docker-stop-cooperative-{grace_s}",
         },
         extra_mounts=[
             f"{spool}:/spool",
@@ -786,29 +862,36 @@ def test_docker_stop_cooperative_agent_exits_with_own_code_and_runs_finalize(tmp
         add_host_gateway=True,
     )
     assert exit_code == 3, f"expected the agent's own exit code; logs=\n{logs}"
-    assert elapsed < 5, f"cooperative agent should not burn the grace window, took {elapsed:.2f}s"
+    assert elapsed < grace_s, (
+        f"cooperative agent should not burn the grace window, took {elapsed:.2f}s"
+    )
     assert "[finalize] session-store upload complete" in logs, logs
 
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
-def test_docker_stop_stubborn_agent_is_killed_and_still_runs_finalize(tmp_path: Path):
+@pytest.mark.parametrize("grace_s", _DOCKER_STOP_GRACES_S)
+def test_docker_stop_stubborn_agent_is_killed_and_still_runs_finalize(
+    tmp_path: Path, grace_s: int
+):
     """Agent ignores TERM outright. The wrapper must escalate to SIGKILL
-    itself (EXP-08 measured ~5.24s, half of docker's own 10s default grace)
-    rather than block forever on a naive second `wait` -- and finalize must
-    still run afterward.
+    itself -- strictly inside `grace_s`, including this repo's real `-t 5`
+    teardown value, not just the more forgiving `-t 10` -- rather than
+    block forever on a naive second `wait`. Finalize must still run
+    afterward.
     """
     spool = tmp_path / "spool"
     spool.mkdir()
     exit_code, elapsed, logs = _docker_stop_scenario(
         'trap "" TERM; while true; do :; done',
-        "wrapper-sigterm-stubborn-test",
+        f"wrapper-sigterm-stubborn-test-{grace_s}",
+        grace_s,
         env={
             "AGENTIC_CAPABILITIES": "session-store",
             "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
             "AGENTIC_SESSION_STORE_URL": STORE_URL,
             "AGENTIC_SESSION_STORE_SPOOL": "/spool",
-            "AGENTIC_SESSION_STORE_PARTITION": "docker-stop-stubborn",
+            "AGENTIC_SESSION_STORE_PARTITION": f"docker-stop-stubborn-{grace_s}",
         },
         extra_mounts=[
             f"{spool}:/spool",
@@ -817,9 +900,13 @@ def test_docker_stop_stubborn_agent_is_killed_and_still_runs_finalize(tmp_path: 
         add_host_gateway=True,
     )
     assert exit_code == 137, f"expected SIGKILL exit status; logs=\n{logs}"
-    # The wrapper's own escalation window is 5s (half of docker's 10s
-    # default stop grace, by design -- see entrypoint.sh section 6). It
-    # must fire before docker's own grace-timeout SIGKILL does, or finalize
-    # never gets its post-agent moment.
-    assert elapsed < 9, f"wrapper must self-escalate before docker's own grace expires, took {elapsed:.2f}s"
+    # The wrapper's own escalation window (__TERM_GRACE_TICKS = 1.5s) must
+    # fire with headroom to spare inside `grace_s`, or docker's own
+    # SIGKILL can land at the same instant as (or before) the wrapper's,
+    # and finalize never gets its post-agent moment. This is the exact
+    # coupling that broke when the window was sized against the wrong
+    # ("Docker's 10s default") reference instead of docker.py's real `-t 5`.
+    assert elapsed < grace_s, (
+        f"wrapper must self-escalate before docker's own grace expires, took {elapsed:.2f}s"
+    )
     assert "[finalize] session-store upload complete" in logs, logs
