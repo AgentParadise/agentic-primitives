@@ -63,7 +63,7 @@ $SPOOL/$PARTITION/
   claude/           <- CLAUDE_PROJECTS_ROOT, symlinked from ~/.claude/projects
   codex/             <- CODEX_SESSIONS_ROOT, symlinked from ~/.codex/sessions
   state.json         <- EXPORTER_STATE_FILE (exporter-owned, created on first sweep)
-  .capture-env       <- mode 600, present only when AGENTIC_SESSION_STORE_TAGS was set
+  .capture-env       <- mode 600, DATA not shell (see below), present only when AGENTIC_SESSION_STORE_TAGS was set
 ```
 
 Transcript roots live outside `$HOME` and are symlinked in, rather than
@@ -80,12 +80,40 @@ process) — so the recovered session uploads with no tags at all, the
 exact misattribution the partitioned spool exists to prevent.
 
 `init.sh` closes this gap by writing the opaque tag string to
-`$PART_DIR/.capture-env` (mode 600) whenever `AGENTIC_SESSION_STORE_TAGS`
-is set. Task 7's `finalize.sh` sources this file when
+`$PART_DIR/.capture-env` whenever `AGENTIC_SESSION_STORE_TAGS` is set:
+
+```
+SESSION_STORE_TAGS=<opaque tag string, exactly as received>
+```
+
+**`.capture-env` is DATA, never shell — it must be parsed, never
+`source`d / `.`d.** Tags originate from the orchestrator as an opaque
+string that can contain anything: spaces, `$(...)`, quotes. A consumer
+that sources this file executes that string as a child of a process that
+may have `SESSIONS_WRITE_TOKEN` in scope — arbitrary command execution at
+sweep time. The correct parse is line-oriented and quote-agnostic:
+
+```bash
+tags="$(cut -d= -f2- < "${PART_DIR}/.capture-env")"
+export SESSION_STORE_TAGS="${tags}"
+```
+
+`export` is required because the exporter runs as a **child process** of
+whatever reads this file; a shell variable alone (from either sourcing or
+a bare assignment) never reaches it.
+
+The file is created with `umask 077` (not a post-hoc `chmod`, which would
+leave a window where the file is briefly world-readable) so it lands at
+mode `600`. A stale `.capture-env` from a previous occupant of the same
+partition is removed unconditionally before either writing a new one or
+leaving the partition tag-free, so a reused partition never serves a
+previous run's tags.
+
+Task 7's `finalize.sh` parses this file (not sources it) when
 `SESSION_STORE_TAGS` is unset at sweep time, so a recovery sweep recovers
 the same tags the original capture had. This adapter assigns no meaning
 to the tag string in either direction — it only persists what it was
-given.
+given, verbatim.
 
 ### What this adapter deliberately does not do
 

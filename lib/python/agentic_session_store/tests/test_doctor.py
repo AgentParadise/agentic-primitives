@@ -83,6 +83,60 @@ def test_malformed_url_fails_only_that_check_and_still_emits_all_five(tmp_path, 
     assert by_name["spool_writable"]["passed"] is True
 
 
+def test_symlinks_correct_passes_when_each_link_targets_its_own_subdir(tmp_path, monkeypatch):
+    """~/.claude/projects and ~/.codex/sessions must resolve to their OWN
+    claude/ and codex/ subdirectories under the partition, matching the
+    layout the seshmagic adapter's init.sh actually creates. Needs no
+    store, no container.
+    """
+    partition_dir = tmp_path / "spool" / "w1" / "p2"
+    claude_dir = partition_dir / "claude"
+    codex_dir = partition_dir / "codex"
+    claude_dir.mkdir(parents=True)
+    codex_dir.mkdir(parents=True)
+
+    claude_link = tmp_path / "home" / ".claude" / "projects"
+    codex_link = tmp_path / "home" / ".codex" / "sessions"
+    claude_link.parent.mkdir(parents=True)
+    codex_link.parent.mkdir(parents=True)
+    claude_link.symlink_to(claude_dir)
+    codex_link.symlink_to(codex_dir)
+
+    monkeypatch.setattr(doctor_module, "CLAUDE_PROJECTS_DIR", str(claude_link))
+    monkeypatch.setattr(doctor_module, "CODEX_SESSIONS_DIR", str(codex_link))
+
+    result = doctor_module._symlinks_correct(
+        _contract(tmp_path / "spool", url="http://unreachable.invalid")
+    )
+    assert result.passed is True
+
+
+def test_symlinks_correct_fails_when_both_links_point_at_the_partition_root(tmp_path, monkeypatch):
+    """Regression test for the shipped defect: comparing both symlinks
+    against the SAME partition root (instead of each against its own
+    claude/ or codex/ subdirectory) can never fail even when the layout
+    is wrong in exactly this way. Both links resolving to the bare
+    partition directory (not a per-harness subdirectory) must FAIL.
+    """
+    partition_dir = tmp_path / "spool" / "w1" / "p2"
+    partition_dir.mkdir(parents=True)
+
+    claude_link = tmp_path / "home" / ".claude" / "projects"
+    codex_link = tmp_path / "home" / ".codex" / "sessions"
+    claude_link.parent.mkdir(parents=True)
+    codex_link.parent.mkdir(parents=True)
+    claude_link.symlink_to(partition_dir)
+    codex_link.symlink_to(partition_dir)
+
+    monkeypatch.setattr(doctor_module, "CLAUDE_PROJECTS_DIR", str(claude_link))
+    monkeypatch.setattr(doctor_module, "CODEX_SESSIONS_DIR", str(codex_link))
+
+    result = doctor_module._symlinks_correct(
+        _contract(tmp_path / "spool", url="http://unreachable.invalid")
+    )
+    assert result.passed is False
+
+
 def test_run_checks_converts_a_raising_check_into_a_failed_result(tmp_path, monkeypatch):
     """run_checks must never let an individual check's exception propagate."""
 

@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # SeshMagic provider-specific health check (ADR-038).
 #
-# Called by /opt/agentic/capabilities/session-store/doctor. Reports JSON to
-# stdout; exit 0 = pass, exit 1 = fail.
+# NOT wired into the automatic preflight. Unlike the memory capability's
+# ProviderSpecificCheck, agentic_session_store.doctor's check list (Task 3)
+# has no provider-specific hook, and this script is not invoked by
+# /opt/agentic/capabilities/session-store/doctor. It is a manual diagnostic
+# only — run it by hand (see the capability README's "Running the doctor
+# by hand" section) after sourcing the adapter's exported env. Reports
+# JSON to stdout; exit 0 = pass, exit 1 = fail.
 
 set -e
 
@@ -18,7 +23,7 @@ if [ ! -w "${STATE_DIR}" ]; then
     exit 1
 fi
 
-if [ -f "${STATE_FILE}" ] && ! python3 -c "import json,sys; json.load(open('${STATE_FILE}'))" 2>/dev/null; then
+if [ -f "${STATE_FILE}" ] && ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "${STATE_FILE}" 2>/dev/null; then
     printf '{"seshmagic_provider_check":"fail","details":{"error":"state file is not valid JSON","path":"%s"}}\n' "${STATE_FILE}"
     exit 1
 fi

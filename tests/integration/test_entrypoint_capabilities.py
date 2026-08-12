@@ -271,6 +271,57 @@ def test_adapter_translates_contract_and_creates_symlinks(tmp_path: Path):
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_symlink_replaces_preexisting_real_directory(tmp_path: Path):
+    """A persisted $HOME with ~/.claude/projects as a REAL directory (e.g.
+    Claude Code already ran there, or the volume survived a restart) must
+    not break the adapter.
+
+    Regression test for an IMPORTANT review finding: `ln -sfn` onto an
+    existing real directory nests the symlink inside it instead of
+    replacing it (~/.claude/projects/claude -> ...), and symlinks_correct
+    then hard-fails the workspace with a confusing error. Every other test
+    in this file uses the shared _run() helper's fresh --tmpfs HOME, which
+    never exercises this path — this test deliberately bind-mounts a
+    pre-populated $HOME instead, so it does not use _run().
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    home = tmp_path / "home"
+    (home / ".claude" / "projects").mkdir(parents=True)
+    (home / ".claude" / "projects" / "sentinel.txt").write_text("pre-existing real directory\n")
+    (home / ".codex" / "sessions").mkdir(parents=True)
+    # Docker Desktop's bind-mount layer does not reliably preserve host
+    # uid/gid semantics the way a native Linux bind mount would; open the
+    # perms up so the container's non-root agent user can rm/mkdir/symlink
+    # here regardless of host uid. The behavior under test is the adapter's
+    # own replace-don't-nest logic, not filesystem permission handling.
+    os.chmod(home, 0o777)
+    for p in home.rglob("*"):
+        os.chmod(p, 0o777)
+
+    stub = Path("tests/integration/fixtures/stub-exporter").resolve()
+    cmd = [
+        "docker", "run", "--rm",
+        "--add-host=host.docker.internal:host-gateway",
+        "-v", f"{home}:/home/agent",
+        "-v", f"{spool}:/spool",
+        "-v", f"{stub}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        "-e", "AGENTIC_CAPABILITIES=session-store",
+        "-e", "AGENTIC_SESSION_STORE_PROVIDER=seshmagic",
+        "-e", f"AGENTIC_SESSION_STORE_URL={STORE_URL}",
+        "-e", "AGENTIC_SESSION_STORE_SPOOL=/spool",
+        "-e", "AGENTIC_SESSION_STORE_PARTITION=w1/p2",
+        IMAGE,
+        "bash", "-c", "readlink -f ~/.claude/projects; readlink -f ~/.codex/sessions",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "/spool/w1/p2/claude" in result.stdout
+    assert "/spool/w1/p2/codex" in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
 def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
     """init.sh must persist tags to .capture-env (mode 600) for crash recovery.
 
@@ -312,8 +363,70 @@ def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
         add_host_gateway=True,
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    assert "600" in result.stdout.splitlines()[0]
+    # Equality, not substring: "600" in "1600" is also true, and would pass
+    # on a mode this check must reject.
+    assert result.stdout.splitlines()[0].strip() == "600"
     assert "SESSION_STORE_TAGS=workflow:w1,phase:p2" in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+@pytest.mark.parametrize(
+    "tags",
+    [
+        pytest.param("workflow:w1,phase:p2", id="plain"),
+        pytest.param("workflow:a b,phase:c", id="space"),
+        pytest.param("workflow:$(touch /tmp/PWNED),phase:c", id="command-substitution"),
+        pytest.param("workflow:it's,phase:c", id="single-quote"),
+    ],
+)
+def test_capture_env_round_trips_tags_safely(tmp_path: Path, tags: str):
+    """.capture-env must round-trip arbitrary opaque tag strings intact,
+    with no shell execution, per the README's parse contract.
+
+    Regression test for two Critical review findings:
+    - sourcing .capture-env was arbitrary command execution on any tag
+      string containing shell syntax, and silently truncated (and lost
+      attribution for) any tag containing a space;
+    - even sourced correctly, SESSION_STORE_TAGS was a bare shell
+      variable that a CHILD process (the exporter) would never see.
+
+    This exercises the documented safe consumer pattern directly (parse
+    with `cut`, then `export`) rather than sourcing, and asserts a child
+    process (not just the current shell) receives the exact original
+    string, and that a command-substitution payload never executes.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        [
+            "bash", "-c",
+            # The documented parse contract: cut, never source.
+            "export SESSION_STORE_TAGS=\"$(cut -d= -f2- < /spool/w1/p2/.capture-env)\"; "
+            # Assert a CHILD process sees it (C2) — not just this shell.
+            "sh -c 'printf \"CHILD_SAW=%s\\n\" \"$SESSION_STORE_TAGS\"'; "
+            "env | grep -q '^SESSION_STORE_TAGS=' && echo IN_CHILD_ENV=yes; "
+            "test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION",
+        ],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_TAGS": tags,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "w1/p2",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert f"CHILD_SAW={tags}" in result.stdout, result.stdout
+    assert "IN_CHILD_ENV=yes" in result.stdout
+    assert "NO_INJECTION" in result.stdout
+    assert "INJECTION_OCCURRED" not in result.stdout
 
 
 @pytest.mark.integration
