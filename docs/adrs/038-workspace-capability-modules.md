@@ -480,8 +480,12 @@ not belong in the image.
 ## Migration
 
 This branch moves interfaces that ADR-036 named, so the workspace image
-manifest goes **1.2.0 to 2.0.0**. Three breaking changes, in the order an
-operator will hit them:
+manifest goes **1.3.0 to 2.0.0**. Note for anyone tracing the version line:
+the last *released* version is 1.2.0. The intermediate 1.3.0 was set earlier
+on this same branch, during the capability-registry refactor, and never
+shipped. An operator upgrading is therefore coming from 1.2.0.
+
+Three breaking changes, in the order an operator will hit them:
 
 | # | Was | Is | What the operator must do |
 |---|---|---|---|

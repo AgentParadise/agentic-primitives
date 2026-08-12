@@ -302,7 +302,8 @@ silently disables it.
 
 Then bump `providers/workspaces/claude-cli/manifest.yaml`. A new capability
 is a minor bump. Moving or renaming an interface that an ADR names is a
-major bump, as the 1.2.0 to 2.0.0 move on this branch was.
+major bump, as the 1.3.0 to 2.0.0 move on this branch was (1.2.0 was the
+last released version; the intermediate 1.3.0 never shipped).
 
 ---
 
