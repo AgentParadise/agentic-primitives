@@ -79,20 +79,26 @@ def _spool_writable(contract: SessionStoreContract) -> CheckResult:
     return CheckResult(name="spool_writable", passed=True, detail=target)
 
 
-def _resolves_into_partition(link_path: str, partition_dir: str) -> tuple[bool, str]:
+def _resolves_to(link_path: str, expected_dir: str) -> tuple[bool, str]:
     if not os.path.exists(link_path):
         return False, f"{link_path} does not exist"
     resolved = os.path.realpath(link_path)
-    expected = os.path.realpath(partition_dir)
+    expected = os.path.realpath(expected_dir)
     if resolved != expected:
         return False, f"{link_path} resolves to {resolved}, expected {expected}"
     return True, f"{link_path} -> {resolved}"
 
 
 def _symlinks_correct(contract: SessionStoreContract) -> CheckResult:
+    # The adapter's spool layout (ADR-038) is $SPOOL/$PARTITION/{claude,codex}
+    # — two distinct subdirectories, not a single shared partition root. See
+    # the seshmagic adapter's init.sh, which symlinks each harness's
+    # transcript root to its own subdirectory.
     partition_dir = os.path.join(contract.spool, contract.partition)
-    claude_ok, claude_detail = _resolves_into_partition(CLAUDE_PROJECTS_DIR, partition_dir)
-    codex_ok, codex_detail = _resolves_into_partition(CODEX_SESSIONS_DIR, partition_dir)
+    claude_dir = os.path.join(partition_dir, "claude")
+    codex_dir = os.path.join(partition_dir, "codex")
+    claude_ok, claude_detail = _resolves_to(CLAUDE_PROJECTS_DIR, claude_dir)
+    codex_ok, codex_detail = _resolves_to(CODEX_SESSIONS_DIR, codex_dir)
     passed = claude_ok and codex_ok
     detail = f"claude: {claude_detail}; codex: {codex_detail}"
     return CheckResult(name="symlinks_correct", passed=passed, detail=detail)

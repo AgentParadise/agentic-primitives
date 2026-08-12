@@ -206,8 +206,32 @@ COPY plugins/ /opt/agentic/plugins/
 # entrypoint at first use; orchestrators bind-mount them for durable audit
 # logs.
 COPY capabilities/ /opt/agentic/capabilities/
+
+# Exporter provisioning contract (session-store capability):
+# This image deliberately does NOT ship SeshMagicSessionExporter. The
+# exporter is a reference client of the public APS-V1-0004 standard, not
+# part of the private store server — vendoring one vendor's binary into
+# this image would break the store being dependency-injected, and would
+# require build credentials a turnkey user of this image does not have.
+# The image defines the contract (see the session-store capability's
+# `doctor`, whose `exporter_present` check looks for the binary on PATH);
+# deployment supplies the binary via one of:
+#   1. Bind-mount at container start: -v <host-path>:/usr/local/bin/SeshMagicSessionExporter:ro
+#   2. A derived image that COPYs the binary in on top of this one.
+#   3. A base-layer install baked into a custom variant of this image.
+# When the exporter becomes public under AgentParadise, this block is
+# replaced by a `curl` fetch and nothing else about the contract changes.
 RUN mkdir -p /var/agentic \
     && chown -R agent:agent /var/agentic
+
+# session-store spool root (ADR-038 / agentic_session_store's DEFAULT_SPOOL).
+# The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;
+# that default must exist and be writable by the non-root agent user for
+# the capability to work without an operator explicitly bind-mounting
+# something at /spool. Same rationale as /workspace, /opt/agentic,
+# /var/agentic above.
+RUN mkdir -p /spool \
+    && chown -R agent:agent /spool
 
 # Set permissions on plugins, entrypoint, capability adapters, and workspace-shipped hooks.
 # Globbed rather than named individually so future entry scripts (e.g.

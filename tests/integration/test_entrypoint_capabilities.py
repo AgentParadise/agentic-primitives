@@ -10,23 +10,54 @@ See ADR-038 and docs/superpowers/sdd/2026-08-12-workspace-capability-modules/.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
+from pathlib import Path
 
 import pytest
 
 IMAGE = os.getenv("AGENTIC_WORKSPACE_IMAGE", "agentic-workspace-claude-cli:latest")
 
+# The seshmagic adapter tests need a reachable live store (the doctor's
+# store_reachable check hard-fails otherwise). STORE_URL is what the
+# CONTAINER uses (host.docker.internal); the _FROM_HOST variant is what
+# the test process itself uses to probe reachability before running any
+# container, mirroring test_entrypoint_memory.py's hindsight-reachable
+# pattern.
+STORE_URL = os.getenv("SESSION_STORE_URL", "http://host.docker.internal:18091")
+STORE_URL_FROM_HOST = os.getenv("SESSION_STORE_URL_FROM_HOST", "http://127.0.0.1:18091")
+
+
+def _store_reachable() -> bool:
+    """True if the live session-store's /healthz responds 200 from the host."""
+    try:
+        with urllib.request.urlopen(  # noqa: S310
+            f"{STORE_URL_FROM_HOST}/healthz",
+            timeout=2,
+        ) as resp:
+            return resp.status == 200
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
 
 def _run(
     args: list[str],
     env: dict[str, str] | None = None,
+    extra_mounts: list[str] | None = None,
+    add_host_gateway: bool = False,
 ) -> subprocess.CompletedProcess:
-    """Run the workspace image with tmpfs home and optional env."""
+    """Run the workspace image with tmpfs home, optional env / mounts."""
     cmd = [
         "docker", "run", "--rm",
         "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
     ]
+    if add_host_gateway:
+        cmd.extend(["--add-host=host.docker.internal:host-gateway"])
+    for m in extra_mounts or []:
+        cmd.extend(["-v", m])
     for k, v in (env or {}).items():
         cmd.extend(["-e", f"{k}={v}"])
     cmd.append(IMAGE)
@@ -115,3 +146,207 @@ def test_memory_still_works_at_new_path():
     )
     assert result.returncode != 0
     assert "should not reach here" not in result.stdout
+
+
+@pytest.mark.integration
+def test_exporter_absent_is_a_specific_doctor_failure():
+    """A missing exporter must fail exporter_present ONLY, with a clear detail.
+
+    AGENTIC_CAPABILITIES deliberately excludes "session-store" here. The
+    default registry includes it, and once a seshmagic adapter exists
+    (Task 6), setting AGENTIC_SESSION_STORE_PROVIDER makes the entrypoint's
+    own section 5.7 preflight run this exact doctor invocation BEFORE the
+    CMD below ever executes — and hard-exit on its failure, so the CMD
+    (and its stdout, which this test needs to inspect) would never run.
+    Excluding "session-store" from the registry skips that automatic
+    preflight while still letting the doctor binary read
+    AGENTIC_SESSION_STORE_* directly (the contract doesn't care whether its
+    capability is registered — only the entrypoint's loop does), so this
+    test's own CMD invocation is the only one and its JSON lands on stdout.
+    """
+    result = _run(
+        ["/opt/agentic/capabilities/session-store/doctor", "--json"],
+        env={
+            "AGENTIC_CAPABILITIES": "memory",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": "http://unreachable.invalid",
+        },
+    )
+    assert result.returncode == 1
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    checks = {c["name"]: c for c in payload["checks"]}
+    assert len(checks) == 5, "all five checks must run even when the binary is absent"
+    assert checks["exporter_present"]["passed"] is False
+    assert "SeshMagicSessionExporter" in checks["exporter_present"]["detail"]
+
+
+@pytest.mark.integration
+def test_mounted_exporter_satisfies_the_check(tmp_path: Path):
+    """A binary provided at deploy time satisfies exporter_present.
+
+    See test_exporter_absent_is_a_specific_doctor_failure for why
+    AGENTIC_CAPABILITIES excludes "session-store": store_reachable still
+    fails here (unreachable.invalid), so without this exclusion the
+    entrypoint's own 5.7 preflight would hard-exit before the CMD below
+    (whose stdout this test inspects) ever ran.
+    """
+    stub = Path("tests/integration/fixtures/stub-exporter").resolve()
+    result = _run(
+        ["/opt/agentic/capabilities/session-store/doctor", "--json"],
+        env={
+            "AGENTIC_CAPABILITIES": "memory",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": "http://unreachable.invalid",
+        },
+        extra_mounts=[f"{stub}:/usr/local/bin/SeshMagicSessionExporter:ro"],
+    )
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    checks = {c["name"]: c for c in payload["checks"]}
+    assert checks["exporter_present"]["passed"] is True
+
+
+# --- Task 6: the seshmagic adapter ------------------------------------------
+#
+# These tests need a reachable live store (the doctor's store_reachable
+# check hard-fails otherwise), so they skip cleanly when one isn't
+# available, exactly as test_entrypoint_memory.py skips on hindsight.
+
+# Set from the host shell to a real, cross-built Linux exporter binary to
+# exercise exporter_present with the real thing instead of the stub. Never
+# hardcode a path to it here — it lives outside this repo and is not
+# committed. Tests needing it skip cleanly when unset.
+EXPORTER_BINARY_FROM_HOST = os.getenv("SESSION_STORE_EXPORTER_BINARY_FROM_HOST", "")
+
+# Bearer token for the live store, read from the host shell's environment
+# only — never hardcoded, never logged, never written to a file by this
+# test. Tests needing it skip cleanly when unset.
+STORE_AUTH_TOKEN = os.getenv("SESSION_STORE_AUTH_TOKEN_FROM_HOST", "")
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_adapter_translates_contract_and_creates_symlinks(tmp_path: Path):
+    """Contract vars -> exporter env, and the ~/.claude|.codex symlinks land."""
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        [
+            "bash", "-c",
+            "echo CLAUDE_PROJECTS_ROOT=$CLAUDE_PROJECTS_ROOT; "
+            "echo CODEX_SESSIONS_ROOT=$CODEX_SESSIONS_ROOT; "
+            "echo EXPORTER_STATE_FILE=$EXPORTER_STATE_FILE; "
+            "echo SESSION_STORE_TAGS=$SESSION_STORE_TAGS; "
+            "echo ORIGIN_HOST_SET=${SESSION_STORE_ORIGIN_HOST:-unset}; "
+            "readlink -f ~/.claude/projects; "
+            "readlink -f ~/.codex/sessions",
+        ],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_TAGS": "workflow:w1,phase:p2",
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "w1/p2",
+        },
+        # session-store stays registered here (unlike the exporter tests
+        # above) because this test needs the adapter's init.sh (5.6) to
+        # actually run. That means the entrypoint's own 5.7 doctor
+        # preflight also runs and must fully pass or it hard-exits before
+        # CMD; mount the stub so exporter_present passes too.
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    out = result.stdout
+    assert "CLAUDE_PROJECTS_ROOT=/spool/w1/p2/claude" in out
+    assert "CODEX_SESSIONS_ROOT=/spool/w1/p2/codex" in out
+    assert "EXPORTER_STATE_FILE=/spool/w1/p2/state.json" in out
+    assert "SESSION_STORE_TAGS=workflow:w1,phase:p2" in out
+    assert "ORIGIN_HOST_SET=unset" in out, "origin_host must never be set by the adapter"
+    assert "/spool/w1/p2/claude" in out
+    assert "/spool/w1/p2/codex" in out
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
+    """init.sh must persist tags to .capture-env (mode 600) for crash recovery.
+
+    EXP-08 arm A5: a container SIGKILLed mid-capture leaves its partitioned
+    spool on disk, but the environment (and SESSION_STORE_TAGS with it) dies
+    with the process. A recovery sweep with no tags in its environment
+    uploads the session unattributable. This test verifies the adapter's
+    half of the fix: the opaque tag string lands next to the transcripts,
+    mode 600, so a later sweep (Task 7's finalize.sh) can recover it.
+
+    This does NOT exercise finalize.sh sourcing the file back in — that
+    mechanism does not exist yet (Task 7). It verifies the artifact Task 7
+    depends on is produced correctly.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        [
+            "bash", "-c",
+            "stat -c '%a' /spool/w1/p2/.capture-env; "
+            "cat /spool/w1/p2/.capture-env",
+        ],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_TAGS": "workflow:w1,phase:p2",
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "w1/p2",
+        },
+        # See test_adapter_translates_contract_and_creates_symlinks: the
+        # adapter (5.6) must actually run, which means 5.7's doctor
+        # preflight runs too and must fully pass (stub satisfies
+        # exporter_present) or CMD never executes.
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "600" in result.stdout.splitlines()[0]
+    assert "SESSION_STORE_TAGS=workflow:w1,phase:p2" in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+@pytest.mark.skipif(
+    not EXPORTER_BINARY_FROM_HOST or not os.path.isfile(EXPORTER_BINARY_FROM_HOST),
+    reason="SESSION_STORE_EXPORTER_BINARY_FROM_HOST not set to a real exporter binary",
+)
+@pytest.mark.skipif(not STORE_AUTH_TOKEN, reason="SESSION_STORE_AUTH_TOKEN_FROM_HOST not set")
+def test_full_doctor_passes_with_real_exporter_and_live_store(tmp_path: Path):
+    """End-to-end: real exporter binary + real reachable store + seshmagic
+    adapter -> every doctor check passes. No stub, no mock.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        ["/opt/agentic/capabilities/session-store/doctor", "--json"],
+        env={
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_AUTH": STORE_AUTH_TOKEN,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "e2e-test",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{EXPORTER_BINARY_FROM_HOST}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"doctor failed: {result.stdout} {result.stderr}"
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    checks = {c["name"]: c for c in payload["checks"]}
+    assert len(checks) == 5
+    for name, check in checks.items():
+        assert check["passed"] is True, f"{name} failed: {check['detail']}"
