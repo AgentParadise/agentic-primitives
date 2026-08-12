@@ -315,8 +315,49 @@ __capability_env_prefix() {
     printf 'AGENTIC_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"
 }
 
+# Capability *names* (registry entries in AGENTIC_CAPABILITIES) are a
+# narrower charset than provider names: lowercase letters, digits, hyphen.
+# __capability_provider_safe's charset (a-zA-Z0-9._-) is too wide here — a
+# name containing e.g. "." survives it, gets uppercased into a prefix like
+# "AGENTIC_A.B", and the eval'd `${AGENTIC_A.B_PROVIDER:-}` is a bash bad
+# substitution that kills the whole entrypoint under `set -e`. Reject
+# anything but the safe charset before a prefix is ever built.
+__capability_name_safe() {
+    case "$1" in
+        *[!a-z0-9-]*|"") return 1 ;;
+    esac
+    return 0
+}
+
+# Warn (do not fail) when a *_PROVIDER var is set for a capability that
+# isn't in AGENTIC_CAPABILITIES. Pre-refactor, setting AGENTIC_MEMORY_PROVIDER
+# alone was sufficient to activate memory; post-refactor it also requires
+# "memory" to be listed in the registry. A narrower AGENTIC_CAPABILITIES
+# (deliberate or accidental) now silently drops the capability with no
+# signal, which conflicts with "opting in is opting into loud failure" —
+# this is the one path where a misconfiguration produces no signal at all.
+# Not a hard fail: the operator may have disabled the capability on purpose.
+__registered_prefixes=""
 for __cap in ${AGENTIC_CAPABILITIES:-}; do
-    __capability_provider_safe "${__cap}" || continue
+    __capability_name_safe "${__cap}" || continue
+    __registered_prefixes="${__registered_prefixes} $(__capability_env_prefix "${__cap}")"
+done
+for __varname in $(compgen -v | grep -E '^AGENTIC_[A-Z0-9_]+_PROVIDER$' || true); do
+    __cand_prefix="${__varname%_PROVIDER}"
+    case " ${__registered_prefixes} " in
+        *" ${__cand_prefix} "*) ;;
+        *)
+            eval "__cand_value=\${${__varname}:-}"
+            if [ -n "${__cand_value}" ] && [ "${__cand_value}" != "none" ]; then
+                echo "[entrypoint] warning: ${__varname} is set but its capability is not in AGENTIC_CAPABILITIES (${AGENTIC_CAPABILITIES:-<empty>}); it will be ignored." >&2
+            fi
+            ;;
+    esac
+done
+unset __varname __cand_prefix __cand_value __registered_prefixes
+
+for __cap in ${AGENTIC_CAPABILITIES:-}; do
+    __capability_name_safe "${__cap}" || continue
     __prefix="$(__capability_env_prefix "${__cap}")"
     eval "__provider=\${${__prefix}_PROVIDER:-}"
     [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
@@ -351,7 +392,7 @@ done
 # loud failure, and failing here is free because no agent work has happened.
 
 for __cap in ${AGENTIC_CAPABILITIES:-}; do
-    __capability_provider_safe "${__cap}" || continue
+    __capability_name_safe "${__cap}" || continue
     __prefix="$(__capability_env_prefix "${__cap}")"
     eval "__provider=\${${__prefix}_PROVIDER:-}"
     [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue

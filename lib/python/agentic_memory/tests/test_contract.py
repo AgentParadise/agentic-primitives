@@ -183,7 +183,10 @@ class TestMemoryContractFromEnv:
 
 PKG = pathlib.Path(__file__).resolve().parent.parent
 _PREFIX = capability_env_name(CAPABILITY, "")
-LITERAL = re.compile(rf'"{re.escape(_PREFIX)}[A-Z_]+"')
+# Matches the name in either quote style ("..." or '...'), same quote on
+# both ends (backreference) — a single-quoted literal is just as much an
+# evasion of the enum as a double-quoted one.
+LITERAL = re.compile(rf'(["\']){re.escape(_PREFIX)}[A-Z_]+\1')
 
 
 def test_no_env_name_literals_outside_the_enum():

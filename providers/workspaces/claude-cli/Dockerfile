@@ -216,8 +216,7 @@ RUN chmod -R 755 /opt/agentic/plugins /opt/agentic/git-hooks \
     && find /opt/agentic/plugins -name "*.py" -exec chmod 755 {} \; \
     && find /opt/agentic -maxdepth 1 -name "*.sh" -exec chmod 755 {} \; \
     && find /opt/agentic/capabilities -mindepth 2 -maxdepth 2 -name "doctor" -exec chmod 755 {} \; \
-    && find /opt/agentic/capabilities -name "init.sh" -exec chmod 755 {} \; \
-    && find /opt/agentic/capabilities -name "doctor.sh" -exec chmod 755 {} \; \
+    && find /opt/agentic/capabilities -name "*.sh" -exec chmod 755 {} \; \
     && chown -R agent:agent /opt/agentic
 
 # Verify core installations (before security hardening)

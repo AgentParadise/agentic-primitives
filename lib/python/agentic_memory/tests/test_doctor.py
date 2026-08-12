@@ -32,13 +32,21 @@ from agentic_memory.doctor import (
 # --- contract fixtures --------------------------------------------------------
 
 
-def _contract(**overrides) -> MemoryContract:
+def _contract(overrides: dict[Env, str] | None = None) -> MemoryContract:
+    """Build a contract from a base env, overridden by `Env`-keyed entries.
+
+    Deliberately takes a dict (not **kwargs): a kwarg name is a bare Python
+    identifier, so `_contract({Env.NAMESPACE: ""})` would spell the
+    env var name as a literal outside `Env` — exactly what the literal
+    guard in test_contract.py exists to prevent, and kwarg syntax evades
+    its regex entirely. Callers pass `_contract({Env.NAMESPACE: ""})`.
+    """
     base = {
         Env.PROVIDER: "hindsight",
         Env.NAMESPACE: "task-abc",
         Env.URL: "http://nonexistent.invalid.example:9999",
     }
-    base.update({k: v for k, v in overrides.items()})
+    base.update(overrides or {})
     return MemoryContract.from_env(base)
 
 
@@ -51,12 +59,12 @@ class TestEnvContractCheck:
         assert r.status == CheckStatus.OK
 
     def test_fails_when_namespace_missing(self):
-        r = EnvContractCheck().run(_contract(AGENTIC_MEMORY_NAMESPACE=""))
+        r = EnvContractCheck().run(_contract({Env.NAMESPACE: ""}))
         assert r.status == CheckStatus.FAIL
         assert Env.NAMESPACE in r.details["missing"]
 
     def test_fails_when_url_missing(self):
-        r = EnvContractCheck().run(_contract(AGENTIC_MEMORY_URL=""))
+        r = EnvContractCheck().run(_contract({Env.URL: ""}))
         assert r.status == CheckStatus.FAIL
         assert Env.URL in r.details["missing"]
 
@@ -67,12 +75,12 @@ class TestNamespaceWellFormedCheck:
         assert r.status == CheckStatus.OK
 
     def test_fails_with_spaces(self):
-        r = NamespaceWellFormedCheck().run(_contract(AGENTIC_MEMORY_NAMESPACE="bad namespace"))
+        r = NamespaceWellFormedCheck().run(_contract({Env.NAMESPACE: "bad namespace"}))
         assert r.status == CheckStatus.FAIL
         assert r.details["suggested"] == "bad-namespace"
 
     def test_skips_when_empty(self):
-        r = NamespaceWellFormedCheck().run(_contract(AGENTIC_MEMORY_NAMESPACE=""))
+        r = NamespaceWellFormedCheck().run(_contract({Env.NAMESPACE: ""}))
         assert r.status == CheckStatus.SKIPPED
 
 
@@ -95,7 +103,7 @@ class TestProviderKnownCheck:
 
     def test_rejects_provider_path_traversal(self, tmp_path):
         r = ProviderKnownCheck(registry_root=str(tmp_path)).run(
-            _contract(AGENTIC_MEMORY_PROVIDER="../evil")
+            _contract({Env.PROVIDER: "../evil"})
         )
         assert r.status == CheckStatus.FAIL
         assert "provider name" in r.message
@@ -137,7 +145,7 @@ class TestAdapterExistsCheck:
             adapter.chmod(0o755)
 
             r = AdapterExistsCheck(registry_root=str(tmp_path)).run(
-                _contract(AGENTIC_MEMORY_PROVIDER="../evil")
+                _contract({Env.PROVIDER: "../evil"})
             )
             assert r.status == CheckStatus.FAIL
             assert "provider name" in r.message
@@ -152,16 +160,16 @@ class TestConfigJsonValidCheck:
         assert r.status == CheckStatus.SKIPPED
 
     def test_passes_on_valid_json_object(self):
-        r = ConfigJsonValidCheck().run(_contract(AGENTIC_MEMORY_CONFIG_JSON='{"key": "value"}'))
+        r = ConfigJsonValidCheck().run(_contract({Env.CONFIG_JSON: '{"key": "value"}'}))
         assert r.status == CheckStatus.OK
         assert r.details["keys"] == ["key"]
 
     def test_fails_on_invalid_json(self):
-        r = ConfigJsonValidCheck().run(_contract(AGENTIC_MEMORY_CONFIG_JSON="{not valid"))
+        r = ConfigJsonValidCheck().run(_contract({Env.CONFIG_JSON: "{not valid"}))
         assert r.status == CheckStatus.FAIL
 
     def test_fails_when_json_not_object(self):
-        r = ConfigJsonValidCheck().run(_contract(AGENTIC_MEMORY_CONFIG_JSON='[1, 2, 3]'))
+        r = ConfigJsonValidCheck().run(_contract({Env.CONFIG_JSON: '[1, 2, 3]'}))
         assert r.status == CheckStatus.FAIL
         assert "object" in r.message.lower()
 
@@ -173,7 +181,7 @@ class TestBackendDnsCheck:
         assert r.status == CheckStatus.FAIL
 
     def test_skips_when_url_missing(self):
-        r = BackendDnsCheck().run(_contract(AGENTIC_MEMORY_URL=""))
+        r = BackendDnsCheck().run(_contract({Env.URL: ""}))
         assert r.status == CheckStatus.SKIPPED
 
 
@@ -184,11 +192,11 @@ class TestBackendHealthCheck:
         assert r.status == CheckStatus.FAIL
 
     def test_skips_when_url_missing(self):
-        r = BackendHealthCheck().run(_contract(AGENTIC_MEMORY_URL=""))
+        r = BackendHealthCheck().run(_contract({Env.URL: ""}))
         assert r.status == CheckStatus.SKIPPED
 
     def test_rejects_non_http_url_before_opening(self):
-        r = BackendHealthCheck().run(_contract(AGENTIC_MEMORY_URL="file:///etc/passwd"))
+        r = BackendHealthCheck().run(_contract({Env.URL: "file:///etc/passwd"}))
         assert r.status == CheckStatus.FAIL
         assert "http or https" in r.message
 
@@ -230,7 +238,7 @@ class TestProviderSpecificCheck:
             script.chmod(0o755)
 
             r = ProviderSpecificCheck(registry_root=str(tmp_path)).run(
-                _contract(AGENTIC_MEMORY_PROVIDER="../evil")
+                _contract({Env.PROVIDER: "../evil"})
             )
             assert r.status == CheckStatus.FAIL
             assert "provider name" in r.message

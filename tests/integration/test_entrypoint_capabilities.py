@@ -61,6 +61,46 @@ def test_capability_provider_name_cannot_escape_capabilities_dir():
 
 
 @pytest.mark.integration
+def test_capability_name_with_invalid_characters_is_skipped_not_fatal():
+    """A malformed AGENTIC_CAPABILITIES entry (containing a dot) must be
+    skipped like an unregistered one, not crash the entrypoint.
+
+    __capability_provider_safe's charset (a-zA-Z0-9._-) is too wide for a
+    *capability name*: "a.b" survives it, gets uppercased into a prefix
+    like AGENTIC_A.B, and evaluating that as a shell parameter expansion is
+    a bash bad substitution that kills the whole entrypoint under `set -e`.
+    __capability_name_safe uses a narrower [a-z0-9-] charset to prevent this.
+    """
+    result = _run(
+        ["echo", "agent reached"],
+        env={"AGENTIC_CAPABILITIES": "memory a.b session-store"},
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "agent reached" in result.stdout
+    assert "bad substitution" not in result.stderr
+
+
+@pytest.mark.integration
+def test_provider_set_for_unregistered_capability_warns_but_does_not_fail():
+    """AGENTIC_MEMORY_PROVIDER set while AGENTIC_CAPABILITIES excludes
+    "memory" must not silently vanish with no signal at all — warn to
+    stderr. Not a hard fail: the operator may have deliberately narrowed
+    AGENTIC_CAPABILITIES and left a stale *_PROVIDER var set.
+    """
+    result = _run(
+        ["echo", "agent reached"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_MEMORY_PROVIDER": "hindsight",
+        },
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "agent reached" in result.stdout
+    assert "AGENTIC_MEMORY_PROVIDER" in result.stderr
+    assert "warning" in result.stderr.lower()
+
+
+@pytest.mark.integration
 def test_memory_still_works_at_new_path():
     """The migration must not change memory's observable behavior.
 
