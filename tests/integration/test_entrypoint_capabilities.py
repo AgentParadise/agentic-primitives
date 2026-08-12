@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -29,6 +30,21 @@ IMAGE = os.getenv("AGENTIC_WORKSPACE_IMAGE", "agentic-workspace-claude-cli:lates
 # pattern.
 STORE_URL = os.getenv("SESSION_STORE_URL", "http://host.docker.internal:18091")
 STORE_URL_FROM_HOST = os.getenv("SESSION_STORE_URL_FROM_HOST", "http://127.0.0.1:18091")
+
+# For the "provider set, finalize.sh missing" regression test, which needs a
+# capability whose provider adapter genuinely has no finalize.sh: memory's
+# hindsight adapter. Mirrors test_entrypoint_memory.py's own reachability
+# check.
+HINDSIGHT_BACKEND_URL = os.getenv("HINDSIGHT_BACKEND_URL_FROM_HOST", "http://127.0.0.1:9077")
+
+
+def _hindsight_reachable() -> bool:
+    """True if the hindsight backend's /health responds 200 from the host."""
+    try:
+        with urllib.request.urlopen(f"{HINDSIGHT_BACKEND_URL}/health", timeout=2) as resp:  # noqa: S310
+            return resp.status == 200
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
 
 
 def _store_reachable() -> bool:
@@ -463,3 +479,347 @@ def test_full_doctor_passes_with_real_exporter_and_live_store(tmp_path: Path):
     assert len(checks) == 5
     for name, check in checks.items():
         assert check["passed"] is True, f"{name} failed: {check['detail']}"
+
+
+# --- Task 7: the entrypoint wrapper + finalize hook --------------------------
+#
+# Section 6 is no longer a bare `exec "$@"`: it is a wrapper that runs the
+# agent, then runs each registered capability's finalize.sh, then exits with
+# the AGENT's own exit code (never finalize's). The session-store/seshmagic
+# tests below need session-store fully registered (provider + URL), which
+# means the entrypoint's own 5.7 doctor preflight runs too and must pass in
+# full (including store_reachable) before CMD ever executes -- same
+# constraint as the Task 6 tests above, so they skip the same way.
+
+_STUB_EXPORTER = Path("tests/integration/fixtures/stub-exporter").resolve()
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_finalize_never_changes_agent_exit_code(tmp_path: Path):
+    """A failing upload must not turn a successful phase into a failed one.
+
+    (Here the agent itself fails with 7; the point is that the wrapper's
+    post-agent finalize step must not stomp that 7 with its own status,
+    whatever the sweep does.)
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        ["bash", "-c", "exit 7"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "exit-code-test",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 7, "wrapper must propagate the agent's exit code"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_agent_success_exit_code_survives_finalize(tmp_path: Path):
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        ["bash", "-c", "echo done; exit 0"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "exit-zero-test",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0
+    assert "done" in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _hindsight_reachable(), reason="hindsight backend unreachable")
+def test_missing_finalize_is_silent_skip():
+    """The memory capability's hindsight adapter has no finalize.sh (only
+    seshmagic/session-store does). The wrapper's finalize loop must treat a
+    registered, doctor-passing capability with no finalize.sh as a silent
+    no-op, not an error -- and must still propagate the agent's exit code.
+    """
+    result = _run(
+        ["bash", "-c", "exit 5"],
+        env={
+            "AGENTIC_CAPABILITIES": "memory",
+            "AGENTIC_MEMORY_PROVIDER": "hindsight",
+            "AGENTIC_MEMORY_NAMESPACE": "finalize-skip-test",
+            "AGENTIC_MEMORY_URL": "http://host.docker.internal:9077",
+        },
+        add_host_gateway=True,
+    )
+    assert result.returncode == 5, f"container failed: {result.stderr}"
+
+
+@pytest.mark.integration
+def test_finalize_parses_capture_env_never_sources_it(tmp_path: Path):
+    """Regression test for the Task 5/6 review finding, now that a real
+    consumer of `.capture-env` (finalize.sh) exists to regress.
+
+    A tag value containing `$(touch /tmp/PWNED)`, a space, and a single
+    quote must:
+      - never execute (no /tmp/PWNED),
+      - round-trip byte-identical through finalize.sh's parse,
+      - be visible to a CHILD process finalize.sh spawns (the exporter),
+        not just finalize.sh's own shell.
+
+    This calls finalize.sh directly (not through the full capability
+    registration + doctor preflight) so it needs neither a reachable store
+    nor the real exporter: SESSION_STORE_URL only has to be non-empty (the
+    hook's early-exit guard), and the "exporter" here is a throwaway script
+    written at container-run time (not a repo file) whose only job is to
+    print the env var a real child process would see.
+    """
+    spool = tmp_path / "spool"
+    part_dir = spool / "recovery-test"
+    part_dir.mkdir(parents=True)
+    malicious_tag = "workflow:$(touch /tmp/PWNED) it's,phase:c"
+    capture_env = part_dir / ".capture-env"
+    capture_env.write_text(f"SESSION_STORE_TAGS={malicious_tag}\n")
+    os.chmod(capture_env, 0o600)
+
+    fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+    script = f"""
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+printf 'CHILD_SAW=%s\\n' "$SESSION_STORE_TAGS"
+exit 0
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export SESSION_STORE_URL=http://unused.invalid
+export EXPORTER_STATE_FILE=/spool/recovery-test/state.json
+unset SESSION_STORE_TAGS
+{fin}
+test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
+"""
+    result = _run(
+        ["bash", "-c", script],
+        extra_mounts=[f"{spool}:/spool"],
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert f"CHILD_SAW={malicious_tag}" in result.stdout, result.stdout
+    assert "NO_INJECTION" in result.stdout
+    assert "INJECTION_OCCURRED" not in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_finalize_prunes_partition_on_success(tmp_path: Path):
+    """On a successful sweep, finalize.sh must remove the partition
+    directory so a persistent spool volume doesn't grow one directory per
+    container run forever.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        ["bash", "-c", "exit 0"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "prune-test",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert not (spool / "prune-test").exists(), "successful sweep must prune its partition"
+
+
+@pytest.mark.integration
+def test_finalize_keeps_spool_on_upload_failure(tmp_path: Path):
+    """On a failed sweep, the spool must be left intact for a later
+    recovery sweep -- and the wrapper's own exit code must still be the
+    agent's, not finalize's.
+    """
+    spool = tmp_path / "spool"
+    part_dir = spool / "fail-test"
+    part_dir.mkdir(parents=True)
+    (part_dir / "state.json").write_text("{}")
+
+    fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+    script = f"""
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+exit 1
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export SESSION_STORE_URL=http://unused.invalid
+export EXPORTER_STATE_FILE=/spool/fail-test/state.json
+{fin}
+echo "FINALIZE_RC=$?"
+"""
+    result = _run(
+        ["bash", "-c", script],
+        extra_mounts=[f"{spool}:/spool"],
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert (part_dir / "state.json").exists(), "spool must be retained on upload failure"
+
+
+# --- Task 7: docker-stop signal behavior --------------------------------
+#
+# EXP-08 (a1-a2-wrapper-signal-matrix) measured that a naive single `wait`
+# loses the agent's real exit code, and a plain double `wait` burns the
+# entire stop grace and never runs finalize at all. These two tests exercise
+# the actual failure mode `docker stop` produces (SIGTERM, then SIGKILL
+# after a grace period) against both a cooperative agent (traps TERM, exits
+# with its own code) and a stubborn one (`trap "" TERM`, must be escalated
+# to SIGKILL). Both must still run finalize.
+
+# entrypoint.sh's own escalation window (__TERM_GRACE_TICKS) is sized as
+# half of *Docker's classic 10s default* stop grace -- that comment is the
+# design assumption the wrapper is built against, not a fact about any
+# particular daemon. This local daemon was measured (empirically, with a
+# plain busybox container ignoring SIGTERM) to default `docker stop` to
+# ~1s, far short of 10s -- which would SIGKILL the whole container before
+# the wrapper's own 5s escalation ever got a chance to run finalize. Pin
+# the grace explicitly so the test exercises the assumption the design
+# actually depends on, not whatever this daemon happens to be configured
+# with today.
+_DOCKER_STOP_GRACE_S = 10
+_DOCKER_STOP_TIMEOUT_S = _DOCKER_STOP_GRACE_S + 20
+
+
+def _docker_stop_scenario(
+    agent_script: str,
+    container_name: str,
+    env: dict[str, str] | None = None,
+    extra_mounts: list[str] | None = None,
+    add_host_gateway: bool = False,
+) -> tuple[int, float, str]:
+    """Start the workspace image detached running agent_script as CMD,
+    `docker stop` it, and return (exit_code, elapsed_seconds, combined logs).
+    """
+    subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+    run_cmd = [
+        "docker", "run", "-d", "--name", container_name,
+        "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
+    ]
+    if add_host_gateway:
+        run_cmd.append("--add-host=host.docker.internal:host-gateway")
+    for m in extra_mounts or []:
+        run_cmd.extend(["-v", m])
+    for k, v in (env or {}).items():
+        run_cmd.extend(["-e", f"{k}={v}"])
+    run_cmd.extend([IMAGE, "bash", "-c", agent_script])
+    try:
+        subprocess.run(run_cmd, check=True, capture_output=True, text=True, timeout=30)
+
+        # Give the entrypoint time to run sections 1-5.7 and reach CMD
+        # before stopping, so the signal actually lands on the agent
+        # process rather than mid-preflight.
+        time.sleep(1.5)
+
+        start = time.monotonic()
+        subprocess.run(
+            ["docker", "stop", "-t", str(_DOCKER_STOP_GRACE_S), container_name],
+            capture_output=True, text=True, timeout=_DOCKER_STOP_TIMEOUT_S,
+        )
+        elapsed = time.monotonic() - start
+
+        inspect = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.ExitCode}}", container_name],
+            capture_output=True, text=True, check=True,
+        )
+        exit_code = int(inspect.stdout.strip())
+        logs = subprocess.run(
+            ["docker", "logs", container_name], capture_output=True, text=True,
+        )
+        combined = logs.stdout + logs.stderr
+        return exit_code, elapsed, combined
+    finally:
+        subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_docker_stop_cooperative_agent_exits_with_own_code_and_runs_finalize(tmp_path: Path):
+    """Agent traps TERM and exits 3 promptly. The wrapper must NOT wait for
+    docker's own SIGKILL: it should return the agent's real exit code
+    quickly (EXP-08 measured ~0.32s), and finalize must still have run.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    exit_code, elapsed, logs = _docker_stop_scenario(
+        'trap "exit 3" TERM; while true; do :; done',
+        "wrapper-sigterm-cooperative-test",
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "docker-stop-cooperative",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert exit_code == 3, f"expected the agent's own exit code; logs=\n{logs}"
+    assert elapsed < 5, f"cooperative agent should not burn the grace window, took {elapsed:.2f}s"
+    assert "[finalize] session-store upload complete" in logs, logs
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_docker_stop_stubborn_agent_is_killed_and_still_runs_finalize(tmp_path: Path):
+    """Agent ignores TERM outright. The wrapper must escalate to SIGKILL
+    itself (EXP-08 measured ~5.24s, half of docker's own 10s default grace)
+    rather than block forever on a naive second `wait` -- and finalize must
+    still run afterward.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    exit_code, elapsed, logs = _docker_stop_scenario(
+        'trap "" TERM; while true; do :; done',
+        "wrapper-sigterm-stubborn-test",
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "docker-stop-stubborn",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert exit_code == 137, f"expected SIGKILL exit status; logs=\n{logs}"
+    # The wrapper's own escalation window is 5s (half of docker's 10s
+    # default stop grace, by design -- see entrypoint.sh section 6). It
+    # must fire before docker's own grace-timeout SIGKILL does, or finalize
+    # never gets its post-agent moment.
+    assert elapsed < 9, f"wrapper must self-escalate before docker's own grace expires, took {elapsed:.2f}s"
+    assert "[finalize] session-store upload complete" in logs, logs

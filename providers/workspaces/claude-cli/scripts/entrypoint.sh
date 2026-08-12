@@ -413,6 +413,54 @@ done
 # -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
-# Pass through to the original command (e.g., bash, claude, etc.)
+# Wrapper rather than exec, so capability finalize hooks get a post-agent
+# moment. The agent's exit code is preserved exactly; finalize cannot change
+# it. See ADR-038 and EXP-08 for why this is not `exec "$@"`.
 
-exec "$@"
+__run_finalizers() {
+    for __cap in ${AGENTIC_CAPABILITIES:-}; do
+        # __capability_name_safe (narrow [a-z0-9-] charset), not
+        # __capability_provider_safe: the latter's wider charset
+        # (a-zA-Z0-9._-) lets a name like "a.b" through, which then
+        # uppercases into an invalid prefix (AGENTIC_A.B) and blows up the
+        # eval below with a bash bad-substitution under `set -e` -- the
+        # exact bug 5.6/5.7 above guard against for the same loop variable.
+        __capability_name_safe "${__cap}" || continue
+        __prefix="$(__capability_env_prefix "${__cap}")"
+        eval "__provider=\${${__prefix}_PROVIDER:-}"
+        [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
+        __fin="/opt/agentic/capabilities/${__cap}/${__provider}/finalize.sh"
+        [ -f "${__fin}" ] || continue
+        "${__fin}" || true
+    done
+}
+
+readonly __TERM_GRACE_TICKS=50   # 50 x 0.1s = 5s, half of Docker's 10s default
+
+"$@" <&0 &
+__child=$!
+trap 'kill -TERM "${__child}" 2>/dev/null' TERM INT
+# `set -e` is in effect for this whole script (line 30). A bare
+# `wait "${__child}"; __rc=$?` is a classic set -e trap: if the child exits
+# non-zero, `wait`'s own non-zero status is a simple command not shielded by
+# `if`/`&&`/`||`, so the shell exits right there -- `__rc=$?` never runs and
+# finalize never fires. Guard both waits with `if` (exempt from -e) so a
+# failing/ signaled child is captured, not fatal to the wrapper itself.
+if wait "${__child}"; then __rc=0; else __rc=$?; fi
+
+# A trapped signal makes the first wait return >128. Do NOT simply wait
+# again: EXP-08 measured that a plain second wait blocks on a child that
+# has not died, burns the entire stop grace, gets SIGKILLed, and never
+# runs finalize at all. Bound the wait and escalate.
+if [ "${__rc}" -gt 128 ]; then
+    __n=0
+    while kill -0 "${__child}" 2>/dev/null && [ "${__n}" -lt "${__TERM_GRACE_TICKS}" ]; do
+        sleep 0.1
+        __n=$((__n + 1))
+    done
+    kill -0 "${__child}" 2>/dev/null && kill -KILL "${__child}" 2>/dev/null
+    if wait "${__child}" 2>/dev/null; then __rc=0; else __rc=$?; fi
+fi
+
+__run_finalizers
+exit "${__rc}"
