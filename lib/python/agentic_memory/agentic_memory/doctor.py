@@ -622,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         payload = {
             "doctor_version": "1.0",
+            "capability": CAPABILITY,
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "provider": contract.provider if contract else None,
             "namespace": contract.namespace if contract else None,

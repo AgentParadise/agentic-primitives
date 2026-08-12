@@ -5,10 +5,13 @@ stops the workspace (ADR-036: opting into a provider is opting into loud
 failure). It is also invocable on demand: `python -m
 agentic_session_store.doctor [--json]`.
 
-Output shape mirrors `agentic_memory.doctor` so both capabilities' audit
-logs parse identically: pretty summary to stderr, one JSON object to stdout
-in --json mode, exit 0 when every check passes (or the capability is not
-opted into), exit 1 otherwise.
+Output shape: pretty summary to stderr, one JSON object to stdout in
+--json mode, exit 0 when every check passes (or the capability is not
+opted into), exit 1 otherwise. This shape currently differs from
+`agentic_memory.doctor`'s JSON payload (memory predates this shape and
+has not been reconciled to it): the only field guaranteed common to
+both is `capability`, so an audit-log reader can attribute a record but
+must not assume a shared schema beyond that.
 
 Every env var name this module touches comes from `Env` in contract.py.
 Nothing here may spell one as a string literal.

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentic_memory.contract import Env, MemoryContract
+from agentic_memory.contract import CAPABILITY, Env, MemoryContract
 from agentic_memory.doctor import (
     AdapterExistsCheck,
     BackendDnsCheck,
@@ -290,6 +290,10 @@ class TestCli:
         assert payload["status"] == "fail"
         assert payload["exit_code"] == 1
         assert len(payload["checks"]) == 8
+        # capability attribution: with AGENTIC_CAPABILITY_AUDIT_DIR shared
+        # across capabilities, this is the only field that lets a reader
+        # attribute a record back to memory (see ADR-038 fix wave).
+        assert payload["capability"] == CAPABILITY == "memory"
         # Pretty output still on stderr
         assert "[memory-doctor]" in captured.err
 

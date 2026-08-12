@@ -130,12 +130,19 @@ Create `doctor.py` in the same package with a `main(argv)` that:
   object to **stdout**,
 - returns 0 when all checks pass, 1 otherwise.
 
-Match the existing payload shape exactly, so both capabilities' audit logs
-parse with one parser:
+Follow the `session-store` payload shape for new capabilities:
 
 ```json
 {"capability": "...", "passed": true, "checks": [{"name": "...", "passed": true, "detail": "..."}]}
 ```
+
+`memory` predates this shape (`doctor_version`, `timestamp`, `provider`,
+`namespace`, `status`, `checks: [{name, status, message, details,
+duration_ms}]`, `exit_code`) and has not been reconciled to it. That
+reconciliation is a deliberate follow-up, not something to replicate in a
+new capability. The only field guaranteed present in both today is
+`capability`, which is what lets a reader attribute a record in a shared
+audit directory; do not assume any further overlap.
 
 **A doctor must never crash.** `run_checks` wraps each check in an outer
 `try/except` that converts an unanticipated exception into a failed

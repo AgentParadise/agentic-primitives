@@ -1,5 +1,6 @@
 import pathlib
 import re
+import subprocess
 
 import pytest
 
@@ -21,6 +22,50 @@ def test_env_names_follow_the_adr_038_rule():
         assert member == capability_env_name(CAPABILITY, member.name), (
             f"{member.name} = {member!s} violates the AGENTIC_<CAP>_<FIELD> rule"
         )
+
+
+# --- ADR-038 shell/Python naming conformance ---------------------------------
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
+ENTRYPOINT_SH = (
+    REPO_ROOT / "providers" / "workspaces" / "claude-cli" / "scripts" / "entrypoint.sh"
+)
+_SHELL_FN = re.compile(r"__capability_env_prefix\(\)\s*\{.*?\n\}", re.DOTALL)
+
+
+def _shell_capability_env_name(capability: str, field: str) -> str:
+    """Run the *actual* `__capability_env_prefix` from entrypoint.sh in a
+    bash subprocess and combine it with `field`.
+
+    This is the conformance test ADR-038 and this module's docstring claim
+    exists: `__capability_env_prefix` (shell) and `capability_env_name()`
+    (Python) are two implementations of one naming rule, and this pins them
+    together instead of re-deriving the shell logic in Python, which would
+    only test Python against itself.
+    """
+    source = ENTRYPOINT_SH.read_text()
+    match = _SHELL_FN.search(source)
+    assert match, f"__capability_env_prefix() not found in {ENTRYPOINT_SH}"
+    script = f"{match.group(0)}\n__capability_env_prefix \"$1\"\n"
+    result = subprocess.run(
+        ["bash", "-c", script, "bash", capability],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return f"{result.stdout.strip()}_{field}"
+
+
+@pytest.mark.parametrize("capability", ["memory", "session-store", "multi-hyphen-cap-name"])
+def test_shell_and_python_env_naming_agree(capability):
+    """ADR-038's `AGENTIC_<CAP>_<FIELD>` rule has two implementations:
+    `__capability_env_prefix` in entrypoint.sh and `capability_env_name()`
+    here. They must produce identical names or a capability's doctor
+    or init.sh silently reads the wrong variable.
+    """
+    assert _shell_capability_env_name(capability, "PROVIDER") == capability_env_name(
+        capability, "PROVIDER"
+    )
 
 
 def test_absent_provider_returns_none():

@@ -94,7 +94,7 @@ may have `SESSIONS_WRITE_TOKEN` in scope — arbitrary command execution at
 sweep time. The correct parse is line-oriented and quote-agnostic:
 
 ```bash
-tags="$(cut -d= -f2- < "${PART_DIR}/.capture-env")"
+tags="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${PART_DIR}/.capture-env" | head -1)"
 export SESSION_STORE_TAGS="${tags}"
 ```
 

@@ -454,9 +454,12 @@ not belong in the image.
 - **Re-sweeping is safe.** The store dedups on `content_hash`, so a
   recovery sweep of an already-uploaded partition is a no-op through both
   the fingerprint gate and the content-hash gate (EXP-08 arm A6).
-- **The doctor pattern generalizes.** Both capabilities emit the same JSON
-  shape into the same audit directory, so one log parser covers all of
-  them.
+- **The doctor pattern generalizes.** Both capabilities emit JSON into the
+  same audit directory with the `capability` field in common, so a reader
+  can attribute every record. The two payload shapes otherwise still
+  differ: memory predates the `capability`/`passed`/`checks` shape
+  session-store established and has not been reconciled to it; see
+  [docs/workspace-capabilities.md](../workspace-capabilities.md).
 
 ### Negative Consequences
 
