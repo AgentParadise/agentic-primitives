@@ -35,12 +35,20 @@ fi
 # writes the string down.
 #
 # .capture-env is DATA, never shell. Tags are opaque orchestrator input that
-# can contain anything (spaces, $(...), quotes) — a consumer that `source`s
-# this file executes that input as a child of a process that may have
-# SESSIONS_WRITE_TOKEN in scope. Consumers MUST parse the line (e.g.
-# `cut -d= -f2-` on the SESSION_STORE_TAGS= line) and `export` the result
-# themselves; they must never `.`/`source` this file. See this directory's
-# README for the parse contract.
+# can contain anything (spaces, $(...), quotes, newlines) - a consumer that
+# `source`s this file executes that input as a child of a process that may
+# have SESSIONS_WRITE_TOKEN in scope. Consumers MUST parse the line and
+# `export` the result themselves; they must never `.`/`source` this file. See
+# this directory's README for the parse contract.
+#
+# The value is base64-encoded. The record is line-oriented and the tag string
+# is opaque, so a tag containing a NEWLINE (e.g. a multi-line
+# "workflow:w1\nphase:p2") was silently truncated at the first line by any
+# read-one-line consumer, losing exactly the attribution this file exists to
+# preserve. base64 makes the encoded value a single line of [A-Za-z0-9+/=]
+# by construction, so the record stays line-oriented and the parse stays
+# trivial, and it cannot reintroduce shell interpretation: there is no
+# character in the base64 alphabet that means anything to a shell.
 # --- Record that WE created this partition directory --------------------------
 # finalize.sh deletes the partition after a successful upload, and this marker
 # is the only evidence it has that the directory is ours to delete. It is
@@ -84,7 +92,11 @@ if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
     # file is created world-readable before the permission fix lands.
     (
         umask 077
-        printf 'SESSION_STORE_TAGS=%s\n' "${AGENTIC_SESSION_STORE_TAGS}" \
+        # `printf '%s'` (no trailing newline) so the encoded bytes are exactly
+        # the tag string, and `tr -d '\n'` because GNU base64 wraps its output
+        # at 76 columns, which would put the record back on multiple lines.
+        printf 'SESSION_STORE_TAGS_B64=%s\n' \
+            "$(printf '%s' "${AGENTIC_SESSION_STORE_TAGS}" | base64 | tr -d '\n')" \
             > "${PART_DIR}/.capture-env"
     )
 fi

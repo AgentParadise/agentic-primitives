@@ -212,6 +212,30 @@ def run_checks(contract: SessionStoreContract) -> list[CheckResult]:
     return results
 
 
+CONTRACT_FAILURE_DETAIL = "not run: the contract did not parse"
+"""Detail recorded for the four checks a malformed contract never reaches."""
+
+
+def _contract_failure_results(message: str) -> list[CheckResult]:
+    """Build the full result list for a contract that would not parse.
+
+    The list is the SAME length and order as a normal run: contract_parses
+    carries the parser's own message, and the other four are reported as
+    failed-but-not-run rather than omitted. An audit-log reader then parses
+    one schema instead of two, and `passed: false` on a check that never
+    executed is honest -- nothing about the spool, symlinks, exporter, or
+    store was verified.
+    """
+    return [
+        CheckResult(
+            name=name,
+            passed=False,
+            detail=message if name == "contract_parses" else CONTRACT_FAILURE_DETAIL,
+        )
+        for name, _ in CHECKS
+    ]
+
+
 def _format_pretty(contract: SessionStoreContract | None, results: list[CheckResult]) -> str:
     if contract is None:
         return f"[{CAPABILITY}-doctor] {Env.PROVIDER} unset — not opted in. No checks run.\n"
@@ -222,7 +246,12 @@ def _format_pretty(contract: SessionStoreContract | None, results: list[CheckRes
     lines.append(f"  url:       {contract.url}")
     lines.append(f"  partition: {contract.partition}")
     lines.append("")
-    lines.append(f"  Checks ({len(results)}):")
+    lines.extend(_format_check_lines(results))
+    return "\n".join(lines) + "\n"
+
+
+def _format_check_lines(results: list[CheckResult]) -> list[str]:
+    lines = [f"  Checks ({len(results)}):"]
     for r in results:
         marker = "  OK" if r.passed else "FAIL"
         lines.append(f"    [{marker}] {r.name:<20} {r.detail}")
@@ -232,31 +261,31 @@ def _format_pretty(contract: SessionStoreContract | None, results: list[CheckRes
         lines.append("  All checks passed.")
     else:
         lines.append(f"  {fail_count} check(s) failed.")
+    return lines
+
+
+def _format_contract_failure(message: str, results: list[CheckResult]) -> str:
+    lines = [
+        f"[{CAPABILITY}-doctor] Session-store contract did NOT parse",
+        f"  {message}",
+        "",
+    ]
+    lines.extend(_format_check_lines(results))
     return "\n".join(lines) + "\n"
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(
-        prog="agentic-session-store-doctor",
-        description="Validate the workspace's session-store contract.",
-    )
-    p.add_argument("--json", action="store_true", help="JSON to stdout (pretty stays on stderr)")
-    args = p.parse_args(argv)
+def _emit(results: list[CheckResult], pretty: str, as_json: bool) -> int:
+    """Write the pretty summary to stderr, the JSON object to stdout, return the code.
 
-    contract = SessionStoreContract.from_env(os.environ)
-
-    if contract is None:
-        # Not opted into; doctor is a no-op. Print nothing, exit 0.
-        return 0
-
-    results = run_checks(contract)
+    Single exit path for every outcome that ran at all, so a malformed
+    contract and a failed check produce byte-compatible JSON shapes.
+    """
     passed = all(r.passed for r in results)
-    exit_code = 0 if passed else 1
 
-    sys.stderr.write(_format_pretty(contract, results))
+    sys.stderr.write(pretty)
     sys.stderr.flush()
 
-    if args.json:
+    if as_json:
         payload = {
             "capability": CAPABILITY,
             "passed": passed,
@@ -267,7 +296,49 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(json.dumps(payload) + "\n")
         sys.stdout.flush()
 
-    return exit_code
+    return 0 if passed else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(
+        prog="agentic-session-store-doctor",
+        description="Validate the workspace's session-store contract.",
+    )
+    p.add_argument("--json", action="store_true", help="JSON to stdout (pretty stays on stderr)")
+    args = p.parse_args(argv)
+
+    # A MALFORMED CONTRACT IS A DOCTOR RESULT, NOT A CRASH.
+    #
+    # entrypoint.sh 5.7 runs this with --json and appends stdout to an audit
+    # log. An uncaught exception prints a traceback to stderr and writes ZERO
+    # bytes to that log, which is indistinguishable from "the doctor never
+    # ran" -- the one thing a preflight tool must never be ambiguous about.
+    #
+    # ValueError is the complete set, verified by reading contract.py rather
+    # than assumed: every failure path in `from_env` is an explicit `raise
+    # ValueError` (bad provider name, missing URL, bad spool, missing or bad
+    # partition), and the only other operations it performs are `Mapping.get`
+    # with `Env` keys, `str.strip`, `str.split`, and a match against a
+    # precompiled pattern, none of which raise on a `str` value out of
+    # `os.environ`. So this deliberately does NOT catch bare `Exception` the
+    # way run_checks does: any other exception type escaping from_env is a
+    # bug in this package, and swallowing it into a tidy JSON object would
+    # hide it. Loud is correct there; this handler covers the configuration
+    # errors that are the operator's to fix.
+    try:
+        contract = SessionStoreContract.from_env(os.environ)
+    except ValueError as e:
+        message = str(e)
+        results = _contract_failure_results(message)
+        return _emit(results, _format_contract_failure(message, results), args.json)
+
+    if contract is None:
+        # Not opted into; doctor is a no-op. Print nothing, exit 0. There is
+        # nothing to audit: the workspace did not ask for this capability.
+        return 0
+
+    results = run_checks(contract)
+    return _emit(results, _format_pretty(contract, results), args.json)
 
 
 if __name__ == "__main__":  # pragma: no cover

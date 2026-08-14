@@ -137,6 +137,83 @@ def test_symlinks_correct_fails_when_both_links_point_at_the_partition_root(tmp_
     assert result.passed is False
 
 
+def _doctor_json(monkeypatch, **env):
+    """Run the doctor as a subprocess with `env` applied, return (proc, payload).
+
+    payload is None when stdout held no JSON, which is itself the defect
+    these tests exist to catch.
+    """
+    for name, value in env.items():
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    proc = subprocess.run(
+        [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
+        capture_output=True, text=True,
+    )
+    payload = json.loads(proc.stdout.strip().splitlines()[-1]) if proc.stdout.strip() else None
+    return proc, payload
+
+
+def _assert_contract_failure(proc, payload, expected_in_detail):
+    """Every malformed-contract case must produce the SAME structured shape.
+
+    The audit log at entrypoint.sh 5.7 appends this object; a traceback and
+    an empty file are indistinguishable from "the doctor never ran".
+    """
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr, proc.stderr
+    assert payload is not None, f"no JSON on stdout; stderr was:\n{proc.stderr}"
+    assert payload["capability"] == CAPABILITY
+    assert payload["passed"] is False
+    checks = {c["name"]: c for c in payload["checks"]}
+    assert checks["contract_parses"]["passed"] is False
+    assert expected_in_detail in checks["contract_parses"]["detail"]
+    # Same shape as a normal run: an audit reader parses one schema, not two.
+    assert len(payload["checks"]) == 5
+
+
+def test_missing_url_emits_json_and_exits_1(tmp_path, monkeypatch):
+    """A raising contract must become a failed structured result, not a traceback."""
+    proc, payload = _doctor_json(
+        monkeypatch,
+        **{
+            Env.PROVIDER: "seshmagic",
+            Env.URL: None,  # required, so from_env raises
+            Env.SPOOL: str(tmp_path),
+            Env.PARTITION: "w1/p2",
+        },
+    )
+    _assert_contract_failure(proc, payload, Env.URL)
+
+
+def test_invalid_partition_emits_json_and_exits_1(tmp_path, monkeypatch):
+    proc, payload = _doctor_json(
+        monkeypatch,
+        **{
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "http://unreachable.invalid",
+            Env.SPOOL: str(tmp_path),
+            Env.PARTITION: "../escape",
+        },
+    )
+    _assert_contract_failure(proc, payload, "partition")
+
+
+def test_invalid_spool_emits_json_and_exits_1(monkeypatch):
+    proc, payload = _doctor_json(
+        monkeypatch,
+        **{
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "http://unreachable.invalid",
+            Env.SPOOL: "not/an/absolute/path",
+            Env.PARTITION: "w1/p2",
+        },
+    )
+    _assert_contract_failure(proc, payload, "spool")
+
+
 def test_run_checks_converts_a_raising_check_into_a_failed_result(tmp_path, monkeypatch):
     """run_checks must never let an individual check's exception propagate."""
 

@@ -119,27 +119,64 @@ process) — so the recovered session uploads with no tags at all, the
 exact misattribution the partitioned spool exists to prevent.
 
 `init.sh` closes this gap by writing the opaque tag string to
-`$PART_DIR/.capture-env` whenever `AGENTIC_SESSION_STORE_TAGS` is set:
+`$PART_DIR/.capture-env` whenever `AGENTIC_SESSION_STORE_TAGS` is set.
+The file holds exactly one record, and the value is base64-encoded:
 
 ```
-SESSION_STORE_TAGS=<opaque tag string, exactly as received>
+SESSION_STORE_TAGS_B64=<base64 of the opaque tag string, exactly as received>
 ```
+
+Base64 is what makes a tag containing a **newline** survive. The record is
+line-oriented and the tag string is opaque, so before this a tag of
+`workflow:w1\nphase:p2` was written raw, read one line back, and silently
+truncated to `workflow:w1`, losing the attribution this file exists to
+preserve, with no error anywhere. The encoded value is a single line of
+`[A-Za-z0-9+/=]` by construction, so the record stays line-oriented and the
+parse stays trivial. It also cannot reintroduce shell interpretation: no
+character in the base64 alphabet means anything to a shell.
 
 **`.capture-env` is DATA, never shell — it must be parsed, never
 `source`d / `.`d.** Tags originate from the orchestrator as an opaque
-string that can contain anything: spaces, `$(...)`, quotes. A consumer
-that sources this file executes that string as a child of a process that
-may have `SESSIONS_WRITE_TOKEN` in scope — arbitrary command execution at
-sweep time. The correct parse is line-oriented and quote-agnostic:
+string that can contain anything: spaces, `$(...)`, quotes, newlines. A
+consumer that sources this file executes that string as a child of a
+process that may have `SESSIONS_WRITE_TOKEN` in scope: arbitrary command
+execution at sweep time, confirmed by reproduction, not theorized. The
+base64 encoding is a truncation fix and is **not** the thing that makes
+this safe; parsing instead of sourcing is. The correct parse:
 
 ```bash
-tags="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${PART_DIR}/.capture-env" | head -1)"
+tags="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${PART_DIR}/.capture-env" \
+    | head -1 | base64 -d)"
 export SESSION_STORE_TAGS="${tags}"
 ```
 
 `export` is required because the exporter runs as a **child process** of
 whatever reads this file; a shell variable alone (from either sourcing or
 a bare assignment) never reaches it.
+
+The snippet above loses a tag's *trailing* newlines, because `$(...)`
+strips them. `finalize.sh` therefore uses the byte-exact form instead,
+which reads to a NUL delimiter (a value out of the environment can never
+contain one):
+
+```bash
+IFS= read -r -d '' SESSION_STORE_TAGS < <(printf '%s' "${b64}" | base64 -d) || true
+export SESSION_STORE_TAGS
+```
+
+`read` returns non-zero at EOF without finding the delimiter and still
+assigns, which is why the `|| true` is correct rather than a swallowed
+error. It needs `bash`; the `$(...)` form above is the portable
+approximation.
+
+**Legacy records.** `finalize.sh` falls back to a bare
+`SESSION_STORE_TAGS=<value>` line when no `_B64` record is present. The
+spool volume outlives the image, so a partition written by an older
+`init.sh` and left behind by a `SIGKILL`ed container can be swept by a
+newer `finalize.sh`; without the fallback those sessions would upload
+unattributed, which is the exact failure this file exists to prevent. The
+fallback is the same parse-never-source read as before and carries the
+same truncation limitation. Nothing writes that form any more.
 
 The file is created with `umask 077` (not a post-hoc `chmod`, which would
 leave a window where the file is briefly world-readable) so it lands at
@@ -148,11 +185,11 @@ partition is removed unconditionally before either writing a new one or
 leaving the partition tag-free, so a reused partition never serves a
 previous run's tags.
 
-Task 7's `finalize.sh` parses this file (not sources it) when
+`finalize.sh` parses this file (never sources it) when
 `SESSION_STORE_TAGS` is unset at sweep time, so a recovery sweep recovers
-the same tags the original capture had. This adapter assigns no meaning
-to the tag string in either direction — it only persists what it was
-given, verbatim.
+the same tags the original capture had, byte for byte. This adapter
+assigns no meaning to the tag string in either direction; it only
+persists what it was given, verbatim.
 
 ### What this adapter deliberately does not do
 

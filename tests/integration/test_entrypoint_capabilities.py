@@ -532,7 +532,12 @@ def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
         [
             "bash", "-c",
             "stat -c '%a' /spool/w1/p2/.capture-env; "
-            "cat /spool/w1/p2/.capture-env",
+            "cat /spool/w1/p2/.capture-env; "
+            # Decode separately so a failure distinguishes "wrong record
+            # name" from "right record, wrong bytes".
+            "printf 'DECODED=%s\\n' "
+            "\"$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' /spool/w1/p2/.capture-env "
+            "| head -1 | base64 -d)\"",
         ],
         env={
             "AGENTIC_CAPABILITIES": "session-store",
@@ -556,7 +561,12 @@ def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
     # Equality, not substring: "600" in "1600" is also true, and would pass
     # on a mode this check must reject.
     assert result.stdout.splitlines()[0].strip() == "600"
-    assert "SESSION_STORE_TAGS=workflow:w1,phase:p2" in result.stdout
+    # The value is base64-encoded (so a tag containing a newline survives a
+    # line-oriented record). Assert the shipped record name, that the raw
+    # file does NOT carry the plaintext, and that it decodes back.
+    assert "SESSION_STORE_TAGS_B64=" in result.stdout
+    assert "SESSION_STORE_TAGS=workflow:w1,phase:p2" not in result.stdout
+    assert "DECODED=workflow:w1,phase:p2" in result.stdout
 
 
 @pytest.mark.integration
@@ -582,17 +592,20 @@ def test_capture_env_round_trips_tags_safely(tmp_path: Path, tags: str):
       variable that a CHILD process (the exporter) would never see.
 
     This exercises the documented safe consumer pattern directly (parse
-    with `cut`, then `export`) rather than sourcing, and asserts a child
-    process (not just the current shell) receives the exact original
-    string, and that a command-substitution payload never executes.
+    the record, base64-decode, then `export`) rather than sourcing, and
+    asserts a child process (not just the current shell) receives the
+    exact original string, and that a command-substitution payload never
+    executes.
     """
     spool = tmp_path / "spool"
     spool.mkdir()
     result = _run(
         [
             "bash", "-c",
-            # The documented parse contract: cut, never source.
-            "export SESSION_STORE_TAGS=\"$(cut -d= -f2- < /spool/w1/p2/.capture-env)\"; "
+            # The documented parse contract: sed the record, base64 -d,
+            # export. Never source.
+            "export SESSION_STORE_TAGS=\"$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "
+            "/spool/w1/p2/.capture-env | head -1 | base64 -d)\"; "
             # Assert a CHILD process sees it (C2) — not just this shell.
             "sh -c 'printf \"CHILD_SAW=%s\\n\" \"$SESSION_STORE_TAGS\"'; "
             "env | grep -q '^SESSION_STORE_TAGS=' && echo IN_CHILD_ENV=yes; "
@@ -825,6 +838,80 @@ test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
     assert match.group(1) == malicious_tag, (
         f"tag corrupted in round-trip: got {match.group(1)!r}, want {malicious_tag!r}"
     )
+    assert "NO_INJECTION" in result.stdout
+    assert "INJECTION_OCCURRED" not in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_capture_env_round_trips_a_newline_tag(tmp_path: Path):
+    """Tags are opaque. A newline must survive the write/read round trip.
+
+    `.capture-env` is a line-oriented record and the recovery parse read one
+    line back, so a tag of "workflow:w1\\nphase:p2" was silently truncated to
+    "workflow:w1" -- attribution lost with no error anywhere. base64 is the
+    fix: the encoded value is a single line by construction.
+
+    This drives BOTH halves through the shipped code, which is the point --
+    init.sh does the real write (via the entrypoint's 5.6 adapter sourcing,
+    so the doctor preflight must pass, hence the stub exporter and the live
+    store), and finalize.sh does the real recovery read. Nothing here
+    re-implements the parse.
+
+    The recovered value is read by a CHILD process finalize.sh spawns (the
+    fake exporter), not by the shell that recovered it: an `export` that
+    never reaches the exporter is the failure mode this capability already
+    shipped once.
+    """
+    nasty = "workflow:w1\nphase:p2 with space\tand-tab\nquote:it's,subst:$(touch /tmp/PWNED)"
+
+    spool = tmp_path / "spool"
+    spool.mkdir()
+
+    # Runs as CMD, i.e. after 5.6 sourced init.sh (which wrote .capture-env
+    # from the env) and after 5.7's doctor passed. EXPORTER_STATE_FILE is
+    # already exported by the adapter, so unsetting SESSION_STORE_TAGS is
+    # enough to put finalize.sh on its recovery path -- the same shape as a
+    # sweep of a partition left behind by a SIGKILLed container.
+    script = """
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+printf 'ROUNDTRIP_START%sROUNDTRIP_END\\n' "$SESSION_STORE_TAGS"
+exit 0
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+unset SESSION_STORE_TAGS
+/opt/agentic/capabilities/session-store/seshmagic/finalize.sh
+test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
+"""
+    result = _run(
+        ["bash", "-c", script],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_TAGS": nasty,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "nl/test",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    # finalize.sh routes the exporter's stdout to its own stderr on purpose.
+    match = re.search(r"ROUNDTRIP_START(.*?)ROUNDTRIP_END", result.stderr, re.DOTALL)
+    assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert match.group(1) == nasty, (
+        f"tags did not round-trip: got {match.group(1)!r}, want {nasty!r}"
+    )
+    # base64 must not have become a way back in: the payload above carries a
+    # command substitution too, and it must still be inert.
     assert "NO_INJECTION" in result.stdout
     assert "INJECTION_OCCURRED" not in result.stdout
 

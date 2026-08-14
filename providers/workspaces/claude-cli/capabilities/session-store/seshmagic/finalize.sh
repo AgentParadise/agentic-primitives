@@ -41,7 +41,36 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
         # `workflow:$(touch /tmp/PWNED)` executed on source, and any tag
         # containing a space silently truncated the value to empty --
         # destroying the very attribution this file exists to preserve.
-        SESSION_STORE_TAGS="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${__capture_env}" | head -1)"
+        #
+        # The current record is SESSION_STORE_TAGS_B64=<base64>. base64 is
+        # what lets an opaque tag containing a NEWLINE survive a
+        # line-oriented file; before it, a multi-line tag was truncated at
+        # the first line. Decoding cannot reintroduce shell interpretation:
+        # the decoded bytes are only ever assigned to a variable, never
+        # evaluated.
+        #
+        # `read -r -d ''` rather than `$(base64 -d)`: command substitution
+        # strips ALL trailing newlines, so a tag that legitimately ends in
+        # one would not round-trip byte-exact. Reading to a NUL delimiter
+        # (which a value out of the environment can never contain) keeps
+        # every byte. read returns non-zero at EOF without finding the
+        # delimiter and still assigns, which is why the `|| true` is correct
+        # and not a swallowed error.
+        __tags_b64="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${__capture_env}" | head -1)"
+        if [ -n "${__tags_b64}" ]; then
+            IFS= read -r -d '' SESSION_STORE_TAGS \
+                < <(printf '%s' "${__tags_b64}" | base64 -d) || true
+        else
+            # LEGACY record, written by an init.sh from before the base64
+            # change. The spool volume outlives the image: a partition left
+            # by a SIGKILLed container running the older adapter can be swept
+            # by this finalize, and that crash-recovery case is the entire
+            # reason this file exists. Dropping the fallback would silently
+            # upload those sessions unattributed. Same parse as before, still
+            # data, still never sourced; it just cannot carry a newline.
+            SESSION_STORE_TAGS="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${__capture_env}" | head -1)"
+        fi
+        unset __tags_b64
         export SESSION_STORE_TAGS
         echo "[finalize] recovered tags from ${__capture_env}" >&2
     else
