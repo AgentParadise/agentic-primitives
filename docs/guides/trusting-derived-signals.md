@@ -314,6 +314,21 @@ Held to the standard the page argues for, both halves stated plainly:
   issue, never asked. Proximity to a finding is what suppressed the question; it
   had stopped being a live thing and started being material.
 
+**Neither session caught its own worst error.** One found the `git add -A` that
+had swallowed the other's uncommitted work. The other asked the exposure
+question on the credential path. A reviewer found the `rejected` gate by reading
+the exporter's source after its author had shipped it, reviewed it, and declared
+the counter selection justified. An agent found the wrong line numbers in a
+handoff by opening the file its author had read hours earlier.
+
+Every significant catch came from a different vantage point, and none from the
+person closest to the work. That is the strongest evidence on this page for its
+own thesis, and neither of us put it there deliberately: it is a property of the
+afternoon rather than a claim in a document. If the practices above are too many
+to remember, the one to keep is that **you are the worst-placed person to audit
+your own signals, and the cheapest fix is a second pair of eyes that has not
+already decided what the answer is.**
+
 ## Related
 
 - [#299](https://github.com/AgentParadise/agentic-primitives/issues/299): CI
