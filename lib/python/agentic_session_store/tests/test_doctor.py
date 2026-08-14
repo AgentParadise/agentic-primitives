@@ -1,6 +1,9 @@
+import http.server
 import json
 import subprocess
 import sys
+import threading
+from typing import ClassVar
 
 import agentic_session_store.doctor as doctor_module
 from agentic_session_store.contract import CAPABILITY, Env, SessionStoreContract
@@ -248,3 +251,116 @@ def test_run_checks_converts_a_raising_check_into_a_failed_result(
     assert results[0].name == "exploding_check"
     assert results[0].passed is False
     assert "ValueError" in results[0].detail
+
+
+# --- The credential must not travel to a host the operator did not configure ---
+
+
+class _RecordingHandler(http.server.BaseHTTPRequestHandler):
+    """Records the Authorization header of every request it receives."""
+
+    received: ClassVar[list[str | None]] = []
+
+    def do_GET(self):  # BaseHTTPRequestHandler's own naming
+        type(self).received.append(self.headers.get("Authorization"))
+        self.send_response(200)
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, *args):  # silence the test output
+        return
+
+
+def _serve(handler_cls):
+    """Start handler_cls on an ephemeral loopback port; yield its base URL."""
+    server = http.server.HTTPServer(("127.0.0.1", 0), handler_cls)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, f"http://127.0.0.1:{server.server_port}"
+
+
+def test_store_reachable_does_not_send_the_credential_across_a_redirect():
+    """A redirecting store must not be able to harvest the write token.
+
+    `urllib.request.urlopen` follows redirects, and the stock
+    HTTPRedirectHandler copies `Authorization` onto the redirected request
+    even when the target is a DIFFERENT host. So a store that is
+    compromised, misconfigured, or merely behind a redirecting proxy could
+    bounce this health check at any host it liked and read the credential
+    out of the second request.
+
+    Two loopback servers stand in for the two hosts, reached under two
+    different host strings (127.0.0.1 and localhost) so the hop is
+    cross-origin by name as well as by port. The redirect target records
+    every Authorization header it sees; it must record none, because it must
+    never be contacted at all.
+    """
+    secret = "s3cr3t-write-token"  # a test fixture, not a real credential
+
+    class _Target(_RecordingHandler):
+        received: ClassVar[list[str | None]] = []
+
+    target_server, _ = _serve(_Target)
+    target_port = target_server.server_port
+
+    class _Redirector(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            # A different host STRING, not just a different port.
+            self.send_header("Location", f"http://localhost:{target_port}/healthz")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            return
+
+    redirect_server, redirect_url = _serve(_Redirector)
+    try:
+        contract = SessionStoreContract(
+            provider="seshmagic",
+            url=redirect_url,
+            auth=secret,
+            tags=None,
+            spool="/spool",
+            partition="w1/p2",
+        )
+        result = doctor_module._store_reachable(contract)
+    finally:
+        redirect_server.shutdown()
+        target_server.shutdown()
+
+    assert _Target.received == [], (
+        "the health check followed a cross-host redirect and sent the store "
+        f"credential to it: {_Target.received}"
+    )
+    assert result.passed is False, "a redirect must be a failed check, never a pass"
+    assert "302" in result.detail, result.detail
+    assert secret not in result.detail
+    # The target URL is attacker-controlled input on the one path this check
+    # exists to refuse, and details land in the durable audit file.
+    assert str(target_port) not in result.detail, result.detail
+
+
+def test_store_reachable_still_passes_without_a_redirect():
+    """The no-redirect opener must not break the ordinary healthy case."""
+
+    class _Healthy(_RecordingHandler):
+        received: ClassVar[list[str | None]] = []
+
+    server, url = _serve(_Healthy)
+    try:
+        contract = SessionStoreContract(
+            provider="seshmagic",
+            url=url,
+            auth="tok",
+            tags=None,
+            spool="/spool",
+            partition="w1/p2",
+        )
+        result = doctor_module._store_reachable(contract)
+    finally:
+        server.shutdown()
+
+    assert result.passed is True, result.detail
+    assert _Healthy.received == ["Bearer tok"]

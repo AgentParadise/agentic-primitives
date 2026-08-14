@@ -140,6 +140,41 @@ def _exporter_present(contract: SessionStoreContract) -> CheckResult:
     return CheckResult(name="exporter_present", passed=True, detail=path)
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect handler that refuses to follow anything.
+
+    `urllib.request.urlopen` follows redirects by default, and the stock
+    HTTPRedirectHandler copies the ORIGINAL request's headers onto the
+    redirected one, `Authorization` included, WITHOUT checking that the new
+    URL is even the same host. Verified directly:
+
+        HTTPRedirectHandler().redirect_request(
+            req_to_a.example, None, 302, "Found", {}, "http://evil.example/y")
+        -> redirected headers: {'Authorization': 'Bearer SECRET'}
+
+    So a store that is compromised, misconfigured, or merely sitting behind a
+    redirecting proxy harvests the write credential from a health check.
+
+    Returning None means "this handler declines", which leaves the 3xx to
+    HTTPDefaultErrorHandler and surfaces as an HTTPError carrying the real
+    status code. A health check has no reason to follow a redirect in the
+    first place: the operator configured a store URL, and only that URL may
+    see the credential. A redirect is therefore reported as a FAILED check
+    with its status, never followed and never silently passed.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+"""Opener used for every credential-bearing request this doctor makes.
+
+`build_opener` skips its default HTTPRedirectHandler when handed a subclass
+of it, so this opener has exactly one redirect handler and it declines.
+"""
+
+
 def _store_reachable(contract: SessionStoreContract) -> CheckResult:
     health_url = contract.url.rstrip("/") + "/healthz"
     parsed = urllib.parse.urlparse(health_url)
@@ -153,9 +188,25 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
         req = urllib.request.Request(health_url, method="GET")
         if contract.auth:
             req.add_header("Authorization", f"Bearer {contract.auth}")
-        with urllib.request.urlopen(req, timeout=STORE_HEALTH_TIMEOUT_SECONDS) as resp:
+        with _NO_REDIRECT_OPENER.open(
+            req, timeout=STORE_HEALTH_TIMEOUT_SECONDS
+        ) as resp:
             status_code = resp.status
     except urllib.error.HTTPError as e:
+        if 300 <= e.code < 400:
+            # The redirect target is deliberately NOT echoed. It is
+            # attacker-controllable input on exactly the path this check
+            # exists to refuse, and this string is appended to the durable
+            # doctor audit file.
+            return CheckResult(
+                name="store_reachable",
+                passed=False,
+                detail=(
+                    f"{health_url} returned HTTP {e.code} (a redirect, which is "
+                    "NOT followed: the store credential may only ever be sent to "
+                    "the configured host). Point the URL at the store directly."
+                ),
+            )
         return CheckResult(
             name="store_reachable",
             passed=False,
