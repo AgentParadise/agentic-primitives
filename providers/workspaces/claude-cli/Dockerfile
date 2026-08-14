@@ -186,7 +186,7 @@ RUN mkdir -p /workspace/artifacts/input \
 # (e.g. prepare-commit-msg for operator Co-authored-by attribution). These
 # are NOT Claude Code plugins — the entrypoint installs them into the
 # runtime git hooks directory alongside hooks contributed by plugins.
-COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
+COPY workspace/entrypoint.sh /opt/agentic/entrypoint.sh
 COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 
 # Copy pre-staged plugins from build context (ADR-033)
@@ -205,7 +205,7 @@ COPY plugins/ /opt/agentic/plugins/
 # directories under /var/agentic/<capability>-doctor/ are created by the
 # entrypoint at first use; orchestrators bind-mount them for durable audit
 # logs.
-COPY capabilities/ /opt/agentic/capabilities/
+COPY workspace/capabilities/ /opt/agentic/capabilities/
 
 # Exporter provisioning contract (session-store capability):
 # This image deliberately does NOT ship SeshMagicSessionExporter. The

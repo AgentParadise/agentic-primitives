@@ -37,6 +37,7 @@ import yaml
 ROOT = Path(__file__).parent.parent
 PROVIDERS_DIR = ROOT / "providers" / "workspaces"
 PLUGINS_DIR = ROOT / "plugins"
+WORKSPACE_DIR = ROOT / "workspace"
 PYTHON_PACKAGES_DIR = ROOT / "lib" / "python"
 BUILD_DIR = ROOT / "build"
 
@@ -114,20 +115,39 @@ def stage_scripts(provider: str, build_context: Path) -> None:
             print(f"  ✓ Script: {path.relative_to(scripts_dst)}")
 
 
-def stage_capabilities(provider: str, build_context: Path) -> None:
-    """Copy the capabilities/ adapter directory to the build context (ADR-040).
+def stage_workspace_runtime(build_context: Path) -> None:
+    """Copy the shared workspace runtime to the build context (ADR-040).
 
-    Mirrors stage_scripts. The Dockerfile then COPYs build_context/capabilities/
-    to /opt/agentic/capabilities/ where the entrypoint section 5.6 + 5.7 expects it.
+    The runtime is harness-neutral and lives at the repo root in workspace/:
+    the entrypoint that drives the capability loops, and the capabilities/
+    adapter tree it iterates. Any provider image can stage it, so a second
+    image is a Dockerfile rather than a fork of this tree.
+
+    The Dockerfile then COPYs build_context/workspace/entrypoint.sh to
+    /opt/agentic/entrypoint.sh and build_context/workspace/capabilities/ to
+    /opt/agentic/capabilities/ where the entrypoint section 5.6 + 5.7
+    expects it.
     """
-    capabilities_src = PROVIDERS_DIR / provider / "capabilities"
+    if not WORKSPACE_DIR.exists():
+        print("  ⊘ No workspace runtime found")
+        return
+
+    workspace_dst = build_context / "workspace"
+    if workspace_dst.exists():
+        shutil.rmtree(workspace_dst)
+    workspace_dst.mkdir(parents=True)
+
+    entrypoint_src = WORKSPACE_DIR / "entrypoint.sh"
+    if entrypoint_src.exists():
+        shutil.copy2(entrypoint_src, workspace_dst / "entrypoint.sh")
+        print("  ✓ Workspace runtime: entrypoint.sh")
+
+    capabilities_src = WORKSPACE_DIR / "capabilities"
     if not capabilities_src.exists():
         print("  ⊘ No capabilities configured")
         return
 
-    capabilities_dst = build_context / "capabilities"
-    if capabilities_dst.exists():
-        shutil.rmtree(capabilities_dst)
+    capabilities_dst = workspace_dst / "capabilities"
     shutil.copytree(capabilities_src, capabilities_dst)
 
     for path in sorted(capabilities_dst.rglob("*")):
@@ -265,7 +285,7 @@ def main():
     stage_dockerfile(provider, build_context)
     stage_scripts(provider, build_context)
     stage_plugins(manifest, build_context)
-    stage_capabilities(provider, build_context)
+    stage_workspace_runtime(build_context)
     build_wheels(build_context)
 
     if args.stage_only:
