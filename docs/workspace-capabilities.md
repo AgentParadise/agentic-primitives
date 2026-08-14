@@ -259,6 +259,69 @@ logs saying why. Both files carry cross-referencing comments. If your
 finalize needs more than the headroom, raise the `docker stop` grace, not
 the ticks.
 
+#### `AGENTIC_FINALIZE_BUDGET_S`
+
+Your finalizer receives a per-run budget in seconds through this variable.
+
+**Read it, never set it.** It is not user-facing configuration and is not part
+of the capability contract's public surface. It is an internal call parameter
+between `entrypoint.sh` and the finalizers, travelling by environment because
+that is how you pass a value to a child process. Do not document it to
+operators as a knob, and do not add it to a `.env.example`.
+
+Treat an absent, non-numeric, or **zero** value as "use your own default":
+
+```sh
+case "${AGENTIC_FINALIZE_BUDGET_S:-}" in
+    "" | *[!0-9]* | 0) __TIMEOUT_S="${__TIMEOUT_DEFAULT_S}" ;;
+    *) __TIMEOUT_S="${AGENTIC_FINALIZE_BUDGET_S}" ;;
+esac
+```
+
+Zero matters as much as empty. GNU `timeout 0` means *no timeout at all*, so a
+guard that only tested for empty or non-numeric would leave `0` as a silent way
+to disable the bound entirely, which is the exact failure the budget exists to
+prevent.
+
+**The budget is asymmetric, because the deadline only exists on one path.**
+`__run_finalizers` is called on both exits, but the SIGKILL escalation window
+only runs when the agent's status is `>128`, the signal path. Your finalizer
+cannot tell which path it is on; only the entrypoint knows, which is why the
+value is passed in rather than decided locally.
+
+| Constant | Value | Path |
+|---|---|---|
+| `__FINALIZE_BUDGET_SIGNAL_S` | 2 | Signal. `docker stop -t 5` is already ticking. |
+| `__FINALIZE_BUDGET_CLEAN_S` | 120 | Clean exit. Nothing is waiting; the bound only stops a wedged finalizer hanging the run forever. |
+
+Measured 2026-08-14 through the real entrypoint: escalation completes at ~1.66s
+for a stubborn agent and ~0.22s for a cooperative one, leaving ~3.3s of the
+stop grace. A 2s budget finishes at ~3.66s, a 1.3s margin; 3s would leave 0.34s,
+too thin.
+
+**The 120 is bounded, not derived.** Nobody has measured a real sweep against a
+large migrated transcript history. It may be short for a heavy first sweep,
+which is also the case where failing to complete hurts most, because a capability
+that never finishes its work never prunes. Treat it as a ceiling that has not yet
+been tested against the workload that would falsify it.
+
+A single tight bound applied to both paths was the tempting simplification and
+is wrong: it kills a legitimate multi-second sweep on every normal run, so the
+capability never completes its work, which for a heavy user is permanent.
+
+**One invariant to preserve.** `entrypoint.sh` assigns the value
+unconditionally:
+
+```sh
+AGENTIC_FINALIZE_BUDGET_S="${1}"
+```
+
+There is deliberately no `:-` fallback. That is what stops
+`docker run -e AGENTIC_FINALIZE_BUDGET_S=99999` from reaching your finalizer:
+the outer value is always overwritten before export. A refactor to
+`"${AGENTIC_FINALIZE_BUDGET_S:-$1}"` reads as a harmless defensive tidy and
+silently reopens it.
+
 ---
 
 ## Step 5: Handle untrusted values correctly
