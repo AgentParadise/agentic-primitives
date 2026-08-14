@@ -115,7 +115,7 @@ def stage_scripts(provider: str, build_context: Path) -> None:
 
 
 def stage_capabilities(provider: str, build_context: Path) -> None:
-    """Copy the capabilities/ adapter directory to the build context (ADR-038).
+    """Copy the capabilities/ adapter directory to the build context (ADR-040).
 
     Mirrors stage_scripts. The Dockerfile then COPYs build_context/capabilities/
     to /opt/agentic/capabilities/ where the entrypoint section 5.6 + 5.7 expects it.
@@ -143,7 +143,7 @@ def build_wheels(build_context: Path) -> None:
     # Packages to include in the image
     # agentic_events is the core observability package used by plugin hooks
     # agentic_memory is the memory capability contract + doctor (ADR-036)
-    # agentic_session_store is the session-store capability contract + doctor (ADR-038)
+    # agentic_session_store is the session-store capability contract + doctor (ADR-040)
     required_packages = ["agentic_events", "agentic_memory", "agentic_session_store"]
 
     for pkg_name in required_packages:

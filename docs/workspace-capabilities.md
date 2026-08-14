@@ -2,7 +2,7 @@
 
 How to add a pluggable subsystem to the workspace image, end to end.
 
-The decision record is [ADR-038](adrs/038-workspace-capability-modules.md).
+The decision record is [ADR-040](adrs/040-workspace-capability-modules.md).
 This document is the procedure. Read the ADR when you want to know *why*
 something is shaped the way it is; read this when you want to build one.
 
@@ -54,7 +54,7 @@ concrete reason: a name containing `.` uppercases into a prefix like
 `AGENTIC_A.B`, whose expansion is a bash bad substitution that kills the
 whole entrypoint under `set -e`.
 
-The name determines your env prefix by the ADR-038 rule:
+The name determines your env prefix by the ADR-040 rule:
 
 ```
 AGENTIC_<CAP_UPPER>_<FIELD>      uppercase, '-' -> '_'
@@ -404,7 +404,7 @@ natural host-side half. Start there.
 
 ## References
 
-- [ADR-038: Workspace Capability Modules](adrs/038-workspace-capability-modules.md)
+- [ADR-040: Workspace Capability Modules](adrs/040-workspace-capability-modules.md)
 - [ADR-036: Memory Primitive and Doctor](adrs/036-memory-primitive-and-doctor.md)
 - [ADR-035: Workspace Injection Contract](adrs/035-workspace-injection-contract.md)
 - [EXP-08: Workspace capability capture lifecycle](../experiments/EXP-08-capability-capture-lifecycle.md)

@@ -7,7 +7,7 @@ name: claude-cli
 version: "2.0.0"
 description: Claude CLI workspace with native OpenTelemetry support
 
-# Workspace capability modules (ADR-038)
+# Workspace capability modules (ADR-040)
 # Adapters live under providers/workspaces/claude-cli/capabilities/<capability>/
 # and are baked into /opt/agentic/capabilities/ at build time (see
 # scripts/build-provider.py's stage_capabilities). The entrypoint's 5.6/5.7

@@ -194,7 +194,7 @@ COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 # and hooks/hooks.json using ${CLAUDE_PLUGIN_ROOT} for path resolution.
 COPY plugins/ /opt/agentic/plugins/
 
-# Copy capability adapters (ADR-038)
+# Copy capability adapters (ADR-040)
 # The /opt/agentic/capabilities/ tree holds one directory per registered
 # capability (memory, session-store, ...), each with:
 #   - doctor               — bash entry that exec's `python -m <pkg>.doctor`
@@ -224,7 +224,7 @@ COPY capabilities/ /opt/agentic/capabilities/
 RUN mkdir -p /var/agentic \
     && chown -R agent:agent /var/agentic
 
-# session-store spool root (ADR-038 / agentic_session_store's DEFAULT_SPOOL).
+# session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
 # The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;
 # that default must exist and be writable by the non-root agent user for
 # the capability to work without an operator explicitly bind-mounting
@@ -267,7 +267,7 @@ ENV HOME=/home/agent \
     WORKSPACE_DIR=/workspace \
     # Plugins location (ADR-033)
     AGENTIC_PLUGINS_DIR=/opt/agentic/plugins \
-    # Capability registry (ADR-038): space-separated list of capability
+    # Capability registry (ADR-040): space-separated list of capability
     # names the entrypoint's 5.6/5.7 loops iterate. A listed capability
     # with no AGENTIC_<CAP>_PROVIDER set is a silent no-op.
     AGENTIC_CAPABILITIES="memory session-store" \

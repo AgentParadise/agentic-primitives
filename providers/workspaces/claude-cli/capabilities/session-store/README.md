@@ -41,7 +41,7 @@ the real exporter.
 ## The `seshmagic` provider adapter
 
 `seshmagic/init.sh` is the adapter for `AGENTIC_SESSION_STORE_PROVIDER=seshmagic`.
-It is sourced by `/opt/agentic/entrypoint.sh` section 5.6 (ADR-038) and
+It is sourced by `/opt/agentic/entrypoint.sh` section 5.6 (ADR-040) and
 translates the six `AGENTIC_SESSION_STORE_*` contract vars (`Env` in
 `contract.py`) into the env `SeshMagicSessionExporter` reads:
 

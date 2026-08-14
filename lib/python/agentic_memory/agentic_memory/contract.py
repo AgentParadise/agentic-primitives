@@ -21,7 +21,7 @@ CAPABILITY = "memory"
 
 
 def capability_env_name(capability: str, field_name: str) -> str:
-    """Build an env var name per the ADR-038 rule: AGENTIC_<CAP>_<FIELD>.
+    """Build an env var name per the ADR-040 rule: AGENTIC_<CAP>_<FIELD>.
 
     The entrypoint derives the same name in shell (see
     `__capability_env_prefix`), so this function and that shell helper are

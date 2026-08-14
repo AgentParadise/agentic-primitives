@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SeshMagic session-store capability adapter.
 #
-# Translates the AGENTIC_SESSION_STORE_* contract (ADR-038) into the env
+# Translates the AGENTIC_SESSION_STORE_* contract (ADR-040) into the env
 # SeshMagicSessionExporter reads. Sourced by /opt/agentic/entrypoint.sh
 # section 5.6 so exports propagate to later process spawns.
 
@@ -71,7 +71,7 @@ mkdir -p "${PART_DIR}"
 
 if [ "${__part_dir_is_ours}" -eq 1 ]; then
     printf '%s\n' \
-        "# Created by the agentic session-store capability (ADR-038)." \
+        "# Created by the agentic session-store capability (ADR-040)." \
         "# Its presence authorizes finalize.sh to remove this directory after" \
         "# a confirmed upload. Delete it to make that partition permanent." \
         > "${PART_DIR}/.agentic-partition"

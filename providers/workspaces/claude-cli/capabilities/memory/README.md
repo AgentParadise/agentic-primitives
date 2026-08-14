@@ -5,7 +5,7 @@ retain/recall tools reach a real, correctly-scoped memory bank.
 
 This module predates the capability system: it was ADR-036's memory
 primitive, and it moved under `/opt/agentic/capabilities/memory/` when
-[ADR-038](../../../../../docs/adrs/038-workspace-capability-modules.md)
+[ADR-040](../../../../../docs/adrs/040-workspace-capability-modules.md)
 generalized that design. ADR-036's reasoning still governs this module's
 posture; only its plumbing changed.
 
@@ -26,7 +26,7 @@ contract (`Env` in that module is the single source of truth for every
 | `AGENTIC_MEMORY_CONFIG_JSON` | no | Escape hatch for adapter-specific config the core contract does not model. |
 
 `AGENTIC_MEMORY_READY=1` is exported by the lifecycle when `init.sh`
-returns successfully. This predates ADR-038 and downstream tooling reads
+returns successfully. This predates ADR-040 and downstream tooling reads
 it, so the generic capability loop preserves it explicitly.
 
 `AGENTIC_MEMORY_NAMESPACE` is constrained to `[a-zA-Z0-9._:-]+`: no spaces,

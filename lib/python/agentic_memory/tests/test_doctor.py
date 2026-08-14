@@ -292,7 +292,7 @@ class TestCli:
         assert len(payload["checks"]) == 8
         # capability attribution: with AGENTIC_CAPABILITY_AUDIT_DIR shared
         # across capabilities, this is the only field that lets a reader
-        # attribute a record back to memory (see ADR-038 fix wave).
+        # attribute a record back to memory (see ADR-040 fix wave).
         assert payload["capability"] == CAPABILITY == "memory"
         # Pretty output still on stderr
         assert "[memory-doctor]" in captured.err

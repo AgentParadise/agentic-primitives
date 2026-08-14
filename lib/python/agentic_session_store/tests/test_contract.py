@@ -24,7 +24,7 @@ def test_env_names_follow_the_adr_038_rule():
         )
 
 
-# --- ADR-038 shell/Python naming conformance ---------------------------------
+# --- ADR-040 shell/Python naming conformance ---------------------------------
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 ENTRYPOINT_SH = (
@@ -37,7 +37,7 @@ def _shell_capability_env_name(capability: str, field: str) -> str:
     """Run the *actual* `__capability_env_prefix` from entrypoint.sh in a
     bash subprocess and combine it with `field`.
 
-    This is the conformance test ADR-038 and this module's docstring claim
+    This is the conformance test ADR-040 and this module's docstring claim
     exists: `__capability_env_prefix` (shell) and `capability_env_name()`
     (Python) are two implementations of one naming rule, and this pins them
     together instead of re-deriving the shell logic in Python, which would
@@ -58,7 +58,7 @@ def _shell_capability_env_name(capability: str, field: str) -> str:
 
 @pytest.mark.parametrize("capability", ["memory", "session-store", "multi-hyphen-cap-name"])
 def test_shell_and_python_env_naming_agree(capability):
-    """ADR-038's `AGENTIC_<CAP>_<FIELD>` rule has two implementations:
+    """ADR-040's `AGENTIC_<CAP>_<FIELD>` rule has two implementations:
     `__capability_env_prefix` in entrypoint.sh and `capability_env_name()`
     here. They must produce identical names or a capability's doctor
     or init.sh silently reads the wrong variable.

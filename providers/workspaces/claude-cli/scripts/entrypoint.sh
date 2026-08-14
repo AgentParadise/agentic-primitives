@@ -301,7 +301,7 @@ fi
 # -----------------------------------------------------------------------------
 # 5.6 Capability adapter initialization
 # -----------------------------------------------------------------------------
-# Per ADR-038. Each registered capability translates its AGENTIC_<CAP>_*
+# Per ADR-040. Each registered capability translates its AGENTIC_<CAP>_*
 # contract into provider-native env. No-op when a capability's provider is
 # unset. Section 5.7 hard-fails if a provider is set but misconfigured.
 #
@@ -415,7 +415,7 @@ done
 # -----------------------------------------------------------------------------
 # Wrapper rather than exec, so capability finalize hooks get a post-agent
 # moment. The agent's exit code is preserved exactly; finalize cannot change
-# it. See ADR-038 and EXP-08 for why this is not `exec "$@"`.
+# it. See ADR-040 and EXP-08 for why this is not `exec "$@"`.
 
 __run_finalizers() {
     for __cap in ${AGENTIC_CAPABILITIES:-}; do

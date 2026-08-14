@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 🧩 Workspace Capability Modules (ADR-038, BREAKING)
+### 🧩 Workspace Capability Modules (ADR-040, BREAKING)
 
 Generalizes ADR-036's memory-only adapter mechanism into a named capability
 registry, and adds session capture as its second instance. Workspace image
@@ -23,7 +23,7 @@ manifest moves **1.3.0 to 2.0.0**.
 | 2 | `AGENTIC_MEMORY_AUDIT_DIR` | `AGENTIC_CAPABILITY_AUDIT_DIR` | Rename the variable wherever it is set. It is now capability-generic: it overrides the audit directory for every capability, not just memory. The per-capability default is still `/var/agentic/<capability>-doctor`, so hosts relying on the default path need no change. |
 | 3 | `AGENTIC_MEMORY_PROVIDER` alone activated memory | Memory must also be listed in `AGENTIC_CAPABILITIES` (default `"memory session-store"`) | No action if the image default is accepted. If `AGENTIC_CAPABILITIES` is set explicitly, it must include `memory` or memory silently stops running. **This failure is silent**: the workspace starts cleanly with memory quietly inactive. The entrypoint warns on stderr at startup when it detects a `*_PROVIDER` var with no matching registry entry, but nothing hard-fails. |
 
-See [ADR-038](docs/adrs/038-workspace-capability-modules.md) for the full
+See [ADR-040](docs/adrs/040-workspace-capability-modules.md) for the full
 migration table and rationale.
 
 #### Added

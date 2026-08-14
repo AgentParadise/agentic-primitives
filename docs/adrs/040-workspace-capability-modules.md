@@ -1,5 +1,5 @@
 ---
-title: "ADR-038: Workspace Capability Modules"
+title: "ADR-040: Workspace Capability Modules"
 status: accepted
 created: 2026-08-12
 updated: 2026-08-12
@@ -8,7 +8,7 @@ supersedes: ADR-036 (in mechanism)
 tags: [workspace, capabilities, contracts, claude-cli, session-store, memory, lifecycle]
 ---
 
-# ADR-038: Workspace Capability Modules
+# ADR-040: Workspace Capability Modules
 
 ## Status
 

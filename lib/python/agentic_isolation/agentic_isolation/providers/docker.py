@@ -549,7 +549,7 @@ class WorkspaceDockerProvider(BaseProvider):
         # Stop
         # This "-t 5" grace is coupled to __TERM_GRACE_TICKS in
         # providers/workspaces/claude-cli/scripts/entrypoint.sh's section 6
-        # wrapper (ADR-038): that constant must stay strictly below this
+        # wrapper (ADR-040): that constant must stay strictly below this
         # value, with headroom left over for the post-agent finalize hooks
         # (e.g. a session-store upload) to actually run before docker's own
         # SIGKILL lands. Changing this value without adjusting that one can

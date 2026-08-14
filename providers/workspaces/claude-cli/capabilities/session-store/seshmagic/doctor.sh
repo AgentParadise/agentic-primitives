@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SeshMagic provider-specific health check (ADR-038).
+# SeshMagic provider-specific health check (ADR-040).
 #
 # NOT wired into the automatic preflight. Unlike the memory capability's
 # ProviderSpecificCheck, agentic_session_store.doctor's check list (Task 3)

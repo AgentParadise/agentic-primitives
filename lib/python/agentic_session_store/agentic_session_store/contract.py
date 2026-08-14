@@ -20,7 +20,7 @@ DEFAULT_SPOOL = "/spool"
 
 
 def capability_env_name(capability: str, field: str) -> str:
-    """Build an env var name per the ADR-038 rule: AGENTIC_<CAP>_<FIELD>.
+    """Build an env var name per the ADR-040 rule: AGENTIC_<CAP>_<FIELD>.
 
     The entrypoint derives the same name in shell (see
     `__capability_env_prefix`), so this function and that shell helper are
@@ -36,7 +36,7 @@ class Env(StrEnum):
 
     Members are `str`, so they pass directly to `env.get()`,
     `monkeypatch.setenv()`, and f-strings without `.value`. Member NAMES are
-    the field half of the ADR-038 rule, which is what the conformance test
+    the field half of the ADR-040 rule, which is what the conformance test
     checks.
     """
 
