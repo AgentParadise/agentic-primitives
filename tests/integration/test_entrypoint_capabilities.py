@@ -10,6 +10,7 @@ See ADR-040 and docs/superpowers/sdd/2026-08-12-workspace-capability-modules/.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -22,6 +23,15 @@ from pathlib import Path
 import pytest
 
 IMAGE = os.getenv("AGENTIC_WORKSPACE_IMAGE", "agentic-workspace-claude-cli:latest")
+
+# Resolved against THIS file, never against the process cwd: CI runs pytest
+# from build/workspaces/<image>/ with a relative path to this suite, so a
+# cwd-relative fixture path resolves to nothing, and `docker run -v` silently
+# creates an empty DIRECTORY at a missing mount source. A directory at
+# /usr/local/bin/SeshMagicSessionExporter still satisfies shutil.which (it is
+# +x), so exporter_present failed on CI for a reason that had nothing to do
+# with the exporter.
+_STUB_EXPORTER = Path(__file__).parent / "fixtures" / "stub-exporter"
 
 # The seshmagic adapter tests need a reachable live store (the doctor's
 # store_reachable check hard-fails otherwise). STORE_URL is what the
@@ -88,6 +98,59 @@ def _run(
     cmd.append(IMAGE)
     cmd.extend(args)
     return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+
+def _host_spool(tmp_path: Path) -> Path:
+    """Create the host directory that backs the container's /spool.
+
+    Only the mount point itself is made on the host, and it is opened to
+    0777 so the container's non-root agent user can create the partition
+    inside it. Everything the tests then assert on is created BY the agent
+    user, in the container: see _stage_partition_sh for why.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir(parents=True, exist_ok=True)
+    os.chmod(spool, 0o777)
+    return spool
+
+
+def _stage_partition_sh(
+    part_name: str,
+    files: dict[str, str],
+    modes: dict[str, int] | None = None,
+) -> str:
+    """Shell that builds a spool partition IN the container, as the agent user.
+
+    These fixtures cannot be written on the host. A Linux bind mount passes
+    host uid/gid through literally, while Docker Desktop on macOS remaps
+    them to the container user. The container runs as uid 1000 (agent) and
+    GitHub Actions runners are uid 1001, so a host-written 0600
+    `.capture-env` is readable by the agent on a developer's Mac and
+    unreadable on CI, and a host-owned partition directory cannot be
+    written into at all: finalize.sh's `[ -r ... ]` guard takes its else
+    branch, and the prune gate cannot drop its `.sweep-rejected` sentinel.
+    Both look like production defects and are not.
+
+    Creating the files in the container reproduces production ownership,
+    where init.sh makes the partition and `.capture-env` as the agent user,
+    so the uid boundary never exists in the first place.
+
+    Content is passed base64-encoded so arbitrary bytes (newlines, quotes,
+    command substitutions, the empty string) survive the trip into the
+    shell verbatim. `modes` is applied after the write, which is how
+    `.capture-env` keeps its 0600 semantics: the agent chmods its own file.
+    """
+    lines = [f"mkdir -p /spool/{part_name}"]
+    for rel, content in files.items():
+        path = f"/spool/{part_name}/{rel}"
+        parent = path.rsplit("/", 1)[0]
+        b64 = base64.b64encode(content.encode()).decode()
+        lines.append(f"mkdir -p {parent}")
+        lines.append(f"printf %s '{b64}' | base64 -d > {path}")
+        mode = (modes or {}).get(rel)
+        if mode is not None:
+            lines.append(f"chmod {mode:04o} {path}")
+    return "\n".join(lines)
 
 
 @pytest.mark.integration
@@ -291,7 +354,6 @@ def test_mounted_exporter_satisfies_the_check(tmp_path: Path):
     entrypoint's own 5.7 preflight would hard-exit before the CMD below
     (whose stdout this test inspects) ever ran.
     """
-    stub = Path("tests/integration/fixtures/stub-exporter").resolve()
     result = _run(
         ["/opt/agentic/capabilities/session-store/doctor", "--json"],
         env={
@@ -299,7 +361,7 @@ def test_mounted_exporter_satisfies_the_check(tmp_path: Path):
             "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
             "AGENTIC_SESSION_STORE_URL": "http://unreachable.invalid",
         },
-        extra_mounts=[f"{stub}:/usr/local/bin/SeshMagicSessionExporter:ro"],
+        extra_mounts=[f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro"],
     )
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     checks = {c["name"]: c for c in payload["checks"]}
@@ -754,8 +816,6 @@ def test_full_doctor_passes_with_real_exporter_and_live_store(tmp_path: Path):
 # full (including store_reachable) before CMD ever executes -- same
 # constraint as the Task 6 tests above, so they skip the same way.
 
-_STUB_EXPORTER = Path("tests/integration/fixtures/stub-exporter").resolve()
-
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
@@ -874,12 +934,14 @@ def test_finalize_parses_capture_env_never_sources_it(tmp_path: Path, malicious_
     written at container-run time (not a repo file) whose only job is to
     print the env var a real child process would see.
     """
-    spool = tmp_path / "spool"
-    part_dir = spool / "recovery-test"
-    part_dir.mkdir(parents=True)
-    capture_env = part_dir / ".capture-env"
-    capture_env.write_text(f"SESSION_STORE_TAGS={malicious_tag}\n")
-    os.chmod(capture_env, 0o600)
+    spool = _host_spool(tmp_path)
+    # The 0600 `.capture-env` is written in the container, by the agent user
+    # that finalize.sh then runs as. See _stage_partition_sh.
+    stage = _stage_partition_sh(
+        "recovery-test",
+        {".capture-env": f"SESSION_STORE_TAGS={malicious_tag}\n"},
+        modes={".capture-env": 0o600},
+    )
 
     fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
     # Delimiters bracket the captured value exactly, so the Python-side
@@ -887,6 +949,7 @@ def test_finalize_parses_capture_env_never_sources_it(tmp_path: Path, malicious_
     # substring check that a trailing-corruption bug could still satisfy.
     script = f"""
 set -e
+{stage}
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
@@ -1015,17 +1078,19 @@ def test_legacy_capture_env_is_recovered_and_announced(tmp_path: Path):
     """
     legacy_tag = "workflow:w1,phase:p2"
 
-    spool = tmp_path / "spool"
-    part_dir = spool / "legacy-test"
-    part_dir.mkdir(parents=True)
-    capture_env = part_dir / ".capture-env"
-    # Deliberately the OLD record name, written the way the old init.sh did.
-    capture_env.write_text(f"SESSION_STORE_TAGS={legacy_tag}\n")
-    os.chmod(capture_env, 0o600)
+    spool = _host_spool(tmp_path)
+    # Deliberately the OLD record name, written the way the old init.sh did:
+    # in the container, as the agent user, mode 0600.
+    stage = _stage_partition_sh(
+        "legacy-test",
+        {".capture-env": f"SESSION_STORE_TAGS={legacy_tag}\n"},
+        modes={".capture-env": 0o600},
+    )
 
     fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
     script = f"""
 set -e
+{stage}
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
@@ -1077,16 +1142,20 @@ def test_unrecognised_capture_env_claims_no_recovery(tmp_path: Path, content: st
     the case this whole branch exists to serve, and a truncated or foreign
     file is what such a volume produces.
     """
-    spool = tmp_path / "spool"
-    part_dir = spool / "garbage-test"
-    part_dir.mkdir(parents=True)
-    capture_env = part_dir / ".capture-env"
-    capture_env.write_text(content)
-    os.chmod(capture_env, 0o600)
+    spool = _host_spool(tmp_path)
+    # Written in the container, as the agent user, mode 0600: the file has
+    # to be READABLE for these cases to be about the record's content at
+    # all. See _stage_partition_sh.
+    stage = _stage_partition_sh(
+        "garbage-test",
+        {".capture-env": content},
+        modes={".capture-env": 0o600},
+    )
 
     fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
     script = f"""
 set -e
+{stage}
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
@@ -1323,6 +1392,11 @@ def _finalize_with_stub_exporter(
     check requires, so the ONLY thing that can keep the spool in these tests
     is the sweep-completeness gate under test.
 
+    The partition is built inside the container, as the agent user, so the
+    prune path can actually write its .sweep-rejected sentinel and remove
+    the transcript. A host-built partition is owned by the host uid, which
+    the agent cannot write into on Linux. See _stage_partition_sh.
+
     Pass a LIST of stub bodies to run several sequential sweeps against the
     same partition, each with its own exporter output. That is what exercises
     state carried between sweeps, which a single sweep cannot see.
@@ -1337,11 +1411,16 @@ def _finalize_with_stub_exporter(
     """
     bodies = [stub_body] if isinstance(stub_body, str) else stub_body
 
-    part_dir = tmp_path / "spool" / part_name
-    (part_dir / "claude").mkdir(parents=True)
-    (part_dir / "state.json").write_text("{}\n")
-    (part_dir / ".agentic-partition").write_text("")
-    (part_dir / "claude" / "s.jsonl").write_text("{}\n")
+    spool = _host_spool(tmp_path)
+    part_dir = spool / part_name
+    stage = _stage_partition_sh(
+        part_name,
+        {
+            "state.json": "{}\n",
+            ".agentic-partition": "",
+            "claude/s.jsonl": "{}\n",
+        },
+    )
 
     sweeps = ""
     for i, body in enumerate(bodies):
@@ -1358,6 +1437,7 @@ echo "FINALIZE_RC_{i}=$?"
 
     script = f"""
 set -e
+{stage}
 mkdir -p /tmp/fakebin
 export PATH=/tmp/fakebin:$PATH
 export SESSION_STORE_URL=http://unused.invalid
@@ -1369,7 +1449,7 @@ echo "FINALIZE_RC=$?"
     start = time.monotonic()
     result = _run(
         ["bash", "-c", script],
-        extra_mounts=[f"{tmp_path / 'spool'}:/spool"],
+        extra_mounts=[f"{spool}:/spool"],
     )
     elapsed = time.monotonic() - start
     return result, part_dir / "claude" / "s.jsonl", elapsed
