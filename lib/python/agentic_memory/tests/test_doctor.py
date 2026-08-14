@@ -7,11 +7,8 @@ guaranteed not to resolve, so no real network call escapes the test.
 from __future__ import annotations
 
 import json
-import os
 import stat
-from pathlib import Path
 
-import pytest
 
 from agentic_memory.contract import CAPABILITY, Env, MemoryContract
 from agentic_memory.doctor import (
@@ -169,7 +166,7 @@ class TestConfigJsonValidCheck:
         assert r.status == CheckStatus.FAIL
 
     def test_fails_when_json_not_object(self):
-        r = ConfigJsonValidCheck().run(_contract({Env.CONFIG_JSON: '[1, 2, 3]'}))
+        r = ConfigJsonValidCheck().run(_contract({Env.CONFIG_JSON: "[1, 2, 3]"}))
         assert r.status == CheckStatus.FAIL
         assert "object" in r.message.lower()
 
@@ -211,7 +208,7 @@ class TestProviderSpecificCheck:
         adapter = tmp_path / "hindsight"
         adapter.mkdir()
         script = adapter / "doctor.sh"
-        script.write_text('#!/bin/sh\necho \'{"ok": true}\'\nexit 0\n')
+        script.write_text("#!/bin/sh\necho '{\"ok\": true}'\nexit 0\n")
         script.chmod(0o755)
 
         r = ProviderSpecificCheck(registry_root=str(tmp_path)).run(_contract())
@@ -278,9 +275,12 @@ class TestCli:
     def test_main_with_overrides_can_produce_json(self, capsys):
         exit_code = main(
             [
-                "--provider", "definitely-not-a-provider",
-                "--namespace", "ok",
-                "--url", "http://nonexistent.invalid.example:9999",
+                "--provider",
+                "definitely-not-a-provider",
+                "--namespace",
+                "ok",
+                "--url",
+                "http://nonexistent.invalid.example:9999",
                 "--json",
             ]
         )
@@ -300,13 +300,19 @@ class TestCli:
     def test_main_fix_without_apply_is_no_op_message(self, capsys):
         exit_code = main(
             [
-                "--provider", "nope",
-                "--namespace", "x",
-                "--url", "http://nonexistent.invalid.example:9999",
+                "--provider",
+                "nope",
+                "--namespace",
+                "x",
+                "--url",
+                "http://nonexistent.invalid.example:9999",
                 "--fix",
             ]
         )
         # Still exits 1 because fix doesn't change the underlying state.
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "dry-run" in captured.err.lower() or "not yet implemented" in captured.err.lower()
+        assert (
+            "dry-run" in captured.err.lower()
+            or "not yet implemented" in captured.err.lower()
+        )

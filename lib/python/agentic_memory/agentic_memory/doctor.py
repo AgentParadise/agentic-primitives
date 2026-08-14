@@ -74,7 +74,9 @@ class Check:
 
     name: str
 
-    def run(self, contract: MemoryContract) -> CheckResult:  # pragma: no cover - abstract
+    def run(
+        self, contract: MemoryContract
+    ) -> CheckResult:  # pragma: no cover - abstract
         raise NotImplementedError
 
 
@@ -170,7 +172,8 @@ class ProviderKnownCheck(Check):
         if not os.path.isdir(provider_dir):
             try:
                 known = sorted(
-                    name for name in os.listdir(self.registry_root)
+                    name
+                    for name in os.listdir(self.registry_root)
                     if os.path.isdir(os.path.join(self.registry_root, name))
                 )
             except OSError:
@@ -372,13 +375,21 @@ class BackendHealthCheck(Check):
                 name=self.name,
                 status=CheckStatus.FAIL,
                 message=f"Backend /health returned status {status_code}",
-                details={"url": health_url, "status_code": status_code, "body_preview": body_preview},
+                details={
+                    "url": health_url,
+                    "status_code": status_code,
+                    "body_preview": body_preview,
+                },
                 duration_ms=duration_ms,
             )
         return CheckResult(
             name=self.name,
             status=CheckStatus.OK,
-            details={"url": health_url, "status_code": status_code, "response_time_ms": round(duration_ms, 1)},
+            details={
+                "url": health_url,
+                "status_code": status_code,
+                "response_time_ms": round(duration_ms, 1),
+            },
             duration_ms=duration_ms,
         )
 
@@ -390,7 +401,9 @@ class ProviderSpecificCheck(Check):
     It must emit JSON to stdout describing its findings and exit 0/1.
     """
 
-    def __init__(self, registry_root: str = PROVIDER_REGISTRY_ROOT, timeout: int = 10) -> None:
+    def __init__(
+        self, registry_root: str = PROVIDER_REGISTRY_ROOT, timeout: int = 10
+    ) -> None:
         super().__init__(name="provider_specific")
         self.registry_root = registry_root
         self.timeout = timeout
@@ -445,7 +458,10 @@ class ProviderSpecificCheck(Check):
         duration_ms = (time.monotonic() - start) * 1000
 
         # Parse JSON details from stdout if present; otherwise carry the raw output.
-        details: dict[str, Any] = {"stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
+        details: dict[str, Any] = {
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+        }
         try:
             parsed = json.loads(result.stdout)
             if isinstance(parsed, dict):
@@ -534,7 +550,9 @@ def _redact(s: str) -> str:
     return s[:4] + "..." + s[-3:]
 
 
-def _format_pretty(contract: MemoryContract | None, results: list[CheckResult], verbose: bool) -> str:
+def _format_pretty(
+    contract: MemoryContract | None, results: list[CheckResult], verbose: bool
+) -> str:
     """Human-readable report to stderr."""
     if contract is None:
         return f"[{CAPABILITY}-doctor] {Env.PROVIDER} unset — memory not opted in. No checks run.\n"
@@ -577,8 +595,15 @@ def main(argv: list[str] | None = None) -> int:
         prog="agentic-memory-doctor",
         description="Validate the workspace's memory contract.",
     )
-    p.add_argument("--json", action="store_true", help="JSON to stdout (pretty stays on stderr)")
-    p.add_argument("--verbose", "-v", action="store_true", help="Include extra detail in pretty output")
+    p.add_argument(
+        "--json", action="store_true", help="JSON to stdout (pretty stays on stderr)"
+    )
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Include extra detail in pretty output",
+    )
     p.add_argument(
         "--provider",
         help="Override AGENTIC_MEMORY_PROVIDER for this run (testing).",
@@ -634,7 +659,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.flush()
 
     if args.fix and not args.apply:
-        sys.stderr.write("[memory-doctor] --fix --dry-run: no changes applied (--apply not yet implemented)\n")
+        sys.stderr.write(
+            "[memory-doctor] --fix --dry-run: no changes applied (--apply not yet implemented)\n"
+        )
 
     return exit_code
 

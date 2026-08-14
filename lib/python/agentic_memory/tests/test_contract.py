@@ -54,7 +54,7 @@ def _shell_capability_env_name(capability: str, field: str) -> str:
     source = ENTRYPOINT_SH.read_text()
     match = _SHELL_FN.search(source)
     assert match, f"__capability_env_prefix() not found in {ENTRYPOINT_SH}"
-    script = f"{match.group(0)}\n__capability_env_prefix \"$1\"\n"
+    script = f'{match.group(0)}\n__capability_env_prefix "$1"\n'
     result = subprocess.run(
         ["bash", "-c", script, "bash", capability],
         capture_output=True,
@@ -64,7 +64,9 @@ def _shell_capability_env_name(capability: str, field: str) -> str:
     return f"{result.stdout.strip()}_{field}"
 
 
-@pytest.mark.parametrize("capability", ["memory", "session-store", "multi-hyphen-cap-name"])
+@pytest.mark.parametrize(
+    "capability", ["memory", "session-store", "multi-hyphen-cap-name"]
+)
 def test_shell_and_python_env_naming_agree(capability):
     """ADR-040's `AGENTIC_<CAP>_<FIELD>` rule has two implementations:
     `__capability_env_prefix` in entrypoint.sh and `capability_env_name()`
@@ -131,7 +133,9 @@ class TestNamespaceValidation:
 
 
 class TestProviderValidation:
-    @pytest.mark.parametrize("provider", ["hindsight", "lossless-claw", "provider_1", "v1.2"])
+    @pytest.mark.parametrize(
+        "provider", ["hindsight", "lossless-claw", "provider_1", "v1.2"]
+    )
     def test_well_formed_providers(self, provider):
         assert is_provider_well_formed(provider) is True
 
@@ -258,4 +262,6 @@ def test_no_env_name_literals_outside_the_enum():
             ):
                 continue
             offenders.append(f"{path.name}:{lineno}: {line.strip()}")
-    assert not offenders, "use Env.<NAME> instead of a literal:\n" + "\n".join(offenders)
+    assert not offenders, "use Env.<NAME> instead of a literal:\n" + "\n".join(
+        offenders
+    )
