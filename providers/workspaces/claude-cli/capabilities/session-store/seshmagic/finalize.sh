@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SeshMagic session-store finalize hook (ADR-038).
+# SeshMagic session-store finalize hook (ADR-040).
 #
 # Sweeps the partition and uploads to the remote store. ALWAYS exits 0:
 # a failed upload after an hour of successful agent work must never make

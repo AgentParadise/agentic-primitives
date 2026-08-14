@@ -1,11 +1,11 @@
 """Integration tests for the generic capability registry entrypoint sections
-5.6 + 5.7 (ADR-038).
+5.6 + 5.7 (ADR-040).
 
 Mirrors the pattern in test_entrypoint_memory.py — runs the real workspace
 container with varying AGENTIC_CAPABILITIES / AGENTIC_<CAP>_* env vars and
 asserts the entrypoint's loop behavior end-to-end.
 
-See ADR-038 and docs/superpowers/sdd/2026-08-12-workspace-capability-modules/.
+See ADR-040 and docs/superpowers/sdd/2026-08-12-workspace-capability-modules/.
 """
 
 from __future__ import annotations
