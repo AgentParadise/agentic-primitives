@@ -1000,6 +1000,173 @@ echo "FINALIZE_RC=$?"
     assert (part_dir / "state.json").exists(), "spool must be retained on upload failure"
 
 
+# --- Task 3 (M1 defect closure): a clean EXIT is not a clean SWEEP -------
+#
+# The exporter documents in its own source that "a completed sweep exits 0
+# even with per-item skips/failures; only a hard RunError (store unreachable,
+# source scan failure) is non-zero." So rc=0 is consistent with failed=3
+# skipped_oversize=2, and finalize.sh used to prune the whole partition on
+# rc=0 alone. Since the adapter now MIGRATES a pre-existing ~/.claude/projects
+# into the partition, that partition can hold a user's entire accumulated
+# transcript history, so pruning it on an incomplete sweep is data loss.
+#
+# These tests drive finalize.sh directly with a stub exporter that exits 0 and
+# prints a chosen summary line, and assert on whether the spool survived.
+
+_FINALIZE_SH = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+
+
+def _finalize_with_stub_exporter(
+    tmp_path: Path,
+    stub_body: str,
+    part_name: str,
+) -> tuple[subprocess.CompletedProcess, Path, float]:
+    """Run finalize.sh against a partition with a stubbed exporter.
+
+    The partition gets the .agentic-partition marker Task 2's containment
+    check requires, so the ONLY thing that can keep the spool in these tests
+    is the sweep-completeness gate under test.
+
+    Returns (result, transcript_path, elapsed_seconds). The transcript file
+    still existing means the spool was retained.
+    """
+    part_dir = tmp_path / "spool" / part_name
+    (part_dir / "claude").mkdir(parents=True)
+    (part_dir / "state.json").write_text("{}\n")
+    (part_dir / ".agentic-partition").write_text("")
+    (part_dir / "claude" / "s.jsonl").write_text("{}\n")
+
+    script = f"""
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+{stub_body}
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export SESSION_STORE_URL=http://unused.invalid
+export EXPORTER_STATE_FILE=/spool/{part_name}/state.json
+{_FINALIZE_SH}
+echo "FINALIZE_RC=$?"
+"""
+    start = time.monotonic()
+    result = _run(
+        ["bash", "-c", script],
+        extra_mounts=[f"{tmp_path / 'spool'}:/spool"],
+    )
+    elapsed = time.monotonic() - start
+    return result, part_dir / "claude" / "s.jsonl", elapsed
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("counter", "summary"),
+    [
+        (
+            "failed",
+            "run: discovered=4 skipped_unchanged=0 uploaded=3 accepted=3 "
+            "duplicate=0 rejected=0 skipped_oversize=0 failed=1",
+        ),
+        (
+            "skipped_oversize",
+            "run: discovered=4 skipped_unchanged=0 uploaded=3 accepted=3 "
+            "duplicate=0 rejected=0 skipped_oversize=1 failed=0",
+        ),
+        (
+            "rejected",
+            "run: discovered=4 skipped_unchanged=0 uploaded=3 accepted=3 "
+            "duplicate=0 rejected=1 skipped_oversize=0 failed=0",
+        ),
+    ],
+)
+def test_finalize_keeps_spool_when_a_sweep_counter_is_nonzero(
+    tmp_path: Path, counter: str, summary: str
+):
+    """rc=0 with failed / skipped_oversize / rejected nonzero means at least
+    one transcript never reached the store. The partition is the only
+    remaining copy, so it must survive, and the log must name the counter
+    that blocked the prune so an operator can act.
+    """
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 0\n',
+        f"nonzero-{counter}",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert transcript.exists(), (
+        f"an incomplete sweep ({counter} nonzero) must not prune the partition"
+    )
+    assert "INCOMPLETE" in result.stderr, "finalize must report the incomplete sweep"
+    assert f"{counter}=1" in result.stderr, (
+        f"finalize must name {counter} as the counter that blocked the prune"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_prunes_when_only_duplicate_and_unchanged_are_nonzero(tmp_path: Path):
+    """duplicate and skipped_unchanged are confirmations, not losses:
+    duplicate means the store already holds that content (it dedups on
+    content_hash) and skipped_unchanged means a prior sweep uploaded it.
+    Neither may block the prune, or the spool grows forever on any repeat
+    sweep.
+    """
+    summary = (
+        "run: discovered=5 skipped_unchanged=3 uploaded=2 accepted=0 "
+        "duplicate=2 rejected=0 skipped_oversize=0 failed=0"
+    )
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 0\n',
+        "clean-with-dupes",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert not transcript.exists(), (
+        "duplicate/skipped_unchanged are not failures and must not block the prune"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_keeps_spool_when_no_summary_line_is_printed(tmp_path: Path):
+    """An unreadable summary is not evidence of success. Absent the line, the
+    sweep's outcome is unknown, and unknown must never authorize a delete.
+    """
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        'echo "uploading things"\nexit 0\n',
+        "no-summary",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert transcript.exists(), "an unparseable summary must not prune the partition"
+    assert "no parseable summary" in result.stderr
+
+
+@pytest.mark.integration
+def test_finalize_bounds_a_hanging_exporter_and_keeps_the_spool(tmp_path: Path):
+    """A wedged upload must not hang the run, and must not prune.
+
+    Unbounded, a stuck DNS lookup or hung connection turns a completed agent
+    run into a hang; during `docker stop` it burns the grace until SIGKILL,
+    so the run reports 137 instead of the agent's real exit code. finalize.sh
+    bounds the exporter at __UPLOAD_TIMEOUT_S and treats a timeout as an
+    upload failure. A killed exporter also prints no summary line, so the
+    completeness gate above independently refuses the prune.
+    """
+    result, transcript, elapsed = _finalize_with_stub_exporter(
+        tmp_path,
+        "sleep 600\n",
+        "hang",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert elapsed < 60, f"finalize did not bound the exporter: {elapsed:.1f}s"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert transcript.exists(), "a timed-out upload must keep the spool"
+    assert "TIMED OUT" in result.stderr, "finalize must report the timeout"
+
+
 # --- Task 7: docker-stop signal behavior --------------------------------
 #
 # EXP-08 (a1-a2-wrapper-signal-matrix) measured that a naive single `wait`
