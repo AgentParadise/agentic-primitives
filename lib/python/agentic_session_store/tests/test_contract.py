@@ -27,9 +27,7 @@ def test_env_names_follow_the_adr_038_rule():
 # --- ADR-040 shell/Python naming conformance ---------------------------------
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
-ENTRYPOINT_SH = (
-    REPO_ROOT / "providers" / "workspaces" / "claude-cli" / "scripts" / "entrypoint.sh"
-)
+ENTRYPOINT_SH = REPO_ROOT / "workspace" / "entrypoint.sh"
 _SHELL_FN = re.compile(r"__capability_env_prefix\(\)\s*\{.*?\n\}", re.DOTALL)
 
 
