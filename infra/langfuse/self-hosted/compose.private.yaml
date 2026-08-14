@@ -1,0 +1,24 @@
+# Private-host overlay for LangFuse's upstream docker-compose.yml.
+#
+# Applied alongside the pinned upstream compose file by deploy.sh. LangFuse
+# stays loopback-only on host port 19431; Tailscale Serve is the sole tailnet
+# ingress.
+services:
+  langfuse-web:
+    ports: !override
+      - "127.0.0.1:19431:3000"
+
+  langfuse-worker:
+    ports: !reset []
+
+  clickhouse:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  postgres:
+    ports: !reset []
