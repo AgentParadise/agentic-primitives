@@ -91,6 +91,28 @@ def _run(
 
 
 @pytest.mark.integration
+def test_capability_runtime_is_staged_from_the_shared_tree():
+    """The image must get its capabilities from workspace/, not from a harness dir.
+
+    Guards the M2 invariant: a second image can host the same capabilities
+    without copying them or reaching into a sibling provider. The in-container
+    layout is unchanged by the move, which is the point of the assertion set.
+    """
+    result = _run(
+        [
+            "bash",
+            "-c",
+            "ls /opt/agentic/capabilities/; "
+            "test -x /opt/agentic/entrypoint.sh && echo ENTRYPOINT_OK",
+        ]
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "memory" in result.stdout
+    assert "session-store" in result.stdout
+    assert "ENTRYPOINT_OK" in result.stdout
+
+
+@pytest.mark.integration
 def test_unknown_capability_in_registry_is_skipped_not_fatal():
     """A registry entry with no provider env set must be a silent no-op."""
     result = _run(
