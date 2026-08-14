@@ -16,11 +16,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-# All Python packages to check
+# All Python packages to check.
+#
+# This list and the `python-packages` matrix in .github/workflows/qa.yml are the
+# same list written twice, so they drift: this one was missing agentic_memory
+# and agentic_session_store while CI checked both, which means `just qa` passing
+# locally said less than a developer would reasonably assume. Keep them in step
+# until one derives from the other (see issue #300 for that argument applied to
+# a different pair of duplicated values).
 PACKAGES = [
     Path("lib/python/agentic_events"),
     Path("lib/python/agentic_isolation"),
     Path("lib/python/agentic_logging"),
+    Path("lib/python/agentic_memory"),
+    Path("lib/python/agentic_session_store"),
 ]
 
 # Additional test directories (not packages)
