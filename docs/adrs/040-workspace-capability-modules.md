@@ -133,6 +133,46 @@ Two variables are capability-generic rather than per-capability:
 - `AGENTIC_CAPABILITY_AUDIT_DIR`: where doctor output is appended, one
   JSON line per run into `YYYY-MM-DD.jsonl`. Defaults per capability to
   `/var/agentic/<capability>-doctor`.
+- `AGENTIC_CAPABILITY_WITHHOLD`: space-separated names of variables that must
+  reach `finalize.sh` but must NOT reach the agent. See below.
+
+**Withholding a contract variable from the agent.** `init.sh` is sourced, so
+everything it exports propagates all the way to CMD. For most of a contract
+that is the point. For a credential it is a defect: the session-store
+adapter's store write token was exported into the environment of every command
+the agent ran, and the agent has no use for it. Only `finalize.sh` does, and
+`finalize.sh` runs after the agent has exited.
+
+A capability declares the withheld names from its own `init.sh`, appending so
+that several capabilities compose:
+
+```sh
+AGENTIC_CAPABILITY_WITHHOLD="${AGENTIC_CAPABILITY_WITHHOLD:-} FOO BAR"
+export AGENTIC_CAPABILITY_WITHHOLD
+```
+
+Entrypoint section 5.8 stashes each declared variable's value in a plain
+(unexported, therefore uninheritable) shell variable of PID 1, unsets the
+exported copy, and re-exports it only inside the subshell each finalizer runs
+in. Nothing in the entrypoint names a capability or a variable, so section 4's
+invariant holds: this is lifecycle machinery, not per-capability plumbing.
+
+Ordering is part of the contract. Withholding happens **after** the section
+5.7 doctor, which legitimately needs the credential to check that the store is
+reachable, and **before** section 6 launches CMD. One visible consequence: a
+doctor re-run on demand by the agent reports the store unreachable when the
+store requires auth. That is correct rather than a regression; the agent
+genuinely no longer holds that credential.
+
+**Known limit, and whose job it is.** A value the substrate injected with
+`docker run -e` is also in `/proc/1/environ`, which the agent, running as the
+same uid, can read. Unsetting a shell variable cannot scrub a process image
+fixed at exec time. Closing that residue belongs to the host-side half
+(section 1): deliver the secret as a mounted file that only `finalize.sh`
+reads, rather than as an env var on the container. The in-container mechanism
+is what removes it from the environment the agent's own processes inherit,
+which is the channel every ordinary command, subprocess, and MCP server picks
+up automatically.
 
 ### 3. The three hooks and their failure semantics
 

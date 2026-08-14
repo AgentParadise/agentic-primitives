@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Test stub standing in for SeshMagicSessionExporter, for the credential
+# withholding test only.
+#
+# Same summary line as the plain stub-exporter, plus one fact the plain stub
+# cannot report: whether the store write credential was actually in this
+# process's environment. That is what makes "withheld from the agent" and
+# "still available to finalize" two separate, checkable claims rather than one
+# claim that could be satisfied by simply breaking the upload.
+#
+# It reports PRESENCE, never the value: this output lands in container logs.
+set -eu
+
+if [ "${1:-}" = "--version" ]; then
+    echo "SeshMagicSessionExporter 0.0.0-stub"
+    exit 0
+fi
+
+if [ -n "${SESSIONS_WRITE_TOKEN:-}" ]; then
+    echo "STUB_EXPORTER_TOKEN=present" >&2
+else
+    echo "STUB_EXPORTER_TOKEN=absent" >&2
+fi
+
+echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+exit 0

@@ -411,6 +411,72 @@ for __cap in ${AGENTIC_CAPABILITIES:-}; do
 done
 
 # -----------------------------------------------------------------------------
+# 5.8 Withhold declared contract variables from the agent
+# -----------------------------------------------------------------------------
+# init.sh is SOURCED (5.6), so everything it exports propagates all the way to
+# CMD. For most of a contract that is the point. For a credential it is a
+# defect: the session-store adapter's write token was exported into the
+# environment of every command the agent ran, and the agent has no use for it
+# at all. Only finalize.sh does, and finalize.sh runs after the agent exits.
+#
+# THE MECHANISM IS GENERIC, because ADR-040 s4 says adding a capability must
+# cost zero entrypoint changes. Nothing here names a capability or a variable.
+# A capability declares, from its own init.sh, which variables must not reach
+# the agent:
+#
+#     AGENTIC_CAPABILITY_WITHHOLD="${AGENTIC_CAPABILITY_WITHHOLD:-} FOO BAR"
+#     export AGENTIC_CAPABILITY_WITHHOLD
+#
+# Space-separated, appended rather than assigned so several capabilities
+# compose. The lifecycle stashes each declared variable's value in a shell
+# variable of THIS process (a plain variable, deliberately not exported, so no
+# child inherits it), unsets the exported copy, and re-exports it only into the
+# subshell each finalizer runs in.
+#
+# Ordering is load-bearing. This runs AFTER 5.7, because the doctor legitimately
+# needs the credential to check that the store is reachable, and BEFORE section
+# 6 launches CMD, which is the process that must not see it. A consequence worth
+# stating: an on-demand doctor re-run by the agent later will report the store
+# unreachable if the store requires auth. That is correct. The agent genuinely
+# no longer holds that credential.
+#
+# What this does NOT close: values the substrate injected with `docker run -e`
+# also live in /proc/1/environ, which the agent runs as the same uid and can
+# read. Unsetting a shell variable cannot scrub a process image that was set at
+# exec time. Closing that residue is the host-side half's job (ADR-040 s1) --
+# deliver the secret as a mounted file rather than an env var -- and it is
+# recorded in ADR-040 s2 as a known limit rather than pretended away here.
+__withheld_names=""
+for __wn in ${AGENTIC_CAPABILITY_WITHHOLD:-}; do
+    # A name is about to be eval'd on both sides of this. Validate it as a
+    # shell identifier first, for the same reason 5.6 validates capability
+    # names before they become part of an expansion.
+    case "${__wn}" in
+        [!A-Za-z_]* | *[!A-Za-z0-9_]*)
+            echo "[entrypoint] warning: ignoring an invalid name in AGENTIC_CAPABILITY_WITHHOLD (not a shell identifier)" >&2
+            continue
+            ;;
+    esac
+    # Only stash what is actually set. Restoring a variable that was never
+    # set would invent an empty one for finalize, and a duplicate entry (two
+    # capabilities withholding the same name) hits this on its second pass
+    # and is skipped rather than overwriting the stash with an empty value.
+    eval "__wset=\${${__wn}+set}"
+    [ "${__wset:-}" = "set" ] || continue
+    eval "__WITHHELD_${__wn}=\${${__wn}}"
+    unset "${__wn}"
+    __withheld_names="${__withheld_names} ${__wn}"
+done
+unset __wn __wset
+# The declaration itself is a list of names, not a secret, but it has no
+# reader after this point and an env var nobody reads is one more thing to
+# explain.
+unset AGENTIC_CAPABILITY_WITHHOLD
+if [ -n "${__withheld_names}" ]; then
+    echo "[entrypoint] withheld from the agent, restored for finalize:${__withheld_names}" >&2
+fi
+
+# -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
 # Wrapper rather than exec, so capability finalize hooks get a post-agent
@@ -449,7 +515,18 @@ __run_finalizers() {
         __capability_provider_safe "${__provider}" || continue
         __fin="/opt/agentic/capabilities/${__cap}/${__provider}/finalize.sh"
         [ -f "${__fin}" ] || continue
-        "${__fin}" || true
+        # Restore the variables 5.8 withheld, in a SUBSHELL, so the export
+        # lives exactly as long as the finalizer does. Restoring them in this
+        # shell instead would put the credential back in scope for every
+        # later finalizer of every other capability, which is the leak 5.8
+        # exists to close, only smaller. The agent has already exited by this
+        # point, so nothing the agent runs can be a child of this subshell.
+        (
+            for __wn in ${__withheld_names}; do
+                eval "export ${__wn}=\"\${__WITHHELD_${__wn}}\""
+            done
+            "${__fin}"
+        ) || true
     done
 }
 

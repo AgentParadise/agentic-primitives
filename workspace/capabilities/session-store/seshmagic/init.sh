@@ -15,6 +15,23 @@ PART_DIR="${SPOOL}/${PARTITION}"
 export SESSION_STORE_URL="${AGENTIC_SESSION_STORE_URL}"
 if [ -n "${AGENTIC_SESSION_STORE_AUTH:-}" ]; then
     export SESSIONS_WRITE_TOKEN="${AGENTIC_SESSION_STORE_AUTH}"
+
+    # The write credential is for the EXPORTER, which runs in finalize.sh
+    # after the agent has exited. The agent itself never needs it, and this
+    # file is SOURCED, so without this declaration both the orchestrator's
+    # copy and the derived exporter copy stay exported into the environment
+    # of every single command the agent runs.
+    #
+    # AGENTIC_CAPABILITY_WITHHOLD is the lifecycle's generic mechanism
+    # (entrypoint.sh 5.8, ADR-040 s2): the named variables are stashed out of
+    # the environment before CMD launches and restored only into the subshell
+    # each finalizer runs in. APPEND, never assign, so capabilities compose.
+    #
+    # Both names are listed. Withholding only the derived SESSIONS_WRITE_TOKEN
+    # would leave the same secret in the agent's environment under the
+    # contract variable it arrived in.
+    AGENTIC_CAPABILITY_WITHHOLD="${AGENTIC_CAPABILITY_WITHHOLD:-} AGENTIC_SESSION_STORE_AUTH SESSIONS_WRITE_TOKEN"
+    export AGENTIC_CAPABILITY_WITHHOLD
 fi
 
 # --- Correlation tags ---------------------------------------------------------

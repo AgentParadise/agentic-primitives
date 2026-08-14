@@ -1965,3 +1965,109 @@ def test_escalation_survives_the_two_non_race_outcomes(
     )
     assert "REACHED" in result.stdout, f"{label}: {result.stderr}"
     assert result.returncode == 0, result.stderr
+
+
+# --- The store write credential is withheld from the agent (ADR-040 s2) ---
+
+_STUB_EXPORTER_REPORTS_TOKEN = (
+    Path(__file__).parent / "fixtures" / "stub-exporter-reports-token"
+)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_store_credential_is_withheld_from_the_agent_but_reaches_finalize(
+    tmp_path: Path,
+):
+    """The agent must not inherit the store write credential; finalize must.
+
+    init.sh is SOURCED, so before AGENTIC_CAPABILITY_WITHHOLD existed both the
+    orchestrator's AGENTIC_SESSION_STORE_AUTH and the derived
+    SESSIONS_WRITE_TOKEN were exported into the environment of every command
+    the agent ran. The agent has no use for either. Only the exporter does,
+    and the exporter runs in finalize.sh after the agent has exited.
+
+    Both halves are asserted, because either one alone is trivially
+    satisfiable: withholding is easy if you also break the upload, and the
+    upload is easy if you leak the credential. The CMD dumps its whole
+    environment, so the secret is checked by value and not only by variable
+    name, and it dumps a grandchild's environment too, since inheritance is
+    the channel every subprocess, tool and MCP server picks up automatically.
+
+    NOT covered here, deliberately: `docker run -e` also puts the value in
+    /proc/1/environ, which the agent can read as the same uid. That residue
+    belongs to the host-side half of the capability (ADR-040 s1 and s2) and no
+    amount of unsetting inside the container closes it.
+    """
+    secret = "withhold-me-1a2b3c4d"  # a test fixture, not a real credential
+    spool = _host_spool(tmp_path)
+    agent = (
+        'echo "AGENT_AUTH=${AGENTIC_SESSION_STORE_AUTH:-<unset>}"; '
+        'echo "AGENT_TOKEN=${SESSIONS_WRITE_TOKEN:-<unset>}"; '
+        'echo "AGENT_ENV_BEGIN"; env; echo "AGENT_ENV_END"; '
+        'bash -c \'echo "CHILD_ENV_BEGIN"; env; echo "CHILD_ENV_END"\''
+    )
+    result = _run(
+        ["bash", "-c", agent],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_AUTH": secret,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "withhold-credential",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER_REPORTS_TOKEN}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+
+    assert "AGENT_AUTH=<unset>" in result.stdout, (
+        "the agent inherited the orchestrator's copy of the store credential"
+    )
+    assert "AGENT_TOKEN=<unset>" in result.stdout, (
+        "the agent inherited the exporter's copy of the store credential"
+    )
+    assert secret not in result.stdout, (
+        "the credential's VALUE is somewhere in the agent's environment, under "
+        "some name; the dumped env is what catches that"
+    )
+
+    # Finalize still uploads: the stub reports that the credential was in its
+    # environment, and the sweep completed.
+    assert "STUB_EXPORTER_TOKEN=present" in result.stderr, (
+        "withholding broke the upload: the exporter ran without the credential"
+    )
+    assert "[finalize] session-store upload complete" in result.stderr, result.stderr
+
+
+@pytest.mark.integration
+def test_withhold_ignores_a_name_that_is_not_a_shell_identifier():
+    """A declared name is eval'd on both sides of the stash, so an invalid one
+    is skipped with a warning rather than expanded.
+
+    Same posture as the capability-name and provider-name validation in 5.6:
+    reject before the name becomes part of an expansion, and do not echo the
+    rejected value.
+    """
+    result = _run(
+        [
+            "bash",
+            "-c",
+            'echo "AGENT_SAW=${SAFE_ONE:-<unset>}"',
+        ],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_CAPABILITY_WITHHOLD": "a-b;touch /tmp/PWNED SAFE_ONE",
+            "SAFE_ONE": "kept-out-of-the-agent",
+        },
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "AGENT_SAW=<unset>" in result.stdout, (
+        "a validly named variable must still be withheld"
+    )
+    assert "kept-out-of-the-agent" not in result.stdout, result.stdout
+    assert "invalid name in AGENTIC_CAPABILITY_WITHHOLD" in result.stderr
