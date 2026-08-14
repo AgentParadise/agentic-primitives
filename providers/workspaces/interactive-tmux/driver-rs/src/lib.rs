@@ -2,7 +2,9 @@
 //!
 //! This crate is a parity port of `providers/workspaces/interactive-tmux/driver/
 //! interactive_tmux.py`. The protocol, per-agent matrix (EXP-01..04, EXP-05a,
-//! `experiments/ANALYTICS.md` §4), and structured-result shapes
+//! `ANALYTICS.md` §4, archived in the private `AgentParadise/experiments`
+//! repository under `agentic-primitives/2026-06-15--tmux-workspace--lab-reports/`),
+//! and structured-result shapes
 //! (`AwaitResult` mirrors Python's `ExecuteResult`) are preserved byte-for-byte
 //! so the two implementations can share the on-disk workspace registry at
 //! `/tmp/interactive-tmux-workspaces/<name>.json` and round-trip with `smoke.sh`.
