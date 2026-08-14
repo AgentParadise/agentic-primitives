@@ -1851,3 +1851,117 @@ def test_docker_stop_stubborn_agent_is_killed_and_still_runs_finalize(
         f"wrapper must self-escalate before docker's own grace expires, took {elapsed:.2f}s"
     )
     assert "[finalize] session-store upload complete" in logs, logs
+
+
+# --- The escalation window's set -e race --------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_ENTRYPOINT_SH = _REPO_ROOT / "workspace" / "entrypoint.sh"
+
+# The whole `if [ "${__rc}" -gt 128 ]; then ... fi` escalation window, lifted
+# verbatim out of entrypoint.sh. Extracted rather than restated so the test
+# exercises the shipped code: a restatement would only test the test.
+_ESCALATION_BLOCK = re.compile(
+    r'^if \[ "\$\{__rc\}" -gt 128 \]; then$.*?^fi$',
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _escalation_block() -> str:
+    match = _ESCALATION_BLOCK.search(_ENTRYPOINT_SH.read_text())
+    assert match, f"escalation block not found in {_ENTRYPOINT_SH}"
+    return match.group(0)
+
+
+@pytest.mark.integration
+def test_escalation_survives_the_child_dying_mid_kill(tmp_path: Path):
+    """The child dying BETWEEN `kill -0` and `kill -KILL` must not abort the
+    wrapper before finalizers run.
+
+    This is the race itself, made deterministic. The window's two calls have
+    exactly three possible outcomes, and a stub `kill` can produce any of
+    them on demand:
+
+      child already gone  -> `kill -0` fails, the guard short-circuits.
+      child still alive   -> both calls succeed.
+      child dies BETWEEN  -> `kill -0` succeeds, `kill -KILL` fails (ESRCH).
+
+    Only the third is the defect, and it is invisible to the obvious test by
+    construction: the other two pass either way, so hand-testing exercises
+    precisely the cases that cannot fail. Under `set -e`, the pre-fix
+    `kill -0 ... && kill -KILL ...` AND-list returns non-zero as a whole in
+    the third case, and a non-zero simple list is fatal, so the entrypoint
+    exits before __run_finalizers is ever called: capture silently skipped,
+    container exit non-zero, no explanation.
+
+    Runs the shipped block in a local bash with `set -e` in force, the same
+    discipline entrypoint.sh runs it under (line 30). Reaching the line after
+    the block is the whole assertion.
+    """
+    script = tmp_path / "race.sh"
+    script.write_text(
+        "set -e\n"
+        "__TERM_GRACE_TICKS=2\n"
+        "__child=424242\n"
+        "__rc=143\n"
+        # The stub IS the race: alive when probed, gone when signalled.
+        "kill() {\n"
+        '    case "$1" in\n'
+        "        -0) return 0 ;;\n"
+        "        -KILL) return 1 ;;\n"
+        "    esac\n"
+        "    return 0\n"
+        "}\n"
+        # `wait` on a pid that was never our child would fail immediately and
+        # mask what is being measured; stub it to the SIGKILL status the real
+        # one reports here.
+        "wait() { return 137; }\n"
+        f"{_escalation_block()}\n"
+        'echo "REACHED signaled=${__signaled} rc=${__rc}"\n'
+    )
+    result = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=30
+    )
+    assert "REACHED" in result.stdout, (
+        "the wrapper aborted inside the escalation window, so finalizers "
+        f"never ran; rc={result.returncode} stderr={result.stderr}"
+    )
+    assert result.returncode == 0, result.stderr
+    # The escalation still happened: __rc came from the second wait.
+    assert "signaled=1" in result.stdout and "rc=137" in result.stdout, result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("kill0_rc", "killkill_rc", "label"),
+    [(1, 0, "child already gone"), (0, 0, "child still alive")],
+)
+def test_escalation_survives_the_two_non_race_outcomes(
+    tmp_path: Path, kill0_rc: int, killkill_rc: int, label: str
+):
+    """The other two outcomes must keep working. These pass against the
+    pre-fix code too, and are here so the fix is pinned on all three paths
+    rather than only the one that was broken.
+    """
+    script = tmp_path / "no-race.sh"
+    script.write_text(
+        "set -e\n"
+        "__TERM_GRACE_TICKS=2\n"
+        "__child=424242\n"
+        "__rc=143\n"
+        "kill() {\n"
+        '    case "$1" in\n'
+        f"        -0) return {kill0_rc} ;;\n"
+        f"        -KILL) return {killkill_rc} ;;\n"
+        "    esac\n"
+        "    return 0\n"
+        "}\n"
+        "wait() { return 137; }\n"
+        f"{_escalation_block()}\n"
+        'echo "REACHED signaled=${__signaled} rc=${__rc}"\n'
+    )
+    result = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=30
+    )
+    assert "REACHED" in result.stdout, f"{label}: {result.stderr}"
+    assert result.returncode == 0, result.stderr

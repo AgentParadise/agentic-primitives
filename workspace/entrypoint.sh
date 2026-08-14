@@ -502,7 +502,28 @@ if [ "${__rc}" -gt 128 ]; then
         sleep 0.1
         __n=$((__n + 1))
     done
-    kill -0 "${__child}" 2>/dev/null && kill -KILL "${__child}" 2>/dev/null
+    # Escalate to SIGKILL once the grace expires. Written as `if`/`|| true`
+    # rather than the shorter `kill -0 ... && kill -KILL ...`, because that
+    # form is a `set -e` race with NO safe outcome: if the child dies BETWEEN
+    # the two calls, `kill -0` succeeds, `kill -KILL` fails with ESRCH, and
+    # the whole AND-list is then the last command of the script's current
+    # list, so `set -e` aborts the wrapper right here -- before finalizers
+    # run. Capture is silently skipped and the container exits non-zero with
+    # no explanation.
+    #
+    # The bug is invisible to the obvious test by construction, which is why
+    # it survived review: child already gone -> `kill -0` fails, the `&&`
+    # short-circuits, and a failed *condition* is exempt from `set -e`, so it
+    # passes. Child still alive -> both calls succeed, so it passes. Only the
+    # race in between fails, and hand-testing exercises exactly the two cases
+    # that pass.
+    #
+    # Both guards below are load-bearing: the `if` makes the liveness probe a
+    # condition (exempt), and `|| true` makes the kill itself non-fatal for
+    # the same race, one instruction later.
+    if kill -0 "${__child}" 2>/dev/null; then
+        kill -KILL "${__child}" 2>/dev/null || true
+    fi
     if wait "${__child}" 2>/dev/null; then __rc=0; else __rc=$?; fi
 fi
 
