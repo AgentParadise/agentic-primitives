@@ -418,7 +418,7 @@ def test_adapter_translates_contract_and_creates_symlinks(tmp_path: Path):
         # CMD; mount the stub so exporter_present passes too.
         extra_mounts=[
             f"{spool}:/spool",
-            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
         ],
         add_host_gateway=True,
     )
@@ -462,7 +462,7 @@ def test_symlink_replaces_preexisting_real_directory(tmp_path: Path):
     for p in home.rglob("*"):
         os.chmod(p, 0o777)
 
-    stub = Path("tests/integration/fixtures/stub-exporter").resolve()
+    stub = _STUB_EXPORTER
     cmd = [
         "docker", "run", "--rm",
         "--add-host=host.docker.internal:host-gateway",
@@ -535,7 +535,7 @@ def test_preexisting_transcripts_are_migrated_not_deleted(tmp_path: Path):
         extra_mounts=[
             f"{spool}:/spool",
             f"{home}:/home/agent",
-            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
         ],
         add_host_gateway=True,
         tmpfs_home=False,
@@ -580,7 +580,7 @@ def test_migration_failure_preserves_data_and_fails_loudly(tmp_path: Path):
         extra_mounts=[
             f"{spool}:/spool",
             f"{home}:/home/agent",
-            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
         ],
         add_host_gateway=True,
         tmpfs_home=False,
@@ -630,7 +630,7 @@ def test_name_collision_clobbers_neither_copy_and_fails_loudly(tmp_path: Path):
         extra_mounts=[
             f"{spool}:/spool",
             f"{home}:/home/agent",
-            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
         ],
         add_host_gateway=True,
         tmpfs_home=False,
@@ -691,7 +691,7 @@ def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
         # exporter_present) or CMD never executes.
         extra_mounts=[
             f"{spool}:/spool",
-            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
         ],
         add_host_gateway=True,
     )
@@ -759,7 +759,7 @@ def test_capture_env_round_trips_tags_safely(tmp_path: Path, tags: str):
         },
         extra_mounts=[
             f"{spool}:/spool",
-            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
         ],
         add_host_gateway=True,
     )
