@@ -169,6 +169,46 @@ smaller cost than a record that lies.
 An absence is discoverable. A lying signal leaves an artifact that actively
 argues against looking further.*
 
+## The drift detector that drifted
+
+The best instance came last, and it is the one to remember if you remember only
+one.
+
+An ADR states that a naming rule has two implementations, `__capability_env_prefix`
+in shell and `capability_env_name()` in Python, and that they must agree. A
+conformance test was written specifically because **a claim in an ADR that two
+things must agree is worthless without something checking it.** Its teeth were
+verified by mutating the shell function and watching the test fail.
+
+It got its value from reading the *real* entrypoint off disk rather than a copy,
+because a test that re-derives the shell logic in Python proves only that Python
+agrees with itself.
+
+Then the entrypoint moved. The test kept pointing at the old path, failed with
+`FileNotFoundError`, and nobody noticed. **The thing written to catch drift
+drifted, and its own drift was undetected.**
+
+Note what this is not. It is not carelessness. The property that made the test
+worth having, reaching into the source tree for the genuine artifact, is exactly
+the property that coupled it to the source tree and let a relocation break it.
+**The strength and the fragility are the same design decision.**
+
+Three gates ran and none of them was wrong about what it checked. The move task
+ran the integration suite; this is a unit test. The move review verified `R100`
+pure renames and diffs; it did not execute tests. The documentation repoint swept
+references; this is a path in Python, not in prose. Each scope was correctly
+defined. The test fell between them, and nothing owned the gap.
+
+The asymmetry is the lesson worth carrying: `/opt/agentic/**` did not move, so
+nothing *inside* a container broke. The only thing that broke was a check
+reaching in from outside. **A verifier that couples itself to a layout inherits
+that layout's churn**, and it will not tell you when the coupling snaps, because
+the failure is its own absence.
+
+Ask of any check you rely on: if this stopped running tomorrow, how would I find
+out? For most checks the honest answer is that you would not, and the check that
+watches for drift is the one whose silence is least distinguishable from success.
+
 ## The one where we did it to ourselves, while writing this
 
 Two sessions identified that `agentic_memory` and `agentic_session_store` had no
@@ -231,6 +271,14 @@ Care applied to the signal does not reach the producer.
 - **Encode "this must not change" as a check, not as care.** A rename script
   that asserts which paths it must leave alone catches the sweep that looks
   right in the source tree and is wrong everywhere else.
+- **Ask of every check: if this stopped running, how would I find out?** A check
+  that has silently stopped is indistinguishable from a check that keeps
+  passing, and the ones that reach outside their own tree are the likeliest to
+  stop.
+- **A sweep that matches paths cannot see a renamed function.** Twice in one
+  afternoon a rename outran a path-based search. Sweep identifiers back against
+  the source too, or a doc will name a function that no longer exists and fail
+  exactly like a broken link, without a link checker to notice.
 - **When you find a defect, ask whether it ever ran**, not only how to fix it.
   Fixing forward is not assessing exposure.
 
