@@ -39,7 +39,22 @@ Four ways to be wrong about evidence, ordered by how invisible each one is.
 
 A transcript exporter marked its state file for `rejected` items even though the
 store never stored them. A prune gate read the exporter's exit code as a claim
-about per-item success. It never was.
+about per-item success. It never was: `run()` returns `Ok(summary)` regardless
+of the counters inside it.
+
+The precise shape matters, because the exporter is *mostly* careful. Three
+outcomes fail to store an item, and only one of them marks state:
+
+| Outcome | Marked? | Consequence |
+|---|---|---|
+| `rejected` | **yes** | Never stored, never retried. The bug. |
+| `failed` | no | Retries next sweep, genuinely stored if it later succeeds. |
+| `skipped_oversize` | no | Recounted every sweep, never captured. |
+
+The exporter's own doc comment says state is marked for "accepted, duplicate, or
+per-item rejected: all three mean the store processed it." Processed is not
+stored. That single word is the whole defect, and it is why the fix's sticky
+sentinel is scoped to `rejected` alone rather than to failure generally.
 
 So the first sweep correctly refused to prune, and the second sweep saw the same
 transcript as `skipped_unchanged`, read all counters as zero, and deleted it.
@@ -116,6 +131,20 @@ migration work for a state that does not exist.
 observability. A signal you wrote yesterday deserves the same suspicion as one
 you inherited**, arguably more, because its author remembers the intent, and
 intent is not what the code does.
+
+The lying notice and the `:-` probe above are the same act, trusting something
+because you just wrote it, but they lie at different distances. **The notice
+lied about the world; the test lied about the code.** A reader who guards only
+against the first will still write the second, because a test feels like
+verification rather than like output.
+
+There is a third distance, and it is the one with no code in it at all. The
+handoff message describing this mechanism named a constant
+`__FINALIZE_BUDGET_SIGNALED_S`. The source says `__FINALIZE_BUDGET_SIGNAL_S`.
+Its author had read that file hours earlier. **A summary you write for someone
+else is a produced signal too**, and it is the one nobody thinks to verify,
+because it is prose rather than output. It was caught only because the reader
+checked the source instead of the message.
 
 *This is the worst of the four. A misread leaves an artifact you can re-read.
 An absence is discoverable. A lying signal leaves an artifact that actively
