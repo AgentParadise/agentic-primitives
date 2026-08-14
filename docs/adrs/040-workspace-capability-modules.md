@@ -361,16 +361,31 @@ An image hosting capability modules must:
    the tree into the provider directory. `stage_workspace_runtime()` in
    `scripts/build-provider.py` copies `workspace/` into the build context;
    the image's `COPY` reads it from there.
-3. **Make every module script executable, at any nesting depth.** The
-   lifecycle *sources* `init.sh` but *executes* `doctor` and `finalize.sh`,
-   so a non-executable module script is a runtime failure that neither the
-   build nor a link check can catch. The claude-cli image does this with a
-   depth-unbounded `find /opt/agentic/capabilities -name "*.sh" -exec chmod
-   755`, plus a separate pass for the extensionless `doctor` entry. That
-   second pass is currently pinned to `-mindepth 2 -maxdepth 2`, which
-   matches section 1's layout exactly and nothing deeper. An image is
-   satisfying the contract only if its permission pass covers the layout it
-   actually ships.
+3. **Make every module script executable at the depths section 1 mandates.**
+   The lifecycle *sources* `init.sh` but *executes* `doctor` and
+   `finalize.sh`, so a non-executable module script is a runtime failure
+   that neither the build nor a link check can catch. The obligation is a
+   correspondence between two files, not a blanket recursive `chmod`: **the
+   image's permission pass must cover exactly the paths the entrypoint
+   constructs.** The entrypoint does not search for module scripts, it
+   builds their paths literally, at three sites:
+
+   | Entrypoint site | Path built | Depth |
+   |---|---|---|
+   | `workspace/entrypoint.sh:373` | `/opt/agentic/capabilities/${__cap}/${__provider}/init.sh` | 3 |
+   | `workspace/entrypoint.sh:404` | `/opt/agentic/capabilities/${__cap}/doctor` | 2 |
+   | `workspace/entrypoint.sh:450` | `/opt/agentic/capabilities/${__cap}/${__provider}/finalize.sh` | 3 |
+
+   The claude-cli image matches that set: a depth-unbounded `find
+   /opt/agentic/capabilities -name "*.sh" -exec chmod 755` for the adapter
+   scripts, plus a `-mindepth 2 -maxdepth 2` pass for the extensionless
+   `doctor` entry. Those pins are not a coincidence agreeing with today's
+   tree; they are the only depth at which a `doctor` can ever be invoked.
+   Widening them would set the executable bit on files nothing will run, and
+   would turn a capability author's misplaced `doctor` from a clean failure
+   into an executable file and silence. If the layout in section 1 ever
+   gains a level, these three sites and the image's permission pass change
+   together, and that is the reason to change them.
 4. **Declare `AGENTIC_CAPABILITIES` as an image `ENV`.** The registry is
    part of what the image *is*, not something a host is expected to know to
    set. A host may narrow it; per section 5 that narrowing is the one
@@ -399,13 +414,19 @@ one capability at a time.
 This is the property that made M2 safe, and it is stated here as a rule so
 that a reviewer can cite it rather than rediscover it. The mechanical form:
 **a commit that relocates the runtime's source files must leave the
-destination side of every `COPY` byte-identical.** `git show -M <commit> |
-grep '/opt/agentic'` is the check, and only source-side changes may appear
-in its output.
+destination side of every `COPY` instruction byte-identical.** `git show -M
+<commit> | grep '/opt/agentic'` is the check. Read its output by kind: hits
+inside a `COPY` instruction may differ only on the source side, and hits in
+comment or docstring prose are not destinations and carry no obligation
+beyond being accurate.
 
-The M2 move commit passes that check exactly. Across the whole commit the
-only `/opt/agentic` lines are two `COPY` destinations, character for
-character unchanged, with only the source side moved:
+The M2 move commit passes. The grep returns nine lines. Four are the two
+`COPY` pairs below. Two are unchanged context, the `git-hooks/` copy and the
+`plugins/` copy carried along in a hunk header. The remaining three are
+prose inside the reworded `stage_workspace_runtime()` docstring in
+`scripts/build-provider.py`, which changed because it describes the new
+source layout. **No `COPY` destination changed**, character for character,
+with only the source side moved:
 
 ```
 -COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
@@ -452,38 +473,61 @@ caught at review time:
   tests in the same commit and run them, precisely because they are the
   tests least likely to be covered by a documentation sweep.
 
-#### 12.2 The neutrality boundary, and the sites still outside it
+#### 12.2 The neutrality boundary: conditional versus unconditional
 
 M2 moved the capability runtime out from under `providers/workspaces/claude-cli/`.
 It did **not** make that runtime harness-neutral. Those are different
 achievements, and the boundary between them runs through the middle of
 `workspace/`, so it is drawn here explicitly rather than left as a caveat.
 
-**Inside the boundary, genuinely neutral and not to be forked per image:**
-the env contract (section 2), the three-hook lifecycle (section 3), the
-registry loop and its hardening (section 5), and the
-`workspace/capabilities/` tree itself. Individual provider adapters do name
-harness paths (`~/.claude/projects` and `~/.codex/sessions` in the seshmagic
-adapter, `~/.hindsight/claude-code.json` in the hindsight adapter), which is
-what an adapter is for: a per-provider binding, not an image-level fork.
+The axis is **not** whether code names a harness. Plenty of correct code
+must. The axis is whether a second image has to **modify the shared tree**:
+
+> **Harness-specific code reached only through provider selection is the
+> design. Harness-specific code on the unconditional path is debt.**
+
+That test applies to code not yet written, which is why it is stated as a
+rule rather than as a verdict on today's three sites.
+
+**Inside the boundary, conditional and not to be forked per image:** the env
+contract (section 2), the three-hook lifecycle (section 3), the registry
+loop and its hardening (section 5), and the `workspace/capabilities/` tree.
+Adapters do name harnesses, and that is the design working. A Codex image
+stages `workspace/capabilities/` unmodified, sets a different
+`AGENTIC_<CAP>_PROVIDER`, and the adapter directories it does not select are
+directories the lifecycle never enters. The Claude paths are still on disk
+and are never read.
+
+One clarification so a later reader does not mistake this for optimism.
+`~/.claude/projects` and `~/.codex/sessions` in the seshmagic adapter are
+harness paths, not provider paths: that capability's contract is "capture
+agent transcripts", which cannot be written without naming the harnesses
+whose transcripts are being captured. **The adapter enumerates harnesses by
+design.** Adding a third harness therefore means extending that enumeration
+in `seshmagic/init.sh`, inside the tree this ADR calls neutral, and that is
+the adapter doing its job rather than the neutrality claim failing. What
+would break the claim is a second image needing to *fork* the tree, and
+extending an enumeration is not that.
 
 **Outside the boundary:** `workspace/entrypoint.sh` is shared in *location*
-only. It still carries harness-specific setup, at these sites:
+only. Its harness-specific setup sits on the unconditional path:
 
 | Site | What it does | Status |
 |---|---|---|
-| `workspace/entrypoint.sh:33-64` | Section 1 writes `~/.claude/settings.json` unconditionally, with no capability, provider, or harness condition around it. The written document enables three Claude Code plugin identifiers. | Harness-specific. M3. |
-| `workspace/entrypoint.sh:66-91` | Section 2 scans `/opt/agentic/plugins/` for `.claude-plugin/plugin.json` and builds `--plugin-dir` flags (built at `:74-88`), which the file describes at `:71-72` as flags "for the orchestrator to append when invoking claude CLI". | Harness-specific. M3. |
-| `workspace/entrypoint.sh:113-115` | Comments the first git-hooks source as "owned by the claude-cli provider itself", baked in from `providers/workspaces/claude-cli/scripts/git-hooks/`. | **Accurate, no change needed.** That directory correctly stayed behind in the provider. Evidence of a provider-specific dependency, not a stale path. |
+| `workspace/entrypoint.sh:33-64` | Section 1 writes `~/.claude/settings.json`, enabling three Claude Code plugin identifiers. Verified to run with **no guard of any kind**: no capability, provider, or harness condition anywhere around it. | Unconditional. Debt. M3. |
+| `workspace/entrypoint.sh:66-91` | Section 2 scans `/opt/agentic/plugins/` for `.claude-plugin/plugin.json` and builds `--plugin-dir` flags (`:74-88`), described at `:71-72` as flags "for the orchestrator to append when invoking claude CLI". Runs for every provider. | Unconditional. Debt. M3. |
+| `workspace/entrypoint.sh:113-115` | Comments the first git-hooks source as "owned by the claude-cli provider itself", baked in from `providers/workspaces/claude-cli/scripts/git-hooks/`. | **Accurate, no change needed.** That directory correctly stayed behind in the provider. A provider-specific dependency documented as such, not a stale path. |
 
 The consequence, stated plainly: **a second image staging this tree today is
 handed Claude's configuration whether or not it runs Claude.** Not a
-degraded experience, an incorrect one.
+degraded experience, an incorrect one. There is no selection step to opt out
+through, which is exactly what puts these two rows on the wrong side of the
+rule while the adapters sit comfortably on the right side of it.
 
-Factoring the first two rows out, behind a condition or a per-provider hook,
-is **M3's scope**, named here so it is a tracked boundary with two known
-sites rather than a debt some later reader discovers. M3 is where the omni
-image forces the question. Until then the honest statement is that the
+Giving the first two rows a selection step, a condition or a per-provider
+hook, is **M3's scope**, named here so it is a tracked boundary with two
+known sites rather than a debt some later reader discovers. M3 is where the
+omni image forces the question. Until then the honest statement is that the
 runtime is *shared*, not that it is *neutral*.
 
 #### 12.3 A move commit contains only the move
@@ -642,9 +686,10 @@ not belong in the image.
 - **The image is not turnkey for session-store.** Deployment must provide
   the exporter. Accepted deliberately; see section 10.
 - **The shared entrypoint is not yet harness-neutral.** It is shared in
-  location, and two of its sections still configure Claude specifically, so
-  a second image staging the tree today inherits that setup. Two enumerated
-  sites, tracked as M3 scope; see section 12.2.
+  location, and two of its sections configure Claude on the unconditional
+  path, with no selection step to opt out through, so a second image staging
+  the tree today inherits that setup. Two enumerated sites, tracked as M3
+  scope; see section 12.2.
 
 ## Migration
 
