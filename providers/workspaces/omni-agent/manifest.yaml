@@ -1,0 +1,112 @@
+# Omni Agent Workspace Provider Manifest
+# A workspace image that hosts BOTH agent harnesses (claude and codex) on the
+# shared capability runtime.
+#
+# See ADR-027: Provider-Based Workspace Images
+# See ADR-040 section 12: The workspace image contract
+
+name: omni-agent
+version: "1.0.0"
+description: >-
+  Multi-harness workspace hosting both the Claude CLI and the Codex CLI on the
+  shared ADR-040 capability runtime (memory, session-store). Second
+  implementation of the ADR-040 section 12 image contract.
+
+# Workspace capability modules (ADR-040)
+# This provider stages workspace/entrypoint.sh and workspace/capabilities/
+# unmodified via scripts/build-provider.py's stage_workspace_runtime(), and
+# COPYs them to the fixed in-container locations /opt/agentic/entrypoint.sh
+# and /opt/agentic/capabilities/ (ADR-040 s12.1). It contributes no capability
+# code of its own: an image hosts capabilities, it does not define them.
+
+# Image build configuration
+image:
+  dockerfile: ./Dockerfile
+  tag: omni-agent-workspace
+  # Build context is the agentic-primitives root
+  context: ../../..
+  args: {}
+
+# Runtime configuration
+runtime:
+  # No single agent binary: this image hosts two harnesses and the caller
+  # selects which one to invoke. `agent` names the default.
+  agent: claude
+  agents:
+    - claude
+    - codex
+  modes:
+    - headless
+  otel_native: true
+
+# Plugin configuration (ADR-033)
+# The plugins are Claude Code plugin directories; they are discovered by the
+# entrypoint and surfaced as --plugin-dir flags for the claude harness. They
+# are inert for a codex invocation, which reads none of them.
+plugins:
+  include:
+    - sdlc
+    - workspace
+    - observability
+    - delegation
+  install_path: /opt/agentic/plugins
+
+# Default tool configuration
+defaults:
+  allowed_tools:
+    - Read
+    - Write
+    - Edit
+    - MultiEdit
+    - Bash
+    - Glob
+    - Grep
+    - LS
+    - Task
+    - TodoRead
+    - TodoWrite
+    - WebFetch
+    - WebSearch
+  require_enablement:
+    - mcp__*
+    - computer
+  otel_enabled: true
+
+# Security configuration
+security:
+  non_root: true
+  user: agent
+  uid: 1000
+  gid: 1000
+  no_setuid: true
+  read_only_paths:
+    - /opt/agentic
+  network:
+    enabled: true
+    allowed_hosts: []
+
+# Capabilities: runtimes available in the image.
+#
+# There is deliberately NO lsp_servers block. This image does not install
+# pyright, typescript-language-server, or rust-analyzer, so declaring them
+# would be a manifest claiming something the image lacks.
+capabilities:
+  runtimes:
+    - name: node
+      version: "22"
+    - name: python
+      version: "3.12"
+
+# Health check configuration
+health:
+  interval: 30s
+  timeout: 3s
+  start_period: 5s
+  retries: 2
+
+# Labels for the image
+labels:
+  org.opencontainers.image.title: "Agentic Workspace - Omni Agent"
+  org.opencontainers.image.description: "Multi-harness workspace (claude + codex) on the shared capability runtime"
+  org.opencontainers.image.vendor: "Agentic Primitives"
+  org.opencontainers.image.source: "https://github.com/agentparadise/agentic-primitives"

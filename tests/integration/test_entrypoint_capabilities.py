@@ -115,6 +115,57 @@ def test_capability_runtime_is_staged_from_the_shared_tree():
     assert "ENTRYPOINT_OK" in result.stdout
 
 
+OMNI_IMAGE = os.getenv("AGENTIC_OMNI_IMAGE", "omni-agent-workspace:latest")
+
+
+def _omni_available() -> bool:
+    r = subprocess.run(
+        ["docker", "image", "inspect", OMNI_IMAGE],
+        capture_output=True,
+        text=True,
+    )
+    return r.returncode == 0
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _omni_available(), reason="omni image not built")
+def test_omni_hosts_the_shared_capability_runtime():
+    """The second image must satisfy ADR-040 section 12 with no change to workspace/.
+
+    This is the only real test of whether section 12 is a contract or a
+    description of claude-cli.
+    """
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "bash",
+            OMNI_IMAGE,
+            "-c",
+            "ls /opt/agentic/capabilities/; "
+            "test -x /opt/agentic/entrypoint.sh && echo ENTRYPOINT_EXEC; "
+            "test -x /opt/agentic/capabilities/memory/doctor && echo MEMORY_DOCTOR_EXEC; "
+            "test -x /opt/agentic/capabilities/session-store/doctor && echo STORE_DOCTOR_EXEC; "
+            "echo CAPS=$AGENTIC_CAPABILITIES; "
+            "command -v claude >/dev/null && echo CLAUDE_PRESENT; "
+            "command -v codex >/dev/null && echo CODEX_PRESENT",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    out = result.stdout
+    assert "memory" in out and "session-store" in out
+    assert "ENTRYPOINT_EXEC" in out
+    assert "MEMORY_DOCTOR_EXEC" in out
+    assert "STORE_DOCTOR_EXEC" in out
+    assert "CAPS=memory session-store" in out
+    assert "CLAUDE_PRESENT" in out
+    assert "CODEX_PRESENT" in out
+
+
 @pytest.mark.integration
 def test_unknown_capability_in_registry_is_skipped_not_fatal():
     """A registry entry with no provider env set must be a silent no-op."""
