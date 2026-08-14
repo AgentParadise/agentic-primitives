@@ -47,9 +47,10 @@ fi
 # uploads the session with NO TAGS AT ALL - the exact misattribution the
 # partitioned spool was supposed to prevent.
 #
-# Persist the opaque tag string next to the transcripts so any later sweep is
-# self-describing. This layer still assigns no meaning to the value; it just
-# writes the string down.
+# Persist the opaque tag string in this adapter's own metadata namespace (see
+# the two-directories section below for why it is NOT written next to the
+# transcripts) so any later sweep is self-describing. This layer still assigns
+# no meaning to the value; it just writes the string down.
 #
 # .capture-env is DATA, never shell. Tags are opaque orchestrator input that
 # can contain anything (spaces, $(...), quotes, newlines) - a consumer that
@@ -66,17 +67,103 @@ fi
 # by construction, so the record stays line-oriented and the parse stays
 # trivial, and it cannot reintroduce shell interpretation: there is no
 # character in the base64 alphabet that means anything to a shell.
-# --- Partition directory ------------------------------------------------------
-# Nothing in this capability deletes the partition, so nothing needs to prove
-# it owns one. This used to write an .agentic-partition ownership marker whose
-# only consumer was finalize.sh's prune, licensing an `rm -rf` of this
-# directory; the prune is gone (see finalize.sh's header for why) and the
-# marker went with it. Creating the directory is the only thing needed here,
-# and it is safe over a directory the operator already had: this adapter only
-# ever mkdir -ps into it, symlinks into it, and sweeps it.
+# --- Two directories, two owners ----------------------------------------------
+# WHERE TRANSCRIPTS GO and WHERE ADAPTER METADATA GOES are separate questions
+# with separate answers, because they have separate owners.
+#
+#   Transcripts: ${SPOOL}/${PARTITION}/{claude,codex}. This is where the
+#   harnesses write, so it is not negotiable, and the operator may point SPOOL
+#   and PARTITION at a directory that already holds their data -- the reported
+#   configuration was SPOOL=/workspace PARTITION=repos, an existing mount. The
+#   ONLY things this adapter does to that directory are `mkdir -p` and creating
+#   the two subdirectories it symlinks the harness roots to. It writes no file
+#   of its own there and it removes nothing from it, ever.
+#
+#   Adapter metadata (.capture-env, the exporter's state file): a RESERVED
+#   namespace, ${SPOOL}/.agentic-session-store/${PARTITION}/. Unnamespaced
+#   metadata writes into the transcript partition were the defect: with the
+#   configuration above, an operator's own `.capture-env` in /workspace/repos
+#   was destroyed by this adapter before the doctor ever ran, and a `state.json`
+#   of theirs would have been overwritten.
+#
+# The namespace carries an OWNERSHIP MARKER, and a namespace that is missing
+# the marker while holding something else, or carrying a marker this adapter
+# does not recognise, is REFUSED LOUDLY. It is never emptied, overwritten or
+# reused. Refusing costs a workspace start, which is recoverable; overwriting
+# somebody else's file is not.
 mkdir -p "${PART_DIR}"
 
-rm -f "${PART_DIR}/.capture-env"
+__META_ROOT="${SPOOL}/.agentic-session-store"
+__META_MARKER="${__META_ROOT}/.owner"
+# Version the marker so a future layout change is a refusal rather than a
+# silent reinterpretation of files written under the old one.
+__META_MARKER_ID="agentic-session-store-metadata-v1"
+META_DIR="${__META_ROOT}/${PARTITION}"
+
+# Claim the reserved namespace, or fail. Every failure path here reports and
+# returns non-zero WITHOUT deleting, truncating or overwriting anything.
+__claim_metadata_namespace() {
+    if [ -e "${__META_ROOT}" ] && [ ! -d "${__META_ROOT}" ]; then
+        echo "[session-store] ${__META_ROOT} exists and is not a directory;" \
+             "this adapter reserves that name for its own metadata and will" \
+             "not replace what is there. Move it, or point" \
+             "AGENTIC_SESSION_STORE_SPOOL at a different root." >&2
+        return 1
+    fi
+
+    if [ ! -d "${__META_ROOT}" ]; then
+        mkdir -p "${__META_ROOT}" || return 1
+    fi
+
+    if [ -e "${__META_MARKER}" ]; then
+        # A marker that is not a regular file, or holds anything other than
+        # this adapter's id, means the namespace belongs to something else.
+        if [ ! -f "${__META_MARKER}" ] ||
+           [ "$(head -1 "${__META_MARKER}" 2>/dev/null)" != "${__META_MARKER_ID}" ]; then
+            echo "[session-store] ${__META_ROOT} carries a foreign or unreadable" \
+                 "ownership marker; refusing to write adapter metadata into a" \
+                 "namespace this adapter does not own. Nothing was modified." >&2
+            return 1
+        fi
+    else
+        # No marker. Claiming an EMPTY directory is safe; claiming one that
+        # already has contents would be taking over a directory somebody else
+        # created under the reserved name.
+        if [ -n "$(ls -A -- "${__META_ROOT}" 2>/dev/null)" ]; then
+            echo "[session-store] ${__META_ROOT} exists, has contents and carries no" \
+                 "ownership marker; refusing to claim a namespace this adapter did" \
+                 "not create. Nothing was modified." >&2
+            return 1
+        fi
+        printf '%s\n' "${__META_MARKER_ID}" > "${__META_MARKER}" || return 1
+    fi
+
+    mkdir -p "${META_DIR}" || return 1
+    if [ ! -d "${META_DIR}" ]; then
+        echo "[session-store] ${META_DIR} is not a directory; refusing to write" \
+             "adapter metadata. Nothing was modified." >&2
+        return 1
+    fi
+    return 0
+}
+
+if ! __claim_metadata_namespace; then
+    # Return before ANY of the layout work below. No symlink is created, so
+    # 5.7's symlinks_correct check fails and the operator gets the specific
+    # error above plus a named path, rather than a workspace that quietly
+    # captured nothing.
+    unset -f __claim_metadata_namespace
+    echo "[session-store] adapter metadata namespace unavailable; see the doctor output below" >&2
+    return 1
+fi
+unset -f __claim_metadata_namespace
+
+# .capture-env lives in the namespace claimed immediately above, so both of
+# the writes below touch a path this adapter has just PROVEN it owns. The
+# `rm -f` removes exactly one file this adapter wrote, inside that namespace;
+# it is not a prune, it cannot reach a transcript, and it exists because a
+# reused partition must never serve a previous run's tags.
+__CAPTURE_ENV="${META_DIR}/.capture-env"
 if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
     # umask, not a post-hoc chmod: a post-hoc chmod leaves a window where the
     # file is created world-readable before the permission fix lands.
@@ -87,8 +174,10 @@ if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
         # at 76 columns, which would put the record back on multiple lines.
         printf 'SESSION_STORE_TAGS_B64=%s\n' \
             "$(printf '%s' "${AGENTIC_SESSION_STORE_TAGS}" | base64 | tr -d '\n')" \
-            > "${PART_DIR}/.capture-env"
+            > "${__CAPTURE_ENV}"
     )
+else
+    rm -f "${__CAPTURE_ENV}"
 fi
 
 # --- Spool layout -------------------------------------------------------------
@@ -107,13 +196,48 @@ fi
 # gains it: the moved transcripts are swept and uploaded by this run's
 # finalize.
 #
-# A pre-existing symlink (a re-run of this adapter) or a non-existent path is
-# left to `ln -sfn`, which handles both correctly on its own.
+# A non-existent path is left to `ln -sfn`, which handles it on its own.
+#
+# AN EXISTING SYMLINK IS NOT AUTOMATICALLY OURS. `ln -sfn` replaces one
+# silently, and that is right for a re-run of this adapter (the link already
+# points into the spool) but wrong for a link the operator made: retargeting
+# it does not delete their transcripts, but it does silently stop capturing
+# where they said to capture, and nothing in the doctor output would say so.
+# So a link already pointing into ${SPOOL}, or a dangling one (its target does
+# not exist, so nothing can be orphaned), is replaced; anything else is
+# refused loudly and left exactly as it is.
 __link_transcript_root() {
     local src="$1" dst="$2" label="$3"
-    local entry base mv_failed=0
+    local entry base mv_failed=0 target spool_real
 
-    if [ -L "${src}" ] || [ ! -e "${src}" ]; then
+    if [ -L "${src}" ] && [ ! -e "${src}" ]; then
+        # Dangling: the link resolves to nothing, so replacing it can orphan
+        # nothing.
+        ln -sfn "${dst}" "${src}" || return 1
+        return 0
+    fi
+
+    if [ -L "${src}" ]; then
+        target="$(readlink -f "${src}" 2>/dev/null || true)"
+        # Compare against the spool BOTH as configured and as resolved: a
+        # spool reached through a symlink (or a bind mount presented under a
+        # different name) would otherwise make this adapter refuse its own
+        # link on the second run.
+        spool_real="$(readlink -f "${SPOOL}" 2>/dev/null || true)"
+        if [ "${target}" != "${dst}" ] &&
+           [ "${target#"${SPOOL}"/}" = "${target}" ] &&
+           { [ -z "${spool_real}" ] || [ "${target#"${spool_real}"/}" = "${target}" ]; }; then
+            echo "[session-store] ${label}: ${src} is a symlink to ${target}," \
+                 "which is outside ${SPOOL}; refusing to retarget a link this" \
+                 "adapter did not create. Remove it, or point" \
+                 "AGENTIC_SESSION_STORE_SPOOL at that tree." >&2
+            return 1
+        fi
+        ln -sfn "${dst}" "${src}" || return 1
+        return 0
+    fi
+
+    if [ ! -e "${src}" ]; then
         ln -sfn "${dst}" "${src}" || return 1
         return 0
     fi
@@ -191,7 +315,12 @@ __link_transcript_root "${HOME}/.codex/sessions"  "${PART_DIR}/codex"  "codex"  
 
 export CLAUDE_PROJECTS_ROOT="${PART_DIR}/claude"
 export CODEX_SESSIONS_ROOT="${PART_DIR}/codex"
-export EXPORTER_STATE_FILE="${PART_DIR}/state.json"
+# The exporter's state file is ADAPTER METADATA, not a transcript, so it goes
+# in the reserved namespace with .capture-env rather than into a partition
+# directory the operator may own. The exporter treats this purely as a path to
+# read and write, so relocating it changes nothing for it; finalize.sh derives
+# both directories from this one variable (see its header).
+export EXPORTER_STATE_FILE="${META_DIR}/state.json"
 
 # --- Deliberately NOT set -----------------------------------------------------
 # SESSION_STORE_ORIGIN_HOST is left unset so the exporter reports the real

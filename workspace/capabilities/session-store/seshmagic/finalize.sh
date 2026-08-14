@@ -25,25 +25,57 @@ if [ -z "${SESSION_STORE_URL:-}" ]; then
     exit 0
 fi
 
-# Partition directory, computed once up front and reused everywhere below
-# via this one :-guarded variable. EXPORTER_STATE_FILE is normally exported
-# by init.sh, but this hook is also meant to run standalone -- a recovery
-# sweep of a partition left behind by a SIGKILLed container (see below) --
-# where it is unset. A bare `${EXPORTER_STATE_FILE%/*}` in that case trips
-# `set -u` and aborts the script, breaking the "always exit 0" contract on
-# exactly the failure path this recovery mechanism exists to handle.
+# TWO DIRECTORIES, derived from one variable.
+#
+#   __meta_dir  -- where this adapter's own metadata lives (.capture-env and
+#                  the exporter state file), inside the reserved
+#                  ${SPOOL}/.agentic-session-store/${PARTITION} namespace
+#                  init.sh claims and marks.
+#   __part_dir  -- where the TRANSCRIPTS live, ${SPOOL}/${PARTITION}. This is
+#                  what the reports below mean by "the spool", and it is a
+#                  directory the operator may own, so nothing here writes to
+#                  it at all.
+#
+# Both come from EXPORTER_STATE_FILE, which is normally exported by init.sh.
+# This hook is also meant to run standalone -- a recovery sweep of a partition
+# left behind by a SIGKILLed container (see below) -- where it is unset. A
+# bare `${EXPORTER_STATE_FILE%/*}` in that case trips `set -u` and aborts the
+# script, breaking the "always exit 0" contract on exactly the failure path
+# this recovery mechanism exists to handle.
+#
+# LEGACY LAYOUT. A spool volume outlives the image, so a partition written by
+# an older init.sh has its state file (and .capture-env) directly in the
+# transcript partition, with no reserved segment in the path. That shape is
+# recognised by the absence of the segment, and the two directories are then
+# the same one, which is exactly what was true when those files were written.
+readonly __RESERVED_SEGMENT=".agentic-session-store"
 if [ -n "${EXPORTER_STATE_FILE:-}" ]; then
-    __part_dir="${EXPORTER_STATE_FILE%/*}"
+    __meta_dir="${EXPORTER_STATE_FILE%/*}"
 else
-    __part_dir="<unset>"
+    __meta_dir="<unset>"
 fi
+case "${__meta_dir}" in
+    */"${__RESERVED_SEGMENT}"/*)
+        __part_dir="${__meta_dir%%/"${__RESERVED_SEGMENT}"/*}/${__meta_dir#*/"${__RESERVED_SEGMENT}"/}"
+        ;;
+    *)
+        __part_dir="${__meta_dir}"
+        ;;
+esac
 
 # Recovery path (EXP-08 arm A5): when invoked without the adapter's env - a
 # sweep of a partition left behind by a SIGKILLed container - recover the tags
 # the partition was created with. Without this the session uploads untagged
 # and is unattributable.
 if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
-    __capture_env="${__part_dir}/.capture-env"
+    # Current layout first, then the legacy one. On a legacy partition the two
+    # paths are identical, so the fallback only ever reaches a DIFFERENT file
+    # when a spool holds a partition written before the metadata namespace
+    # existed -- the same crash-recovery case the legacy tag record serves.
+    __capture_env="${__meta_dir}/.capture-env"
+    if [ ! -r "${__capture_env}" ] && [ -r "${__part_dir}/.capture-env" ]; then
+        __capture_env="${__part_dir}/.capture-env"
+    fi
     if [ -r "${__capture_env}" ]; then
         # PARSE, never source. Tags are opaque orchestrator input; sourcing
         # them is arbitrary code execution at sweep time, with the store

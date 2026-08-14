@@ -424,7 +424,7 @@ def test_adapter_translates_contract_and_creates_symlinks(tmp_path: Path):
     out = result.stdout
     assert "CLAUDE_PROJECTS_ROOT=/spool/w1/p2/claude" in out
     assert "CODEX_SESSIONS_ROOT=/spool/w1/p2/codex" in out
-    assert "EXPORTER_STATE_FILE=/spool/w1/p2/state.json" in out
+    assert "EXPORTER_STATE_FILE=/spool/.agentic-session-store/w1/p2/state.json" in out
     assert "SESSION_STORE_TAGS=workflow:w1,phase:p2" in out
     assert "ORIGIN_HOST_SET=unset" in out, "origin_host must never be set by the adapter"
     assert "/spool/w1/p2/claude" in out
@@ -656,8 +656,10 @@ def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
     spool on disk, but the environment (and SESSION_STORE_TAGS with it) dies
     with the process. A recovery sweep with no tags in its environment
     uploads the session unattributable. This test verifies the adapter's
-    half of the fix: the opaque tag string lands next to the transcripts,
-    mode 600, so a later sweep (Task 7's finalize.sh) can recover it.
+    half of the fix: the opaque tag string lands in the adapter's reserved
+    metadata namespace (NOT in the transcript partition, which the operator
+    may own), mode 600, so a later sweep (Task 7's finalize.sh) can recover
+    it.
 
     This does NOT exercise finalize.sh sourcing the file back in — that
     mechanism does not exist yet (Task 7). It verifies the artifact Task 7
@@ -668,12 +670,12 @@ def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
     result = _run(
         [
             "bash", "-c",
-            "stat -c '%a' /spool/w1/p2/.capture-env; "
-            "cat /spool/w1/p2/.capture-env; "
+            "stat -c '%a' /spool/.agentic-session-store/w1/p2/.capture-env; "
+            "cat /spool/.agentic-session-store/w1/p2/.capture-env; "
             # Decode separately so a failure distinguishes "wrong record
             # name" from "right record, wrong bytes".
             "printf 'DECODED=%s\\n' "
-            "\"$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' /spool/w1/p2/.capture-env "
+            "\"$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' /spool/.agentic-session-store/w1/p2/.capture-env "
             "| head -1 | base64 -d)\"",
         ],
         env={
@@ -742,7 +744,7 @@ def test_capture_env_round_trips_tags_safely(tmp_path: Path, tags: str):
             # The documented parse contract: sed the record, base64 -d,
             # export. Never source.
             "export SESSION_STORE_TAGS=\"$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "
-            "/spool/w1/p2/.capture-env | head -1 | base64 -d)\"; "
+            "/spool/.agentic-session-store/w1/p2/.capture-env | head -1 | base64 -d)\"; "
             # Assert a CHILD process sees it (C2) — not just this shell.
             "sh -c 'printf \"CHILD_SAW=%s\\n\" \"$SESSION_STORE_TAGS\"'; "
             "env | grep -q '^SESSION_STORE_TAGS=' && echo IN_CHILD_ENV=yes; "
@@ -1300,6 +1302,215 @@ def test_finalize_leaves_a_pre_existing_partition_directory_intact(tmp_path: Pat
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert (spool / "repos" / "precious.txt").exists(), "finalize destroyed a mounted directory"
+
+
+# --- Adapter metadata lives in a reserved, marked namespace -----------------
+#
+# The transcript partition may be a directory the operator already owned
+# (SPOOL=/workspace PARTITION=repos points at an existing mount). Adapter
+# metadata therefore goes to ${SPOOL}/.agentic-session-store/${PARTITION}/,
+# which carries an ownership marker, and a namespace that is foreign or
+# occupied is refused rather than emptied or overwritten.
+
+_RESERVED = ".agentic-session-store"
+
+
+def _operator_owned_spool(tmp_path: Path, partition: str) -> Path:
+    """A spool root whose partition directory already belongs to somebody else."""
+    spool = tmp_path / "workspace"
+    (spool / partition).mkdir(parents=True)
+    os.chmod(spool, 0o777)
+    os.chmod(spool / partition, 0o777)
+    return spool
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_init_never_writes_or_deletes_inside_the_transcript_partition(tmp_path: Path):
+    """init.sh must not destroy or overwrite operator files in the partition.
+
+    The reported blocker, reproduced: with SPOOL=/workspace PARTITION=repos
+    the adapter did `rm -f ${PART_DIR}/.capture-env` and wrote its own
+    state.json path into a directory the operator already had, two lines
+    below a comment asserting it only ever mkdir -ps and symlinks in there.
+    An operator `.capture-env` was destroyed before the doctor ran.
+
+    Both names are staged, because both are adapter metadata names that
+    collide by construction, and only the first was ever reported.
+    """
+    spool = _operator_owned_spool(tmp_path, "repos")
+    (spool / "repos" / ".capture-env").write_text("operator's own file\n")
+    (spool / "repos" / "state.json").write_text('{"operator": "own file"}\n')
+
+    result = _run(
+        ["bash", "-c", "echo STATE=$EXPORTER_STATE_FILE"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_TAGS": "workflow:w1,phase:p2",
+            "AGENTIC_SESSION_STORE_SPOOL": "/workspace",
+            "AGENTIC_SESSION_STORE_PARTITION": "repos",
+        },
+        extra_mounts=[
+            f"{spool}:/workspace",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert (spool / "repos" / ".capture-env").read_text() == "operator's own file\n", (
+        "the adapter destroyed an operator file in the transcript partition"
+    )
+    assert (spool / "repos" / "state.json").read_text() == '{"operator": "own file"}\n'
+    # And the adapter's own metadata went to the reserved namespace instead.
+    assert f"STATE=/workspace/{_RESERVED}/repos/state.json" in result.stdout, result.stdout
+    assert (spool / _RESERVED / "repos" / ".capture-env").exists()
+    assert (spool / _RESERVED / ".owner").exists(), "the namespace must be marked"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+@pytest.mark.parametrize(
+    ("marker", "label"),
+    [
+        pytest.param(None, "no marker, occupied", id="occupied-unmarked"),
+        pytest.param("some-other-tool-v9\n", "foreign marker", id="foreign-marker"),
+    ],
+)
+def test_init_refuses_a_namespace_it_does_not_own(
+    tmp_path: Path, marker: str | None, label: str
+):
+    """A reserved-name collision must refuse loudly, never delete or overwrite.
+
+    The pre-existing data-loss test only ever protected a file called
+    precious.txt, so a collision on the reserved namespace itself was
+    untested by construction. Both shapes are exercised: a directory of
+    somebody else's under the reserved name with no marker at all, and one
+    carrying a marker this adapter does not recognise.
+    """
+    spool = _operator_owned_spool(tmp_path, "repos")
+    reserved = spool / _RESERVED
+    reserved.mkdir()
+    (reserved / "not-ours.txt").write_text("somebody else's data\n")
+    if marker is not None:
+        (reserved / ".owner").write_text(marker)
+    os.chmod(reserved, 0o777)
+
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/workspace",
+            "AGENTIC_SESSION_STORE_PARTITION": "repos",
+        },
+        extra_mounts=[
+            f"{spool}:/workspace",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode != 0, f"{label}: the workspace started anyway"
+    assert "AGENT_RAN" not in result.stdout, f"{label}: the agent ran anyway"
+    assert "refusing" in result.stderr.lower(), result.stderr
+    assert (reserved / "not-ours.txt").read_text() == "somebody else's data\n", (
+        f"{label}: the adapter modified a namespace it does not own"
+    )
+    if marker is not None:
+        assert (reserved / ".owner").read_text() == marker, (
+            f"{label}: the adapter overwrote a foreign ownership marker"
+        )
+    else:
+        assert not (reserved / ".owner").exists(), (
+            f"{label}: the adapter claimed an occupied namespace"
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_init_refuses_when_the_reserved_name_is_not_a_directory(tmp_path: Path):
+    """The reserved name taken by a regular file is the same refusal.
+
+    `mkdir -p` on a path held by a file fails, and a fix that "handled" that
+    by removing the file would be the deletion this whole design exists to
+    remove.
+    """
+    spool = _operator_owned_spool(tmp_path, "repos")
+    (spool / _RESERVED).write_text("an operator file that happens to share the name\n")
+
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/workspace",
+            "AGENTIC_SESSION_STORE_PARTITION": "repos",
+        },
+        extra_mounts=[
+            f"{spool}:/workspace",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode != 0
+    assert "AGENT_RAN" not in result.stdout
+    assert "refusing" in result.stderr.lower() or "not a directory" in result.stderr
+    assert (spool / _RESERVED).read_text() == (
+        "an operator file that happens to share the name\n"
+    ), "the adapter replaced an operator file holding the reserved name"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_init_refuses_to_retarget_a_transcript_symlink_outside_the_spool(
+    tmp_path: Path,
+):
+    """`ln -sfn` replaces a symlink silently. An operator's link is not ours.
+
+    Retargeting deletes nothing, but it silently stops capture happening
+    where the operator pointed it, with nothing in the doctor output saying
+    so. A link into the spool (this adapter's own, from a previous run) is
+    still replaced, which is what keeps a persisted $HOME working.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    os.chmod(spool, 0o777)
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / ".codex").mkdir(parents=True)
+    elsewhere = tmp_path / "operator-transcripts"
+    elsewhere.mkdir()
+    (home / ".claude" / "projects").symlink_to("/operator-transcripts")
+    os.chmod(home, 0o777)
+    os.chmod(home / ".claude", 0o777)
+    os.chmod(home / ".codex", 0o777)
+
+    cmd = ["docker", "run", "--rm"]
+    for k, v in {
+        "AGENTIC_CAPABILITIES": "session-store",
+        "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+        "AGENTIC_SESSION_STORE_URL": STORE_URL,
+        "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+        "AGENTIC_SESSION_STORE_PARTITION": "symlink-test",
+    }.items():
+        cmd.extend(["-e", f"{k}={v}"])
+    cmd.extend(["--add-host=host.docker.internal:host-gateway"])
+    cmd.extend(["-v", f"{spool}:/spool"])
+    cmd.extend(["-v", f"{home}:/home/agent"])
+    cmd.extend(["-v", f"{elsewhere}:/operator-transcripts"])
+    cmd.extend(["-v", f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro"])
+    cmd.extend([IMAGE, "bash", "-c", "echo AGENT_RAN"])
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+    assert result.returncode != 0, "the adapter retargeted an operator's symlink"
+    assert "AGENT_RAN" not in result.stdout
+    assert "refusing to retarget" in result.stderr, result.stderr
+    assert os.readlink(home / ".claude" / "projects") == "/operator-transcripts", (
+        "the operator's symlink was replaced"
+    )
 
 
 @pytest.mark.integration

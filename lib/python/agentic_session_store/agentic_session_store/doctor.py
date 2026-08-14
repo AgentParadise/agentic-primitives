@@ -69,9 +69,20 @@ def _spool_writable(contract: SessionStoreContract) -> CheckResult:
     target = os.path.join(contract.spool, contract.partition)
     try:
         os.makedirs(target, exist_ok=True)
-        probe = os.path.join(target, ".doctor-write-probe")
-        with open(probe, "w") as f:
-            f.write("")
+        # The probe is written into the TRANSCRIPT partition, because that is
+        # the directory whose writability is in question, and the operator may
+        # own it. So it is created with O_EXCL under a name unique to this
+        # process: a fixed name opened "w" would truncate and then DELETE a
+        # file of the operator's that happened to share it, which is the same
+        # class of defect as the adapter's unnamespaced metadata writes. O_EXCL
+        # cannot open an existing file at all, so the only file this ever
+        # removes is one it just created.
+        probe = os.path.join(target, f".doctor-write-probe.{os.getpid()}")
+        fd = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, b"")
+        finally:
+            os.close(fd)
         os.remove(probe)
     except (OSError, ValueError) as e:
         return CheckResult(

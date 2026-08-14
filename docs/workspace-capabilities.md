@@ -343,7 +343,9 @@ If your capability persists an orchestrator-supplied value to disk for a
 later process to read, that file is **data, and must be parsed, never
 sourced**.
 
-`session-store` writes tags to `$SPOOL/$PARTITION/.capture-env`:
+`session-store` writes tags to
+`$SPOOL/.agentic-session-store/$PARTITION/.capture-env` (see the next
+section for why that path is not `$SPOOL/$PARTITION`):
 
 ```
 SESSION_STORE_TAGS=<opaque tag string, exactly as received>
@@ -366,9 +368,58 @@ export SESSION_STORE_TAGS
 variable never reaches it.
 
 Write such files under `umask 077` in a subshell, not with a post-hoc
-`chmod`, which leaves a window where the file is world-readable. Remove any
-stale copy unconditionally before writing, so a reused partition never
-serves a previous run's values.
+`chmod`, which leaves a window where the file is world-readable.
+
+---
+
+## Step 5b: Put your metadata in a reserved namespace you can prove you own
+
+A capability's contract usually names a directory the **operator** chose,
+and an operator may point it at a directory that already holds their data.
+`session-store` was configured with `SPOOL=/workspace PARTITION=repos`,
+an existing mount, and the adapter wrote its own `.capture-env` and
+`state.json` straight into it, `rm -f`-ing any file already at the first of
+those names. That destroyed an operator file before the doctor ever ran.
+
+Separate the two questions, because they have two different owners:
+
+- **Where the capability's payload must land** is fixed by whatever writes
+  it (for `session-store`, the harnesses write transcripts, so those go to
+  `$SPOOL/$PARTITION/{claude,codex}`). The only operations an adapter may
+  perform on that directory are `mkdir -p` and creating the subdirectories
+  it needs. No file of its own, no deletes.
+- **Where the adapter's own metadata lands** is the adapter's choice, so
+  choose a reserved namespace under the same root and mark it:
+
+  ```
+  $SPOOL/.agentic-session-store/          <- reserved for this adapter
+    .owner                                <- ownership marker, versioned id
+    $PARTITION/
+      .capture-env
+      state.json
+  ```
+
+Claim the namespace before writing anything into it, and **refuse loudly
+rather than deleting or overwriting** when the claim fails: the name is
+taken by a non-directory, the marker is missing while the directory has
+contents, or the marker holds an id you do not recognise. Returning
+non-zero from `init.sh` routes to the doctor, which fails the workspace
+with a named path. A refused start is recoverable; an overwritten file is
+not.
+
+Once the namespace is claimed, replacing a stale copy of your own metadata
+file inside it is a normal write, and removing a stale copy when this run
+produces no value for it is what stops a reused partition serving a
+previous run's data. Neither is a prune: they touch only files this adapter
+wrote, inside a directory it has just proven it owns, and they can never
+reach the payload directory.
+
+A path is not the only thing an adapter can overwrite by mistake. Audit
+every filesystem mutation you perform against the same question: `rm`,
+`mv`, `>` redirection, truncation, `chmod`/`chown`, and **symlink
+replacement**, which is the quiet one. `ln -sfn` silently retargets a link
+the operator made, which deletes nothing and yet stops the capability doing
+its job where they asked.
 
 ---
 

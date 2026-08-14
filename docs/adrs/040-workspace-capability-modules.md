@@ -310,8 +310,10 @@ Until it happens, capability modules are a headless-mode feature.
 ### 9. `.capture-env` is DATA, parsed, never sourced
 
 The session-store adapter persists its opaque tag string to
-`$SPOOL/$PARTITION/.capture-env` at init, so a recovery sweep of a spool
-left behind by a SIGKILLed container can still attribute the session.
+`$SPOOL/.agentic-session-store/$PARTITION/.capture-env` at init (section 14
+explains why it is that path and not `$SPOOL/$PARTITION`), so a recovery
+sweep of a spool left behind by a SIGKILLed container can still attribute
+the session.
 (EXP-08 arm A5: without this the partition path preserves *location* but
 the tags, which live only in the environment, are lost, and the recovered
 session uploads with no tags at all. That is the exact misattribution the
@@ -646,6 +648,61 @@ The sweep reporting survives unchanged, because the question an operator
 actually needs answered is not "was anything deleted" but "did every
 transcript reach the store", which the exporter's summary counters answer on
 every path.
+
+### 14. Adapter metadata lives in a reserved, marked namespace
+
+Removing the prune (section 13) made `finalize.sh` non-destructive. It did
+not make the **adapter** non-destructive, and the sixth review found the
+sibling: `init.sh` still wrote its own metadata into the directory the
+operator's contract named, under fixed names, and `rm -f`'d one of them
+first. With `SPOOL=/workspace PARTITION=repos` pointed at an existing mount,
+an operator `.capture-env` was destroyed at startup, before the doctor ran,
+two lines below a comment asserting the adapter only ever `mkdir -p`s into
+that directory and symlinks into it.
+
+So the contract now separates two questions that were one path:
+
+| | directory | who owns it | what the adapter may do |
+|---|---|---|---|
+| transcripts | `$SPOOL/$PARTITION/{claude,codex}` | the operator may | `mkdir -p`, and symlink the harness roots INTO it. No file of its own; no deletes |
+| adapter metadata | `$SPOOL/.agentic-session-store/$PARTITION/` | this adapter, provably | write, replace and remove its own files |
+
+Transcripts cannot move: the harnesses write where the symlinks point. So
+the metadata moved instead. The namespace carries an ownership marker
+(`.owner`, holding a versioned id), and the adapter **claims it before
+writing**:
+
+- reserved name held by a non-directory -> refuse;
+- directory present, no marker, and it has contents -> refuse (it is
+  somebody else's);
+- marker present holding an unrecognised id -> refuse;
+- otherwise create it, write the marker, proceed.
+
+Every refusal path reports and returns non-zero **without deleting,
+truncating or overwriting anything**, which routes to the 5.7 doctor and
+fails the workspace with a named path. This is the inverse of the trade the
+prune kept making: a refused start costs a restart, an overwritten file
+costs data.
+
+`EXPORTER_STATE_FILE` moved with `.capture-env`, and `finalize.sh` derives
+both directories from that one variable. A path with no reserved segment in
+it is a partition written by an older adapter (a spool volume outlives the
+image), so the two directories are then the same one, which is what was true
+when those files were written.
+
+Deletion inside the claimed namespace is still allowed and is not a
+reintroduced prune: it removes exactly one file this adapter wrote, in a
+directory it has just proven it owns, and it cannot reach a transcript. It
+exists so a reused partition never serves a previous run's tags.
+
+The audit that produced this covers the whole class, not the reported line:
+every `rm`, `mv`, truncation, `>` redirection, `chmod` and **symlink
+replacement** the adapter performs. The last one was the other live defect:
+`ln -sfn` silently retargeted a `~/.claude/projects` symlink the operator
+had pointed somewhere else. It deletes nothing and yet silently stops
+capture happening where they asked, so a link resolving outside `$SPOOL` is
+now refused, while a link into the spool (this adapter's own, from a
+previous run) is still replaced.
 
 ## Alternatives Considered
 

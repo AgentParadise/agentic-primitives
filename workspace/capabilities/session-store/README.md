@@ -59,12 +59,44 @@ translates the six `AGENTIC_SESSION_STORE_*` contract vars (`Env` in
 Given `$SPOOL` and `$PARTITION`, the adapter creates:
 
 ```
-$SPOOL/$PARTITION/
+$SPOOL/$PARTITION/                       <- TRANSCRIPTS. The operator may own this.
   claude/           <- CLAUDE_PROJECTS_ROOT, symlinked from ~/.claude/projects
-  codex/             <- CODEX_SESSIONS_ROOT, symlinked from ~/.codex/sessions
-  state.json         <- EXPORTER_STATE_FILE (exporter-owned, created on first sweep)
-  .capture-env       <- mode 600, DATA not shell (see below), present only when AGENTIC_SESSION_STORE_TAGS was set
+  codex/            <- CODEX_SESSIONS_ROOT, symlinked from ~/.codex/sessions
+
+$SPOOL/.agentic-session-store/           <- ADAPTER METADATA. Reserved namespace.
+  .owner            <- ownership marker (agentic-session-store-metadata-v1)
+  $PARTITION/
+    state.json      <- EXPORTER_STATE_FILE (exporter-owned, created on first sweep)
+    .capture-env    <- mode 600, DATA not shell (see below), present only when AGENTIC_SESSION_STORE_TAGS was set
 ```
+
+**Two directories, two owners.** Transcripts must land where the harnesses
+write, and that is a path the operator chose: `SPOOL=/workspace
+PARTITION=repos` points at an existing mount. The only things this adapter
+does to that directory are `mkdir -p` and creating the two subdirectories it
+symlinks the harness roots to. It writes no file of its own there and removes
+nothing from it.
+
+Adapter metadata goes to the reserved `$SPOOL/.agentic-session-store/`
+namespace instead, because its filenames are fixed and would collide with
+whatever the operator already had. `init.sh` claims that namespace before
+writing into it, and **refuses loudly rather than deleting or overwriting**
+when the reserved name is held by a non-directory, when the directory has
+contents but no marker, or when the marker holds an id it does not
+recognise. A refusal returns non-zero, so no symlink is created, the
+`symlinks_correct` doctor check fails, and the workspace stops at preflight
+with a named path.
+
+Inside the claimed namespace, this adapter does replace and remove its own
+files (see `.capture-env` below). That is not the prune coming back: it
+touches only files this adapter wrote, in a directory it has just proven it
+owns, and it cannot reach a transcript.
+
+A partition written by an older adapter has `state.json` and `.capture-env`
+directly in `$SPOOL/$PARTITION`. `finalize.sh` recognises that layout by the
+absence of the reserved segment in `EXPORTER_STATE_FILE` and reads the
+partition directory for both, so a spool volume that outlives the image
+still recovers its tags.
 
 `$SPOOL` must be an absolute path with no `..` segment, and `$PARTITION` a
 relative one with the same restriction; both are validated in `contract.py`
@@ -93,6 +125,12 @@ bind-mounted under `$HOME` directly — Docker creates a bind-mount root as
 root-owned while the container runs as uid 1000 (verified in EXP-07),
 which breaks writes.
 
+If `~/.claude/projects` or `~/.codex/sessions` already exists as a **symlink**,
+it is replaced only when it is already this adapter's own (it resolves into
+`$SPOOL`) or when it dangles. A link resolving anywhere else is the
+operator's, and retargeting it silently moves capture away from where they
+pointed it, so the adapter refuses and names the path instead.
+
 If `~/.claude/projects` or `~/.codex/sessions` already exists as a real
 directory (a persisted `$HOME`, or a prior harness run), `init.sh` **migrates
 its contents into the partition** and then symlinks, so those transcripts are
@@ -112,7 +150,8 @@ process) — so the recovered session uploads with no tags at all, the
 exact misattribution the partitioned spool exists to prevent.
 
 `init.sh` closes this gap by writing the opaque tag string to
-`$PART_DIR/.capture-env` whenever `AGENTIC_SESSION_STORE_TAGS` is set.
+`$SPOOL/.agentic-session-store/$PARTITION/.capture-env` whenever
+`AGENTIC_SESSION_STORE_TAGS` is set.
 The file holds exactly one record, and the value is base64-encoded:
 
 ```
@@ -138,7 +177,7 @@ base64 encoding is a truncation fix and is **not** the thing that makes
 this safe; parsing instead of sourcing is. The correct parse:
 
 ```bash
-tags="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${PART_DIR}/.capture-env" \
+tags="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${META_DIR}/.capture-env" \
     | head -1 | base64 -d)"
 export SESSION_STORE_TAGS="${tags}"
 ```
@@ -210,10 +249,11 @@ those records were written with.
 
 The file is created with `umask 077` (not a post-hoc `chmod`, which would
 leave a window where the file is briefly world-readable) so it lands at
-mode `600`. A stale `.capture-env` from a previous occupant of the same
-partition is removed unconditionally before either writing a new one or
-leaving the partition tag-free, so a reused partition never serves a
-previous run's tags.
+mode `600`. When this run has tags, the record is written over any stale
+copy; when it has none, the stale copy is removed, so a reused partition
+never serves a previous run's tags. Both writes happen inside the reserved
+namespace, after the ownership claim above has succeeded, so neither can
+reach a file the adapter did not write.
 
 `finalize.sh` parses this file (never sources it) when
 `SESSION_STORE_TAGS` is unset at sweep time, so a recovery sweep recovers
