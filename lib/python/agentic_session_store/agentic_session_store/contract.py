@@ -8,6 +8,7 @@ a renamed variable must break at import, not at runtime in a container.
 from __future__ import annotations
 
 import re
+import urllib.parse
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -63,6 +64,58 @@ class ExporterEnv(StrEnum):
     STATE_FILE = "EXPORTER_STATE_FILE"
 
 
+URL_CREDENTIAL_MESSAGE = (
+    "must not carry credentials in the URL itself: userinfo "
+    "(https://user:pass@host), a query string, or a fragment. Put the store "
+    f"credential in {Env.AUTH}, which is never printed. The offending value is "
+    "deliberately NOT echoed here, because this message reaches stderr and the "
+    "durable doctor audit file."
+)
+"""Why a credential-bearing URL is refused, said without repeating the URL.
+
+REJECT, NOT REDACT. The value arrives from the orchestrator as configuration
+and there is exactly one supported place for the store credential, `AUTH`, so
+a URL carrying one is a misconfiguration with a specific fix rather than a
+shape to be tolerated. Redacting instead would keep the credential flowing
+through the workspace and turn "no credential material reaches stderr or the
+audit file" into an obligation on every present and future print site: the
+doctor's pretty output, five check details, the JSON payload, and anything
+added later. That is an invariant nobody can hold. Rejecting is one gate,
+in one place, that a test can pin, and it fires at preflight before any agent
+work has happened, which is where ADR-036 says a misconfigured capability
+should die.
+
+The message itself is the trap this exists to avoid, so it names no part of
+the value.
+"""
+
+
+def _reject_embedded_credentials(url: str) -> None:
+    """Raise when the store URL embeds credential material.
+
+    Checks the raw characters as well as the parsed fields: an empty-but-
+    present fragment or query (`http://store/#`) parses to a falsy field
+    while still being a URL shape this refuses to carry.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        # urlsplit raises on a few malformed forms (an unterminated IPv6
+        # literal, for one). Its own message does not repeat the URL, but
+        # this does not chain it: nothing about a value that may hold a
+        # credential is worth forwarding into the audit file.
+        raise ValueError(f"{Env.URL} could not be parsed as a URL") from None
+
+    if (
+        parsed.username
+        or parsed.password
+        or "@" in parsed.netloc
+        or "?" in url
+        or "#" in url
+    ):
+        raise ValueError(f"{Env.URL} {URL_CREDENTIAL_MESSAGE}")
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -101,6 +154,7 @@ class SessionStoreContract:
         url = _clean(env.get(Env.URL))
         if not url:
             raise ValueError(f"{Env.URL} is required when a provider is set")
+        _reject_embedded_credentials(url)
 
         spool = _clean(env.get(Env.SPOOL)) or DEFAULT_SPOOL
         if not spool.startswith("/") or ".." in spool.split("/"):

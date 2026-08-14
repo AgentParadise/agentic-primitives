@@ -185,6 +185,65 @@ def test_partition_rejects_traversal(bad):
         )
 
 
+# --- Credentials in the URL are refused, not carried -------------------------
+
+URL_SECRET = "hunter2-store-write"  # a test fixture, not a real credential
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        f"https://user:{URL_SECRET}@store.example",
+        f"https://{URL_SECRET}@store.example",
+        f"http://store.example/?token={URL_SECRET}",
+        f"http://store.example/healthz#{URL_SECRET}",
+        "http://store.example/#",
+        "http://store.example/?",
+    ],
+)
+def test_url_carrying_credentials_is_rejected(bad_url):
+    """Userinfo, a query string, or a fragment in the store URL is a hard
+    contract failure rather than a value the workspace carries around.
+
+    This is the reject half of the reject-versus-redact decision recorded on
+    URL_CREDENTIAL_MESSAGE: there is exactly one supported place for the store
+    credential, so a URL carrying one is a misconfiguration with a specific
+    fix, and refusing it once is an invariant a test can hold where redacting
+    at every present and future print site is not.
+
+    The last two cases carry no secret at all: an empty-but-present fragment
+    or query parses to a falsy field, so a check on the parsed fields alone
+    would let that shape through.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        SessionStoreContract.from_env(
+            {
+                Env.PROVIDER: "seshmagic",
+                Env.URL: bad_url,
+                Env.PARTITION: "w1/p2",
+            }
+        )
+    message = str(excinfo.value)
+    # The message is the trap this exists to avoid: it reaches stderr AND the
+    # durable doctor audit file, so it must name no part of the value.
+    assert URL_SECRET not in message, message
+    assert bad_url not in message, message
+    assert "store.example" not in message, message
+    assert str(Env.URL) in message
+
+
+def test_ordinary_url_still_parses():
+    """The rejection must not catch the URLs operators actually configure."""
+    c = SessionStoreContract.from_env(
+        {
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "https://store.internal:8443/api",
+            Env.PARTITION: "w1/p2",
+        }
+    )
+    assert c is not None and c.url == "https://store.internal:8443/api"
+
+
 PKG = pathlib.Path(__file__).resolve().parent.parent / "agentic_session_store"
 LITERAL = re.compile(r'"AGENTIC_SESSION_STORE_[A-Z_]+"')
 

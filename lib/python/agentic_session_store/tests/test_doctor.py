@@ -364,3 +364,35 @@ def test_store_reachable_still_passes_without_a_redirect():
 
     assert result.passed is True, result.detail
     assert _Healthy.received == ["Bearer tok"]
+
+
+def test_credentialed_url_never_reaches_stderr_or_the_audit_json(tmp_path, monkeypatch):
+    """A URL carrying a credential must produce the standard failure shape
+    with NO credential material anywhere in the output.
+
+    entrypoint.sh 5.7 appends this stdout to /var/agentic/<cap>-doctor/
+    <date>.jsonl, which is the one artifact in the system designed to
+    persist, and it echoes the pretty summary to stderr. Before the contract
+    rejected these URLs, both copied the value verbatim: the doctor printed
+    `url: https://user:pass@host` and the health check's detail carried the
+    same string into every failed-check line.
+
+    The schema is asserted alongside it, because the fix must not change the
+    shape an audit reader parses: one object, five checks, capability set,
+    passed false.
+    """
+    secret = "hunter2-store-write"  # a test fixture, not a real credential
+    proc, payload = _doctor_json(
+        monkeypatch,
+        **{
+            Env.PROVIDER: "seshmagic",
+            Env.URL: f"https://svc:{secret}@store.example",
+            Env.SPOOL: str(tmp_path),
+            Env.PARTITION: "w1/p2",
+        },
+    )
+    _assert_contract_failure(proc, payload, str(Env.URL))
+    assert secret not in proc.stdout, proc.stdout
+    assert secret not in proc.stderr, proc.stderr
+    assert "store.example" not in proc.stdout, proc.stdout
+    assert "store.example" not in proc.stderr, proc.stderr
