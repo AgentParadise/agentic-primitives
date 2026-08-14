@@ -122,9 +122,12 @@ def _require_origin_only_url(url: str) -> None:
 
     # `parsed.port` raises ValueError on a non-numeric or out-of-range port,
     # and that message quotes the port back; catch it rather than let a piece
-    # of the value escape into the audit file.
+    # of the value escape into the audit file. The access exists for that
+    # exception and the result is deliberately discarded, so it is assigned to
+    # `_` rather than left bare: a bare attribute access reads as dead code to
+    # a human and to a linter, and this line is load-bearing.
     try:
-        parsed.port
+        _ = parsed.port
     except ValueError:
         raise ValueError(f"{Env.URL} has an invalid port") from None
 
