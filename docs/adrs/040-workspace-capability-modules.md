@@ -579,6 +579,34 @@ at all, `Dockerfile` and `scripts/build-provider.py`. Combined with 12.1,
 that is the entire review: the renames are pure, and the two edited files
 touch source paths only.
 
+### 13. A finalize hook deletes nothing; spools are append-only
+
+`finalize.sh` may write and it may report. It must not reclaim.
+
+The session-store adapter shipped with a prune: after a sweep it judged
+clean, it removed its spool partition so a persistent volume would not grow
+one directory per container run forever. Five data-loss paths were found on
+this branch. **Every one of them reached destruction through that single
+`rm -rf`**, and four of the five were introduced by the fix for the previous
+one: the shape guard that permitted `rm -rf /workspace/repos` on an
+operator's bind mount, the exit code that reads 0 with `failed=3`, the
+rejected transcript the next sweep re-reads as `skipped_unchanged`, and the
+ownership marker added to contain the first of those. The gating machinery
+grew each round and the delete stayed exactly as destructive.
+
+So the capability was removed rather than hardened again, along with
+everything that existed only to gate it (the `.agentic-partition` marker and
+the `.sweep-rejected` sentinel). The remote store is the durable copy, the
+spool is an append-only local cache, and unbounded spool growth is the
+accepted tradeoff. Reclaiming that space is an operator decision, made with
+a view of the remote side that a hook running inside the container stop
+grace does not have.
+
+The sweep reporting survives unchanged, because the question an operator
+actually needs answered is not "was anything deleted" but "did every
+transcript reach the store", which the exporter's summary counters answer on
+every path.
+
 ## Alternatives Considered
 
 ### Alternative 1: Copy ADR-036's sections per capability

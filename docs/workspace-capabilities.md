@@ -227,7 +227,7 @@ assumes it runs at startup.
 **Executed** (not sourced) by entrypoint section 6 after the agent exits.
 This is the hook for post-agent work: sweeping, uploading, flushing.
 
-Four rules, each of which cost something to learn:
+Five rules, each of which cost something to learn:
 
 1. **Always exit 0.** The lifecycle already calls it as `|| true`, but the
    hook itself must also be soft. A failed upload after an hour of
@@ -244,6 +244,16 @@ Four rules, each of which cost something to learn:
    failure path recovery exists to handle.
 4. **Be fast.** You are inside the container stop grace. See the timing
    budget below.
+5. **Delete nothing.** A finalize hook may write and it may report, but it
+   must not reclaim. `session-store`'s finalize used to prune its spool
+   partition after a sweep it judged clean; five data-loss paths were found
+   on that branch and every one of them reached destruction through that one
+   `rm -rf`, with four of them introduced by the fix for the previous one.
+   The mechanism was removed rather than hardened again, and the spool is now
+   append-only: the remote store is the durable copy, unbounded local growth
+   is the accepted tradeoff, and reclaiming space is an operator decision
+   made with a view of the remote side that a hook running inside the stop
+   grace does not have.
 
 ### The timing budget
 
@@ -303,7 +313,8 @@ too thin.
 larger than 2, not because anything measured it.** Nobody has run a real sweep
 against a large migrated transcript history. It may be short for a heavy first
 sweep, which is also the case where failing to complete hurts most, because a
-capability that never finishes its work never prunes. Treat it as a ceiling that
+capability that never finishes its work never gets that data off the box. Treat
+it as a ceiling that
 has not yet been tested against the workload that would falsify it, and if you
 are the first to run that workload, measure it and replace this paragraph.
 

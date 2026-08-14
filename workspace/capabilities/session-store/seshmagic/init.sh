@@ -49,42 +49,15 @@ fi
 # by construction, so the record stays line-oriented and the parse stays
 # trivial, and it cannot reintroduce shell interpretation: there is no
 # character in the base64 alphabet that means anything to a shell.
-# --- Record that WE created this partition directory --------------------------
-# finalize.sh deletes the partition after a successful upload, and this marker
-# is the only evidence it has that the directory is ours to delete. It is
-# written ONLY when the directory did not already exist.
-#
-# That distinction is the whole point, so do not "simplify" this to an
-# unconditional write. With AGENTIC_SESSION_STORE_SPOOL=/workspace and
-# AGENTIC_SESSION_STORE_PARTITION=repos, PART_DIR is a directory the operator
-# bind-mounted and filled with their own data. We are about to mkdir -p into
-# it, symlink into it, and sweep it - all non-destructive. Marking it here
-# would additionally license finalize.sh to `rm -rf` it, which is how an
-# unrelated mounted directory was destroyed during review.
-#
-# The marker persists on the spool volume, which is what lets a recovery sweep
-# of a partition left behind by a SIGKILLed container still prune: that
-# directory was created by this capability too, just on an earlier run.
-#
-# Like .capture-env, this file is DATA and is never sourced. Nothing reads its
-# contents; only its existence is meaningful. The text is for a human who
-# finds it in a spool volume.
-if [ -d "${PART_DIR}" ]; then
-    __part_dir_is_ours=0
-else
-    __part_dir_is_ours=1
-fi
-
+# --- Partition directory ------------------------------------------------------
+# Nothing in this capability deletes the partition, so nothing needs to prove
+# it owns one. This used to write an .agentic-partition ownership marker whose
+# only consumer was finalize.sh's prune, licensing an `rm -rf` of this
+# directory; the prune is gone (see finalize.sh's header for why) and the
+# marker went with it. Creating the directory is the only thing needed here,
+# and it is safe over a directory the operator already had: this adapter only
+# ever mkdir -ps into it, symlinks into it, and sweeps it.
 mkdir -p "${PART_DIR}"
-
-if [ "${__part_dir_is_ours}" -eq 1 ]; then
-    printf '%s\n' \
-        "# Created by the agentic session-store capability (ADR-040)." \
-        "# Its presence authorizes finalize.sh to remove this directory after" \
-        "# a confirmed upload. Delete it to make that partition permanent." \
-        > "${PART_DIR}/.agentic-partition"
-fi
-unset __part_dir_is_ours
 
 rm -f "${PART_DIR}/.capture-env"
 if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then

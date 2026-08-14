@@ -127,9 +127,9 @@ def test_provider_name_rejects_path_escape(bad):
 
 @pytest.mark.parametrize("bad", ["relative/path", "../escape", "/spool/../etc"])
 def test_spool_rejects_non_absolute_or_traversing(bad):
-    """The spool is the root of the tree finalize.sh may prune, so a
-    relative or traversing value has to fail here rather than resolve to
-    something unexpected inside the container.
+    """The spool is the root of the tree the adapter creates, symlinks into
+    and sweeps, so a relative or traversing value has to fail here rather
+    than resolve to something unexpected inside the container.
 
     PARTITION is supplied so the failure is unambiguously the spool's: with
     it absent the partition check would raise first on some orderings.

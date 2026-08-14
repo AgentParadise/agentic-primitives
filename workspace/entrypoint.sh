@@ -424,8 +424,8 @@ done
 # when the agent's status is >128, i.e. the signal path, where `docker stop -t`
 # is already ticking. On an ordinary agent exit nothing is waiting on us. A
 # single tight bound applied to both would kill a legitimate multi-second
-# transcript sweep on every normal run, so it would never prune, which for a
-# heavy user is a permanent never-prune. Callers pass the value for their path.
+# transcript sweep on every normal run, so for a heavy user no sweep would ever
+# complete. Callers pass the value for their path.
 __run_finalizers() {
     AGENTIC_FINALIZE_BUDGET_S="${1}"
     export AGENTIC_FINALIZE_BUDGET_S

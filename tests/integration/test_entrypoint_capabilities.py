@@ -127,9 +127,8 @@ def _stage_partition_sh(
     GitHub Actions runners are uid 1001, so a host-written 0600
     `.capture-env` is readable by the agent on a developer's Mac and
     unreadable on CI, and a host-owned partition directory cannot be
-    written into at all: finalize.sh's `[ -r ... ]` guard takes its else
-    branch, and the prune gate cannot drop its `.sweep-rejected` sentinel.
-    Both look like production defects and are not.
+    written into at all, so finalize.sh's `[ -r ... ]` guard takes its else
+    branch. That looks like a production defect and is not.
 
     Creating the files in the container reproduces production ownership,
     where init.sh makes the partition and `.capture-env` as the agent user,
@@ -1228,18 +1227,22 @@ echo "FINALIZE_RC=$?"
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
-def test_prune_refuses_a_directory_it_did_not_create(tmp_path: Path):
-    """The prune must never delete a directory this capability did not create.
+def test_finalize_leaves_a_directory_it_did_not_create_intact(tmp_path: Path):
+    """finalize.sh must never delete anything, least of all a directory this
+    capability did not create.
 
     This is the reported defect, reproduced: with SPOOL=/workspace and
     PARTITION=repos the state file is /workspace/repos/state.json, whose
     dirname matched the old `/*/*` shape guard, and the sweep deleted an
     unrelated mounted directory. The victim here stands in for that mount.
+    The prune that did it has since been removed outright, so this now guards
+    against reintroducing any delete at all on this path.
 
     The stub exporter is mounted deliberately. The real SeshMagicSessionExporter
     is NOT installed in the workspace image, so without the stub the sweep
-    fails, finalize returns early, and the prune block is never reached --
-    the test would pass against the defect it is supposed to catch.
+    fails and finalize returns early, well before the point where the old
+    prune ran -- the test would pass against the defect it is supposed to
+    catch.
     """
     victim = tmp_path / "victim"
     (victim / "repos").mkdir(parents=True)
@@ -1263,20 +1266,18 @@ def test_prune_refuses_a_directory_it_did_not_create(tmp_path: Path):
         add_host_gateway=True,
     )
     assert "FINALIZE_RC=0" in result.stdout, result.stdout
-    assert (victim / "repos" / "precious.txt").exists(), "prune escaped its spool"
+    assert (victim / "repos" / "precious.txt").exists(), "finalize deleted user data"
 
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
-def test_prune_refuses_a_pre_existing_partition_directory(tmp_path: Path):
+def test_finalize_leaves_a_pre_existing_partition_directory_intact(tmp_path: Path):
     """The end-to-end form of the same defect, through the real adapter.
 
     The victim directory is mounted AS the partition, exactly as the
     reviewer's SPOOL=/workspace PARTITION=repos configuration produced it.
-    init.sh runs over a directory it did not create, so it must not mark it
-    as ours, and finalize must therefore leave it alone. Any containment
-    check keyed on 'the adapter touched this path' rather than 'the adapter
-    created this path' passes the test above and still fails this one.
+    The adapter sweeps and uploads from it and must leave every byte of it
+    where it was.
     """
     spool = tmp_path / "workspace"
     (spool / "repos").mkdir(parents=True)
@@ -1298,15 +1299,19 @@ def test_prune_refuses_a_pre_existing_partition_directory(tmp_path: Path):
         add_host_gateway=True,
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    assert (spool / "repos" / "precious.txt").exists(), "prune destroyed a mounted directory"
+    assert (spool / "repos" / "precious.txt").exists(), "finalize destroyed a mounted directory"
 
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
-def test_finalize_prunes_partition_on_success(tmp_path: Path):
-    """On a successful sweep, finalize.sh must remove the partition
-    directory so a persistent spool volume doesn't grow one directory per
-    container run forever.
+def test_finalize_keeps_the_partition_on_success(tmp_path: Path):
+    """A successful sweep must leave the partition in place.
+
+    The spool is an append-only local cache and the store is the durable
+    copy, so nothing on this path reclaims anything. finalize.sh used to
+    prune the partition here; every data-loss path found on this branch
+    reached destruction through that delete, so it was removed rather than
+    hardened again, and this is the end-to-end lock on it staying gone.
     """
     spool = tmp_path / "spool"
     spool.mkdir()
@@ -1317,7 +1322,7 @@ def test_finalize_prunes_partition_on_success(tmp_path: Path):
             "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
             "AGENTIC_SESSION_STORE_URL": STORE_URL,
             "AGENTIC_SESSION_STORE_SPOOL": "/spool",
-            "AGENTIC_SESSION_STORE_PARTITION": "prune-test",
+            "AGENTIC_SESSION_STORE_PARTITION": "keep-test",
         },
         extra_mounts=[
             f"{spool}:/spool",
@@ -1326,7 +1331,9 @@ def test_finalize_prunes_partition_on_success(tmp_path: Path):
         add_host_gateway=True,
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    assert not (spool / "prune-test").exists(), "successful sweep must prune its partition"
+    part_dir = spool / "keep-test"
+    assert part_dir.is_dir(), "a successful sweep must keep its partition"
+    assert (part_dir / "claude").is_dir(), "the transcript root must survive the sweep"
 
 
 @pytest.mark.integration
@@ -1364,18 +1371,19 @@ echo "FINALIZE_RC=$?"
     assert (part_dir / "state.json").exists(), "spool must be retained on upload failure"
 
 
-# --- Task 3 (M1 defect closure): a clean EXIT is not a clean SWEEP -------
+# --- A clean EXIT is not a clean SWEEP, and the spool is append-only ------
 #
 # The exporter documents in its own source that "a completed sweep exits 0
 # even with per-item skips/failures; only a hard RunError (store unreachable,
 # source scan failure) is non-zero." So rc=0 is consistent with failed=3
-# skipped_oversize=2, and finalize.sh used to prune the whole partition on
-# rc=0 alone. Since the adapter now MIGRATES a pre-existing ~/.claude/projects
-# into the partition, that partition can hold a user's entire accumulated
-# transcript history, so pruning it on an incomplete sweep is data loss.
+# skipped_oversize=2, i.e. five transcripts that never reached the store.
 #
-# These tests drive finalize.sh directly with a stub exporter that exits 0 and
-# prints a chosen summary line, and assert on whether the spool survived.
+# finalize.sh no longer deletes anything on any path, so these tests assert
+# two things: the partition survives every outcome, and the report an operator
+# reads names the counters that mean "this transcript is not in the store".
+#
+# They drive finalize.sh directly with a stub exporter that exits 0 and prints
+# a chosen summary line.
 
 _FINALIZE_SH = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
 
@@ -1388,14 +1396,11 @@ def _finalize_with_stub_exporter(
 ) -> tuple[subprocess.CompletedProcess, Path, float]:
     """Run finalize.sh against a partition with a stubbed exporter.
 
-    The partition gets the .agentic-partition marker Task 2's containment
-    check requires, so the ONLY thing that can keep the spool in these tests
-    is the sweep-completeness gate under test.
-
-    The partition is built inside the container, as the agent user, so the
-    prune path can actually write its .sweep-rejected sentinel and remove
-    the transcript. A host-built partition is owned by the host uid, which
-    the agent cannot write into on Linux. See _stage_partition_sh.
+    The partition is built inside the container, as the agent user, so it is
+    writable by the process under test: a host-built partition is owned by
+    the host uid, which the agent cannot write into on Linux, and a partition
+    the hook cannot touch would pass a survives-the-sweep assertion for the
+    wrong reason. See _stage_partition_sh.
 
     Pass a LIST of stub bodies to run several sequential sweeps against the
     same partition, each with its own exporter output. That is what exercises
@@ -1417,7 +1422,6 @@ def _finalize_with_stub_exporter(
         part_name,
         {
             "state.json": "{}\n",
-            ".agentic-partition": "",
             "claude/s.jsonl": "{}\n",
         },
     )
@@ -1482,7 +1486,7 @@ def test_finalize_keeps_spool_when_a_sweep_counter_is_nonzero(
     """rc=0 with failed / skipped_oversize / rejected nonzero means at least
     one transcript never reached the store. The partition is the only
     remaining copy, so it must survive, and the log must name the counter
-    that blocked the prune so an operator can act.
+    that made the sweep incomplete so an operator can act.
     """
     result, transcript, _ = _finalize_with_stub_exporter(
         tmp_path,
@@ -1492,21 +1496,58 @@ def test_finalize_keeps_spool_when_a_sweep_counter_is_nonzero(
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
     assert transcript.exists(), (
-        f"an incomplete sweep ({counter} nonzero) must not prune the partition"
+        f"an incomplete sweep ({counter} nonzero) must keep the partition"
     )
     assert "INCOMPLETE" in result.stderr, "finalize must report the incomplete sweep"
     assert f"{counter}=1" in result.stderr, (
-        f"finalize must name {counter} as the counter that blocked the prune"
+        f"finalize must name {counter} as the counter that made the sweep incomplete"
     )
 
 
 @pytest.mark.integration
-def test_finalize_prunes_when_only_duplicate_and_unchanged_are_nonzero(tmp_path: Path):
+def test_finalize_keeps_partition_and_transcripts_on_a_clean_sweep(tmp_path: Path):
+    """THE contract, stated positively: a clean, fully successful sweep
+    leaves the partition and every transcript in it exactly where they are.
+
+    This is what replaced the prune. finalize.sh used to delete the partition
+    right here, and every data-loss path found on this branch reached
+    destruction through that one line, so the delete was removed rather than
+    re-gated. The spool is now an append-only local cache and the store is
+    the durable copy.
+
+    The report must also stay honest about it: an operator reading this run
+    must not be left thinking the successful path reclaimed anything.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+    )
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 0\n',
+        "clean-sweep",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert transcript.exists(), "a clean sweep must leave its transcripts in place"
+    assert transcript.parent.parent.is_dir(), (
+        "a clean sweep must leave the partition directory in place"
+    )
+    assert "upload complete" in result.stderr, "finalize must report the clean sweep"
+    assert "spool retained" in result.stderr, (
+        "the report must say the spool was retained, since nothing is ever deleted"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_reports_a_sweep_with_only_duplicate_and_unchanged_as_complete(
+    tmp_path: Path,
+):
     """duplicate and skipped_unchanged are confirmations, not losses:
     duplicate means the store already holds that content (it dedups on
     content_hash) and skipped_unchanged means a prior sweep uploaded it.
-    Neither may block the prune, or the spool grows forever on any repeat
-    sweep.
+    Neither may be reported as an incomplete sweep, or every repeat sweep
+    cries wolf and the INCOMPLETE signal stops meaning anything.
     """
     summary = (
         "run: discovered=5 skipped_unchanged=3 uploaded=2 accepted=0 "
@@ -1519,15 +1560,18 @@ def test_finalize_prunes_when_only_duplicate_and_unchanged_are_nonzero(tmp_path:
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
-    assert not transcript.exists(), (
-        "duplicate/skipped_unchanged are not failures and must not block the prune"
+    assert transcript.exists(), "the partition must survive a clean sweep"
+    assert "upload complete" in result.stderr, (
+        "duplicate/skipped_unchanged are not failures and must not read as INCOMPLETE"
     )
+    assert "INCOMPLETE" not in result.stderr, result.stderr
 
 
 @pytest.mark.integration
 def test_finalize_keeps_spool_when_no_summary_line_is_printed(tmp_path: Path):
     """An unreadable summary is not evidence of success. Absent the line, the
-    sweep's outcome is unknown, and unknown must never authorize a delete.
+    sweep's outcome is unknown, and unknown must be reported as unknown
+    rather than as a completed upload.
     """
     result, transcript, _ = _finalize_with_stub_exporter(
         tmp_path,
@@ -1536,31 +1580,32 @@ def test_finalize_keeps_spool_when_no_summary_line_is_printed(tmp_path: Path):
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
-    assert transcript.exists(), "an unparseable summary must not prune the partition"
+    assert transcript.exists(), "an unparseable summary must keep the partition"
     assert "no parseable summary" in result.stderr
 
 
 @pytest.mark.integration
-def test_finalize_never_prunes_a_partition_that_ever_had_a_rejection(tmp_path: Path):
-    """A rejected transcript must not be deleted by the NEXT sweep.
+def test_finalize_keeps_a_rejected_transcript_across_the_next_sweep(tmp_path: Path):
+    """A transcript the store REFUSED must still be on disk after the next
+    sweep reports itself clean.
 
     The exporter marks state for every item the store returned a result for,
     including per-item rejected (lib.rs:202-204), because "the store processed
     it and a re-send would be wasted". But rejected means the store REFUSED
     it: processed, not stored. So the divergence is invisible one sweep later:
 
-      Sweep 1: rejected=1        -> the gate blocks, spool kept, state marked.
-      Sweep 2: skipped_unchanged=1, all three blocking counters zero
-                                 -> the gate PASSES and would delete a
-                                    transcript that never reached the store.
+      Sweep 1: rejected=1        -> reported INCOMPLETE, naming the counter.
+      Sweep 2: skipped_unchanged=1, all three counters zero -> reads clean,
+               even though that transcript is still not in the store.
 
     Sweep 2 needs no recovery scenario: it happens on any run where the
     orchestrator passes a stable AGENTIC_SESSION_STORE_PARTITION, since only
     the ${HOSTNAME} default is per-container.
 
-    This is why the rejected block is made STICKY via a sentinel, and why
-    failed is deliberately NOT sticky: failed items are left unmarked, so they
-    retry and clear on their own.
+    This used to be a data-loss path, because sweep 2's clean reading
+    authorized a prune. It is not one any more for the reason that closes the
+    whole class: no sweep, clean or otherwise, deletes anything. Sweep 1's
+    report is still the operator's signal, and it must name the counter.
     """
     rejected_sweep = (
         'echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 '
@@ -1585,21 +1630,18 @@ def test_finalize_never_prunes_a_partition_that_ever_had_a_rejection(tmp_path: P
         "a transcript the store REJECTED was deleted by the following sweep, "
         "which sees only skipped_unchanged and reads as clean"
     )
-    assert (tmp_path / "spool" / "rejected-then-clean" / ".sweep-rejected").exists(), (
-        "the rejection must be recorded so later sweeps stay blocked"
-    )
-    assert "rejected=1" in result.stderr, "sweep 1 must name the blocking counter"
-    assert "needs an operator" in result.stderr, "sweep 2 must report the sticky refusal"
+    assert "INCOMPLETE" in result.stderr, "sweep 1 must report the incomplete sweep"
+    assert "rejected=1" in result.stderr, "sweep 1 must name the rejecting counter"
 
 
 @pytest.mark.integration
-def test_finalize_does_not_make_a_failed_sweep_permanently_unprunable(tmp_path: Path):
-    """failed must NOT be sticky, unlike rejected.
+def test_finalize_reports_a_retried_failure_as_complete(tmp_path: Path):
+    """A transient failure that later succeeds must stop being reported.
 
     Failed items are left unmarked in exporter state, so the next sweep
-    genuinely retries them and, on success, they really are stored. Making
-    the block sticky here would turn every transient network blip into a
-    partition that can never be pruned again.
+    genuinely retries them and, on success, they really are stored. A sticky
+    report here would turn every transient network blip into a partition that
+    reads INCOMPLETE forever, and an operator would stop believing the signal.
     """
     failed_sweep = (
         'echo "run: discovered=1 skipped_unchanged=0 uploaded=0 accepted=0 '
@@ -1616,21 +1658,28 @@ def test_finalize_does_not_make_a_failed_sweep_permanently_unprunable(tmp_path: 
         "failed-then-ok",
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    assert not transcript.exists(), (
-        "a transient failure that later succeeded must not block the prune forever"
+    assert transcript.exists(), "the partition must survive both sweeps"
+    # The stub harness prints "=== SWEEP n ===" before each run, so the two
+    # reports can be told apart. Asserting on the whole stderr would let the
+    # first sweep's INCOMPLETE satisfy an assertion about the second.
+    sweeps = result.stderr.split("=== SWEEP ")
+    assert len(sweeps) == 3, result.stderr
+    assert "failed=1" in sweeps[1] and "INCOMPLETE" in sweeps[1], sweeps[1]
+    assert "upload complete" in sweeps[2], sweeps[2]
+    assert "INCOMPLETE" not in sweeps[2], (
+        "a retried failure that succeeded must stop reading as INCOMPLETE"
     )
 
 
 @pytest.mark.integration
 def test_finalize_bounds_a_hanging_exporter_and_keeps_the_spool(tmp_path: Path):
-    """A wedged upload must not hang the run, and must not prune.
+    """A wedged upload must not hang the run, and must keep the spool.
 
     Unbounded, a stuck DNS lookup or hung connection turns a completed agent
     run into a hang; during `docker stop` it burns the grace until SIGKILL,
     so the run reports 137 instead of the agent's real exit code. finalize.sh
-    bounds the exporter at __UPLOAD_TIMEOUT_S and treats a timeout as an
-    upload failure. A killed exporter also prints no summary line, so the
-    completeness gate above independently refuses the prune.
+    bounds the exporter at __UPLOAD_TIMEOUT_S and reports a timeout as an
+    upload failure, naming the spool it left behind.
     """
     result, transcript, elapsed = _finalize_with_stub_exporter(
         tmp_path,

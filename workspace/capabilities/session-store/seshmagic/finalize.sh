@@ -3,11 +3,21 @@
 #
 # Sweeps the partition and uploads to the remote store. ALWAYS exits 0:
 # a failed upload after an hour of successful agent work must never make
-# the phase report as failed. On failure the spool is left intact so a
-# later recovery sweep can retry; the store dedups on content_hash, so
-# re-sweeping is a no-op rather than a corruption risk. The partition is
-# pruned only after a CLEAN sweep, which is a stronger condition than a clean
-# exit code (see the summary-line gate below).
+# the phase report as failed.
+#
+# THIS HOOK NEVER DELETES ANYTHING. The spool is an append-only local cache
+# and the store is the durable copy. It used to prune the partition after a
+# sweep it judged clean; that capability was removed, because every data-loss
+# path found on this branch reached destruction through that one `rm -rf`, and
+# each fix for one of them introduced the next. Unbounded spool growth is the
+# accepted tradeoff, and reclaiming space is an operator decision made with a
+# view of the store that this hook does not have.
+#
+# The spool is therefore retained on every path, clean or not. Re-sweeping a
+# retained partition is safe: the store dedups on content_hash, so a repeat
+# sweep is a no-op rather than a corruption risk. What the reporting below
+# still does is tell an operator whether everything actually reached the
+# store, which is the question the counters answer.
 
 set -u
 
@@ -154,8 +164,9 @@ fi
 # only runs when the agent's status is >128, i.e. the signal path. On an
 # ordinary agent exit there is no `docker stop -t 5` ticking and nothing to stay
 # inside. A single tight bound applied to both would kill a legitimate 4s sweep
-# on every normal run, which never prunes, which for a heavy user is a permanent
-# never-prune. So entrypoint.sh picks the budget and passes it in:
+# on every normal run, so for a heavy user no sweep would ever complete and
+# their transcripts would never reach the store. So entrypoint.sh picks the
+# budget and passes it in:
 #
 #   * SIGNAL path -- tight. Two constants bound the window: entrypoint.sh's
 #     __TERM_GRACE_TICKS (15 x 0.1s = 1.5s before a stubborn agent is escalated
@@ -173,7 +184,8 @@ fi
 # container, see the EXPORTER_STATE_FILE note above), and that too has no grace
 # ticking. A non-numeric value is ignored rather than trusted.
 #
-# A timeout is an upload FAILURE: keep the spool, never prune, exit 0.
+# A timeout is an upload FAILURE: report it and exit 0. The spool is kept, as
+# it is on every other path.
 readonly __UPLOAD_TIMEOUT_DEFAULT_S=120
 case "${AGENTIC_FINALIZE_BUDGET_S:-}" in
     "" | *[!0-9]* | 0) __UPLOAD_TIMEOUT_S="${__UPLOAD_TIMEOUT_DEFAULT_S}" ;;
@@ -195,7 +207,7 @@ readonly __UPLOAD_KILL_AFTER_S=1
 # with a structured --output-format). We capture both streams into a variable
 # (`2>&1` inside the command substitution) and replay them to fd2, which keeps
 # that stdout-cleanliness property while making the exporter's machine-readable
-# summary line available to the prune gate below.
+# summary line available to the reporting below.
 __exporter_out="$(timeout -k "${__UPLOAD_KILL_AFTER_S}" "${__UPLOAD_TIMEOUT_S}" \
     SeshMagicSessionExporter 2>&1)"
 __exporter_rc=$?
@@ -216,41 +228,43 @@ if [ "${__exporter_rc}" -ne 0 ]; then
     exit 0
 fi
 
-# A CLEAN EXIT IS NOT A CLEAN SWEEP. The exporter says so in its own source
+# A CLEAN EXIT IS NOT A CLEAN SWEEP, so the exit code alone is not a report.
+# The exporter says so in its own source
 # (crates/seshmagic-session-store-exporter/src/bin/exporter.rs):
 #
 #   // A completed sweep exits 0 even with per-item skips/failures; only a
 #   // hard RunError (store unreachable, source scan failure) is non-zero.
 #
 # So rc=0 is consistent with `failed=3 skipped_oversize=2`, i.e. five
-# transcripts that never reached the store. Pruning on rc=0 alone deletes them.
+# transcripts that never reached the store. Nothing is deleted on any path any
+# more, so this is no longer a data-loss question, but an operator still has to
+# be told: those five exist only in the spool, and only the store copy is
+# durable.
 #
-# That is the defect, and it does not depend on anything about persisted homes:
-# these are sessions the agent wrote DURING THIS RUN, which existed, never
-# reached the store, and get deleted anyway on the strength of an exit code
-# that is 0 even when failed=3. The spool is their only remaining copy.
-#
-# The adapter also migrates a pre-existing ~/.claude/projects into the
-# partition rather than deleting it, so the partition can hold more than the
-# current run's output. That widens the blast radius but is not what makes this
-# a data-loss path; the run's own transcripts already do.
-#
-# The gate is the summary line the exporter already prints:
+# The report reads the summary line the exporter already prints:
 #
 #   run: discovered=N skipped_unchanged=N uploaded=N accepted=N duplicate=N \
 #        rejected=N skipped_oversize=N failed=N
 #
-# Prune only on failed=0 AND skipped_oversize=0 AND rejected=0. Those three are
-# the counters that mean "this transcript is not in the store".
+# failed, skipped_oversize and rejected are the three counters that mean "this
+# transcript is not in the store". A nonzero one is reported as INCOMPLETE and
+# named, so the operator knows what to chase.
 #
-# duplicate and skipped_unchanged are NOT failures and must never block the
-# prune: duplicate means the store already holds that content (it dedups on
+# Note that a rejected item is reported only by the sweep that hit it. The
+# exporter marks state for every item the store returned a result for, rejected
+# included (lib.rs:202-204), so the NEXT sweep counts it as skipped_unchanged
+# and reads clean. failed and skipped_oversize are left unmarked and so recur
+# until they resolve.
+#
+# duplicate and skipped_unchanged are NOT failures and must never be reported as
+# such: duplicate means the store already holds that content (it dedups on
 # content_hash) and skipped_unchanged means a prior sweep already uploaded the
 # file. Both are confirmations, not losses.
 #
-# No parseable summary means no evidence of success, so it is treated as
-# not-clean. That is also what covers the timeout path above reaching this far
-# by any future edit: a killed exporter prints no summary.
+# No parseable summary means no evidence of success, so it is reported as
+# unknown rather than as complete. That is also what covers the timeout path
+# above reaching this far by any future edit: a killed exporter prints no
+# summary.
 __summary="$(printf '%s\n' "${__exporter_out}" | grep -E '^run: .*[[:space:]]failed=[0-9]+' | tail -1)"
 
 __counter() {
@@ -268,114 +282,21 @@ if [ -z "${__summary}" ] || [ -z "${__failed}" ] || [ -z "${__oversize}" ] || [ 
     exit 0
 fi
 
-__blocked=""
-[ "${__failed}" -ne 0 ] && __blocked="${__blocked} failed=${__failed}"
-[ "${__oversize}" -ne 0 ] && __blocked="${__blocked} skipped_oversize=${__oversize}"
-[ "${__rejected}" -ne 0 ] && __blocked="${__blocked} rejected=${__rejected}"
+__incomplete=""
+[ "${__failed}" -ne 0 ] && __incomplete="${__incomplete} failed=${__failed}"
+[ "${__oversize}" -ne 0 ] && __incomplete="${__incomplete} skipped_oversize=${__oversize}"
+[ "${__rejected}" -ne 0 ] && __incomplete="${__incomplete} rejected=${__rejected}"
 
-# A rejected item's block MUST be sticky, and it is the only one that must be.
-#
-# The three blocking counters differ in whether the exporter records the item as
-# done. From the exporter's own source
-# (crates/seshmagic-session-store-exporter/src/lib.rs:202-204):
-#
-#   // State is marked ONLY for items the store actually saw (accepted,
-#   // duplicate, or per-item rejected: all three mean the store processed it
-#   // and a re-send would be wasted).
-#
-# Rejected is in that list, and the Ok(results) arm marks every item in the
-# batch. But rejected means the store REFUSED the transcript. It was processed
-# and it was NOT stored. So state says done while storage says absent, and that
-# divergence is invisible to the next sweep:
-#
-#   Sweep 1: T rejected -> rejected=1 -> blocked, spool kept. state.mark(T).
-#   Sweep 2: state.is_current(T) -> counted as skipped_unchanged. Summary reads
-#            failed=0 skipped_oversize=0 rejected=0. The gate PASSES and T is
-#            deleted having never reached the store.
-#
-# Sweep 2 is not hypothetical: this hook documents standalone recovery sweeps
-# above, init.sh keeps the marker so a recovery sweep still prunes, and it needs
-# no recovery at all whenever the orchestrator passes a stable
-# AGENTIC_SESSION_STORE_PARTITION (only the ${HOSTNAME} default is per-run).
-#
-# The other two counters are safe for the opposite reason, which is exactly what
-# makes this specific to rejected:
-#   * skipped_oversize is left UNMARKED (lib.rs:167-168), so it is recounted
-#     every sweep and keeps blocking on its own.
-#   * failed is left UNMARKED, so it retries and, if it later succeeds, is
-#     genuinely stored.
-#
-# So: persist a sentinel for rejected, and do NOT do this for failed. Failed
-# items are unmarked and legitimately clear on retry; a sticky block there would
-# make every transient network blip permanently un-prunable.
-__rejected_sentinel="${__part_dir}/.sweep-rejected"
-if [ "${__rejected}" -ne 0 ] && [ -n "${EXPORTER_STATE_FILE:-}" ] && [ -d "${__part_dir}" ]; then
-    if : > "${__rejected_sentinel}" 2>/dev/null; then
-        echo "[finalize] recorded ${__rejected_sentinel}: the store REFUSED ${__rejected}" \
-             "transcript(s), which the exporter marks as done, so no later sweep can" \
-             "re-detect them; this partition will never be pruned automatically" >&2
-    else
-        echo "[finalize] WARNING: could not write ${__rejected_sentinel};" \
-             "a later sweep may prune rejected transcripts" >&2
-    fi
-fi
-
-if [ -n "${__blocked}" ]; then
-    echo "[finalize] session-store sweep INCOMPLETE (${__blocked# }): at least one transcript" \
+if [ -n "${__incomplete}" ]; then
+    echo "[finalize] session-store sweep INCOMPLETE (${__incomplete# }): at least one transcript" \
          "did not reach the store; spool retained at ${__part_dir}" >&2
     exit 0
 fi
 
-echo "[finalize] session-store upload complete (${__summary#run: })" >&2
-
-# Prune the partition on success only. The spool volume outlives any single
-# container (that persistence is exactly what makes the .capture-env
-# recovery path above meaningful for a SIGKILLed run) and would otherwise
-# accumulate one partition directory per container run forever. Never prune
-# on a failed sweep -- that spool is the only remaining copy of a session
-# that has not been confirmed uploaded.
-#
-# CONTAINMENT. Remove only a directory this capability created, evidenced by
-# the .agentic-partition marker init.sh writes at creation time.
-#
-# The previous guard tested path SHAPE (`case "${__part_dir}" in /*/*`) and
-# claimed to prevent `rm -rf /` and `rm -rf /spool`. It did prevent those two,
-# and nothing else: shape says nothing about ownership. With SPOOL=/workspace
-# and PARTITION=repos the state file is /workspace/repos/state.json, whose
-# dirname matches /*/*, and a successful sweep ran `rm -rf /workspace/repos`
-# on an operator's bind mount. Reproduced during review, with data lost.
-#
-# What the marker proves, exactly: at init time no directory existed at this
-# path, so this capability created it and everything inside it arrived through
-# this capability. init.sh deliberately does NOT write the marker over a
-# pre-existing directory, which is what makes the /workspace/repos case
-# refuse. Also note the marker is not a claim about uploads - the clean
-# summary line above is that claim, and both must hold to reach this line.
-#
-# The marker cannot be produced by a misconfigured path: /, /spool, and any
-# unrelated mount all lack it, so the old shape guard's two cases stay covered
-# without a separate check.
-#
-# THREE conditions now gate the delete, and they answer different questions:
-#   1. .agentic-partition  -- did this capability create the directory?
-#   2. the clean summary   -- did THIS sweep get everything into the store?
-#   3. .sweep-rejected     -- did any EARLIER sweep hit a rejection the exporter
-#                             has since marked as done, making it undetectable
-#                             to condition 2? (see the sentinel block above)
-# Condition 2 is per-sweep and cannot see the past; condition 3 is the memory it
-# lacks. Dropping 3 reintroduces the delete-on-the-next-sweep hole.
-if [ -n "${EXPORTER_STATE_FILE:-}" ]; then
-    if [ -e "${__rejected_sentinel}" ]; then
-        echo "[finalize] refusing to prune '${__part_dir}': ${__rejected_sentinel} records an" \
-             "earlier REJECTED transcript that no later sweep can re-detect; this partition" \
-             "needs an operator" >&2
-    elif [ -f "${__part_dir}/.agentic-partition" ]; then
-        rm -rf "${__part_dir}"
-        echo "[finalize] pruned partition ${__part_dir}" >&2
-    else
-        echo "[finalize] WARNING: refusing to prune '${__part_dir}': no .agentic-partition marker," \
-             "so this capability did not create it; leaving it untouched" >&2
-    fi
-fi
+# A clean sweep is reported and nothing else happens: the partition and every
+# transcript in it stay exactly where they are. That is the whole contract now,
+# so say so, because this line used to be followed by a delete.
+echo "[finalize] session-store upload complete (${__summary#run: });" \
+     "spool retained at ${__part_dir}" >&2
 
 exit 0

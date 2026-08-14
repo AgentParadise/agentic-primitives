@@ -64,36 +64,29 @@ $SPOOL/$PARTITION/
   codex/             <- CODEX_SESSIONS_ROOT, symlinked from ~/.codex/sessions
   state.json         <- EXPORTER_STATE_FILE (exporter-owned, created on first sweep)
   .capture-env       <- mode 600, DATA not shell (see below), present only when AGENTIC_SESSION_STORE_TAGS was set
-  .agentic-partition <- ownership marker (see below), present only when init.sh created this directory
 ```
 
 `$SPOOL` must be an absolute path with no `..` segment, and `$PARTITION` a
 relative one with the same restriction; both are validated in `contract.py`
 and a bad value fails the workspace at startup.
 
-### Prune containment (`.agentic-partition`)
+### The spool is append-only
 
-After a confirmed upload, `finalize.sh` removes the partition directory, so a
-persistent spool volume does not grow one directory per container run forever.
-It removes the directory **only** when `.agentic-partition` is present.
+**Nothing in this capability deletes a partition.** The store is the durable
+copy; the spool is a local cache that only ever grows. A sweep reports what
+reached the store and leaves every transcript where it is, whether the sweep
+was clean or not.
 
-`init.sh` writes that marker only when the partition directory did not already
-exist, so the marker means "this capability created this directory, and
-everything in it arrived through this capability". It is never written over a
-directory that was already there.
+`finalize.sh` used to prune the partition after a sweep it judged clean, gated
+by an `.agentic-partition` ownership marker `init.sh` wrote, a clean-summary
+check, and a `.sweep-rejected` sentinel. That whole mechanism is gone. Five
+data-loss paths were found on this branch and every one of them reached
+destruction through that single `rm -rf`, with four of them introduced by the
+fix for the previous one. Removing the delete removes the class.
 
-The distinction is load-bearing. `AGENTIC_SESSION_STORE_SPOOL=/workspace` with
-`AGENTIC_SESSION_STORE_PARTITION=repos` points the partition at an operator's
-bind mount. The adapter still sweeps and uploads from it, but it never marks
-it, so it is never pruned. The previous guard checked only that the path had
-two segments, which that configuration satisfies, and a successful sweep
-deleted the mount's contents.
-
-The marker persists on the spool volume, so a recovery sweep of a partition
-left behind by a `SIGKILL`ed container may still prune it: that directory was
-created by this capability too, on an earlier run.
-
-To keep a partition permanently, delete its `.agentic-partition`.
+Unbounded spool growth is the accepted tradeoff. Reclaiming space is an
+operator decision, made against a view of the store that a finalize hook does
+not have.
 
 Transcript roots live outside `$HOME` and are symlinked in, rather than
 bind-mounted under `$HOME` directly — Docker creates a bind-mount root as
