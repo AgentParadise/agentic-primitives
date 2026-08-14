@@ -356,6 +356,11 @@ for __varname in $(compgen -v | grep -E '^AGENTIC_[A-Z0-9_]+_PROVIDER$' || true)
 done
 unset __varname __cand_prefix __cand_value __registered_prefixes
 
+# Anything already in AGENTIC_CAPABILITY_WITHHOLD before any adapter has run
+# came from the substrate, not from a capability, so no capability owns it.
+# 5.8 still withholds it from the agent; no finalizer gets it back.
+__withhold_ambient="${AGENTIC_CAPABILITY_WITHHOLD:-}"
+
 for __cap in ${AGENTIC_CAPABILITIES:-}; do
     __capability_name_safe "${__cap}" || continue
     __prefix="$(__capability_env_prefix "${__cap}")"
@@ -373,12 +378,36 @@ for __cap in ${AGENTIC_CAPABILITIES:-}; do
     __init="/opt/agentic/capabilities/${__cap}/${__provider}/init.sh"
     if [ -f "${__init}" ]; then
         echo "[entrypoint] ${__cap} adapter: ${__provider}" >&2
+        # WHO DECLARED WHAT. AGENTIC_CAPABILITY_WITHHOLD (5.8) is one flat
+        # list, so by the time 5.8 reads it, which capability asked for which
+        # name is no longer knowable -- and every finalizer then received
+        # every capability's withheld values, including other capabilities'
+        # credentials. Attribution has to be captured here, where a single
+        # adapter is the only thing that can have changed the variable: the
+        # names this init.sh appended are the difference across the source.
+        __withhold_before="${AGENTIC_CAPABILITY_WITHHOLD:-}"
         # shellcheck disable=SC1090
         if . "${__init}"; then
             eval "export ${__prefix}_READY=1"
         else
             echo "[entrypoint] ${__cap} adapter init failed (exit $?); doctor in 5.7 will surface the cause." >&2
         fi
+        # Computed on BOTH branches: an init.sh that declared a name and then
+        # failed still put that name in the environment, and 5.8 will withhold
+        # it, so it still needs an owner.
+        __withhold_after="${AGENTIC_CAPABILITY_WITHHOLD:-}"
+        __withhold_delta="${__withhold_after#"${__withhold_before}"}"
+        if [ -n "${__withhold_before}" ] && [ "${__withhold_delta}" = "${__withhold_after}" ] &&
+           [ "${__withhold_after}" != "${__withhold_before}" ]; then
+            # The documented contract is APPEND, never assign (see 5.8). An
+            # adapter that assigned has already discarded earlier capabilities'
+            # declarations from the variable, which nothing here can recover;
+            # say so rather than silently mis-attributing what is left.
+            echo "[entrypoint] warning: ${__cap} assigned AGENTIC_CAPABILITY_WITHHOLD instead of appending to it; earlier declarations were lost" >&2
+            __withhold_delta="${__withhold_after}"
+        fi
+        eval "__WITHHOLD_FOR_${__prefix}=\${__withhold_delta}"
+        unset __withhold_before __withhold_after __withhold_delta
     else
         echo "[entrypoint] no ${__cap} adapter for provider: ${__provider}" >&2
         exit 1
@@ -431,7 +460,15 @@ done
 # compose. The lifecycle stashes each declared variable's value in a shell
 # variable of THIS process (a plain variable, deliberately not exported, so no
 # child inherits it), unsets the exported copy, and re-exports it only into the
-# subshell each finalizer runs in.
+# subshell THE DECLARING CAPABILITY'S finalizer runs in.
+#
+# SCOPED TO THE DECLARER, because this list is flat and a credential belongs to
+# exactly one capability. Restoring the whole list before every finalizer meant
+# an unrelated capability's finalizer ran with another capability's credential
+# in its environment -- a smaller version of the leak this section exists to
+# close, and one the subshell does nothing about (the subshell bounds the
+# LIFETIME of the restore, not who sees it). Ownership is recorded in 5.6, per
+# adapter, as the names that adapter appended; the restore below reads it back.
 #
 # Ordering is load-bearing. This runs AFTER 5.7, because the doctor legitimately
 # needs the credential to check that the store is reachable, and BEFORE section
@@ -473,7 +510,10 @@ unset __wn __wset
 # explain.
 unset AGENTIC_CAPABILITY_WITHHOLD
 if [ -n "${__withheld_names}" ]; then
-    echo "[entrypoint] withheld from the agent, restored for finalize:${__withheld_names}" >&2
+    echo "[entrypoint] withheld from the agent, restored for the declaring capability's finalize:${__withheld_names}" >&2
+fi
+if [ -n "${__withhold_ambient}" ]; then
+    echo "[entrypoint] note: AGENTIC_CAPABILITY_WITHHOLD arrived already set, so those names belong to no capability; they are withheld from the agent and restored for no finalizer" >&2
 fi
 
 # -----------------------------------------------------------------------------
@@ -515,15 +555,29 @@ __run_finalizers() {
         __capability_provider_safe "${__provider}" || continue
         __fin="/opt/agentic/capabilities/${__cap}/${__provider}/finalize.sh"
         [ -f "${__fin}" ] || continue
-        # Restore the variables 5.8 withheld, in a SUBSHELL, so the export
-        # lives exactly as long as the finalizer does. Restoring them in this
-        # shell instead would put the credential back in scope for every
-        # later finalizer of every other capability, which is the leak 5.8
-        # exists to close, only smaller. The agent has already exited by this
-        # point, so nothing the agent runs can be a child of this subshell.
+        # Restore only THIS capability's withheld names, and only in a
+        # SUBSHELL. The two guards answer two different questions, and the
+        # comment here used to claim the second one answered both:
+        #
+        #   the subshell bounds WHEN: the export lives exactly as long as this
+        #   finalizer, so it is not still in scope for later ones. The agent
+        #   has already exited, so nothing the agent runs is a child of it.
+        #
+        #   the per-capability list bounds WHO: a capability's finalizer sees
+        #   the names its own init.sh declared and no others. Without it, every
+        #   finalizer ran with every other capability's credentials in its
+        #   environment, which the subshell does nothing about.
+        eval "__cap_withheld=\${__WITHHOLD_FOR_${__prefix}:-}"
         (
-            for __wn in ${__withheld_names}; do
-                eval "export ${__wn}=\"\${__WITHHELD_${__wn}}\""
+            for __wn in ${__cap_withheld}; do
+                # Restore only names 5.8 actually stashed. That list holds
+                # validated shell identifiers only, so this membership test is
+                # also what keeps an unvalidated name out of the eval below.
+                case " ${__withheld_names} " in
+                    *" ${__wn} "*)
+                        eval "export ${__wn}=\"\${__WITHHELD_${__wn}}\""
+                        ;;
+                esac
             done
             "${__fin}"
         ) || true

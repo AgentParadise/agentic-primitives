@@ -2339,6 +2339,67 @@ def test_store_credential_is_withheld_from_the_agent_but_reaches_finalize(
     assert "[finalize] session-store upload complete" in result.stderr, result.stderr
 
 
+_PROBE_CAPABILITY = Path(__file__).parent / "fixtures" / "probe-capability"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_withheld_values_reach_only_the_declaring_capabilitys_finalizer(
+    tmp_path: Path,
+):
+    """A capability's finalizer must not receive another capability's secret.
+
+    AGENTIC_CAPABILITY_WITHHOLD is one flat list, and the restore used to
+    replay ALL of it before EVERY finalizer, so an unrelated capability's
+    finalize hook ran with the session store's write credential in its
+    environment. The subshell around the restore does not address this: it
+    bounds how LONG a restored value lives, not WHO sees it.
+
+    A second capability is mounted in for this, rather than reusing memory
+    (whose adapter has no finalize.sh at all). It is a fixture, not a
+    product capability, which is also the point: the entrypoint learns
+    nothing about either name, exactly as ADR-040 s4 requires.
+    """
+    secret = "scope-me-9f8e7d6c"  # a test fixture, not a real credential
+    spool = _host_spool(tmp_path)
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store probe",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_AUTH": secret,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "withhold-scope",
+            "AGENTIC_PROBE_PROVIDER": "probe",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_PROBE_CAPABILITY}:/opt/agentic/capabilities/probe:ro",
+            f"{_STUB_EXPORTER_REPORTS_TOKEN}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "AGENT_RAN" in result.stdout
+
+    # The probe's own declaration still comes back to its own finalizer, so
+    # the scoping is not simply "restore nothing".
+    assert "PROBE_FINALIZE PROBE_SECRET=probe-owns-this" in result.stderr, result.stderr
+    # And the session store's credential does not, under either name.
+    assert "PROBE_FINALIZE SESSIONS_WRITE_TOKEN=<unset>" in result.stderr, result.stderr
+    assert "PROBE_FINALIZE AGENTIC_SESSION_STORE_AUTH=<unset>" in result.stderr, (
+        result.stderr
+    )
+    assert secret not in result.stderr, "the credential's value reached another finalizer"
+    # The declaring capability's own finalizer is unaffected: it still gets
+    # the credential and still completes the upload.
+    assert "STUB_EXPORTER_TOKEN=present" in result.stderr, result.stderr
+    assert "[finalize] session-store upload complete" in result.stderr, result.stderr
+    # And the agent never saw either.
+    assert "probe-owns-this" not in result.stdout, result.stdout
+
+
 @pytest.mark.integration
 def test_withhold_ignores_a_name_that_is_not_a_shell_identifier():
     """A declared name is eval'd on both sides of the stash, so an invalid one

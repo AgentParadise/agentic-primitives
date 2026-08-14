@@ -191,7 +191,7 @@ into a hard stop with a specific cause.
 Keep it portable shell. No `docker`, no host paths, no substrate
 assumptions.
 
-Two hazards `session-store` hit that are worth knowing before you hit them:
+Three hazards `session-store` hit that are worth knowing before you hit them:
 
 - **Symlinks, not bind-mounts, under `$HOME`.** Docker creates a bind-mount
   root as root-owned while the container runs as uid 1000 (verified in
@@ -208,9 +208,30 @@ Two hazards `session-store` hit that are worth knowing before you hit them:
   and uploads them, then symlink. Use `mv -n` (never overwrite) followed by
   `rmdir` (refuses a non-empty directory) so that anything the move could not
   place leaves the source intact and the adapter returns non-zero rather than
-  guessing. Leave an existing symlink or a missing path alone; `ln -sfn`
-  handles those correctly. A workspace that refuses to start is recoverable;
-  a deleted transcript is not.
+  guessing. A missing path is fine to leave to `ln -sfn`. A workspace that
+  refuses to start is recoverable; a deleted transcript is not.
+- **An existing symlink is not automatically yours.** `ln -sfn` replaces one
+  silently. That is right when the link is your own from a previous run
+  (it already points into your spool) or when it dangles, and wrong when the
+  operator made it: retargeting deletes nothing and still stops the capture
+  happening where they asked, with nothing in the doctor output saying so.
+  Check where it resolves and refuse loudly otherwise.
+
+**Withholding a value from the agent.** If your adapter puts a credential in
+the environment and only your `finalize.sh` needs it, declare the names so
+the agent never inherits them (ADR-040 s2):
+
+```sh
+AGENTIC_CAPABILITY_WITHHOLD="${AGENTIC_CAPABILITY_WITHHOLD:-} FOO BAR"
+export AGENTIC_CAPABILITY_WITHHOLD
+```
+
+**Append, never assign.** Assigning discards other capabilities'
+declarations, and the lifecycle can only warn about it after the fact. The
+lifecycle records which names YOUR init.sh appended and restores exactly
+those, and only inside the subshell your own finalizer runs in, so your
+credential does not reach anyone else's finalize hook and theirs does not
+reach yours.
 
 ### `doctor.sh` (optional)
 

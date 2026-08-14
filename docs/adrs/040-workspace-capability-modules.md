@@ -153,9 +153,29 @@ export AGENTIC_CAPABILITY_WITHHOLD
 
 Entrypoint section 5.8 stashes each declared variable's value in a plain
 (unexported, therefore uninheritable) shell variable of PID 1, unsets the
-exported copy, and re-exports it only inside the subshell each finalizer runs
-in. Nothing in the entrypoint names a capability or a variable, so section 4's
-invariant holds: this is lifecycle machinery, not per-capability plumbing.
+exported copy, and re-exports it only inside the subshell **the declaring
+capability's** finalizer runs in. Nothing in the entrypoint names a capability
+or a variable, so section 4's invariant holds: this is lifecycle machinery, not
+per-capability plumbing.
+
+**Withheld values are scoped to the capability that declared them.** The
+declaration variable is one flat list, so it says what to withhold and not who
+asked. The restore therefore used to replay the whole list before every
+finalizer, and an unrelated capability's finalize hook ran with the session
+store's write credential in its environment. The subshell does not address
+that: it bounds how LONG a restored value lives, not who sees it, and those
+are two different claims.
+
+Ownership is captured in section 5.6, where a single adapter is the only thing
+that can have changed the variable: the names an `init.sh` appended across its
+own source are that capability's, and section 6 restores only those before its
+finalizer. This is why the append form above is a contract rather than a
+style: an adapter that assigns discards the earlier declarations outright, and
+the lifecycle can only warn that it happened.
+
+Names already present in `AGENTIC_CAPABILITY_WITHHOLD` before any adapter runs
+came from the substrate, so no capability owns them. They are withheld from
+the agent and restored for no finalizer, with a note on stderr saying so.
 
 Ordering is part of the contract. Withholding happens **after** the section
 5.7 doctor, which legitimately needs the credential to check that the store is
