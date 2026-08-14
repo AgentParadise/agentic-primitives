@@ -8,9 +8,9 @@ version: "2.0.0"
 description: Claude CLI workspace with native OpenTelemetry support
 
 # Workspace capability modules (ADR-040)
-# Adapters live under providers/workspaces/claude-cli/capabilities/<capability>/
-# and are baked into /opt/agentic/capabilities/ at build time (see
-# scripts/build-provider.py's stage_capabilities). The entrypoint's 5.6/5.7
+# Adapters live under workspace/capabilities/<capability>/ and are baked into
+# /opt/agentic/capabilities/ at build time (see
+# scripts/build-provider.py's stage_workspace_runtime). The entrypoint's 5.6/5.7
 # loops iterate the AGENTIC_CAPABILITIES image ENV (default
 # "memory session-store") and translate each AGENTIC_<CAP>_* contract into
 # provider-native env. This supersedes the memory-only ADR-036 layout that

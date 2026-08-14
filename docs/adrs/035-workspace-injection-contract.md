@@ -232,7 +232,7 @@ Five phases:
   (`AGENTIC_DOMAIN_*` → `AGENTIC_WORKSPACE_*`; path
   `/etc/agentic/domain/` → `/etc/agentic/workspace/`;
   `AGENTIC_ALLOWED_TOOLS` removed entirely).
-- **B** — entrypoint section 5.5 in `providers/workspaces/claude-cli/scripts/entrypoint.sh`
+- **B** — entrypoint section 5.5 in `workspace/entrypoint.sh`
   + 6 integration tests in `tests/integration/test_entrypoint_workspace_injection.py`.
 - **C** — `WorkspaceFiles` helper in
   `lib/python/agentic_isolation/agentic_isolation/workspace_files.py`

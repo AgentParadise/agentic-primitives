@@ -512,7 +512,7 @@ gained the public `Env` and `CAPABILITY` symbols and the
   worked example. Read that before writing an adapter; read this ADR to
   understand why it is shaped that way.
 - **Per-module READMEs** live at
-  `providers/workspaces/claude-cli/capabilities/<capability>/README.md` so
+  `workspace/capabilities/<capability>/README.md` so
   each module is comprehensible standalone.
 - **Tests**: `tests/integration/test_entrypoint_capabilities.py` covers the
   registry hardening, the adapter's env translation and symlinks, the
@@ -533,5 +533,5 @@ gained the public `Env` and `CAPABILITY` symbols and the
 - [ADR-027: Provider-Based Workspace Images](027-provider-workspace-images.md)
 - [EXP-08: Workspace capability capture lifecycle](../../experiments/EXP-08-capability-capture-lifecycle.md) - the empirical basis for sections 6, 8, and 9
 - [Authoring guide: workspace capabilities](../workspace-capabilities.md)
-- [session-store module README](../../providers/workspaces/claude-cli/capabilities/session-store/README.md)
-- [memory module README](../../providers/workspaces/claude-cli/capabilities/memory/README.md)
+- [session-store module README](../../workspace/capabilities/session-store/README.md)
+- [memory module README](../../workspace/capabilities/memory/README.md)

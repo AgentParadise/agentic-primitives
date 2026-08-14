@@ -16,7 +16,7 @@ file referenced below exists and can be read alongside this guide.
 
 > **Adding a capability requires ZERO changes to `entrypoint.sh`.**
 
-If you find yourself editing `providers/workspaces/claude-cli/scripts/entrypoint.sh`
+If you find yourself editing `workspace/entrypoint.sh`
 to make your capability work, stop. That is not a task, it is a signal:
 the contract is wrong, and the fix belongs in the contract. The generic
 lifecycle in sections 5.6, 5.7, and 6 is capability-agnostic on purpose,
@@ -25,7 +25,7 @@ and every per-capability line added to it costs the next author.
 Verify the invariant on your own branch before you open the PR:
 
 ```bash
-git diff main -- providers/workspaces/claude-cli/scripts/entrypoint.sh
+git diff main -- workspace/entrypoint.sh
 ```
 
 That should be empty.
@@ -157,7 +157,7 @@ template: `contract_parses`, `spool_writable`, `symlinks_correct`,
 `ProviderSpecificCheck` that shells out to the adapter's own `doctor.sh`.
 
 Add the bash entry point at
-`providers/workspaces/claude-cli/capabilities/<name>/doctor`. It is a thin
+`workspace/capabilities/<name>/doctor`. It is a thin
 wrapper, copied from either existing capability, that execs the Python
 module and passes flags through:
 
@@ -173,7 +173,7 @@ exec python3 -m agentic_<name>.doctor "$@"
 ## Step 4: Write the adapter hooks
 
 Adapters live at
-`providers/workspaces/claude-cli/capabilities/<name>/<provider>/`.
+`workspace/capabilities/<name>/<provider>/`.
 `scripts/build-provider.py`'s `stage_capabilities()` copies the whole tree
 into the build context and the Dockerfile `COPY`s it to
 `/opt/agentic/capabilities/`. You do not touch either file.
@@ -424,7 +424,7 @@ end-to-end run against the real thing.
 
 ## Step 8: Document it
 
-Write `providers/workspaces/claude-cli/capabilities/<name>/README.md`, so
+Write `workspace/capabilities/<name>/README.md`, so
 the module is comprehensible standalone. The two existing READMEs are the
 template: contract table, on-disk layout, what the adapter deliberately
 does *not* do, and how to run the doctor by hand.
@@ -473,5 +473,5 @@ natural host-side half. Start there.
 - [ADR-036: Memory Primitive and Doctor](adrs/036-memory-primitive-and-doctor.md)
 - [ADR-035: Workspace Injection Contract](adrs/035-workspace-injection-contract.md)
 - [EXP-08: Workspace capability capture lifecycle](../experiments/EXP-08-capability-capture-lifecycle.md)
-- [session-store module README](../providers/workspaces/claude-cli/capabilities/session-store/README.md)
-- [memory module README](../providers/workspaces/claude-cli/capabilities/memory/README.md)
+- [session-store module README](../workspace/capabilities/session-store/README.md)
+- [memory module README](../workspace/capabilities/memory/README.md)
