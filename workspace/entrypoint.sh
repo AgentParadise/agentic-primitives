@@ -555,8 +555,20 @@ __child=$!
 # group and already receives the tty's SIGINT directly. Also sending it a
 # synthesized SIGTERM would mean Ctrl-C -- how Claude Code interrupts
 # generation -- kills the whole session instead of just the current turn.
-trap 'kill -TERM "${__child}" 2>/dev/null' TERM
-trap 'kill -INT "${__child}" 2>/dev/null' INT
+#
+# `|| true` ON BOTH, for the same reason the escalation block below has one,
+# and this is the sibling that fix missed. `set -e` is in force INSIDE a trap
+# body: if the child exits just before the signal lands, `kill` fails with
+# ESRCH and the shell exits from within the handler, at PID 1, skipping every
+# finalizer. Reproduced directly, not inferred:
+#
+#   bash -c 'set -e; trap "kill -TERM 999999 2>/dev/null" USR1; kill -USR1 $$;
+#            sleep 0.05; echo TRAP_SURVIVED'   -> aborted, rc=1, no output
+#
+# The `2>/dev/null` only hides the diagnostic; it does not change the status.
+# Any trap body added here later needs the same guard.
+trap 'kill -TERM "${__child}" 2>/dev/null || true' TERM
+trap 'kill -INT "${__child}" 2>/dev/null || true' INT
 # `set -e` is in effect for this whole script (line 30). A bare
 # `wait "${__child}"; __rc=$?` is a classic set -e trap: if the child exits
 # non-zero, `wait`'s own non-zero status is a simple command not shielded by
@@ -575,8 +587,14 @@ __signaled=0
 if [ "${__rc}" -gt 128 ]; then
     __signaled=1
     __n=0
+    # `sleep ... || true`: the same class again, one line further on. Under
+    # `docker run -it` the container shares a process group with the tty, so a
+    # Ctrl-C lands on `sleep` as well as on PID 1. An interrupted `sleep`
+    # returns non-zero, and as the loop body's last command that is fatal under
+    # `set -e` -- the wrapper would exit here, before any finalizer runs, on the
+    # one path where the agent is already being torn down.
     while kill -0 "${__child}" 2>/dev/null && [ "${__n}" -lt "${__TERM_GRACE_TICKS}" ]; do
-        sleep 0.1
+        sleep 0.1 || true
         __n=$((__n + 1))
     done
     # Escalate to SIGKILL once the grace expires. Written as `if`/`|| true`

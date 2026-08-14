@@ -2178,6 +2178,90 @@ def test_escalation_survives_the_two_non_race_outcomes(
     assert result.returncode == 0, result.stderr
 
 
+# --- The same `set -e` class in the trap bodies and the grace loop -------
+
+_TRAP_LINE = re.compile(r"^trap '.*\$\{__child\}.*' (?P<sig>TERM|INT)$", re.MULTILINE)
+
+
+def _trap_lines() -> dict[str, str]:
+    lines = {
+        m.group("sig"): m.group(0) for m in _TRAP_LINE.finditer(_ENTRYPOINT_SH.read_text())
+    }
+    assert set(lines) == {"TERM", "INT"}, f"trap lines not found in {_ENTRYPOINT_SH}"
+    return lines
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("signal", ["TERM", "INT"])
+def test_signal_trap_survives_a_child_that_already_exited(tmp_path: Path, signal: str):
+    """A trap body whose `kill` fails must not exit the wrapper from inside it.
+
+    `set -e` is in force INSIDE a trap. If the child exits in the instant
+    before the forwarded signal lands, `kill` returns ESRCH and the shell
+    exits at PID 1 from within the handler, skipping every finalizer -- the
+    same failure mode the escalation block was fixed for, in the two sibling
+    sites the fix did not touch.
+
+    The `2>/dev/null` on those lines hides the diagnostic only; it does not
+    change the exit status, which is why it never protected anything.
+
+    Runs the SHIPPED trap line, lifted verbatim, against a pid that is
+    guaranteed not to exist.
+    """
+    script = tmp_path / f"trap-{signal}.sh"
+    script.write_text(
+        "set -e\n"
+        # A pid that cannot be ours, so the kill inside the trap fails ESRCH.
+        "__child=999999\n"
+        f"{_trap_lines()[signal]}\n"
+        f"kill -{signal} $$\n"
+        "sleep 0.05\n"
+        "echo TRAP_SURVIVED\n"
+    )
+    result = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=30
+    )
+    assert "TRAP_SURVIVED" in result.stdout, (
+        f"the {signal} trap aborted the wrapper, so no finalizer would run; "
+        f"rc={result.returncode} stderr={result.stderr}"
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.integration
+def test_grace_loop_survives_an_interrupted_sleep(tmp_path: Path):
+    """An interrupted `sleep` in the TERM-grace loop must not abort the wrapper.
+
+    Under `docker run -it` the container shares a process group with the tty,
+    so a Ctrl-C reaches `sleep` as well as PID 1. An interrupted `sleep`
+    returns non-zero, and as the loop body's last command that is fatal under
+    `set -e` -- on the exact path where the agent is already being torn down
+    and finalizers still have to run.
+    """
+    script = tmp_path / "interrupted-sleep.sh"
+    script.write_text(
+        "set -e\n"
+        "__TERM_GRACE_TICKS=2\n"
+        "__child=424242\n"
+        "__rc=143\n"
+        # Alive throughout, so the loop actually runs its body.
+        "kill() { return 0; }\n"
+        # What an interrupted sleep reports.
+        "sleep() { return 130; }\n"
+        "wait() { return 137; }\n"
+        f"{_escalation_block()}\n"
+        'echo "REACHED signaled=${__signaled} rc=${__rc}"\n'
+    )
+    result = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=30
+    )
+    assert "REACHED" in result.stdout, (
+        "an interrupted sleep aborted the wrapper before finalizers ran; "
+        f"rc={result.returncode} stderr={result.stderr}"
+    )
+    assert result.returncode == 0, result.stderr
+
+
 # --- The store write credential is withheld from the agent (ADR-040 s2) ---
 
 _STUB_EXPORTER_REPORTS_TOKEN = (
