@@ -65,12 +65,20 @@ def _run(
     env: dict[str, str] | None = None,
     extra_mounts: list[str] | None = None,
     add_host_gateway: bool = False,
+    tmpfs_home: bool = True,
 ) -> subprocess.CompletedProcess:
-    """Run the workspace image with tmpfs home, optional env / mounts."""
-    cmd = [
-        "docker", "run", "--rm",
-        "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
-    ]
+    """Run the workspace image with tmpfs home, optional env / mounts.
+
+    tmpfs_home defaults to True, which is what every pre-existing caller
+    wants — but it is also why the ~/.claude/projects data-loss defect
+    survived a full green suite: on a tmpfs home the directory never
+    pre-exists, so the adapter's destructive branch was never reached.
+    Pass tmpfs_home=False (and bind-mount a real /home/agent) to exercise
+    a persisted home.
+    """
+    cmd = ["docker", "run", "--rm"]
+    if tmpfs_home:
+        cmd.append("--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000")
     if add_host_gateway:
         cmd.extend(["--add-host=host.docker.internal:host-gateway"])
     for m in extra_mounts or []:
@@ -335,6 +343,119 @@ def test_symlink_replaces_preexisting_real_directory(tmp_path: Path):
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "/spool/w1/p2/claude" in result.stdout
     assert "/spool/w1/p2/codex" in result.stdout
+
+
+def _open_perms(root: Path) -> None:
+    """Open a fixture tree's perms for the container's non-root agent user.
+
+    Docker Desktop's bind-mount layer does not reliably preserve host
+    uid/gid semantics the way a native Linux bind mount would. The behavior
+    under test is the adapter's own migrate-don't-delete logic, not
+    filesystem permission handling.
+    """
+    os.chmod(root, 0o777)
+    for p in root.rglob("*"):
+        os.chmod(p, 0o777)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_preexisting_transcripts_are_migrated_not_deleted(tmp_path: Path):
+    """A persisted home's existing transcripts must end up IN the partition.
+
+    This is the data-loss defect: the previous implementation rm -rf'd them
+    at startup, before the exporter could ever see them. Migrating instead
+    means a workspace that would have LOST its history gains it, because
+    the moved transcripts are swept by this run's finalize.
+    """
+    spool = tmp_path / "spool"
+    home = tmp_path / "home"
+    proj = home / ".claude" / "projects" / "-workspace-old"
+    proj.mkdir(parents=True)
+    (proj / "old-session.jsonl").write_text(
+        '{"type":"user","timestamp":"2026-08-14T10:00:00.000Z",'
+        '"cwd":"/workspace","gitBranch":"main","message":{"role":"user","content":"pre-existing"}}\n'
+    )
+    spool.mkdir()
+    _open_perms(home)
+    os.chmod(spool, 0o777)
+
+    result = _run(
+        ["bash", "-c",
+         "find /spool -name '*.jsonl' | sed 's|/spool|SPOOL|'; "
+         "echo LINK=$(readlink -f ~/.claude/projects)"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "mig/test",
+        },
+        # NOTE: a real (non-tmpfs) home, which is what exposes the defect.
+        # The stub exporter is mounted for the same reason as every other
+        # adapter test here: 5.7's doctor must fully pass or CMD never runs.
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{home}:/home/agent",
+            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+        tmpfs_home=False,
+    )
+    assert "old-session.jsonl" in result.stdout, (
+        "pre-existing transcript was destroyed instead of migrated:\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "SPOOL/mig/test/claude/" in result.stdout
+    assert "LINK=/spool/mig/test/claude" in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_migration_failure_preserves_data_and_fails_loudly(tmp_path: Path):
+    """If migration cannot complete, nothing is deleted and the doctor reports it.
+
+    Refuse rather than guess: a workspace that will not start is
+    recoverable, a deleted transcript is not.
+    """
+    spool = tmp_path / "spool"
+    home = tmp_path / "home"
+    proj = home / ".claude" / "projects"
+    proj.mkdir(parents=True)
+    (proj / "keepme.jsonl").write_text("{}\n")
+    spool.mkdir()
+    _open_perms(home)
+    os.chmod(spool, 0o777)
+    # Read-only partition target makes the move fail.
+    (spool / "blocked").mkdir()
+    (spool / "blocked").chmod(0o500)
+
+    result = _run(
+        ["bash", "-c", "ls ~/.claude/projects/"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "blocked",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{home}:/home/agent",
+            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+        tmpfs_home=False,
+    )
+    assert result.returncode != 0, (
+        "a failed migration must not be silently ignored:\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert (proj / "keepme.jsonl").exists(), "data was destroyed on a failed migration"
+    # The failure must be attributable, not a generic non-zero exit: the
+    # symlink was never created, so symlinks_correct is what fails.
+    assert "symlinks_correct" in result.stderr
+    assert "session-store doctor: FAIL" in result.stderr
 
 
 @pytest.mark.integration

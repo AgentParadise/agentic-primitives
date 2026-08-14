@@ -71,6 +71,16 @@ bind-mounted under `$HOME` directly — Docker creates a bind-mount root as
 root-owned while the container runs as uid 1000 (verified in EXP-07),
 which breaks writes.
 
+If `~/.claude/projects` or `~/.codex/sessions` already exists as a real
+directory (a persisted `$HOME`, or a prior harness run), `init.sh` **migrates
+its contents into the partition** and then symlinks, so those transcripts are
+swept and uploaded by this run's finalize instead of being lost. The move uses
+`mv -n` and then `rmdir`, neither of which can overwrite or force: if anything
+at all survives the move, the adapter leaves the directory untouched and
+returns non-zero, and the `symlinks_correct` doctor check then fails the
+workspace with a specific error. Refusing to start is recoverable; a deleted
+transcript is not.
+
 ### Crash-recovery attribution (`.capture-env`)
 
 EXP-08 arm A5 found that a container killed with `SIGKILL` leaves its

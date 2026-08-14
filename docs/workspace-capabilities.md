@@ -197,12 +197,20 @@ Two hazards `session-store` hit that are worth knowing before you hit them:
   root as root-owned while the container runs as uid 1000 (verified in
   EXP-07), which breaks writes. Put the real directory outside `$HOME` and
   symlink it in.
-- **Guard `ln -sfn` against a pre-existing real directory.** If
+- **Migrate a pre-existing real directory; never delete it.** If
   `~/.claude/projects` already exists as a directory, `ln -sfn` nests the
   link *inside* it rather than replacing it, and your doctor then hard-fails
-  the workspace with a confusing error. Check for a real directory and
-  remove it; leave an existing symlink or a missing path alone, since
-  `ln -sfn` handles those correctly.
+  the workspace with a confusing error. The obvious fix — `rm -rf` the
+  directory first — is a data-loss bug, and shipped as one: on a persisted
+  `$HOME`, or any workspace where the harness already ran, it destroys
+  un-uploaded transcripts at startup, before the exporter has ever run.
+  Instead move the contents into the partition so this run's finalize sweeps
+  and uploads them, then symlink. Use `mv -n` (never overwrite) followed by
+  `rmdir` (refuses a non-empty directory) so that anything the move could not
+  place leaves the source intact and the adapter returns non-zero rather than
+  guessing. Leave an existing symlink or a missing path alone; `ln -sfn`
+  handles those correctly. A workspace that refuses to start is recoverable;
+  a deleted transcript is not.
 
 ### `doctor.sh` (optional)
 
