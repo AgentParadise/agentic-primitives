@@ -974,6 +974,81 @@ unset SESSION_STORE_TAGS
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("", id="empty-file"),
+        pytest.param("TRUNCATED", id="foreign-content"),
+        pytest.param("SESSION_STORE_TAGS_B64=\n", id="current-record-empty-value"),
+        pytest.param("SESSION_STORE_TAGS=\n", id="legacy-record-empty-value"),
+        pytest.param("SESSION_STORE_TAGS_B64=!!!not!!!base64!!!\n", id="undecodable"),
+    ],
+)
+def test_unrecognised_capture_env_claims_no_recovery(tmp_path: Path, content: str):
+    """A readable .capture-env with no usable record must recover nothing
+    and say nothing that is not true.
+
+    The recovery used to branch on "no _B64 record present" rather than on
+    "a legacy record actually matched", so every case below took the legacy
+    path: it printed the legacy-migration notice AND "recovered tags from
+    ...", having recovered nothing. Two false signals on one path. The
+    second one lies about this sweep; the first one lies about the fleet,
+    telling an operator they still have pre-_B64 partitions in circulation
+    when they may have none, which is precisely the judgement that notice
+    exists to inform.
+
+    These are not hypothetical shapes. A spool volume outliving the image is
+    the case this whole branch exists to serve, and a truncated or foreign
+    file is what such a volume produces.
+    """
+    spool = tmp_path / "spool"
+    part_dir = spool / "garbage-test"
+    part_dir.mkdir(parents=True)
+    capture_env = part_dir / ".capture-env"
+    capture_env.write_text(content)
+    os.chmod(capture_env, 0o600)
+
+    fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+    script = f"""
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+printf 'TAGS_SEEN_START%sTAGS_SEEN_END\\n' "${{SESSION_STORE_TAGS-<unset>}}"
+exit 0
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export SESSION_STORE_URL=http://unused.invalid
+export EXPORTER_STATE_FILE=/spool/garbage-test/state.json
+unset SESSION_STORE_TAGS
+{fin}
+"""
+    result = _run(["bash", "-c", script], extra_mounts=[f"{spool}:/spool"])
+    assert result.returncode == 0, f"finalize.sh must always exit 0: {result.stderr}"
+    assert "legacy pre-base64" not in result.stderr, (
+        "claimed a legacy partition that is not there; the notice must stay trustworthy"
+    )
+    assert "recovered tags from" not in result.stderr, (
+        "claimed a recovery that did not happen"
+    )
+    # The operator is told, and the exporter is left genuinely untagged
+    # rather than handed an empty string that looks like a real value.
+    #
+    # The probe uses ${SESSION_STORE_TAGS-<unset>}, WITHOUT the colon, on
+    # purpose: `:-` substitutes for empty as well as unset, so it would
+    # report "<unset>" for the old behavior (which exported an empty
+    # string) and the assertion below would pass against the bug it exists
+    # to catch.
+    assert "no usable tag record" in result.stderr, result.stderr
+    match = re.search(r"TAGS_SEEN_START(.*?)TAGS_SEEN_END", result.stderr, re.DOTALL)
+    assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert match.group(1) == "<unset>", (
+        f"SESSION_STORE_TAGS must stay unset, got {match.group(1)!r}"
+    )
+
+
+@pytest.mark.integration
 def test_finalize_survives_unset_exporter_state_file_on_failure():
     """Regression test: finalize.sh must not crash under `set -u` when
     EXPORTER_STATE_FILE is unset and the exporter fails.

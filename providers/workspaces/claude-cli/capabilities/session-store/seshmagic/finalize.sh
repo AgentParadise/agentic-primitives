@@ -49,17 +49,45 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
         # the decoded bytes are only ever assigned to a variable, never
         # evaluated.
         #
-        # `read -r -d ''` rather than `$(base64 -d)`: command substitution
-        # strips ALL trailing newlines, so a tag that legitimately ends in
-        # one would not round-trip byte-exact. Reading to a NUL delimiter
-        # (which a value out of the environment can never contain) keeps
-        # every byte. read returns non-zero at EOF without finding the
-        # delimiter and still assigns, which is why the `|| true` is correct
-        # and not a swallowed error.
+        # RESOLVE FIRST, ANNOUNCE SECOND. A record being ABSENT is its own
+        # case, never the legacy case.
+        #
+        # This used to branch the fallback on "no _B64 record" rather than
+        # on "a legacy record actually matched". A .capture-env that is
+        # readable but holds neither record - truncated, empty, or foreign,
+        # which is exactly what a spool volume outliving the image produces,
+        # the precise case this branch exists to serve - then took the
+        # legacy path and printed BOTH the legacy notice and "recovered
+        # tags" while recovering nothing. Two false signals on one path: a
+        # recovery that did not happen, and a claim that pre-_B64 partitions
+        # are still in circulation when they may not be. The notice exists
+        # to make a real condition visible, so it must never manufacture one.
+        #
+        # A record present with an EMPTY value counts as no usable record.
+        # init.sh writes this file only when the tag string is non-empty, so
+        # that shape is already corrupt, and "recovered an empty tag" is the
+        # same false signal in a different costume. A _B64 record that fails
+        # to decode is treated the same way, for the same reason.
+        __tags_value=""
+        __tags_source="none"
+
         __tags_b64="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${__capture_env}" | head -1)"
         if [ -n "${__tags_b64}" ]; then
-            IFS= read -r -d '' SESSION_STORE_TAGS \
-                < <(printf '%s' "${__tags_b64}" | base64 -d) || true
+            # `read -r -d ''` rather than `$(base64 -d)`: command
+            # substitution strips ALL trailing newlines, so a tag that
+            # legitimately ends in one would not round-trip byte-exact.
+            # Reading to a NUL delimiter (which a value out of the
+            # environment can never contain) keeps every byte. read returns
+            # non-zero at EOF without finding the delimiter and still
+            # assigns, which is why the `|| true` is correct and not a
+            # swallowed error. The later plain assignment out of
+            # __tags_value keeps those trailing bytes too, where a command
+            # substitution there would have thrown them away again.
+            IFS= read -r -d '' __tags_value \
+                < <(printf '%s' "${__tags_b64}" | base64 -d 2>/dev/null) || true
+            if [ -n "${__tags_value}" ]; then
+                __tags_source="b64"
+            fi
         else
             # LEGACY record, written by an init.sh from before the base64
             # change. The spool volume outlives the image: a partition left
@@ -71,19 +99,45 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
             #
             # THIS IS A MIGRATION AFFORDANCE, NOT A SUPPORTED FORMAT. Nothing
             # writes this record any more. It exists only to drain partitions
-            # that predate the _B64 change, and it may be deleted once no
-            # spool volume still in use can hold one. The log line below is
-            # how an operator learns that condition is not yet met: a silent
-            # fallback means nobody ever finds out it is safe to remove.
-            SESSION_STORE_TAGS="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${__capture_env}" | head -1)"
-            echo "[finalize] NOTE: ${__capture_env} uses the legacy pre-base64" \
-                 "SESSION_STORE_TAGS record; this partition predates the current" \
-                 "adapter. Tags were recovered, but a tag containing a newline" \
-                 "would have been truncated when it was written" >&2
+            # that predate the _B64 change, and it may be deleted once a scan
+            # of every spool volume still in use finds no such record (the
+            # capability README gives the exact command). The notice below is
+            # how an operator learns a legacy partition is still out there: a
+            # silent fallback means nobody ever finds out it is safe to
+            # remove, and a notice that fires on the no-record case would
+            # mean they could never trust it either.
+            __tags_value="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${__capture_env}" | head -1)"
+            if [ -n "${__tags_value}" ]; then
+                __tags_source="legacy"
+            fi
         fi
-        unset __tags_b64
-        export SESSION_STORE_TAGS
-        echo "[finalize] recovered tags from ${__capture_env}" >&2
+
+        case "${__tags_source}" in
+            b64)
+                SESSION_STORE_TAGS="${__tags_value}"
+                export SESSION_STORE_TAGS
+                echo "[finalize] recovered tags from ${__capture_env}" >&2
+                ;;
+            legacy)
+                SESSION_STORE_TAGS="${__tags_value}"
+                export SESSION_STORE_TAGS
+                echo "[finalize] NOTE: ${__capture_env} uses the legacy pre-base64" \
+                     "SESSION_STORE_TAGS record; this partition predates the current" \
+                     "adapter. Tags were recovered, but a tag containing a newline" \
+                     "would have been truncated when it was written" >&2
+                echo "[finalize] recovered tags from ${__capture_env}" >&2
+                ;;
+            *)
+                # No recovery happened, so nothing claims one. Leave
+                # SESSION_STORE_TAGS unset: the upload goes ahead untagged,
+                # which is the same outcome as a missing .capture-env and is
+                # reported the same way.
+                echo "[finalize] WARNING: ${__capture_env} is readable but holds no" \
+                     "usable tag record (expected SESSION_STORE_TAGS_B64=<base64>);" \
+                     "no tags were recovered and this upload will be unattributable" >&2
+                ;;
+        esac
+        unset __tags_b64 __tags_value __tags_source
     else
         echo "[finalize] WARNING: no tags in env and no ${__capture_env}; " \
              "this upload will be unattributable" >&2

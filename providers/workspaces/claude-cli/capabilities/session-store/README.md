@@ -187,16 +187,29 @@ failure this file exists to prevent. Refusing to read data this capability
 itself wrote one image build ago would be choosing a cleaner code path over
 the data.
 
-*When it can be deleted.* When no spool volume still in use can hold a
-partition predating the `_B64` change. Until then it stays.
+*When it can be deleted.* When a scan of every spool volume still in use
+finds no `.capture-env` lacking a `_B64` record. Run this against each
+volume's mount point:
 
-*How you know that condition is not yet met.* `finalize.sh` logs a
-`[finalize] NOTE: ... uses the legacy pre-base64 SESSION_STORE_TAGS record`
-line to stderr every time the fallback fires. Seeing it means a pre-`_B64`
-partition is still in circulation. Once it has stopped appearing across your
-fleet, the `else` branch in `finalize.sh` and this subsection can go
-together. A silent fallback would mean nobody ever learns it is safe to
-remove, which is why the line is there.
+```bash
+find /spool -name .capture-env -type f -print0 \
+    | xargs -0 -r grep -L '^SESSION_STORE_TAGS_B64='
+```
+
+`grep -L` lists the files that do **not** contain the current record, so
+empty output means that volume is drained. When every volume comes back
+empty, the `legacy` branch in `finalize.sh` and this subsection can go
+together.
+
+**Do not use the absence of the runtime notice as the signal.** `finalize.sh`
+does log a `[finalize] NOTE: ... uses the legacy pre-base64
+SESSION_STORE_TAGS record` line whenever the fallback fires, and seeing it is
+positive proof that a legacy partition is still in circulation. But an
+orphaned partition only emits that line when a sweep actually reaches it, and
+it can sit unswept indefinitely. Silence over any window is not evidence of
+absence, and deleting the branch on that basis would strand exactly the parked
+partition the branch exists for. The notice tells you when you are **not**
+done; only the scan above tells you when you are.
 
 The fallback is the same parse-never-source read as before, so it adds a
 format to read, not a mechanism. It carries the same truncation limitation
