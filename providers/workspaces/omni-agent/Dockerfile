@@ -154,7 +154,7 @@ COPY plugins/ /opt/agentic/plugins/
 #   - doctor               — bash entry that exec's `python -m <pkg>.doctor`
 #   - <provider>/init.sh   — env-var translation for each supported provider
 #   - <provider>/doctor.sh — provider-specific health checks (optional)
-#   - <provider>/finalize.sh — post-agent hook (optional)
+#   - <provider>/finalize.sh: post-agent hook (optional)
 # The Python packages themselves are installed into /opt/venv in stage 3.
 COPY workspace/capabilities/ /opt/agentic/capabilities/
 

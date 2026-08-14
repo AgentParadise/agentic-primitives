@@ -526,9 +526,40 @@ rule while the adapters sit comfortably on the right side of it.
 
 Giving the first two rows a selection step, a condition or a per-provider
 hook, is **M3's scope**, named here so it is a tracked boundary with two
-known sites rather than a debt some later reader discovers. M3 is where the
-omni image forces the question. Until then the honest statement is that the
-runtime is *shared*, not that it is *neutral*.
+known sites rather than a debt some later reader discovers. Until that lands
+the honest statement is that the runtime is *shared*, not that it is
+*neutral*.
+
+**Correction, recorded after M3 Task 1 shipped `omni-agent-workspace`.** An
+earlier revision of this section said M3 is where the omni image forces the
+question. **It did not force it, and that sentence was wrong.** omni's
+install surface is a strict *subset* of `claude-cli`'s: it installs both
+harnesses and removes the LSP servers, the Rust toolchain, and the git
+hooks. What building it proved is that the shared tree survives *subtraction
+within the claude-cli image family*. It did not prove harness-neutrality,
+because the image that would test that, one with no `claude` binary at all,
+was not built. Neither row above was forced.
+
+This is recorded because the failure mode is a citation, not a bug. **"omni
+built fine" is not evidence that the unconditional path is harmless**, and it
+is exactly the inference a later reader would draw from a green build if this
+paragraph were absent.
+
+Row 1 is in fact worse in omni than the table above predicts, and the
+direction of the error flatters us, so it is stated plainly. In a pure-Codex
+image the `~/.claude/settings.json` write is inert: the file is created and
+nothing ever reads it. **In omni it is live.** Claude is installed, runs,
+reads that file, and enables `pyright-lsp`, `typescript-lsp`, and
+`rust-analyzer-lsp`, whose language servers were deliberately removed from
+the image and are confirmed absent. omni is the only one of the three
+configurations that takes an *active* misconfiguration from that line. Not
+merely un-neutral, and not a weaker forcing function: factually false about
+the image it runs in.
+
+**The outstanding test is therefore still outstanding.** Only an image with
+no `claude` binary exercises rows 1 and 2 as the defects this section says
+they are. Until one exists, no build result should be read as retiring that
+debt.
 
 #### 12.3 A move commit contains only the move
 

@@ -37,6 +37,12 @@ runtime:
     - codex
   modes:
     - headless
+  # Scoped to the default agent (claude), which is the only harness whose
+  # native OTel support this repo exercises (tests/integration/test_otel_pipeline.py).
+  # Codex's OTel support is unverified here, so do not read this scalar as a
+  # claim about both harnesses. Same shape as `agent` above: one value that
+  # describes the default, not the image. Split it per harness if a consumer
+  # ever appears; nothing reads this field today.
   otel_native: true
 
 # Plugin configuration (ADR-033)
