@@ -70,7 +70,7 @@ def _run(
     """Run the workspace image with tmpfs home, optional env / mounts.
 
     tmpfs_home defaults to True, which is what every pre-existing caller
-    wants — but it is also why the ~/.claude/projects data-loss defect
+    wants, but it is also why the ~/.claude/projects data-loss defect
     survived a full green suite: on a tmpfs home the directory never
     pre-exists, so the adapter's destructive branch was never reached.
     Pass tmpfs_home=False (and bind-mount a real /home/agent) to exercise
@@ -456,6 +456,58 @@ def test_migration_failure_preserves_data_and_fails_loudly(tmp_path: Path):
     # symlink was never created, so symlinks_correct is what fails.
     assert "symlinks_correct" in result.stderr
     assert "session-store doctor: FAIL" in result.stderr
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_name_collision_clobbers_neither_copy_and_fails_loudly(tmp_path: Path):
+    """A name collision must preserve BOTH copies and refuse, not guess.
+
+    This is the `mv -n` half of the safety property, and it is invisible to
+    the migration loop's own exit status: GNU `mv -n` exits 0 and prints
+    nothing when it skips a collision (verified against coreutils 9.1). The
+    `rmdir` is what catches it, because a non-empty directory cannot be
+    removed. Neither the home copy nor the partition copy may be clobbered.
+    """
+    spool = tmp_path / "spool"
+    home = tmp_path / "home"
+    proj = home / ".claude" / "projects"
+    proj.mkdir(parents=True)
+    (proj / "dup.jsonl").write_text("home-copy\n")
+    part_claude = spool / "coll" / "claude"
+    part_claude.mkdir(parents=True)
+    (part_claude / "dup.jsonl").write_text("partition-copy\n")
+    _open_perms(home)
+    _open_perms(spool)
+
+    result = _run(
+        ["bash", "-c", "ls ~/.claude/projects/"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "coll",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{home}:/home/agent",
+            f"{Path('tests/integration/fixtures/stub-exporter').resolve()}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+        tmpfs_home=False,
+    )
+    assert result.returncode != 0, (
+        "a collision must refuse rather than guess:\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+    # Neither copy clobbered.
+    assert (proj / "dup.jsonl").read_text() == "home-copy\n"
+    assert (part_claude / "dup.jsonl").read_text() == "partition-copy\n"
+    # The operator is told which file blocked the migration. mv says nothing
+    # on a collision, so this listing is the only pointer to it.
+    assert "still has contents after migration" in result.stderr
+    assert "dup.jsonl" in result.stderr
 
 
 @pytest.mark.integration

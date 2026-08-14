@@ -73,9 +73,10 @@ fi
 # left to `ln -sfn`, which handles both correctly on its own.
 __link_transcript_root() {
     local src="$1" dst="$2" label="$3"
+    local entry base mv_failed=0
 
     if [ -L "${src}" ] || [ ! -e "${src}" ]; then
-        ln -sfn "${dst}" "${src}"
+        ln -sfn "${dst}" "${src}" || return 1
         return 0
     fi
 
@@ -84,26 +85,62 @@ __link_transcript_root() {
         return 1
     fi
 
-    # Move contents, not the directory, so an existing partition is preserved.
-    # Dotfiles included. An empty source is fine.
+    # Move the CONTENTS, not the directory, so an existing partition is
+    # preserved. Dotfiles included. An empty source is fine.
     #
     # `mv -n` never overwrites: a name collision leaves the source file in
-    # place rather than clobbering either copy. Nothing here may become
-    # `rm -rf` on a path that can hold user data.
-    if ! find "${src}" -mindepth 1 -maxdepth 1 -exec mv -n -- {} "${dst}/" \; 2>/dev/null; then
-        echo "[session-store] ${label}: migration of ${src} failed; leaving it untouched" >&2
+    # place rather than clobbering either copy. Nothing in this function may
+    # become `rm -rf` on a path that can hold user data.
+    #
+    # WHAT THIS LOOP'S EXIT-STATUS CHECK DOES AND DOES NOT CATCH. Verified
+    # against GNU coreutils 9.1 in this image, not inferred from the docs:
+    # `mv -n` exits 0 and prints NOTHING when it skips a collision, and exits
+    # non-zero with a diagnostic only on a hard error (permission denied, and
+    # such). So mv_failed catches hard errors ONLY. Collisions are invisible
+    # here and are caught solely by the `rmdir` below. Do not reword this into
+    # a claim that the loop detects collisions.
+    #
+    # mv's stderr is deliberately NOT sent to /dev/null, so the hard-error
+    # case names the offending path. The collision case, which mv reports
+    # nothing about, is named by the `ls -A` in the rmdir branch instead.
+    #
+    # The entry list is expanded UP FRONT by the globs rather than streamed
+    # from `find -exec`: moving entries out of a directory while find is
+    # mid-readdir on it leaves entry visibility unspecified by POSIX, and a
+    # skipped entry would produce a spurious hard-fail on a large
+    # ~/.claude/projects. (It could not lose data even then, since a skipped
+    # entry simply stays put and rmdir below catches it.)
+    for entry in "${src}"/* "${src}"/.*; do
+        base="${entry##*/}"
+        case "${base}" in
+            . | ..) continue ;;
+        esac
+        # Also skips a non-matching glob, which expands to itself literally.
+        [ -e "${entry}" ] || [ -L "${entry}" ] || continue
+        mv -n -- "${entry}" "${dst}/" || mv_failed=1
+    done
+
+    if [ "${mv_failed}" -ne 0 ]; then
+        echo "[session-store] ${label}: migration of ${src} failed (see the mv error above); leaving it untouched" >&2
         return 1
     fi
 
-    # Only remove the source once it is provably empty. `rmdir` refuses
-    # otherwise, which is exactly the safety property we want: if anything at
-    # all survived the move, we report failure and delete nothing.
+    # The authoritative check, and the one the safety property actually rests
+    # on. `rmdir` removes the source only once it is provably empty and
+    # refuses otherwise. That is a property of the filesystem rather than of
+    # an exit code, so it catches everything the loop above cannot see,
+    # including the silent `mv -n` collision skip. If a single entry survived,
+    # we report failure and delete nothing. List what survived: on a collision
+    # mv said nothing, so this is the operator's only pointer to the file that
+    # blocked the migration, and the recovery is manual.
     if ! rmdir "${src}" 2>/dev/null; then
         echo "[session-store] ${label}: ${src} still has contents after migration; leaving it untouched" >&2
+        echo "[session-store] ${label}: surviving entries in ${src}:" >&2
+        ls -A -- "${src}" >&2 2>/dev/null || true
         return 1
     fi
 
-    ln -sfn "${dst}" "${src}"
+    ln -sfn "${dst}" "${src}" || return 1
     echo "[session-store] ${label}: migrated existing transcripts into ${dst}" >&2
     return 0
 }

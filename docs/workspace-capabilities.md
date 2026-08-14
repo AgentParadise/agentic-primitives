@@ -200,8 +200,8 @@ Two hazards `session-store` hit that are worth knowing before you hit them:
 - **Migrate a pre-existing real directory; never delete it.** If
   `~/.claude/projects` already exists as a directory, `ln -sfn` nests the
   link *inside* it rather than replacing it, and your doctor then hard-fails
-  the workspace with a confusing error. The obvious fix — `rm -rf` the
-  directory first — is a data-loss bug, and shipped as one: on a persisted
+  the workspace with a confusing error. The obvious fix, `rm -rf` the
+  directory first, is a data-loss bug, and shipped as one: on a persisted
   `$HOME`, or any workspace where the harness already ran, it destroys
   un-uploaded transcripts at startup, before the exporter has ever run.
   Instead move the contents into the partition so this run's finalize sweeps
