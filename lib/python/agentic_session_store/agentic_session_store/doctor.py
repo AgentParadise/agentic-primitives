@@ -173,7 +173,9 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
             passed=False,
             detail=f"{health_url} returned status {status_code}",
         )
-    return CheckResult(name="store_reachable", passed=True, detail=f"{health_url} -> 200")
+    return CheckResult(
+        name="store_reachable", passed=True, detail=f"{health_url} -> 200"
+    )
 
 
 CHECKS: list[tuple[str, Callable[[SessionStoreContract], CheckResult]]] = [
@@ -236,7 +238,9 @@ def _contract_failure_results(message: str) -> list[CheckResult]:
     ]
 
 
-def _format_pretty(contract: SessionStoreContract | None, results: list[CheckResult]) -> str:
+def _format_pretty(
+    contract: SessionStoreContract | None, results: list[CheckResult]
+) -> str:
     if contract is None:
         return f"[{CAPABILITY}-doctor] {Env.PROVIDER} unset — not opted in. No checks run.\n"
 
@@ -290,7 +294,8 @@ def _emit(results: list[CheckResult], pretty: str, as_json: bool) -> int:
             "capability": CAPABILITY,
             "passed": passed,
             "checks": [
-                {"name": r.name, "passed": r.passed, "detail": r.detail} for r in results
+                {"name": r.name, "passed": r.passed, "detail": r.detail}
+                for r in results
             ],
         }
         sys.stdout.write(json.dumps(payload) + "\n")
@@ -304,7 +309,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="agentic-session-store-doctor",
         description="Validate the workspace's session-store contract.",
     )
-    p.add_argument("--json", action="store_true", help="JSON to stdout (pretty stays on stderr)")
+    p.add_argument(
+        "--json", action="store_true", help="JSON to stdout (pretty stays on stderr)"
+    )
     args = p.parse_args(argv)
 
     # A MALFORMED CONTRACT IS A DOCTOR RESULT, NOT A CRASH.

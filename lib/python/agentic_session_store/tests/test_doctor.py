@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 from agentic_session_store.contract import CAPABILITY, Env, SessionStoreContract
-from agentic_session_store.doctor import CheckResult, run_checks
+from agentic_session_store.doctor import run_checks
 import agentic_session_store.doctor as doctor_module
 
 
@@ -39,7 +39,8 @@ def test_json_mode_emits_parseable_object_and_exits_nonzero(tmp_path, monkeypatc
     monkeypatch.setenv(Env.PARTITION, "w1/p2")
     proc = subprocess.run(
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert proc.returncode == 1
     payload = json.loads(proc.stdout.strip().splitlines()[-1])
@@ -51,12 +52,15 @@ def test_no_contract_is_clean_exit_zero(monkeypatch):
     monkeypatch.delenv(Env.PROVIDER, raising=False)
     proc = subprocess.run(
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert proc.returncode == 0
 
 
-def test_malformed_url_fails_only_that_check_and_still_emits_all_five(tmp_path, monkeypatch):
+def test_malformed_url_fails_only_that_check_and_still_emits_all_five(
+    tmp_path, monkeypatch
+):
     """A URL with no scheme must not crash the doctor or short-circuit the run.
 
     Regression test: `urllib.request.Request(...)` raises ValueError at
@@ -70,7 +74,8 @@ def test_malformed_url_fails_only_that_check_and_still_emits_all_five(tmp_path, 
     monkeypatch.setenv(Env.PARTITION, "w1/p2")
     proc = subprocess.run(
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert proc.returncode == 1
     assert proc.stdout.strip(), f"no JSON on stdout; stderr was:\n{proc.stderr}"
@@ -83,7 +88,9 @@ def test_malformed_url_fails_only_that_check_and_still_emits_all_five(tmp_path, 
     assert by_name["spool_writable"]["passed"] is True
 
 
-def test_symlinks_correct_passes_when_each_link_targets_its_own_subdir(tmp_path, monkeypatch):
+def test_symlinks_correct_passes_when_each_link_targets_its_own_subdir(
+    tmp_path, monkeypatch
+):
     """~/.claude/projects and ~/.codex/sessions must resolve to their OWN
     claude/ and codex/ subdirectories under the partition, matching the
     layout the seshmagic adapter's init.sh actually creates. Needs no
@@ -111,7 +118,9 @@ def test_symlinks_correct_passes_when_each_link_targets_its_own_subdir(tmp_path,
     assert result.passed is True
 
 
-def test_symlinks_correct_fails_when_both_links_point_at_the_partition_root(tmp_path, monkeypatch):
+def test_symlinks_correct_fails_when_both_links_point_at_the_partition_root(
+    tmp_path, monkeypatch
+):
     """Regression test for the shipped defect: comparing both symlinks
     against the SAME partition root (instead of each against its own
     claude/ or codex/ subdirectory) can never fail even when the layout
@@ -150,9 +159,14 @@ def _doctor_json(monkeypatch, **env):
             monkeypatch.setenv(name, value)
     proc = subprocess.run(
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
-    payload = json.loads(proc.stdout.strip().splitlines()[-1]) if proc.stdout.strip() else None
+    payload = (
+        json.loads(proc.stdout.strip().splitlines()[-1])
+        if proc.stdout.strip()
+        else None
+    )
     return proc, payload
 
 
@@ -214,7 +228,9 @@ def test_invalid_spool_emits_json_and_exits_1(monkeypatch):
     _assert_contract_failure(proc, payload, "spool")
 
 
-def test_run_checks_converts_a_raising_check_into_a_failed_result(tmp_path, monkeypatch):
+def test_run_checks_converts_a_raising_check_into_a_failed_result(
+    tmp_path, monkeypatch
+):
     """run_checks must never let an individual check's exception propagate."""
 
     def _boom(contract):

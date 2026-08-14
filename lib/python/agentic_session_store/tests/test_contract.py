@@ -46,7 +46,7 @@ def _shell_capability_env_name(capability: str, field: str) -> str:
     source = ENTRYPOINT_SH.read_text()
     match = _SHELL_FN.search(source)
     assert match, f"__capability_env_prefix() not found in {ENTRYPOINT_SH}"
-    script = f"{match.group(0)}\n__capability_env_prefix \"$1\"\n"
+    script = f'{match.group(0)}\n__capability_env_prefix "$1"\n'
     result = subprocess.run(
         ["bash", "-c", script, "bash", capability],
         capture_output=True,
@@ -56,7 +56,9 @@ def _shell_capability_env_name(capability: str, field: str) -> str:
     return f"{result.stdout.strip()}_{field}"
 
 
-@pytest.mark.parametrize("capability", ["memory", "session-store", "multi-hyphen-cap-name"])
+@pytest.mark.parametrize(
+    "capability", ["memory", "session-store", "multi-hyphen-cap-name"]
+)
 def test_shell_and_python_env_naming_agree(capability):
     """ADR-040's `AGENTIC_<CAP>_<FIELD>` rule has two implementations:
     `__capability_env_prefix` in entrypoint.sh and `capability_env_name()`
@@ -76,14 +78,16 @@ def test_absent_provider_returns_none():
 
 
 def test_full_contract_parses():
-    c = SessionStoreContract.from_env({
-        Env.PROVIDER: "seshmagic",
-        Env.URL: "http://store:8080",
-        Env.AUTH: "tok",
-        Env.TAGS: "workflow:w1,phase:p2",
-        Env.SPOOL: "/spool",
-        Env.PARTITION: "w1/p2",
-    })
+    c = SessionStoreContract.from_env(
+        {
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "http://store:8080",
+            Env.AUTH: "tok",
+            Env.TAGS: "workflow:w1,phase:p2",
+            Env.SPOOL: "/spool",
+            Env.PARTITION: "w1/p2",
+        }
+    )
     assert c is not None
     assert c.provider == "seshmagic"
     assert c.url == "http://store:8080"
@@ -94,11 +98,13 @@ def test_full_contract_parses():
 
 
 def test_spool_defaults_and_partition_falls_back_to_hostname():
-    c = SessionStoreContract.from_env({
-        Env.PROVIDER: "seshmagic",
-        Env.URL: "http://store:8080",
-        "HOSTNAME": "ctr-abc123",
-    })
+    c = SessionStoreContract.from_env(
+        {
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "http://store:8080",
+            "HOSTNAME": "ctr-abc123",
+        }
+    )
     assert c is not None
     assert c.spool == "/spool"
     assert c.partition == "ctr-abc123"
@@ -109,13 +115,17 @@ def test_url_is_required():
         SessionStoreContract.from_env({Env.PROVIDER: "seshmagic"})
 
 
-@pytest.mark.parametrize("bad", ["../../evil", "a/b", ".hidden", "has space", "semi;colon"])
+@pytest.mark.parametrize(
+    "bad", ["../../evil", "a/b", ".hidden", "has space", "semi;colon"]
+)
 def test_provider_name_rejects_path_escape(bad):
     with pytest.raises(ValueError, match="provider"):
-        SessionStoreContract.from_env({
-            Env.PROVIDER: bad,
-            Env.URL: "http://store:8080",
-        })
+        SessionStoreContract.from_env(
+            {
+                Env.PROVIDER: bad,
+                Env.URL: "http://store:8080",
+            }
+        )
 
 
 @pytest.mark.parametrize("bad", ["relative/path", "../escape", "/spool/../etc"])
@@ -128,21 +138,25 @@ def test_spool_rejects_non_absolute_or_traversing(bad):
     it absent the partition check would raise first on some orderings.
     """
     with pytest.raises(ValueError, match="spool"):
-        SessionStoreContract.from_env({
-            Env.PROVIDER: "seshmagic",
-            Env.URL: "http://store:8080",
-            Env.SPOOL: bad,
-            Env.PARTITION: "w/p",
-        })
+        SessionStoreContract.from_env(
+            {
+                Env.PROVIDER: "seshmagic",
+                Env.URL: "http://store:8080",
+                Env.SPOOL: bad,
+                Env.PARTITION: "w/p",
+            }
+        )
 
 
 def test_spool_accepts_a_plain_absolute_path():
-    c = SessionStoreContract.from_env({
-        Env.PROVIDER: "seshmagic",
-        Env.URL: "http://store:8080",
-        Env.SPOOL: "/spool",
-        Env.PARTITION: "w/p",
-    })
+    c = SessionStoreContract.from_env(
+        {
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "http://store:8080",
+            Env.SPOOL: "/spool",
+            Env.PARTITION: "w/p",
+        }
+    )
     assert c is not None and c.spool == "/spool"
 
 
@@ -151,23 +165,27 @@ def test_empty_spool_is_unset_not_invalid():
     it takes the default rather than failing validation. This matches the
     _clean() semantics every other field in this contract already uses.
     """
-    c = SessionStoreContract.from_env({
-        Env.PROVIDER: "seshmagic",
-        Env.URL: "http://store:8080",
-        Env.SPOOL: "",
-        Env.PARTITION: "w/p",
-    })
+    c = SessionStoreContract.from_env(
+        {
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "http://store:8080",
+            Env.SPOOL: "",
+            Env.PARTITION: "w/p",
+        }
+    )
     assert c is not None and c.spool == "/spool"
 
 
 @pytest.mark.parametrize("bad", ["../escape", "/absolute", "a/../../b"])
 def test_partition_rejects_traversal(bad):
     with pytest.raises(ValueError, match="partition"):
-        SessionStoreContract.from_env({
-            Env.PROVIDER: "seshmagic",
-            Env.URL: "http://store:8080",
-            Env.PARTITION: bad,
-        })
+        SessionStoreContract.from_env(
+            {
+                Env.PROVIDER: "seshmagic",
+                Env.URL: "http://store:8080",
+                Env.PARTITION: bad,
+            }
+        )
 
 
 PKG = pathlib.Path(__file__).resolve().parent.parent / "agentic_session_store"
@@ -187,4 +205,6 @@ def test_no_env_name_literals_outside_the_enum():
             ):
                 continue
             offenders.append(f"{path.name}:{lineno}: {line.strip()}")
-    assert not offenders, "use Env.<NAME> instead of a literal:\n" + "\n".join(offenders)
+    assert not offenders, "use Env.<NAME> instead of a literal:\n" + "\n".join(
+        offenders
+    )
