@@ -146,6 +146,25 @@ else is a produced signal too**, and it is the one nobody thinks to verify,
 because it is prose rather than output. It was caught only because the reader
 checked the source instead of the message.
 
+The cleanest instance of this mechanism has no bug in it at all.
+
+When a file moves, every document pointing at the old path breaks. The obvious
+maintenance is to update them all. But a changelog entry exists to say what was
+true when that version shipped, and a closed issue is an account of where a fix
+happened. Rewriting either so a link keeps working makes it assert a path that
+did not exist at the moment it describes.
+
+**Falsifying a record to keep a link working is the same error as a signal
+reporting a state that does not exist.** Both trade accuracy for the appearance
+of consistency, and both leave a reader confidently wrong. The difference is
+that nobody experiences the first one as a mistake, because it arrives dressed
+as diligence.
+
+The correct move is to leave the historical records alone and accept that a grep
+for the old path will return hits, then say somewhere current that those hits
+are intentional. A reader briefly confused by a stale-looking reference is a much
+smaller cost than a record that lies.
+
 *This is the worst of the four. A misread leaves an artifact you can re-read.
 An absence is discoverable. A lying signal leaves an artifact that actively
 argues against looking further.*
@@ -206,6 +225,12 @@ Care applied to the signal does not reach the producer.
   branch condition of any message that claims something happened.
 - **Derive, do not duplicate.** A value declared in two places is a divergence
   waiting to happen, and CI comparing itself to itself proves nothing.
+- **Do not update a record to keep a link working.** Changelogs and closed
+  issues describe a past state. Fix the live pointers, leave the history, and
+  note somewhere current that the stale-looking references are deliberate.
+- **Encode "this must not change" as a check, not as care.** A rename script
+  that asserts which paths it must leave alone catches the sweep that looks
+  right in the source tree and is wrong everywhere else.
 - **When you find a defect, ask whether it ever ran**, not only how to fix it.
   Fixing forward is not assessing exposure.
 
