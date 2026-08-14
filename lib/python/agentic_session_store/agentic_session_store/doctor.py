@@ -107,7 +107,7 @@ def _symlinks_correct(contract: SessionStoreContract) -> CheckResult:
     return CheckResult(name="symlinks_correct", passed=passed, detail=detail)
 
 
-def _exporter_present(contract: SessionStoreContract) -> CheckResult:  # noqa: ARG001
+def _exporter_present(contract: SessionStoreContract) -> CheckResult:
     path = shutil.which(EXPORTER_BINARY)
     if not path:
         return CheckResult(
@@ -116,7 +116,7 @@ def _exporter_present(contract: SessionStoreContract) -> CheckResult:  # noqa: A
             detail=f"{EXPORTER_BINARY} not found on PATH",
         )
     try:
-        import subprocess  # noqa: PLC0415
+        import subprocess
 
         result = subprocess.run(
             [path, "--version"],
@@ -150,10 +150,10 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
             detail=f"{health_url} is not a valid http(s) URL (missing scheme or host)",
         )
     try:
-        req = urllib.request.Request(health_url, method="GET")  # noqa: S310 - controlled URL
+        req = urllib.request.Request(health_url, method="GET")
         if contract.auth:
             req.add_header("Authorization", f"Bearer {contract.auth}")
-        with urllib.request.urlopen(req, timeout=STORE_HEALTH_TIMEOUT_SECONDS) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=STORE_HEALTH_TIMEOUT_SECONDS) as resp:
             status_code = resp.status
     except urllib.error.HTTPError as e:
         return CheckResult(

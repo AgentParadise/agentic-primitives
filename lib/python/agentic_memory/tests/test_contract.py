@@ -7,7 +7,6 @@ import re
 import subprocess
 
 import pytest
-
 from agentic_memory.contract import (
     CAPABILITY,
     Env,

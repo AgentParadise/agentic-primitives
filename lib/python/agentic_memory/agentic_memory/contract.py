@@ -15,7 +15,6 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 
-
 CAPABILITY = "memory"
 """This capability's registry name, as it appears in AGENTIC_CAPABILITIES."""
 
@@ -28,7 +27,7 @@ def capability_env_name(capability: str, field_name: str) -> str:
     the two implementations of one rule. The conformance test in
     tests/test_contract.py pins them together.
     """
-    normalize = lambda part: part.upper().replace("-", "_")  # noqa: E731
+    normalize = lambda part: part.upper().replace("-", "_")
     return f"AGENTIC_{normalize(capability)}_{normalize(field_name)}"
 
 
@@ -71,7 +70,7 @@ class NamespaceKind(str, Enum):
     CUSTOM = "custom"
 
     @classmethod
-    def parse(cls, value: str | None) -> "NamespaceKind":
+    def parse(cls, value: str | None) -> NamespaceKind:
         if not value:
             return cls.TASK
         try:
@@ -99,7 +98,7 @@ class MemoryContract:
     config_dict: dict | None = field(default=None, compare=False)
 
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> "MemoryContract | None":
+    def from_env(cls, env: dict[str, str] | None = None) -> MemoryContract | None:
         """Parse contract from env vars. Returns None if AGENTIC_MEMORY_PROVIDER
         is unset or set to 'none' — i.e. the contract has not been opted into.
 

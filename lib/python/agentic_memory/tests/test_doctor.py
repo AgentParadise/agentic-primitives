@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import stat
 
-
 from agentic_memory.contract import CAPABILITY, Env, MemoryContract
 from agentic_memory.doctor import (
     AdapterExistsCheck,
@@ -24,7 +23,6 @@ from agentic_memory.doctor import (
     main,
     run_checks,
 )
-
 
 # --- contract fixtures --------------------------------------------------------
 

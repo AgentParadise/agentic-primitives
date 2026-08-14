@@ -2,9 +2,9 @@ import json
 import subprocess
 import sys
 
+import agentic_session_store.doctor as doctor_module
 from agentic_session_store.contract import CAPABILITY, Env, SessionStoreContract
 from agentic_session_store.doctor import run_checks
-import agentic_session_store.doctor as doctor_module
 
 
 def _contract(tmp_path, url="http://unreachable.invalid"):
@@ -41,6 +41,7 @@ def test_json_mode_emits_parseable_object_and_exits_nonzero(tmp_path, monkeypatc
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert proc.returncode == 1
     payload = json.loads(proc.stdout.strip().splitlines()[-1])
@@ -54,6 +55,7 @@ def test_no_contract_is_clean_exit_zero(monkeypatch):
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert proc.returncode == 0
 
@@ -76,6 +78,7 @@ def test_malformed_url_fails_only_that_check_and_still_emits_all_five(
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert proc.returncode == 1
     assert proc.stdout.strip(), f"no JSON on stdout; stderr was:\n{proc.stderr}"
@@ -161,6 +164,7 @@ def _doctor_json(monkeypatch, **env):
         [sys.executable, "-m", "agentic_session_store.doctor", "--json"],
         capture_output=True,
         text=True,
+        check=False,
     )
     payload = (
         json.loads(proc.stdout.strip().splitlines()[-1])

@@ -34,7 +34,6 @@ from agentic_memory.contract import (
     sanitize_namespace,
 )
 
-
 PROVIDER_REGISTRY_ROOT = "/opt/agentic/capabilities/memory"
 """Where per-provider adapter directories live in the workspace image."""
 
@@ -340,16 +339,16 @@ class BackendHealthCheck(Check):
             )
         health_url = contract.url.rstrip("/") + "/health"
         # Use stdlib only — urllib avoids adding a requests dependency.
-        import urllib.error  # noqa: PLC0415
-        import urllib.request  # noqa: PLC0415
+        import urllib.error
+        import urllib.request
 
-        req = urllib.request.Request(health_url, method="GET")  # noqa: S310 - controlled URL
+        req = urllib.request.Request(health_url, method="GET")
         if contract.auth:
             req.add_header("Authorization", f"Bearer {contract.auth}")
 
         start = time.monotonic()
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 status_code = resp.status
                 body_preview = resp.read(200).decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:

@@ -3,7 +3,6 @@ import re
 import subprocess
 
 import pytest
-
 from agentic_session_store.contract import (
     CAPABILITY,
     Env,
