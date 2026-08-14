@@ -299,11 +299,13 @@ for a stubborn agent and ~0.22s for a cooperative one, leaving ~3.3s of the
 stop grace. A 2s budget finishes at ~3.66s, a 1.3s margin; 3s would leave 0.34s,
 too thin.
 
-**The 120 is bounded, not derived.** Nobody has measured a real sweep against a
-large migrated transcript history. It may be short for a heavy first sweep,
-which is also the case where failing to complete hurts most, because a capability
-that never finishes its work never prunes. Treat it as a ceiling that has not yet
-been tested against the workload that would falsify it.
+**The 120 is bounded, not derived. It was chosen because it is comfortably
+larger than 2, not because anything measured it.** Nobody has run a real sweep
+against a large migrated transcript history. It may be short for a heavy first
+sweep, which is also the case where failing to complete hurts most, because a
+capability that never finishes its work never prunes. Treat it as a ceiling that
+has not yet been tested against the workload that would falsify it, and if you
+are the first to run that workload, measure it and replace this paragraph.
 
 A single tight bound applied to both paths was the tempting simplification and
 is wrong: it kills a legitimate multi-second sweep on every normal run, so the
