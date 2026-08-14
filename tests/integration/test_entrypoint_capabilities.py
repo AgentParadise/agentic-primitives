@@ -1018,8 +1018,9 @@ _FINALIZE_SH = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
 
 def _finalize_with_stub_exporter(
     tmp_path: Path,
-    stub_body: str,
+    stub_body: str | list[str],
     part_name: str,
+    budget_s: int = 2,
 ) -> tuple[subprocess.CompletedProcess, Path, float]:
     """Run finalize.sh against a partition with a stubbed exporter.
 
@@ -1027,27 +1028,47 @@ def _finalize_with_stub_exporter(
     check requires, so the ONLY thing that can keep the spool in these tests
     is the sweep-completeness gate under test.
 
+    Pass a LIST of stub bodies to run several sequential sweeps against the
+    same partition, each with its own exporter output. That is what exercises
+    state carried between sweeps, which a single sweep cannot see.
+
+    budget_s is exported as AGENTIC_FINALIZE_BUDGET_S, standing in for what
+    entrypoint.sh passes per exit path. It is kept small here so a hung stub
+    fails fast rather than sitting on finalize.sh's generous standalone
+    default.
+
     Returns (result, transcript_path, elapsed_seconds). The transcript file
     still existing means the spool was retained.
     """
+    bodies = [stub_body] if isinstance(stub_body, str) else stub_body
+
     part_dir = tmp_path / "spool" / part_name
     (part_dir / "claude").mkdir(parents=True)
     (part_dir / "state.json").write_text("{}\n")
     (part_dir / ".agentic-partition").write_text("")
     (part_dir / "claude" / "s.jsonl").write_text("{}\n")
 
+    sweeps = ""
+    for i, body in enumerate(bodies):
+        sweeps += f"""
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+{body}
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+echo "=== SWEEP {i} ===" >&2
+{_FINALIZE_SH}
+echo "FINALIZE_RC_{i}=$?"
+"""
+
     script = f"""
 set -e
 mkdir -p /tmp/fakebin
-cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
-#!/usr/bin/env bash
-{stub_body}
-FAKE_EXPORTER_EOF
-chmod +x /tmp/fakebin/SeshMagicSessionExporter
 export PATH=/tmp/fakebin:$PATH
 export SESSION_STORE_URL=http://unused.invalid
 export EXPORTER_STATE_FILE=/spool/{part_name}/state.json
-{_FINALIZE_SH}
+export AGENTIC_FINALIZE_BUDGET_S={budget_s}
+{sweeps}
 echo "FINALIZE_RC=$?"
 """
     start = time.monotonic()
@@ -1142,6 +1163,87 @@ def test_finalize_keeps_spool_when_no_summary_line_is_printed(tmp_path: Path):
     assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
     assert transcript.exists(), "an unparseable summary must not prune the partition"
     assert "no parseable summary" in result.stderr
+
+
+@pytest.mark.integration
+def test_finalize_never_prunes_a_partition_that_ever_had_a_rejection(tmp_path: Path):
+    """A rejected transcript must not be deleted by the NEXT sweep.
+
+    The exporter marks state for every item the store returned a result for,
+    including per-item rejected (lib.rs:202-204), because "the store processed
+    it and a re-send would be wasted". But rejected means the store REFUSED
+    it: processed, not stored. So the divergence is invisible one sweep later:
+
+      Sweep 1: rejected=1        -> the gate blocks, spool kept, state marked.
+      Sweep 2: skipped_unchanged=1, all three blocking counters zero
+                                 -> the gate PASSES and would delete a
+                                    transcript that never reached the store.
+
+    Sweep 2 needs no recovery scenario: it happens on any run where the
+    orchestrator passes a stable AGENTIC_SESSION_STORE_PARTITION, since only
+    the ${HOSTNAME} default is per-container.
+
+    This is why the rejected block is made STICKY via a sentinel, and why
+    failed is deliberately NOT sticky: failed items are left unmarked, so they
+    retry and clear on their own.
+    """
+    rejected_sweep = (
+        'echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 '
+        'duplicate=0 rejected=1 skipped_oversize=0 failed=0"\nexit 0\n'
+    )
+    # Exactly what the exporter reports next time: the rejected item is now
+    # marked, so it is no longer even offered for upload.
+    clean_looking_sweep = (
+        'echo "run: discovered=1 skipped_unchanged=1 uploaded=0 accepted=0 '
+        'duplicate=0 rejected=0 skipped_oversize=0 failed=0"\nexit 0\n'
+    )
+
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        [rejected_sweep, clean_looking_sweep],
+        "rejected-then-clean",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC_0=0" in result.stdout, "finalize.sh must always exit 0"
+    assert "FINALIZE_RC_1=0" in result.stdout, "finalize.sh must always exit 0"
+    assert transcript.exists(), (
+        "a transcript the store REJECTED was deleted by the following sweep, "
+        "which sees only skipped_unchanged and reads as clean"
+    )
+    assert (tmp_path / "spool" / "rejected-then-clean" / ".sweep-rejected").exists(), (
+        "the rejection must be recorded so later sweeps stay blocked"
+    )
+    assert "rejected=1" in result.stderr, "sweep 1 must name the blocking counter"
+    assert "needs an operator" in result.stderr, "sweep 2 must report the sticky refusal"
+
+
+@pytest.mark.integration
+def test_finalize_does_not_make_a_failed_sweep_permanently_unprunable(tmp_path: Path):
+    """failed must NOT be sticky, unlike rejected.
+
+    Failed items are left unmarked in exporter state, so the next sweep
+    genuinely retries them and, on success, they really are stored. Making
+    the block sticky here would turn every transient network blip into a
+    partition that can never be pruned again.
+    """
+    failed_sweep = (
+        'echo "run: discovered=1 skipped_unchanged=0 uploaded=0 accepted=0 '
+        'duplicate=0 rejected=0 skipped_oversize=0 failed=1"\nexit 0\n'
+    )
+    retry_succeeded = (
+        'echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 '
+        'duplicate=0 rejected=0 skipped_oversize=0 failed=0"\nexit 0\n'
+    )
+
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        [failed_sweep, retry_succeeded],
+        "failed-then-ok",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert not transcript.exists(), (
+        "a transient failure that later succeeded must not block the prune forever"
+    )
 
 
 @pytest.mark.integration

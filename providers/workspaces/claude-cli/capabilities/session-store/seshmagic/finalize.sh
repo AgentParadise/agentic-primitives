@@ -55,18 +55,44 @@ fi
 # `docker stop` it burns the remaining grace until SIGKILL, so the run reports
 # 137 instead of the agent's real exit code.
 #
-# The arithmetic. Two constants bound the window:
-#   * entrypoint.sh's __TERM_GRACE_TICKS   -- 15 x 0.1s = 1.5s before the
-#     wrapper escalates a stubborn agent to SIGKILL.
-#   * docker.py's `docker stop -t`         -- 5s
+# THE BUDGET IS ASYMMETRIC, because the deadline only exists on one path.
+# entrypoint.sh calls __run_finalizers on BOTH exits, but its escalation window
+# only runs when the agent's status is >128, i.e. the signal path. On an
+# ordinary agent exit there is no `docker stop -t 5` ticking and nothing to stay
+# inside. A single tight bound applied to both would kill a legitimate 4s sweep
+# on every normal run, which never prunes, which for a heavy user is a permanent
+# never-prune. So entrypoint.sh picks the budget and passes it in:
+#
+#   * SIGNAL path -- tight. Two constants bound the window: entrypoint.sh's
+#     __TERM_GRACE_TICKS (15 x 0.1s = 1.5s before a stubborn agent is escalated
+#     to SIGKILL) and docker.py's `docker stop -t` of 5s
 #     (lib/python/agentic_isolation/agentic_isolation/providers/docker.py).
-# Measured through the real entrypoint on 2026-08-14: escalation completes at
-# ~1.66s for a stubborn agent (`trap "" TERM`), leaving ~3.3s of the 5s before
-# docker's own SIGKILL. 2s finishes at ~3.66s, a 1.3s margin. 3s would finish
-# at ~4.66s, a 0.34s margin, which is too thin to be reliable.
+#     Measured through the real entrypoint on 2026-08-14, escalation completes
+#     at ~1.66s for a stubborn agent (`trap "" TERM`), leaving ~3.3s of the 5s.
+#     2s finishes at ~3.66s, a 1.3s margin. 3s would finish at ~4.66s, a 0.34s
+#     margin, too thin to be reliable.
+#   * CLEAN exit -- generous. Nothing is waiting on us, so the bound exists only
+#     to stop a wedged exporter hanging forever, not to hit a deadline.
+#
+# The default below is the generous one, because an unset budget means this hook
+# was invoked standalone (a recovery sweep of a partition left by a SIGKILLed
+# container, see the EXPORTER_STATE_FILE note above), and that too has no grace
+# ticking. A non-numeric value is ignored rather than trusted.
 #
 # A timeout is an upload FAILURE: keep the spool, never prune, exit 0.
-readonly __UPLOAD_TIMEOUT_S=2
+readonly __UPLOAD_TIMEOUT_DEFAULT_S=120
+case "${AGENTIC_FINALIZE_BUDGET_S:-}" in
+    "" | *[!0-9]* | 0) __UPLOAD_TIMEOUT_S="${__UPLOAD_TIMEOUT_DEFAULT_S}" ;;
+    *) __UPLOAD_TIMEOUT_S="${AGENTIC_FINALIZE_BUDGET_S}" ;;
+esac
+readonly __UPLOAD_TIMEOUT_S
+
+# `-k 1`: GNU timeout sends only SIGTERM at the deadline and then WAITS. A child
+# blocked in uninterruptible I/O or ignoring TERM leaves timeout waiting too, so
+# the bound silently becomes unbounded -- precisely the "wedged filesystem" case
+# named above, which is the one least likely to die on TERM. -k follows with
+# SIGKILL 1s later, which is what makes this an actual bound.
+readonly __UPLOAD_KILL_AFTER_S=1
 
 # Both the exporter's stdout and stderr go to OUR stderr, never our stdout.
 # Under the old `exec "$@"`, container stdout was exclusively the agent's;
@@ -76,14 +102,17 @@ readonly __UPLOAD_TIMEOUT_S=2
 # (`2>&1` inside the command substitution) and replay them to fd2, which keeps
 # that stdout-cleanliness property while making the exporter's machine-readable
 # summary line available to the prune gate below.
-__exporter_out="$(timeout "${__UPLOAD_TIMEOUT_S}" SeshMagicSessionExporter 2>&1)"
+__exporter_out="$(timeout -k "${__UPLOAD_KILL_AFTER_S}" "${__UPLOAD_TIMEOUT_S}" \
+    SeshMagicSessionExporter 2>&1)"
 __exporter_rc=$?
 if [ -n "${__exporter_out}" ]; then
     printf '%s\n' "${__exporter_out}" >&2
 fi
 
+# 124 is timeout's own "deadline reached"; 137 is what surfaces when -k had to
+# follow through with SIGKILL. Both mean the same thing here.
 if [ "${__exporter_rc}" -ne 0 ]; then
-    if [ "${__exporter_rc}" -eq 124 ]; then
+    if [ "${__exporter_rc}" -eq 124 ] || [ "${__exporter_rc}" -eq 137 ]; then
         echo "[finalize] session-store upload TIMED OUT after ${__UPLOAD_TIMEOUT_S}s;" \
              "spool retained at ${__part_dir}" >&2
     else
@@ -150,6 +179,53 @@ __blocked=""
 [ "${__oversize}" -ne 0 ] && __blocked="${__blocked} skipped_oversize=${__oversize}"
 [ "${__rejected}" -ne 0 ] && __blocked="${__blocked} rejected=${__rejected}"
 
+# A rejected item's block MUST be sticky, and it is the only one that must be.
+#
+# The three blocking counters differ in whether the exporter records the item as
+# done. From the exporter's own source
+# (crates/seshmagic-session-store-exporter/src/lib.rs:202-204):
+#
+#   // State is marked ONLY for items the store actually saw (accepted,
+#   // duplicate, or per-item rejected: all three mean the store processed it
+#   // and a re-send would be wasted).
+#
+# Rejected is in that list, and the Ok(results) arm marks every item in the
+# batch. But rejected means the store REFUSED the transcript. It was processed
+# and it was NOT stored. So state says done while storage says absent, and that
+# divergence is invisible to the next sweep:
+#
+#   Sweep 1: T rejected -> rejected=1 -> blocked, spool kept. state.mark(T).
+#   Sweep 2: state.is_current(T) -> counted as skipped_unchanged. Summary reads
+#            failed=0 skipped_oversize=0 rejected=0. The gate PASSES and T is
+#            deleted having never reached the store.
+#
+# Sweep 2 is not hypothetical: this hook documents standalone recovery sweeps
+# above, init.sh keeps the marker so a recovery sweep still prunes, and it needs
+# no recovery at all whenever the orchestrator passes a stable
+# AGENTIC_SESSION_STORE_PARTITION (only the ${HOSTNAME} default is per-run).
+#
+# The other two counters are safe for the opposite reason, which is exactly what
+# makes this specific to rejected:
+#   * skipped_oversize is left UNMARKED (lib.rs:167-168), so it is recounted
+#     every sweep and keeps blocking on its own.
+#   * failed is left UNMARKED, so it retries and, if it later succeeds, is
+#     genuinely stored.
+#
+# So: persist a sentinel for rejected, and do NOT do this for failed. Failed
+# items are unmarked and legitimately clear on retry; a sticky block there would
+# make every transient network blip permanently un-prunable.
+__rejected_sentinel="${__part_dir}/.sweep-rejected"
+if [ "${__rejected}" -ne 0 ] && [ -n "${EXPORTER_STATE_FILE:-}" ] && [ -d "${__part_dir}" ]; then
+    if : > "${__rejected_sentinel}" 2>/dev/null; then
+        echo "[finalize] recorded ${__rejected_sentinel}: the store REFUSED ${__rejected}" \
+             "transcript(s), which the exporter marks as done, so no later sweep can" \
+             "re-detect them; this partition will never be pruned automatically" >&2
+    else
+        echo "[finalize] WARNING: could not write ${__rejected_sentinel};" \
+             "a later sweep may prune rejected transcripts" >&2
+    fi
+fi
+
 if [ -n "${__blocked}" ]; then
     echo "[finalize] session-store sweep INCOMPLETE (${__blocked# }): at least one transcript" \
          "did not reach the store; spool retained at ${__part_dir}" >&2
@@ -185,8 +261,21 @@ echo "[finalize] session-store upload complete (${__summary#run: })" >&2
 # The marker cannot be produced by a misconfigured path: /, /spool, and any
 # unrelated mount all lack it, so the old shape guard's two cases stay covered
 # without a separate check.
+#
+# THREE conditions now gate the delete, and they answer different questions:
+#   1. .agentic-partition  -- did this capability create the directory?
+#   2. the clean summary   -- did THIS sweep get everything into the store?
+#   3. .sweep-rejected     -- did any EARLIER sweep hit a rejection the exporter
+#                             has since marked as done, making it undetectable
+#                             to condition 2? (see the sentinel block above)
+# Condition 2 is per-sweep and cannot see the past; condition 3 is the memory it
+# lacks. Dropping 3 reintroduces the delete-on-the-next-sweep hole.
 if [ -n "${EXPORTER_STATE_FILE:-}" ]; then
-    if [ -f "${__part_dir}/.agentic-partition" ]; then
+    if [ -e "${__rejected_sentinel}" ]; then
+        echo "[finalize] refusing to prune '${__part_dir}': ${__rejected_sentinel} records an" \
+             "earlier REJECTED transcript that no later sweep can re-detect; this partition" \
+             "needs an operator" >&2
+    elif [ -f "${__part_dir}/.agentic-partition" ]; then
         rm -rf "${__part_dir}"
         echo "[finalize] pruned partition ${__part_dir}" >&2
     else

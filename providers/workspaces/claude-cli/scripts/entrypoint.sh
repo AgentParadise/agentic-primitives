@@ -417,7 +417,18 @@ done
 # moment. The agent's exit code is preserved exactly; finalize cannot change
 # it. See ADR-040 and EXP-08 for why this is not `exec "$@"`.
 
+# $1 = seconds each finalizer may spend, exported as AGENTIC_FINALIZE_BUDGET_S.
+#
+# The budget is asymmetric because the deadline only exists on one path. This
+# function is called on BOTH exits, but the escalation window below only runs
+# when the agent's status is >128, i.e. the signal path, where `docker stop -t`
+# is already ticking. On an ordinary agent exit nothing is waiting on us. A
+# single tight bound applied to both would kill a legitimate multi-second
+# transcript sweep on every normal run, so it would never prune, which for a
+# heavy user is a permanent never-prune. Callers pass the value for their path.
 __run_finalizers() {
+    AGENTIC_FINALIZE_BUDGET_S="${1}"
+    export AGENTIC_FINALIZE_BUDGET_S
     for __cap in ${AGENTIC_CAPABILITIES:-}; do
         # __capability_name_safe (narrow [a-z0-9-] charset), not
         # __capability_provider_safe: the latter's wider charset
@@ -451,6 +462,15 @@ __run_finalizers() {
 # 15 x 0.1s = 1.5s leaves ~3.5s for finalize after the kill.
 readonly __TERM_GRACE_TICKS=15
 
+# Finalizer budgets, in seconds, for the two exit paths (see __run_finalizers).
+# SIGNAL: measured 2026-08-14, escalation completes at ~1.66s for a stubborn
+# agent, leaving ~3.3s of docker.py's `docker stop -t 5`. 2s finishes at ~3.66s,
+# a 1.3s margin; 3s would leave 0.34s, too thin.
+# CLEAN: no stop grace is running, so this bound exists only to stop a wedged
+# finalizer hanging the run forever, not to hit a deadline.
+readonly __FINALIZE_BUDGET_SIGNAL_S=2
+readonly __FINALIZE_BUDGET_CLEAN_S=120
+
 "$@" <&0 &
 __child=$!
 # Forward the signal actually received, not always TERM: under
@@ -472,7 +492,11 @@ if wait "${__child}"; then __rc=0; else __rc=$?; fi
 # again: EXP-08 measured that a plain second wait blocks on a child that
 # has not died, burns the entire stop grace, gets SIGKILLed, and never
 # runs finalize at all. Bound the wait and escalate.
+# Recorded BEFORE the escalation block, which reassigns __rc from the second
+# wait: by the time finalizers run, __rc no longer says which path we took.
+__signaled=0
 if [ "${__rc}" -gt 128 ]; then
+    __signaled=1
     __n=0
     while kill -0 "${__child}" 2>/dev/null && [ "${__n}" -lt "${__TERM_GRACE_TICKS}" ]; do
         sleep 0.1
@@ -482,5 +506,9 @@ if [ "${__rc}" -gt 128 ]; then
     if wait "${__child}" 2>/dev/null; then __rc=0; else __rc=$?; fi
 fi
 
-__run_finalizers
+if [ "${__signaled}" -eq 1 ]; then
+    __run_finalizers "${__FINALIZE_BUDGET_SIGNAL_S}"
+else
+    __run_finalizers "${__FINALIZE_BUDGET_CLEAN_S}"
+fi
 exit "${__rc}"
