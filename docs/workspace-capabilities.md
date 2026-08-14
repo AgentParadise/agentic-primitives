@@ -174,7 +174,7 @@ exec python3 -m agentic_<name>.doctor "$@"
 
 Adapters live at
 `workspace/capabilities/<name>/<provider>/`.
-`scripts/build-provider.py`'s `stage_capabilities()` copies the whole tree
+`scripts/build-provider.py`'s `stage_workspace_runtime()` copies the whole tree
 into the build context and the Dockerfile `COPY`s it to
 `/opt/agentic/capabilities/`. You do not touch either file.
 
