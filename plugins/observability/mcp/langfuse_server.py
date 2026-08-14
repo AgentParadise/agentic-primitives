@@ -23,6 +23,8 @@ from urllib import error, parse, request
 
 
 PROTOCOL_VERSION = "2024-11-05"
+# Keep in step with plugins/observability/.claude-plugin/plugin.json.
+SERVER_VERSION = "0.3.7"
 DEFAULT_TIMEOUT_S = 60
 REDACTION = "[REDACTED]"
 SECRET_PATTERNS = [
@@ -335,25 +337,21 @@ class McpServer:
                 self._write_message(response)
 
     def _read_message(self) -> dict[str, Any] | None:
-        headers: dict[str, str] = {}
+        # MCP stdio framing is one JSON-RPC message per line, NOT the
+        # Content-Length header framing used by LSP. See
+        # https://modelcontextprotocol.io/specification/draft/basic/transports
         while True:
             line = sys.stdin.buffer.readline()
             if line == b"":
                 return None
-            if line in (b"\r\n", b"\n"):
-                break
-            key, _, value = line.decode("ascii", errors="replace").partition(":")
-            headers[key.lower()] = value.strip()
-        length = int(headers.get("content-length", "0"))
-        if length <= 0:
-            return None
-        payload = sys.stdin.buffer.read(length)
-        return json.loads(payload.decode("utf-8"))
+            stripped = line.strip()
+            if not stripped:
+                continue
+            return json.loads(stripped.decode("utf-8"))
 
     def _write_message(self, payload: dict[str, Any]) -> None:
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        sys.stdout.buffer.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii"))
-        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.write(data + b"\n")
         sys.stdout.buffer.flush()
 
     def _handle_message(self, message: dict[str, Any]) -> dict[str, Any] | None:
@@ -369,7 +367,7 @@ class McpServer:
                         "capabilities": {"tools": {}},
                         "serverInfo": {
                             "name": "agentic-primitives-langfuse",
-                            "version": "0.3.2",
+                            "version": SERVER_VERSION,
                         },
                     },
                 )
@@ -852,8 +850,11 @@ class McpServer:
 
 
 def _frame(payload: dict[str, Any]) -> bytes:
+    # Must match the MCP stdio transport: newline-delimited JSON. This helper
+    # previously emitted Content-Length headers, which meant the self-test
+    # reproduced the server's framing bug instead of catching it.
     data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    return f"Content-Length: {len(data)}\r\n\r\n".encode("ascii") + data
+    return data + b"\n"
 
 
 def _parse_cli_args(args: list[str]) -> dict[str, Any]:
@@ -902,14 +903,34 @@ def _stable_hash64(domain: str, value: str) -> int:
     return hash_value
 
 
-def _langfuse_api_base_url(base_url: Any) -> str:
-    value = str(base_url or os.getenv("LANGFUSE_BASE_URL") or "").strip()
-    if not value:
-        raise ValueError("missing required LangFuse query configuration: LANGFUSE_BASE_URL")
+def _normalize_langfuse_origin(value: str) -> str:
+    value = value.strip()
     for suffix in ("/api/public/otel/v1/traces", "/api/public/otel"):
         if value.endswith(suffix):
             value = value[: -len(suffix)]
     return value.rstrip("/")
+
+
+def _langfuse_api_base_url(base_url: Any) -> str:
+    """Resolve the LangFuse origin from trusted server configuration.
+
+    The origin is deliberately NOT caller-controlled. `_langfuse_request` sends
+    LANGFUSE_SECRET_KEY as Basic auth to whatever origin this returns, so
+    honouring a per-call override would let injected tool arguments point the
+    request at an attacker-controlled host and exfiltrate the credentials with
+    it. A caller may still pass the value it believes is configured; it is
+    accepted only when it matches, and rejected otherwise.
+    """
+    configured = _normalize_langfuse_origin(os.getenv("LANGFUSE_BASE_URL") or "")
+    if not configured:
+        raise ValueError("missing required LangFuse query configuration: LANGFUSE_BASE_URL")
+    requested = _normalize_langfuse_origin(str(base_url or ""))
+    if requested and requested != configured:
+        raise ValueError(
+            "per-call LangFuse origin overrides are forbidden; "
+            "set LANGFUSE_BASE_URL in the server environment instead"
+        )
+    return configured
 
 
 def _langfuse_request(method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
@@ -1467,20 +1488,8 @@ def _redact(value: Any) -> Any:
 
 
 def _read_framed_payloads(data: bytes) -> list[dict[str, Any]]:
-    payloads = []
-    offset = 0
-    while offset < len(data):
-        header_end = data.index(b"\r\n\r\n", offset)
-        headers = data[offset:header_end].decode("ascii")
-        length = 0
-        for line in headers.split("\r\n"):
-            key, _, value = line.partition(":")
-            if key.lower() == "content-length":
-                length = int(value.strip())
-        start = header_end + 4
-        payloads.append(json.loads(data[start : start + length].decode("utf-8")))
-        offset = start + length
-    return payloads
+    # MCP stdio framing: one JSON-RPC message per line.
+    return [json.loads(line.decode("utf-8")) for line in data.splitlines() if line.strip()]
 
 
 def self_test() -> int:
