@@ -146,6 +146,17 @@ else is a produced signal too**, and it is the one nobody thinks to verify,
 because it is prose rather than output. It was caught only because the reader
 checked the source instead of the message.
 
+It happened four times in one afternoon between two people, which was often
+enough to expose the mechanism. Notes get written from a tool result on screen;
+messages get written from memory of those notes. **The notes are
+first-generation and the messages are second-generation, and both feel like
+first-hand knowledge to the person writing them.** That is why the errors
+clustered in messages and not in the notes they came from.
+
+The fix is not resolving to be more careful, which is the resolution that never
+holds. It is reading from the file at the point of use, so a second-generation
+copy is never the thing a decision rests on.
+
 The cleanest instance of this mechanism has no bug in it at all.
 
 When a file moves, every document pointing at the old path breaks. The obvious
