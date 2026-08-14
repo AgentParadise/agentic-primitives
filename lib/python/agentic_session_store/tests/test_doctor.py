@@ -63,7 +63,7 @@ def test_no_contract_is_clean_exit_zero(monkeypatch):
     assert proc.returncode == 0
 
 
-def test_malformed_url_fails_only_that_check_and_still_emits_all_five(
+def test_malformed_url_is_a_contract_failure_and_still_emits_all_five(
     tmp_path, monkeypatch
 ):
     """A URL with no scheme must not crash the doctor or short-circuit the run.
@@ -72,6 +72,11 @@ def test_malformed_url_fails_only_that_check_and_still_emits_all_five(
     construction for a scheme-less URL, which previously escaped
     store_reachable's except tuple and killed the whole process before any
     JSON was written.
+
+    The origin-only URL rule now catches this earlier, at contract parse, so
+    it reports as a contract failure rather than as one failed check. That is
+    the same shape an audit reader parses either way, which is what this test
+    exists to pin: one JSON object, five checks, exit 1, no traceback.
     """
     monkeypatch.setenv(Env.PROVIDER, "seshmagic")
     monkeypatch.setenv(Env.URL, "store-internal-host")
@@ -90,8 +95,13 @@ def test_malformed_url_fails_only_that_check_and_still_emits_all_five(
     assert payload["passed"] is False
     assert len(payload["checks"]) == 5
     by_name = {c["name"]: c for c in payload["checks"]}
+    assert by_name["contract_parses"]["passed"] is False
+    assert str(Env.URL) in by_name["contract_parses"]["detail"]
+    # The other four are reported as failed-but-not-run, never omitted.
     assert by_name["store_reachable"]["passed"] is False
-    assert by_name["spool_writable"]["passed"] is True
+    assert by_name["spool_writable"]["passed"] is False
+    assert doctor_module.CONTRACT_FAILURE_DETAIL == by_name["spool_writable"]["detail"]
+    assert "Traceback" not in proc.stderr, proc.stderr
 
 
 def test_symlinks_correct_passes_when_each_link_targets_its_own_subdir(

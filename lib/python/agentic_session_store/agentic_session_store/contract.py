@@ -64,14 +64,28 @@ class ExporterEnv(StrEnum):
     STATE_FILE = "EXPORTER_STATE_FILE"
 
 
-URL_CREDENTIAL_MESSAGE = (
-    "must not carry credentials in the URL itself: userinfo "
-    "(https://user:pass@host), a query string, or a fragment. Put the store "
-    f"credential in {Env.AUTH}, which is never printed. The offending value is "
-    "deliberately NOT echoed here, because this message reaches stderr and the "
-    "durable doctor audit file."
+URL_ORIGIN_ONLY_MESSAGE = (
+    "must be an ORIGIN and nothing else: scheme://host[:port], with no "
+    "userinfo, no path, no query and no fragment. Every one of those can "
+    f"carry a credential. Put the store credential in {Env.AUTH}, which is "
+    "never printed. The offending value is deliberately NOT echoed here, "
+    "because this message reaches stderr and the durable doctor audit file."
 )
-"""Why a credential-bearing URL is refused, said without repeating the URL.
+"""Why a URL that is more than an origin is refused, without repeating it.
+
+ALLOWLIST, NOT BLOCKLIST. This started as a blocklist and lost twice: it
+rejected userinfo, then gained query and fragment, and a later review found
+`https://store.example/token/hunter2` and its percent-encoded twin sailing
+through the path, which no entry covered. A blocklist keeps losing that way
+because each round can only name the channel just found. Scheme, host and
+port is the complete set of things the store endpoint needs, so accepting
+exactly that cannot be outflanked: an unanticipated URL component is refused
+by default rather than carried.
+
+The failure mode inverts too. A subpath deployment (a store behind a reverse
+proxy at `/api`) now breaks loudly at preflight, before any agent work, with
+a message naming the variable and the fix. The previous shape failed by
+letting a credential travel silently into a durable audit file.
 
 REJECT, NOT REDACT. The value arrives from the orchestrator as configuration
 and there is exactly one supported place for the store credential, `AUTH`, so
@@ -90,8 +104,8 @@ the value.
 """
 
 
-def _reject_embedded_credentials(url: str) -> None:
-    """Raise when the store URL embeds credential material.
+def _require_origin_only_url(url: str) -> None:
+    """Raise unless the store URL is exactly scheme://host[:port].
 
     Checks the raw characters as well as the parsed fields: an empty-but-
     present fragment or query (`http://store/#`) parses to a falsy field
@@ -106,14 +120,32 @@ def _reject_embedded_credentials(url: str) -> None:
         # credential is worth forwarding into the audit file.
         raise ValueError(f"{Env.URL} could not be parsed as a URL") from None
 
+    # `parsed.port` raises ValueError on a non-numeric or out-of-range port,
+    # and that message quotes the port back; catch it rather than let a piece
+    # of the value escape into the audit file.
+    try:
+        parsed.port
+    except ValueError:
+        raise ValueError(f"{Env.URL} has an invalid port") from None
+
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"{Env.URL} must use the http or https scheme")
+
+    if not parsed.hostname:
+        raise ValueError(f"{Env.URL} must name a host")
+
     if (
         parsed.username
         or parsed.password
         or "@" in parsed.netloc
+        # A trailing "/" is the same origin written two ways, and rstrip'ing
+        # it is what every caller does anyway. Anything else in the path is a
+        # channel that has already carried a credential past this gate.
+        or parsed.path not in ("", "/")
         or "?" in url
         or "#" in url
     ):
-        raise ValueError(f"{Env.URL} {URL_CREDENTIAL_MESSAGE}")
+        raise ValueError(f"{Env.URL} {URL_ORIGIN_ONLY_MESSAGE}")
 
 
 def _clean(value: str | None) -> str | None:
@@ -133,6 +165,31 @@ class SessionStoreContract:
     tags: str | None
     spool: str
     partition: str
+
+    def __post_init__(self) -> None:
+        """Enforce the URL invariant for the TYPE, not for one constructor.
+
+        This validation used to live only in `from_env`, which made the
+        invariant "a contract built one particular way carries no
+        credentials" rather than "a contract carries no credentials".
+        `SessionStoreContract(url="https://user:pass@store.example", ...)`
+        constructed cleanly, and so would `dataclasses.replace`, a test, or
+        any future caller. A frozen dataclass whose validity depends on which
+        constructor was used documents a convention; it does not enforce an
+        invariant.
+
+        `__post_init__` runs on every construction path, including
+        `dataclasses.replace`, so there is no permissive default path left.
+        There is deliberately no unvalidated alternate constructor: nothing in
+        this package needs one. If a caller ever does, it belongs here as a
+        NAMED classmethod that says what it is skipping, never as a widening
+        of this one.
+
+        ValueError, the same exception type `from_env` has always raised, so
+        the doctor's contract-failure handling (one JSON object, five checks,
+        `contract_parses` carrying the message) is unchanged.
+        """
+        _require_origin_only_url(self.url)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> SessionStoreContract | None:
@@ -154,7 +211,9 @@ class SessionStoreContract:
         url = _clean(env.get(Env.URL))
         if not url:
             raise ValueError(f"{Env.URL} is required when a provider is set")
-        _reject_embedded_credentials(url)
+        # The URL's own shape is checked by __post_init__, which every
+        # construction path runs. What stays here is the one thing a
+        # constructor cannot say: that the variable was missing entirely.
 
         spool = _clean(env.get(Env.SPOOL)) or DEFAULT_SPOOL
         if not spool.startswith("/") or ".." in spool.split("/"):

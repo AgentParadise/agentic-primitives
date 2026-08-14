@@ -1,3 +1,4 @@
+import dataclasses
 import pathlib
 import re
 import subprocess
@@ -199,21 +200,30 @@ URL_SECRET = "hunter2-store-write"  # a test fixture, not a real credential
         f"http://store.example/healthz#{URL_SECRET}",
         "http://store.example/#",
         "http://store.example/?",
+        f"https://store.example/token/{URL_SECRET}",
+        f"https://store.example/token%2F{URL_SECRET}",
+        f"https://store.example/{URL_SECRET}",
     ],
 )
 def test_url_carrying_credentials_is_rejected(bad_url):
-    """Userinfo, a query string, or a fragment in the store URL is a hard
+    """Anything beyond scheme://host[:port] in the store URL is a hard
     contract failure rather than a value the workspace carries around.
 
     This is the reject half of the reject-versus-redact decision recorded on
-    URL_CREDENTIAL_MESSAGE: there is exactly one supported place for the store
-    credential, so a URL carrying one is a misconfiguration with a specific
-    fix, and refusing it once is an invariant a test can hold where redacting
-    at every present and future print site is not.
+    URL_ORIGIN_ONLY_MESSAGE: there is exactly one supported place for the
+    store credential, so a URL carrying one is a misconfiguration with a
+    specific fix, and refusing it once is an invariant a test can hold where
+    redacting at every present and future print site is not.
 
-    The last two cases carry no secret at all: an empty-but-present fragment
-    or query parses to a falsy field, so a check on the parsed fields alone
-    would let that shape through.
+    Two cases carry no secret at all: an empty-but-present fragment or query
+    parses to a falsy field, so a check on the parsed fields alone would let
+    that shape through.
+
+    The last three are the path, which a blocklist of userinfo/query/fragment
+    accepted. They are why this is now an allowlist: three of four channels
+    covered is the natural end state of a blocklist, and the percent-encoded
+    form shows that enumerating spellings of the fourth would not have
+    finished the job either.
     """
     with pytest.raises(ValueError) as excinfo:
         SessionStoreContract.from_env(
@@ -232,16 +242,78 @@ def test_url_carrying_credentials_is_rejected(bad_url):
     assert str(Env.URL) in message
 
 
-def test_ordinary_url_still_parses():
-    """The rejection must not catch the URLs operators actually configure."""
+@pytest.mark.parametrize(
+    "good_url",
+    [
+        "https://store.internal:8443",
+        "http://store.internal",
+        # A bare trailing slash is the same origin written two ways, and
+        # every caller rstrips it anyway.
+        "https://store.internal:8443/",
+    ],
+)
+def test_origin_only_urls_still_parse(good_url):
+    """The rejection must not catch the shape operators actually configure."""
     c = SessionStoreContract.from_env(
         {
             Env.PROVIDER: "seshmagic",
-            Env.URL: "https://store.internal:8443/api",
+            Env.URL: good_url,
             Env.PARTITION: "w1/p2",
         }
     )
-    assert c is not None and c.url == "https://store.internal:8443/api"
+    assert c is not None and c.url == good_url
+
+
+def test_a_subpath_url_is_refused_loudly():
+    """A store behind a reverse proxy at /api is refused, deliberately.
+
+    This is the cost of the allowlist, recorded rather than hidden: the
+    deployment shape breaks at preflight with a message naming the variable,
+    before any agent work, instead of a credential in a path travelling
+    silently into the durable audit file. Supporting it would mean a separate
+    contract field for the prefix, not a wider URL.
+    """
+    with pytest.raises(ValueError, match=str(Env.URL)):
+        SessionStoreContract.from_env(
+            {
+                Env.PROVIDER: "seshmagic",
+                Env.URL: "https://store.internal:8443/api",
+                Env.PARTITION: "w1/p2",
+            }
+        )
+
+
+def test_the_invariant_holds_for_the_type_not_just_from_env():
+    """Direct construction must not bypass the URL gate.
+
+    The check lived in `from_env`, so the invariant was "a contract built one
+    particular way carries no credentials". Every other construction path
+    opted out silently: a test, a future caller, `dataclasses.replace`. A
+    frozen dataclass whose validity depends on which constructor was used is
+    documenting a convention, not enforcing an invariant.
+    """
+    with pytest.raises(ValueError, match=str(Env.URL)):
+        SessionStoreContract(
+            provider="seshmagic",
+            url=f"https://user:{URL_SECRET}@store.example",
+            auth=None,
+            tags=None,
+            spool="/spool",
+            partition="w1/p2",
+        )
+
+    # dataclasses.replace re-runs __post_init__, so it cannot smuggle one in
+    # through an already-valid instance either.
+    valid = SessionStoreContract(
+        provider="seshmagic",
+        url="https://store.example",
+        auth=None,
+        tags=None,
+        spool="/spool",
+        partition="w1/p2",
+    )
+    with pytest.raises(ValueError, match=str(Env.URL)):
+        dataclasses.replace(valid, url=f"https://store.example/{URL_SECRET}")
 
 
 PKG = pathlib.Path(__file__).resolve().parent.parent / "agentic_session_store"

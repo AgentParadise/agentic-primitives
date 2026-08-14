@@ -48,7 +48,7 @@ translates the six `AGENTIC_SESSION_STORE_*` contract vars (`Env` in
 | Contract var                       | Adapter behavior |
 |-------------------------------------|-------------------|
 | `AGENTIC_SESSION_STORE_PROVIDER`    | selects this adapter (`seshmagic`) |
-| `AGENTIC_SESSION_STORE_URL`         | exported as `SESSION_STORE_URL` |
+| `AGENTIC_SESSION_STORE_URL`         | exported as `SESSION_STORE_URL`. Must be an ORIGIN only: `scheme://host[:port]`, no userinfo, path, query or fragment (see below) |
 | `AGENTIC_SESSION_STORE_AUTH`        | exported as `SESSIONS_WRITE_TOKEN`, only if set |
 | `AGENTIC_SESSION_STORE_TAGS`        | exported as `SESSION_STORE_TAGS`, only if set, and persisted to `.capture-env` (see below) |
 | `AGENTIC_SESSION_STORE_SPOOL`       | root of the spool tree (default `/spool`) |
@@ -101,6 +101,34 @@ still recovers its tags.
 `$SPOOL` must be an absolute path with no `..` segment, and `$PARTITION` a
 relative one with the same restriction; both are validated in `contract.py`
 and a bad value fails the workspace at startup.
+
+### The store URL is an origin, and only an origin
+
+`AGENTIC_SESSION_STORE_URL` must be `scheme://host[:port]` with `http` or
+`https`, and nothing else: no `user:pass@`, no path, no query, no fragment.
+A trailing `/` is accepted because it is the same origin written two ways.
+
+This is an allowlist because the blocklist that preceded it lost twice. It
+rejected userinfo, then gained query and fragment, and a review then found
+`https://store.example/token/hunter2` (and its percent-encoded twin) passing
+through the path, which no entry covered. Each round could only name the
+channel just found. Scheme, host and port is everything the store endpoint
+needs, so accepting exactly that cannot be outflanked.
+
+The credential goes in `AGENTIC_SESSION_STORE_AUTH`, which is never printed.
+A refused URL fails at preflight with a message that names the variable and
+never echoes the value, because that message reaches both stderr and the
+durable doctor audit file.
+
+The invariant belongs to the type, not to one constructor:
+`SessionStoreContract.__post_init__` enforces it, so direct construction and
+`dataclasses.replace` cannot bypass it the way they could when the check
+lived only in `from_env`.
+
+**A store behind a reverse proxy at a subpath is refused**, deliberately. It
+now breaks loudly at preflight instead of a credential in a path travelling
+silently into the audit file. Supporting that shape means adding a separate
+contract field for the prefix, not widening this one.
 
 ### The spool is append-only
 
