@@ -92,11 +92,14 @@ def _run(
 
 @pytest.mark.integration
 def test_capability_runtime_is_staged_from_the_shared_tree():
-    """The image must get its capabilities from workspace/, not from a harness dir.
+    """The in-container capability layout and the entrypoint's exec bit (ADR-040 s12).
 
-    Guards the M2 invariant: a second image can host the same capabilities
-    without copying them or reaching into a sibling provider. The in-container
-    layout is unchanged by the move, which is the point of the assertion set.
+    Asserts only what a prebuilt image tag can show from inside a container:
+    /opt/agentic/capabilities/ holds both registered capabilities, and
+    /opt/agentic/entrypoint.sh is executable. It runs `docker run` against an
+    image tag and cannot see the source tree, so it says nothing about WHERE
+    the image staged that tree from. Staging from the shared workspace/ tree
+    is a build-time property, checked by review against ADR-040 s12.1.
     """
     result = _run(
         [

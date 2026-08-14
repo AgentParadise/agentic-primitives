@@ -2,7 +2,7 @@
 title: "ADR-040: Workspace Capability Modules"
 status: accepted
 created: 2026-08-12
-updated: 2026-08-12
+updated: 2026-08-14
 author: NeuralEmpowerment
 supersedes: ADR-036 (in mechanism)
 tags: [workspace, capabilities, contracts, claude-cli, session-store, memory, lifecycle]
@@ -15,7 +15,7 @@ tags: [workspace, capabilities, contracts, claude-cli, session-store, memory, li
 **Accepted**
 
 - Created: 2026-08-12
-- Updated: 2026-08-12
+- Updated: 2026-08-14
 - Author(s): NeuralEmpowerment
 - Supersedes: [ADR-036](036-memory-primitive-and-doctor.md) in *mechanism*.
   ADR-036's reasoning about opt-in and loud failure is retained and still
@@ -342,6 +342,168 @@ natural path for a non-Docker substrate, where there is no entrypoint to
 wrap and no in-container binary to provision. **Anyone adding a substrate
 should start there rather than reinventing it.**
 
+### 12. The workspace image contract
+
+Sections 1 through 11 describe what a *capability* must provide. This
+section describes the other half: what an *image* must provide in order to
+host capabilities. It is the half that makes the harness swappable, because
+it is the list a second image has to satisfy and the list is deliberately
+short.
+
+An image hosting capability modules must:
+
+1. **Run the shared `workspace/entrypoint.sh` as its `ENTRYPOINT`.** The
+   registry loop, the three hooks, and the post-agent wrapper live there.
+   An image that runs its own entrypoint is not hosting capabilities; it is
+   hosting a fork of them.
+2. **Provide `/opt/agentic/capabilities/` populated from the shared
+   `workspace/capabilities/` tree.** Populated by *staging*, not by copying
+   the tree into the provider directory. `stage_workspace_runtime()` in
+   `scripts/build-provider.py` copies `workspace/` into the build context;
+   the image's `COPY` reads it from there.
+3. **Make every module script executable, at any nesting depth.** The
+   lifecycle *sources* `init.sh` but *executes* `doctor` and `finalize.sh`,
+   so a non-executable module script is a runtime failure that neither the
+   build nor a link check can catch. The claude-cli image does this with a
+   depth-unbounded `find /opt/agentic/capabilities -name "*.sh" -exec chmod
+   755`, plus a separate pass for the extensionless `doctor` entry. That
+   second pass is currently pinned to `-mindepth 2 -maxdepth 2`, which
+   matches section 1's layout exactly and nothing deeper. An image is
+   satisfying the contract only if its permission pass covers the layout it
+   actually ships.
+4. **Declare `AGENTIC_CAPABILITIES` as an image `ENV`.** The registry is
+   part of what the image *is*, not something a host is expected to know to
+   set. A host may narrow it; per section 5 that narrowing is the one
+   misconfiguration the system only warns about, which is a further reason
+   the default belongs in the image.
+5. **Provide the runtime each capability's doctor needs.** Today every
+   `doctor` entry execs `python -m <pkg>.doctor`, preferring
+   `/opt/venv/bin/python` and falling back to `python3` on `PATH`, so the
+   image must ship a Python with the capability packages installed. The
+   contract is "a runtime that satisfies the shipped doctor entries"; the
+   venv path is this image's binding to it, in the same sense as section 10.
+
+**What the image does not own**, and must not fork per image: the env
+contract (section 2), the three-hook lifecycle and its failure semantics
+(section 3), and the registry loop with its name validation (section 5). A
+second image that reimplements any of these has reintroduced exactly the
+duplication Alternative 1 was rejected for, one image at a time instead of
+one capability at a time.
+
+#### 12.1 The in-container layout is a contract, not an observation
+
+> **`/opt/agentic/entrypoint.sh` and `/opt/agentic/capabilities/` are
+> fixed. Where their sources live in the repository is free to change; where
+> they land in the container is not.**
+
+This is the property that made M2 safe, and it is stated here as a rule so
+that a reviewer can cite it rather than rediscover it. The mechanical form:
+**a commit that relocates the runtime's source files must leave the
+destination side of every `COPY` byte-identical.** `git show -M <commit> |
+grep '/opt/agentic'` is the check, and only source-side changes may appear
+in its output.
+
+The M2 move commit passes that check exactly. Across the whole commit the
+only `/opt/agentic` lines are two `COPY` destinations, character for
+character unchanged, with only the source side moved:
+
+```
+-COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
++COPY workspace/entrypoint.sh /opt/agentic/entrypoint.sh
+-COPY capabilities/ /opt/agentic/capabilities/
++COPY workspace/capabilities/ /opt/agentic/capabilities/
+```
+
+The failure this rule prevents is quiet. A change that rewrote in-container
+paths while also moving source files would produce a source tree that looks
+correct, documentation that passes a link check, and images that break only
+when a container starts. Nothing before runtime would object. The Migration
+table above is the precedent for the cost when an in-container path really
+must move: it is a breaking change with a major version bump and an
+explicit operator action, not something to be carried along inside a
+refactor.
+
+**The move produced exactly one breakage, and its shape is the argument for
+this rule.** The naming conformance test of section 2, which reads
+`entrypoint.sh` from disk and runs the real `__capability_env_prefix` in a
+bash subprocess to pin it against `capability_env_name()`, existed in both
+`agentic_memory` and `agentic_session_store` and read the pre-move path in
+both. The move deleted that path, so both failed with `FileNotFoundError`
+and were repaired separately. Nothing inside a container broke, because
+`/opt/agentic/**` did not move. **The only thing that broke was a test
+reaching into the source tree from outside it, and that asymmetry is the
+whole point.** A fixed in-container layout confines a source relocation's
+blast radius to things whose coupling is to source paths, which are
+findable, rather than to running containers, which are not.
+
+Two further details are worth keeping, because they are why it was not
+caught at review time:
+
+- **It was invisible, not tolerated.** Both packages sat outside CI's matrix
+  and outside the local QA runner's package list until the same day, so the
+  only test that could have objected was not being executed by anything. The
+  move's review saw a green tree because the tree was not being fully run.
+- **The recursion.** That test exists specifically to catch drift between
+  two implementations of one rule, and its own drift went undetected. A test
+  that reads a file by path is coupled to the source tree, so a source-tree
+  move can break it silently, and the very property that makes it valuable
+  (it reads the real shipped file rather than a copy) is what makes it
+  fragile to relocation. Any future move of the runtime must re-point such
+  tests in the same commit and run them, precisely because they are the
+  tests least likely to be covered by a documentation sweep.
+
+#### 12.2 The neutrality boundary, and the sites still outside it
+
+M2 moved the capability runtime out from under `providers/workspaces/claude-cli/`.
+It did **not** make that runtime harness-neutral. Those are different
+achievements, and the boundary between them runs through the middle of
+`workspace/`, so it is drawn here explicitly rather than left as a caveat.
+
+**Inside the boundary, genuinely neutral and not to be forked per image:**
+the env contract (section 2), the three-hook lifecycle (section 3), the
+registry loop and its hardening (section 5), and the
+`workspace/capabilities/` tree itself. Individual provider adapters do name
+harness paths (`~/.claude/projects` and `~/.codex/sessions` in the seshmagic
+adapter, `~/.hindsight/claude-code.json` in the hindsight adapter), which is
+what an adapter is for: a per-provider binding, not an image-level fork.
+
+**Outside the boundary:** `workspace/entrypoint.sh` is shared in *location*
+only. It still carries harness-specific setup, at these sites:
+
+| Site | What it does | Status |
+|---|---|---|
+| `workspace/entrypoint.sh:33-64` | Section 1 writes `~/.claude/settings.json` unconditionally, with no capability, provider, or harness condition around it. The written document enables three Claude Code plugin identifiers. | Harness-specific. M3. |
+| `workspace/entrypoint.sh:66-91` | Section 2 scans `/opt/agentic/plugins/` for `.claude-plugin/plugin.json` and builds `--plugin-dir` flags (built at `:74-88`), which the file describes at `:71-72` as flags "for the orchestrator to append when invoking claude CLI". | Harness-specific. M3. |
+| `workspace/entrypoint.sh:113-115` | Comments the first git-hooks source as "owned by the claude-cli provider itself", baked in from `providers/workspaces/claude-cli/scripts/git-hooks/`. | **Accurate, no change needed.** That directory correctly stayed behind in the provider. Evidence of a provider-specific dependency, not a stale path. |
+
+The consequence, stated plainly: **a second image staging this tree today is
+handed Claude's configuration whether or not it runs Claude.** Not a
+degraded experience, an incorrect one.
+
+Factoring the first two rows out, behind a condition or a per-provider hook,
+is **M3's scope**, named here so it is a tracked boundary with two known
+sites rather than a debt some later reader discovers. M3 is where the omni
+image forces the question. Until then the honest statement is that the
+runtime is *shared*, not that it is *neutral*.
+
+#### 12.3 A move commit contains only the move
+
+Recorded here as a reviewability property rather than a style preference.
+
+The check that made M2 verifiable is `git diff --name-status -M` showing
+every relocated file at `R100`. That signal is what lets a reviewer confirm
+"nothing changed, things moved" without reading the files. Any content edit
+inside the same commit, including a reformat or an unrelated tidy, drops
+those files below `R100` and the reviewer can no longer distinguish a file
+that was relocated from a file that was changed. The whole diff then has to
+be read as new code.
+
+The M2 commit satisfied this: ten relocated files, all `R100`, with the
+only content changes in the two files that must change for a move to work
+at all, `Dockerfile` and `scripts/build-provider.py`. Combined with 12.1,
+that is the entire review: the renames are pure, and the two edited files
+touch source paths only.
+
 ## Alternatives Considered
 
 ### Alternative 1: Copy ADR-036's sections per capability
@@ -479,6 +641,10 @@ not belong in the image.
   change for anyone who was relying on process-tree shape.
 - **The image is not turnkey for session-store.** Deployment must provide
   the exporter. Accepted deliberately; see section 10.
+- **The shared entrypoint is not yet harness-neutral.** It is shared in
+  location, and two of its sections still configure Claude specifically, so
+  a second image staging the tree today inherits that setup. Two enumerated
+  sites, tracked as M3 scope; see section 12.2.
 
 ## Migration
 
