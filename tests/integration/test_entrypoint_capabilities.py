@@ -864,6 +864,81 @@ echo "FINALIZE_RC=$?"
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_prune_refuses_a_directory_it_did_not_create(tmp_path: Path):
+    """The prune must never delete a directory this capability did not create.
+
+    This is the reported defect, reproduced: with SPOOL=/workspace and
+    PARTITION=repos the state file is /workspace/repos/state.json, whose
+    dirname matched the old `/*/*` shape guard, and the sweep deleted an
+    unrelated mounted directory. The victim here stands in for that mount.
+
+    The stub exporter is mounted deliberately. The real SeshMagicSessionExporter
+    is NOT installed in the workspace image, so without the stub the sweep
+    fails, finalize returns early, and the prune block is never reached --
+    the test would pass against the defect it is supposed to catch.
+    """
+    victim = tmp_path / "victim"
+    (victim / "repos").mkdir(parents=True)
+    (victim / "repos" / "precious.txt").write_text("do not delete me\n")
+
+    result = _run(
+        [
+            "bash",
+            "-c",
+            "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh; "
+            "echo FINALIZE_RC=$?",
+        ],
+        env={
+            "SESSION_STORE_URL": STORE_URL,
+            "EXPORTER_STATE_FILE": "/victim/repos/state.json",
+        },
+        extra_mounts=[
+            f"{victim}:/victim",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert "FINALIZE_RC=0" in result.stdout, result.stdout
+    assert (victim / "repos" / "precious.txt").exists(), "prune escaped its spool"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_prune_refuses_a_pre_existing_partition_directory(tmp_path: Path):
+    """The end-to-end form of the same defect, through the real adapter.
+
+    The victim directory is mounted AS the partition, exactly as the
+    reviewer's SPOOL=/workspace PARTITION=repos configuration produced it.
+    init.sh runs over a directory it did not create, so it must not mark it
+    as ours, and finalize must therefore leave it alone. Any containment
+    check keyed on 'the adapter touched this path' rather than 'the adapter
+    created this path' passes the test above and still fails this one.
+    """
+    spool = tmp_path / "workspace"
+    (spool / "repos").mkdir(parents=True)
+    (spool / "repos" / "precious.txt").write_text("do not delete me\n")
+
+    result = _run(
+        ["bash", "-c", "exit 0"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/workspace",
+            "AGENTIC_SESSION_STORE_PARTITION": "repos",
+        },
+        extra_mounts=[
+            f"{spool}:/workspace",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert (spool / "repos" / "precious.txt").exists(), "prune destroyed a mounted directory"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
 def test_finalize_prunes_partition_on_success(tmp_path: Path):
     """On a successful sweep, finalize.sh must remove the partition
     directory so a persistent spool volume doesn't grow one directory per

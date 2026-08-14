@@ -69,19 +69,34 @@ echo "[finalize] session-store upload complete" >&2
 # on a failed sweep -- that spool is the only remaining copy of a session
 # that has not been confirmed uploaded.
 #
-# Guard requires at least two path segments under root (e.g. /spool/<part>)
-# so a misconfigured EXPORTER_STATE_FILE (e.g. "/state.json", dirname "/")
-# can't turn this into `rm -rf /` or `rm -rf /spool`.
+# CONTAINMENT. Remove only a directory this capability created, evidenced by
+# the .agentic-partition marker init.sh writes at creation time.
+#
+# The previous guard tested path SHAPE (`case "${__part_dir}" in /*/*`) and
+# claimed to prevent `rm -rf /` and `rm -rf /spool`. It did prevent those two,
+# and nothing else: shape says nothing about ownership. With SPOOL=/workspace
+# and PARTITION=repos the state file is /workspace/repos/state.json, whose
+# dirname matches /*/*, and a successful sweep ran `rm -rf /workspace/repos`
+# on an operator's bind mount. Reproduced during review, with data lost.
+#
+# What the marker proves, exactly: at init time no directory existed at this
+# path, so this capability created it and everything inside it arrived through
+# this capability. init.sh deliberately does NOT write the marker over a
+# pre-existing directory, which is what makes the /workspace/repos case
+# refuse. Also note the marker is not a claim about uploads - the successful
+# exporter run above is that claim, and both must hold to reach this line.
+#
+# The marker cannot be produced by a misconfigured path: /, /spool, and any
+# unrelated mount all lack it, so the old shape guard's two cases stay covered
+# without a separate check.
 if [ -n "${EXPORTER_STATE_FILE:-}" ]; then
-    case "${__part_dir}" in
-        /*/*)
-            rm -rf "${__part_dir}"
-            echo "[finalize] pruned partition ${__part_dir}" >&2
-            ;;
-        *)
-            echo "[finalize] WARNING: refusing to prune suspicious partition path '${__part_dir}'" >&2
-            ;;
-    esac
+    if [ -f "${__part_dir}/.agentic-partition" ]; then
+        rm -rf "${__part_dir}"
+        echo "[finalize] pruned partition ${__part_dir}" >&2
+    else
+        echo "[finalize] WARNING: refusing to prune '${__part_dir}': no .agentic-partition marker," \
+             "so this capability did not create it; leaving it untouched" >&2
+    fi
 fi
 
 exit 0

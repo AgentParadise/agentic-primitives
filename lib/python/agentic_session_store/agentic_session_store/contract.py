@@ -102,6 +102,13 @@ class SessionStoreContract:
         if not url:
             raise ValueError(f"{Env.URL} is required when a provider is set")
 
+        spool = _clean(env.get(Env.SPOOL)) or DEFAULT_SPOOL
+        if not spool.startswith("/") or ".." in spool.split("/"):
+            raise ValueError(
+                f"invalid {CAPABILITY} spool: {spool!r}. "
+                "Must be an absolute path with no '..' segment."
+            )
+
         partition = _clean(env.get(Env.PARTITION)) or _clean(env.get("HOSTNAME"))
         if not partition:
             raise ValueError(f"{Env.PARTITION} is required when HOSTNAME is unset")
@@ -116,6 +123,6 @@ class SessionStoreContract:
             url=url,
             auth=_clean(env.get(Env.AUTH)),
             tags=_clean(env.get(Env.TAGS)),
-            spool=_clean(env.get(Env.SPOOL)) or DEFAULT_SPOOL,
+            spool=spool,
             partition=partition,
         )

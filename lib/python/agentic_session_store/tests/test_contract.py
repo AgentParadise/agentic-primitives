@@ -118,6 +118,48 @@ def test_provider_name_rejects_path_escape(bad):
         })
 
 
+@pytest.mark.parametrize("bad", ["relative/path", "../escape", "/spool/../etc"])
+def test_spool_rejects_non_absolute_or_traversing(bad):
+    """The spool is the root of the tree finalize.sh may prune, so a
+    relative or traversing value has to fail here rather than resolve to
+    something unexpected inside the container.
+
+    PARTITION is supplied so the failure is unambiguously the spool's: with
+    it absent the partition check would raise first on some orderings.
+    """
+    with pytest.raises(ValueError, match="spool"):
+        SessionStoreContract.from_env({
+            Env.PROVIDER: "seshmagic",
+            Env.URL: "http://store:8080",
+            Env.SPOOL: bad,
+            Env.PARTITION: "w/p",
+        })
+
+
+def test_spool_accepts_a_plain_absolute_path():
+    c = SessionStoreContract.from_env({
+        Env.PROVIDER: "seshmagic",
+        Env.URL: "http://store:8080",
+        Env.SPOOL: "/spool",
+        Env.PARTITION: "w/p",
+    })
+    assert c is not None and c.spool == "/spool"
+
+
+def test_empty_spool_is_unset_not_invalid():
+    """An empty string is how an unset var arrives from a shell export, so
+    it takes the default rather than failing validation. This matches the
+    _clean() semantics every other field in this contract already uses.
+    """
+    c = SessionStoreContract.from_env({
+        Env.PROVIDER: "seshmagic",
+        Env.URL: "http://store:8080",
+        Env.SPOOL: "",
+        Env.PARTITION: "w/p",
+    })
+    assert c is not None and c.spool == "/spool"
+
+
 @pytest.mark.parametrize("bad", ["../escape", "/absolute", "a/../../b"])
 def test_partition_rejects_traversal(bad):
     with pytest.raises(ValueError, match="partition"):
