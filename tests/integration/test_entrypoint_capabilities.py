@@ -914,6 +914,63 @@ test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
     # command substitution too, and it must still be inert.
     assert "NO_INJECTION" in result.stdout
     assert "INJECTION_OCCURRED" not in result.stdout
+    # A current-format record must NOT trip the legacy-migration notice,
+    # or the notice is noise and stops meaning "you still have old
+    # partitions in circulation".
+    assert "legacy pre-base64" not in result.stderr
+
+
+@pytest.mark.integration
+def test_legacy_capture_env_is_recovered_and_announced(tmp_path: Path):
+    """The pre-base64 record must still be readable, and say so out loud.
+
+    The fallback is a migration affordance, not a supported format: the
+    spool volume outlives the image, so a partition written by an older
+    init.sh and orphaned by a SIGKILLed container can be swept by this
+    finalize. Refusing to read it would upload those sessions
+    unattributed, which is the exact failure .capture-env exists to
+    prevent.
+
+    The stderr notice is the removal condition's only observable signal.
+    Once it stops appearing across a fleet, no pre-_B64 partition is left
+    and the fallback can be deleted. A silent fallback would mean nobody
+    ever learns that, so the notice is asserted here as behavior, not
+    treated as incidental logging.
+    """
+    legacy_tag = "workflow:w1,phase:p2"
+
+    spool = tmp_path / "spool"
+    part_dir = spool / "legacy-test"
+    part_dir.mkdir(parents=True)
+    capture_env = part_dir / ".capture-env"
+    # Deliberately the OLD record name, written the way the old init.sh did.
+    capture_env.write_text(f"SESSION_STORE_TAGS={legacy_tag}\n")
+    os.chmod(capture_env, 0o600)
+
+    fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+    script = f"""
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+printf 'LEGACY_SAW_START%sLEGACY_SAW_END\\n' "$SESSION_STORE_TAGS"
+exit 0
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export SESSION_STORE_URL=http://unused.invalid
+export EXPORTER_STATE_FILE=/spool/legacy-test/state.json
+unset SESSION_STORE_TAGS
+{fin}
+"""
+    result = _run(["bash", "-c", script], extra_mounts=[f"{spool}:/spool"])
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    match = re.search(r"LEGACY_SAW_START(.*?)LEGACY_SAW_END", result.stderr, re.DOTALL)
+    assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert match.group(1) == legacy_tag
+    assert "legacy pre-base64" in result.stderr, (
+        "the fallback must announce itself, or the removal condition is unobservable"
+    )
 
 
 @pytest.mark.integration

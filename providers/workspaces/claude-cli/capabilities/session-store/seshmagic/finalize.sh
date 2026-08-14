@@ -68,7 +68,18 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
             # reason this file exists. Dropping the fallback would silently
             # upload those sessions unattributed. Same parse as before, still
             # data, still never sourced; it just cannot carry a newline.
+            #
+            # THIS IS A MIGRATION AFFORDANCE, NOT A SUPPORTED FORMAT. Nothing
+            # writes this record any more. It exists only to drain partitions
+            # that predate the _B64 change, and it may be deleted once no
+            # spool volume still in use can hold one. The log line below is
+            # how an operator learns that condition is not yet met: a silent
+            # fallback means nobody ever finds out it is safe to remove.
             SESSION_STORE_TAGS="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${__capture_env}" | head -1)"
+            echo "[finalize] NOTE: ${__capture_env} uses the legacy pre-base64" \
+                 "SESSION_STORE_TAGS record; this partition predates the current" \
+                 "adapter. Tags were recovered, but a tag containing a newline" \
+                 "would have been truncated when it was written" >&2
         fi
         unset __tags_b64
         export SESSION_STORE_TAGS

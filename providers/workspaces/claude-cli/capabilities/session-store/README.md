@@ -169,14 +169,38 @@ assigns, which is why the `|| true` is correct rather than a swallowed
 error. It needs `bash`; the `$(...)` form above is the portable
 approximation.
 
-**Legacy records.** `finalize.sh` falls back to a bare
-`SESSION_STORE_TAGS=<value>` line when no `_B64` record is present. The
-spool volume outlives the image, so a partition written by an older
-`init.sh` and left behind by a `SIGKILL`ed container can be swept by a
-newer `finalize.sh`; without the fallback those sessions would upload
-unattributed, which is the exact failure this file exists to prevent. The
-fallback is the same parse-never-source read as before and carries the
-same truncation limitation. Nothing writes that form any more.
+#### Legacy records: a migration affordance, not a supported format
+
+`finalize.sh` falls back to a bare `SESSION_STORE_TAGS=<value>` line when no
+`_B64` record is present.
+
+**Nothing writes that form any more.** It is not a second supported
+encoding and must not be treated as one: do not add a writer for it, and do
+not extend it. It exists for exactly one reason, and it has a removal
+condition.
+
+*Why it exists.* The spool volume outlives the image and is rebuilt
+independently of it, so a partition written by an older `init.sh` and
+orphaned by a `SIGKILL`ed container can be swept by a newer `finalize.sh`.
+Without the fallback those sessions upload unattributed, which is the exact
+failure this file exists to prevent. Refusing to read data this capability
+itself wrote one image build ago would be choosing a cleaner code path over
+the data.
+
+*When it can be deleted.* When no spool volume still in use can hold a
+partition predating the `_B64` change. Until then it stays.
+
+*How you know that condition is not yet met.* `finalize.sh` logs a
+`[finalize] NOTE: ... uses the legacy pre-base64 SESSION_STORE_TAGS record`
+line to stderr every time the fallback fires. Seeing it means a pre-`_B64`
+partition is still in circulation. Once it has stopped appearing across your
+fleet, the `else` branch in `finalize.sh` and this subsection can go
+together. A silent fallback would mean nobody ever learns it is safe to
+remove, which is why the line is there.
+
+The fallback is the same parse-never-source read as before, so it adds a
+format to read, not a mechanism. It carries the same truncation limitation
+those records were written with.
 
 The file is created with `umask 077` (not a post-hoc `chmod`, which would
 leave a window where the file is briefly world-readable) so it lands at
