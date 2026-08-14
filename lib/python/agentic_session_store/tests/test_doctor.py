@@ -342,6 +342,110 @@ def test_store_reachable_does_not_send_the_credential_across_a_redirect():
     assert str(target_port) not in result.detail, result.detail
 
 
+def test_store_reachable_follows_a_same_origin_redirect():
+    """A store that canonicalises /healthz to /healthz/ must still pass.
+
+    Refusing EVERY redirect over-corrected: canonicalising a health path is
+    an ordinary deployment, and failing preflight on it blocks the workspace
+    from starting for a store that is entirely healthy. The property that
+    matters is narrower than "no redirects": the credential must never reach
+    a different origin. Same scheme, host and port is the same origin, so the
+    hop is followed and the credential goes where the operator pointed it.
+    """
+
+    class _Canonicalising(http.server.BaseHTTPRequestHandler):
+        seen: ClassVar[list[tuple[str, str | None]]] = []
+
+        def do_GET(self):
+            type(self).seen.append((self.path, self.headers.get("Authorization")))
+            if not self.path.endswith("/"):
+                self.send_response(301)
+                self.send_header("Location", self.path + "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            return
+
+    server, url = _serve(_Canonicalising)
+    try:
+        contract = SessionStoreContract(
+            provider="seshmagic",
+            url=url,
+            auth="tok",
+            tags=None,
+            spool="/spool",
+            partition="w1/p2",
+        )
+        result = doctor_module._store_reachable(contract)
+    finally:
+        server.shutdown()
+
+    assert result.passed is True, result.detail
+    assert [p for p, _ in _Canonicalising.seen] == ["/healthz", "/healthz/"]
+    # The credential travelled on both hops, which is fine: same origin.
+    assert [a for _, a in _Canonicalising.seen] == ["Bearer tok", "Bearer tok"]
+
+
+def test_store_reachable_stops_at_the_hop_that_changes_origin():
+    """A -> A -> evil must stop at the SECOND hop.
+
+    Comparing the new URL against the ORIGINALLY configured one would be
+    enough for a single hop and useless for a chain; comparing per hop is
+    what makes a same-origin first hop safe to follow. The cross-origin
+    target must never be contacted at all.
+    """
+
+    class _Target(_RecordingHandler):
+        received: ClassVar[list[str | None]] = []
+
+    target_server, _ = _serve(_Target)
+    target_port = target_server.server_port
+
+    class _TwoHop(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/healthz":
+                # Same origin: this hop is legitimately followed.
+                location = "/healthz/"
+            else:
+                # And this one is where it turns cross-origin.
+                location = f"http://localhost:{target_port}/healthz"
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            return
+
+    hop_server, hop_url = _serve(_TwoHop)
+    try:
+        contract = SessionStoreContract(
+            provider="seshmagic",
+            url=hop_url,
+            auth="s3cr3t-write-token",  # a test fixture, not a real credential
+            tags=None,
+            spool="/spool",
+            partition="w1/p2",
+        )
+        result = doctor_module._store_reachable(contract)
+    finally:
+        hop_server.shutdown()
+        target_server.shutdown()
+
+    assert _Target.received == [], (
+        "the second hop changed origin and was followed anyway"
+    )
+    assert result.passed is False, "a cross-origin redirect must fail the check"
+    assert "302" in result.detail, result.detail
+    assert str(target_port) not in result.detail, result.detail
+
+
 def test_store_reachable_still_passes_without_a_redirect():
     """The no-redirect opener must not break the ordinary healthy case."""
 

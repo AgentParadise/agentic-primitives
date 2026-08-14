@@ -151,8 +151,22 @@ def _exporter_present(contract: SessionStoreContract) -> CheckResult:
     return CheckResult(name="exporter_present", passed=True, detail=path)
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """A redirect handler that refuses to follow anything.
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """The (scheme, host, port) triple two URLs must share to be same-origin.
+
+    Scheme and host are lowercased by urlsplit already; the port is taken
+    from `port`, which returns None when the URL relies on the scheme
+    default, so `https://h` and `https://h:443` compare equal only after the
+    default is filled in below.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    default_ports = {"http": 80, "https": 443}
+    port = parsed.port if parsed.port is not None else default_ports.get(parsed.scheme)
+    return (parsed.scheme, parsed.hostname or "", port)
+
+
+class _SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect handler that follows same-origin hops and nothing else.
 
     `urllib.request.urlopen` follows redirects by default, and the stock
     HTTPRedirectHandler copies the ORIGINAL request's headers onto the
@@ -166,23 +180,38 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
     So a store that is compromised, misconfigured, or merely sitting behind a
     redirecting proxy harvests the write credential from a health check.
 
-    Returning None means "this handler declines", which leaves the 3xx to
+    REFUSING EVERY REDIRECT OVER-CORRECTS. A store that canonicalises
+    `/healthz` to `/healthz/` is an ordinary deployment, and refusing that
+    fails preflight and blocks the workspace from starting for a store that
+    is perfectly healthy. The property that actually matters is narrower: the
+    credential must never reach a DIFFERENT origin.
+
+    So a hop to the same (scheme, host, port) is followed, and any other hop
+    is declined. The comparison is made PER HOP, against `req.full_url`,
+    which is the URL of the request being answered rather than the one the
+    operator configured: on `A -> A -> evil`, the second hop compares evil
+    against A and stops there. Declining returns None, which leaves the 3xx to
     HTTPDefaultErrorHandler and surfaces as an HTTPError carrying the real
-    status code. A health check has no reason to follow a redirect in the
-    first place: the operator configured a store URL, and only that URL may
-    see the credential. A redirect is therefore reported as a FAILED check
-    with its status, never followed and never silently passed.
+    status code, so a cross-origin redirect is a FAILED check rather than
+    something silently passed. urllib resolves a relative Location against the
+    current request before calling this, so a relative hop is same-origin by
+    construction.
+
+    urllib's own redirect limits (max_repeats, max_redirections) still apply,
+    so a same-origin redirect loop terminates rather than spinning.
     """
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+        if _origin(req.full_url) != _origin(newurl):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+_SAME_ORIGIN_OPENER = urllib.request.build_opener(_SameOriginRedirect)
 """Opener used for every credential-bearing request this doctor makes.
 
 `build_opener` skips its default HTTPRedirectHandler when handed a subclass
-of it, so this opener has exactly one redirect handler and it declines.
+of it, so this opener has exactly one redirect handler and it is this one.
 """
 
 
@@ -199,7 +228,7 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
         req = urllib.request.Request(health_url, method="GET")
         if contract.auth:
             req.add_header("Authorization", f"Bearer {contract.auth}")
-        with _NO_REDIRECT_OPENER.open(
+        with _SAME_ORIGIN_OPENER.open(
             req, timeout=STORE_HEALTH_TIMEOUT_SECONDS
         ) as resp:
             status_code = resp.status
@@ -213,9 +242,11 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
                 name="store_reachable",
                 passed=False,
                 detail=(
-                    f"{health_url} returned HTTP {e.code} (a redirect, which is "
-                    "NOT followed: the store credential may only ever be sent to "
-                    "the configured host). Point the URL at the store directly."
+                    f"{health_url} returned HTTP {e.code} (a redirect to a "
+                    "DIFFERENT origin, which is NOT followed: the store "
+                    "credential may only ever be sent to the configured scheme, "
+                    "host and port. A same-origin redirect is followed and is "
+                    "not reported here). Point the URL at the store directly."
                 ),
             )
         return CheckResult(
