@@ -5,8 +5,12 @@
 # ingress.
 services:
   langfuse-web:
+    # Must track LANGFUSE_TAILSCALE_PORT: deploy.sh points Tailscale Serve at
+    # 127.0.0.1:$LANGFUSE_TAILSCALE_PORT, so hardcoding the host port here
+    # silently breaks any non-default port. deploy.sh exports the variable
+    # before invoking Compose.
     ports: !override
-      - "127.0.0.1:19431:3000"
+      - "127.0.0.1:${LANGFUSE_TAILSCALE_PORT:-19431}:3000"
 
   langfuse-worker:
     ports: !reset []

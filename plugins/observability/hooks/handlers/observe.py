@@ -48,8 +48,14 @@ def _output_stream():
         return sys.stderr
     try:
         path = Path(sink)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        file_output = path.open("a", encoding="utf-8")
+        # The sink holds prompt previews, tool inputs, tool results, paths and
+        # errors. Left to the default umask it lands as 0644, readable by every
+        # local account on a shared workstation or VPS. Create it 0600 via an
+        # explicit descriptor so the mode is set atomically at creation rather
+        # than chmod'd after the fact.
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_CLOEXEC, 0o600)
+        file_output = os.fdopen(fd, "a", encoding="utf-8")
         return _Tee(sys.stderr, file_output)
     except Exception:
         return sys.stderr

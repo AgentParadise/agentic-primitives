@@ -63,6 +63,14 @@ ensure_local_files() {
   if [ ! -f "$LANGFUSE_COMPOSE_OVERRIDE" ]; then
     cat >"$LANGFUSE_COMPOSE_OVERRIDE" <<'EOF'
 services:
+  # Upstream publishes the web UI as "3000:3000", which binds every host
+  # interface. This stack is meant to be local, so pin it to loopback:
+  # otherwise `just langfuse-start` on a laptop exposes the LangFuse login
+  # and API to whatever LAN it happens to be on.
+  langfuse-web:
+    ports: !override
+      - "127.0.0.1:3000:3000"
+
   langfuse-worker:
     ports: !reset []
 
