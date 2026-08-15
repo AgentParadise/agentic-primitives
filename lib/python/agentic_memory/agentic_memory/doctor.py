@@ -19,6 +19,9 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -39,6 +42,88 @@ PROVIDER_REGISTRY_ROOT = "/opt/agentic/capabilities/memory"
 
 BACKEND_HEALTH_TIMEOUT_SECONDS = 5
 """How long to wait for backend /health before giving up."""
+
+
+# --- Credential-safe HTTP -----------------------------------------------------
+#
+# DUPLICATED, DELIBERATELY. The same three definitions exist in
+# agentic_session_store/doctor.py, as `_origin`, `_SameOriginRedirect` and
+# `_SAME_ORIGIN_OPENER`. The two packages ship as separate wheels with
+# `dependencies = []` and neither imports the other, so there is no module
+# either one can import today; the only shared home would be a fourth
+# distribution, which means a new wheel in scripts/build-provider.py, a new
+# entry in scripts/python_qa.py and the CI matrix, and a dependency edge in
+# two images, for one class and one function. That cost was judged not worth
+# paying for this fix.
+#
+# The cost of NOT paying it is drift, which is exactly how this defect
+# reached this file: the guard was written once, in the session-store doctor,
+# and scoped to that one doctor rather than to every credential-bearing
+# health check. So each copy names the other. If you change one, change both.
+
+
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """The (scheme, host, port) triple two URLs must share to be same-origin.
+
+    Scheme and host are lowercased by urlsplit already; the port is taken
+    from `port`, which returns None when the URL relies on the scheme
+    default, so `https://h` and `https://h:443` compare equal only after the
+    default is filled in below.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    default_ports = {"http": 80, "https": 443}
+    port = parsed.port if parsed.port is not None else default_ports.get(parsed.scheme)
+    return (parsed.scheme, parsed.hostname or "", port)
+
+
+class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect handler that follows same-origin hops and nothing else.
+
+    `urllib.request.urlopen` follows redirects by default, and the stock
+    HTTPRedirectHandler copies the ORIGINAL request's headers onto the
+    redirected one, `Authorization` included, WITHOUT checking that the new
+    URL is even the same host. Verified directly:
+
+        HTTPRedirectHandler().redirect_request(
+            req_to_a.example, None, 302, "Found", {}, "http://evil.example/y")
+        -> redirected headers: {'Authorization': 'Bearer SECRET'}
+
+    So a backend that is compromised, misconfigured, or merely sitting behind
+    a redirecting proxy harvests AGENTIC_MEMORY_AUTH from a health check.
+
+    REFUSING EVERY REDIRECT OVER-CORRECTS. A backend that canonicalises
+    `/health` to `/health/` is an ordinary deployment, and refusing that
+    fails preflight and blocks the workspace from starting for a backend that
+    is perfectly healthy. The property that actually matters is narrower: the
+    credential must never reach a DIFFERENT origin.
+
+    So a hop to the same (scheme, host, port) is followed, and any other hop
+    is declined. The comparison is made PER HOP, against `req.full_url`,
+    which is the URL of the request being answered rather than the one the
+    operator configured: on `A -> A -> evil`, the second hop compares evil
+    against A and stops there. Declining returns None, which leaves the 3xx to
+    HTTPDefaultErrorHandler and surfaces as an HTTPError carrying the real
+    status code, so a cross-origin redirect is a FAILED check rather than
+    something silently passed. urllib resolves a relative Location against the
+    current request before calling this, so a relative hop is same-origin by
+    construction.
+
+    urllib's own redirect limits (max_repeats, max_redirections) still apply,
+    so a same-origin redirect loop terminates rather than spinning.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if _origin(req.full_url) != _origin(newurl):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+SAME_ORIGIN_OPENER = urllib.request.build_opener(SameOriginRedirect)
+"""Opener used for every credential-bearing request this doctor makes.
+
+`build_opener` skips its default HTTPRedirectHandler when handed a subclass
+of it, so this opener has exactly one redirect handler and it is this one.
+"""
 
 
 class CheckStatus(str, Enum):
@@ -338,9 +423,6 @@ class BackendHealthCheck(Check):
                 details={"url": contract.url},
             )
         health_url = contract.url.rstrip("/") + "/health"
-        # Use stdlib only — urllib avoids adding a requests dependency.
-        import urllib.error
-        import urllib.request
 
         req = urllib.request.Request(health_url, method="GET")
         if contract.auth:
@@ -348,10 +430,29 @@ class BackendHealthCheck(Check):
 
         start = time.monotonic()
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with SAME_ORIGIN_OPENER.open(req, timeout=self.timeout) as resp:
                 status_code = resp.status
                 body_preview = resp.read(200).decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
+            if 300 <= e.code < 400:
+                # The redirect target is deliberately NOT echoed, in the
+                # message or in the details. It is attacker-controllable
+                # input on exactly the path this check exists to refuse, and
+                # both fields land in the durable doctor audit file.
+                return CheckResult(
+                    name=self.name,
+                    status=CheckStatus.FAIL,
+                    message=(
+                        f"Backend /health returned HTTP {e.code} (a redirect to "
+                        "a DIFFERENT origin, which is NOT followed: the memory "
+                        "credential may only ever be sent to the configured "
+                        "scheme, host and port. A same-origin redirect is "
+                        f"followed and is not reported here). Point {Env.URL} "
+                        "at the backend directly."
+                    ),
+                    details={"url": health_url, "status_code": e.code},
+                    duration_ms=(time.monotonic() - start) * 1000,
+                )
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,

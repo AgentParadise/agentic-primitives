@@ -151,6 +151,25 @@ def _exporter_present(contract: SessionStoreContract) -> CheckResult:
     return CheckResult(name="exporter_present", passed=True, detail=path)
 
 
+# --- Credential-safe HTTP -----------------------------------------------------
+#
+# DUPLICATED, DELIBERATELY. The same three definitions exist in
+# agentic_memory/doctor.py, as `_origin`, `SameOriginRedirect` and
+# `SAME_ORIGIN_OPENER`. The two packages ship as separate wheels with
+# `dependencies = []` and neither imports the other, so there is no module
+# either one can import today; the only shared home would be a fourth
+# distribution, which means a new wheel in scripts/build-provider.py, a new
+# entry in scripts/python_qa.py and the CI matrix, and a dependency edge in
+# two images, for one class and one function. That cost was judged not worth
+# paying for this fix.
+#
+# The cost of NOT paying it is drift, which is exactly what happened here:
+# this guard was written for this doctor and scoped to this doctor, so the
+# memory doctor sent AGENTIC_MEMORY_AUTH through the stock redirect handler
+# for as long as this comment did not exist. So each copy names the other.
+# If you change one, change both.
+
+
 def _origin(url: str) -> tuple[str, str, int | None]:
     """The (scheme, host, port) triple two URLs must share to be same-origin.
 
