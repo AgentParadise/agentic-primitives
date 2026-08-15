@@ -131,6 +131,22 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
             # and the decoded bytes are thrown away: this run answers only
             # "does the payload decode", and the read below is what keeps the
             # bytes.
+            #
+            # THIS GUARD DEPENDS ON A STRICT DECODER, AND IS INERT UNDER BSD
+            # `base64`. That is fine here, because this file only ever runs in
+            # the Linux container, but it will mislead you if you test it on a
+            # Mac. Same four payloads, measured on both:
+            #
+            #   payload        macOS (BSD)   container (GNU/busybox)
+            #   YT0x           accepted      accepted     (valid)
+            #   !!!!bad!!!!    rejected      rejected     (invalid chars)
+            #   aGVsbG8        ACCEPTED      rejected     (unpadded)
+            #   YT0            ACCEPTED      rejected     (truncated)
+            #
+            # So on a Mac a truncated record decodes cleanly, `__tags_source`
+            # becomes b64, and this guard appears not to work. It is the
+            # decoder that is lenient, not the check that is broken. Verify
+            # this inside the image, not on the host.
             if ! printf '%s' "${__tags_b64}" | base64 -d > /dev/null 2>&1; then
                 __tags_source="decode_failed"
             else
