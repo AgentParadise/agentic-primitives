@@ -428,12 +428,34 @@ non-zero from `init.sh` routes to the doctor, which fails the workspace
 with a named path. A refused start is recoverable; an overwritten file is
 not.
 
-Once the namespace is claimed, replacing a stale copy of your own metadata
-file inside it is a normal write, and removing a stale copy when this run
-produces no value for it is what stops a reused partition serving a
-previous run's data. Neither is a prune: they touch only files this adapter
-wrote, inside a directory it has just proven it owns, and they can never
-reach the payload directory.
+**A marker on the namespace root proves the root, and nothing under it.**
+The files land in `$SPOOL/.agentic-session-store/$PARTITION/`, and
+`$PARTITION` is a multi-component relative path, so between the marked root
+and the file there are directories the marker says nothing about. Any of
+them can be a symlink, and `mkdir -p` walks a symlinked component without a
+word, which puts the write back outside the namespace that exists to
+contain it. Build that chain one component at a time with plain `mkdir`:
+it creates the last component itself, never resolves a link sitting at that
+name, and fails on any existing name, so a success is proof rather than a
+check. Classify the failure (symlink, or not a directory) and refuse it;
+never repair it. Then resolve the finished path and require it to be the
+root plus the components, which catches a component swapped during the
+walk.
+
+A check still leaves a window before the write, so make the write itself
+unable to escape: create the file with `O_CREAT|O_EXCL` (`set -o noclobber`
+inside the writing subshell, which is where a sourced adapter must confine
+a shell option), removing your own stale copy first. `O_EXCL` refuses every
+existing name, a dangling symlink included, so a link planted after the
+check fails the write instead of receiving it.
+
+With that in place, replacing a stale copy of your own metadata file is a
+normal write, and removing a stale copy when this run produces no value for
+it is what stops a reused partition serving a previous run's data. Neither
+is a prune: they touch only files this adapter wrote, at a path whose every
+component from the marked root down has been proven a real directory this
+adapter created or accepted, and they can never reach the payload
+directory.
 
 A path is not the only thing an adapter can overwrite by mistake. Audit
 every filesystem mutation you perform against the same question: `rm`,

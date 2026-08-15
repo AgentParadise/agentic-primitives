@@ -2557,3 +2557,101 @@ def test_memory_config_write_failure_is_never_silent(tmp_path: Path):
     assert "claude-code.json" in result.stderr, result.stderr
     assert "adapter init failed" in result.stderr, result.stderr
     assert not (config_dir / "claude-code.json").exists()
+
+
+def _stage_metadata_namespace_sh(link_at: str) -> str:
+    """Shell that plants a symlinked component inside the reserved namespace.
+
+    Built IN the container, as the agent user, for the reason given on
+    _stage_partition_sh: a host-written fixture carries the host's uid, which
+    differs on CI and is remapped by Docker Desktop, so the agent user would
+    hit permission errors production never sees and the test would pass for
+    the wrong reason.
+
+    The namespace is marked with a VALID owner id, so the claim step succeeds
+    and the only thing left to refuse is the path below the root, which is
+    exactly the property under test. `link_at` is the component that becomes a
+    symlink to /victim, relative to the namespace root.
+    """
+    parent = link_at.rsplit("/", 1)[0] if "/" in link_at else ""
+    marker_b64 = base64.b64encode(_METADATA_OWNER_MARKER.encode()).decode()
+    lines = [
+        f"mkdir -p /spool/{_RESERVED}" + (f"/{parent}" if parent else ""),
+        f"printf %s '{marker_b64}' | base64 -d > /spool/{_RESERVED}/.owner",
+        f"ln -s /victim /spool/{_RESERVED}/{link_at}",
+        'printf %s "operator\'s own data" > /victim/precious.txt',
+    ]
+    return "\n".join(lines)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+@pytest.mark.parametrize(
+    ("link_at", "label"),
+    [
+        pytest.param("w1", "an intermediate partition component", id="intermediate"),
+        pytest.param("w1/p2", "the metadata directory itself", id="meta-dir"),
+    ],
+)
+def test_init_refuses_a_symlinked_component_of_the_metadata_path(
+    tmp_path: Path, link_at: str, label: str
+):
+    """The ownership marker proves the namespace ROOT, not the path written to.
+
+    Metadata lands in ${SPOOL}/.agentic-session-store/${PARTITION}, and
+    PARTITION is multi-component, so between the marked root and the file
+    there are directories the marker says nothing about. `mkdir -p` walks a
+    symlinked component without a word, so both writes (.capture-env, and the
+    state file the exporter is handed) went straight through the link into a
+    directory outside the namespace: truncating an operator file there, with
+    the adapter reporting a successful init.
+
+    Both positions are exercised, because a guard written for the last
+    component only would leave the intermediate ones open, and vice versa.
+    """
+    spool = _host_spool(tmp_path)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    os.chmod(victim, 0o777)
+    mounts = [
+        f"{spool}:/spool",
+        f"{victim}:/victim",
+        f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+    ]
+
+    # Fixture run: no capability env, so no adapter runs and the container is
+    # only being used for its uid.
+    staged = _run(
+        ["bash", "-c", _stage_metadata_namespace_sh(link_at)], extra_mounts=mounts
+    )
+    assert staged.returncode == 0, f"fixture staging failed: {staged.stderr}"
+
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            SessionStoreEnv.PROVIDER: "seshmagic",
+            SessionStoreEnv.URL: STORE_URL,
+            SessionStoreEnv.TAGS: "workflow:w1,phase:p2",
+            SessionStoreEnv.SPOOL: "/spool",
+            SessionStoreEnv.PARTITION: "w1/p2",
+        },
+        extra_mounts=mounts,
+        add_host_gateway=True,
+    )
+
+    assert result.returncode != 0, f"{label}: the workspace started anyway"
+    assert "AGENT_RAN" not in result.stdout, f"{label}: the agent ran anyway"
+    assert "is a symlink" in result.stderr, result.stderr
+    assert f"/spool/{_RESERVED}/{link_at}" in result.stderr, result.stderr
+
+    # Nothing was written THROUGH the link, and nothing of the operator's was
+    # touched or removed on the way to refusing.
+    assert sorted(p.name for p in victim.iterdir()) == ["precious.txt"], (
+        f"{label}: the adapter wrote through the symlink into {victim}"
+    )
+    assert (victim / "precious.txt").read_text() == "operator's own data"
+    # The link itself is left exactly as it was found.
+    link = spool / _RESERVED / link_at
+    assert os.path.islink(link), f"{label}: the adapter replaced the symlink"
+    assert os.readlink(link) == "/victim"

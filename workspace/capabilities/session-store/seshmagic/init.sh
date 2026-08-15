@@ -133,6 +133,20 @@ META_DIR="${__META_ROOT}/${PARTITION}"
 # Claim the reserved namespace, or fail. Every failure path here reports and
 # returns non-zero WITHOUT deleting, truncating or overwriting anything.
 __claim_metadata_namespace() {
+    if [ -L "${__META_ROOT}" ]; then
+        # Checked BEFORE the -d test below, because -d follows a link: a
+        # symlink to a directory passes that test, and the marker would then
+        # be read from, and possibly written to, whatever it points at. The
+        # spool root itself may legitimately be a link or a bind mount
+        # presented under another name; the reserved name under it may not,
+        # because nothing but this adapter is supposed to create it.
+        echo "[session-store] ${__META_ROOT} is a symlink; this adapter reserves" \
+             "that name for its own metadata and will not write through a link" \
+             "it did not create. Nothing was modified. Remove it, or point" \
+             "AGENTIC_SESSION_STORE_SPOOL at a different root." >&2
+        return 1
+    fi
+
     if [ -e "${__META_ROOT}" ] && [ ! -d "${__META_ROOT}" ]; then
         echo "[session-store] ${__META_ROOT} exists and is not a directory;" \
              "this adapter reserves that name for its own metadata and will" \
@@ -168,29 +182,137 @@ __claim_metadata_namespace() {
         printf '%s\n' "${__META_MARKER_ID}" > "${__META_MARKER}" || return 1
     fi
 
-    mkdir -p "${META_DIR}" || return 1
-    if [ ! -d "${META_DIR}" ]; then
-        echo "[session-store] ${META_DIR} is not a directory; refusing to write" \
-             "adapter metadata. Nothing was modified." >&2
+    return 0
+}
+
+# THE MARKER PROVES ONE DIRECTORY. THE WRITES HAPPEN IN ANOTHER.
+#
+# Everything above proves ownership of exactly ${__META_ROOT}. Every metadata
+# write lands in ${META_DIR}, which is ${__META_ROOT}/${PARTITION}, and
+# PARTITION is a multi-component relative path (contract.py accepts any
+# relative path with no `..` segment; "w1/p2" is the shape in use). A marker on
+# the root says nothing about the components below it. Any of them, the last
+# included, could be a SYMLINK, and `mkdir -p` walks a symlinked component
+# without a word: the metadata writes would then truncate a file outside the
+# namespace whose entire purpose is to contain them. That is the unnamespaced
+# write defect again, one directory deeper.
+#
+# So the chain from the marked root down to ${META_DIR} is built one component
+# at a time, with plain `mkdir` and never `mkdir -p`:
+#
+#   * `mkdir` creates the FINAL component itself and does not resolve a
+#     symlink sitting at that name; on any existing name it fails with EEXIST.
+#     A success is therefore PROOF, not a check, that a real directory now
+#     exists at exactly that path because this adapter just created it.
+#   * An EEXIST is classified, never repaired. A symlink, or anything that is
+#     not a directory, is refused loudly with nothing removed or replaced.
+#     Only a real directory is accepted and walked through, which is the
+#     re-run case: inside a namespace the marker proves this adapter owns.
+#
+# TOCTOU. Accepting an existing directory is a check, and a check has a window
+# after it. The window is closed at both ends rather than papered over:
+#
+#   * The completed chain is re-resolved and the PHYSICAL path of ${META_DIR}
+#     must equal the physical path of the marked root plus the partition
+#     components. A component swapped for a link during the walk shows up
+#     here, before the first write.
+#   * The writes cannot escape even so. `.capture-env` is created with
+#     O_CREAT|O_EXCL (`set -o noclobber`, below), which refuses ANY existing
+#     name including a symlink, dangling or not, so a link planted after the
+#     resolve makes the write fail loudly instead of following it.
+__build_owned_metadata_path() {
+    local -a __comps=()
+    local __comp __path="${__META_ROOT}" __expected __root_real __dir_real
+
+    # `read -a`, not word splitting on a reset IFS: splitting would also glob,
+    # and a partition containing `*` is a legal relative path.
+    IFS='/' read -r -a __comps <<< "${PARTITION}"
+
+    for __comp in "${__comps[@]}"; do
+        # A repeated or trailing slash yields an empty component. It is not a
+        # name, so there is nothing to create or classify.
+        [ -n "${__comp}" ] || continue
+        case "${__comp}" in
+            . | ..)
+                echo "[session-store] refusing to build ${META_DIR}: the partition" \
+                     "component '${__comp}' would leave the reserved namespace." \
+                     "Nothing was modified." >&2
+                return 1
+                ;;
+        esac
+        __path="${__path}/${__comp}"
+
+        if mkdir "${__path}" 2>/dev/null; then
+            continue
+        fi
+        if [ -L "${__path}" ]; then
+            echo "[session-store] ${__path} is a symlink, so adapter metadata" \
+                 "written under it would land outside ${__META_ROOT}, the only" \
+                 "directory this adapter has proven it owns. Refusing: the link" \
+                 "is still there and its target was not read, written or" \
+                 "removed. Remove the link, or point" \
+                 "AGENTIC_SESSION_STORE_PARTITION at another path." >&2
+            return 1
+        fi
+        if [ -d "${__path}" ]; then
+            continue
+        fi
+        if [ -e "${__path}" ]; then
+            echo "[session-store] ${__path} exists and is not a directory;" \
+                 "refusing to replace it to make room for adapter metadata." \
+                 "Nothing was modified." >&2
+            return 1
+        fi
+        echo "[session-store] cannot create ${__path}; adapter metadata has" \
+             "nowhere to go. Check that ${__META_ROOT} is writable by uid" \
+             "$(id -u). Nothing was modified." >&2
+        return 1
+    done
+
+    # Containment, on the physical paths. Both sides are resolved, so a spool
+    # reached through a link or a bind mount under another name is fine; what
+    # this rejects is ${META_DIR} resolving anywhere other than the partition
+    # components under the marked root.
+    __root_real="$(readlink -f "${__META_ROOT}" 2>/dev/null || true)"
+    __dir_real="$(readlink -f "${META_DIR}" 2>/dev/null || true)"
+    __expected="${__root_real}"
+    for __comp in "${__comps[@]}"; do
+        [ -n "${__comp}" ] || continue
+        __expected="${__expected}/${__comp}"
+    done
+    if [ -z "${__root_real}" ] || [ -z "${__dir_real}" ] ||
+       [ "${__dir_real}" != "${__expected}" ]; then
+        echo "[session-store] ${META_DIR} resolves to ${__dir_real:-nothing}," \
+             "not to ${__expected}, so a component of it is not the directory" \
+             "this adapter just proved. Refusing to write adapter metadata." \
+             "Nothing was modified." >&2
         return 1
     fi
     return 0
 }
 
-if ! __claim_metadata_namespace; then
+if ! __claim_metadata_namespace || ! __build_owned_metadata_path; then
     # Return before ANY of the layout work below. No symlink is created, so
     # 5.7's symlinks_correct check fails and the operator gets the specific
     # error above plus a named path, rather than a workspace that quietly
     # captured nothing.
-    unset -f __claim_metadata_namespace
+    unset -f __claim_metadata_namespace __build_owned_metadata_path
     echo "[session-store] adapter metadata namespace unavailable; see the doctor output below" >&2
     return 1
 fi
-unset -f __claim_metadata_namespace
+unset -f __claim_metadata_namespace __build_owned_metadata_path
 
-# .capture-env lives in the namespace claimed immediately above, so both of
-# the writes below touch a path this adapter has just PROVEN it owns. The
-# `rm -f` removes exactly one file this adapter wrote, inside that namespace;
+# WHAT IS NOW PROVEN ABOUT ${META_DIR}, EXACTLY, because the writes below rest
+# on it and nothing more: ${__META_ROOT} is a real directory carrying this
+# adapter's ownership marker; every component from it down to ${META_DIR} was
+# either created by a plain `mkdir` that cannot follow a symlink, or found to
+# be a real directory and refused otherwise; and ${META_DIR}'s resolved
+# physical path is that marked root plus the partition components, so no part
+# of it leads out of the namespace. The writes below add O_EXCL on top, so
+# they cannot follow a link planted after that proof either.
+#
+# The `rm -f` removes exactly one regular file this adapter wrote, inside that
+# namespace, and only after the name has been refused if it is anything else;
 # it is not a prune, it cannot reach a transcript, and it exists because a
 # reused partition must never serve a previous run's tags.
 #
@@ -201,6 +323,34 @@ unset -f __claim_metadata_namespace
 # expensive and unfindable after the fact. Failing the init instead costs a
 # workspace start, which is recoverable.
 __CAPTURE_ENV="${META_DIR}/.capture-env"
+
+# The record's own NAME is classified before either branch below touches it,
+# for the same reason every component of the path was. A symlink here is not a
+# file this adapter wrote: `>` would truncate whatever it points at, and
+# `rm -f` would drop the link while reporting the stale record gone. Both
+# branches would then have done something other than what they say. So this is
+# a refusal, and nothing is removed on the way out. The exporter's state file
+# is checked with it: the exporter opens that path itself, so a link left at
+# the name would send its writes out of the namespace, and this adapter is the
+# only thing that looks at the path before it is used.
+__STATE_FILE="${META_DIR}/state.json"
+for __meta_file in "${__CAPTURE_ENV}" "${__STATE_FILE}"; do
+    if [ -L "${__meta_file}" ]; then
+        echo "[session-store] ${__meta_file} is a symlink, so it is not a file" \
+             "this adapter wrote; refusing to write through it or to remove it." \
+             "Nothing was modified." >&2
+        unset __meta_file
+        return 1
+    fi
+    if [ -e "${__meta_file}" ] && [ ! -f "${__meta_file}" ]; then
+        echo "[session-store] ${__meta_file} exists and is not a regular file;" \
+             "refusing to replace it. Nothing was modified." >&2
+        unset __meta_file
+        return 1
+    fi
+done
+unset __meta_file
+
 if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
     # Encode in two checked steps rather than one pipeline inside the printf
     # below. A pipeline reports only its LAST command's status, so a failing
@@ -230,15 +380,34 @@ if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
     #
     # The subshell's status is the redirect's: if the file cannot be opened,
     # printf never runs and the subshell exits non-zero.
+    #
+    # `set -o noclobber` makes `>` open with O_CREAT|O_EXCL, and O_EXCL refuses
+    # to open ANY name that already exists, a symlink included, dangling or
+    # not (verified in this image: `set -o noclobber; printf x > link` fails
+    # for a link to an existing file AND for a dangling one, and the target is
+    # neither truncated nor created). That is what makes this a write that
+    # CANNOT escape the namespace rather than a write behind a check: the
+    # classification above has a window
+    # after it, and a link planted in that window fails this open instead of
+    # being followed. The stale record is removed first because O_EXCL will not
+    # truncate one, and by here the name has already been proven to be a
+    # regular file or absent.
+    #
+    # The option is set INSIDE this subshell only. The file is sourced, so
+    # setting it in the parent would persist into the entrypoint and every
+    # later command it runs; the same reason pipefail is not used above.
     if ! (
         umask 077
-        printf 'SESSION_STORE_TAGS_B64=%s\n' "${__tags_b64}" > "${__CAPTURE_ENV}"
+        set -o noclobber
+        rm -f "${__CAPTURE_ENV}" &&
+            printf 'SESSION_STORE_TAGS_B64=%s\n' "${__tags_b64}" > "${__CAPTURE_ENV}"
     ); then
         unset __tags_b64
         echo "[session-store] could not write ${__CAPTURE_ENV}; this run's" \
              "sessions would be uploaded with the wrong tags or none, and" \
              "nothing later would report it. Check that the directory is" \
-             "writable by uid $(id -u)." >&2
+             "writable by uid $(id -u), and that nothing else is creating that" \
+             "name underneath this adapter." >&2
         return 1
     fi
     unset __tags_b64
@@ -246,7 +415,9 @@ else
     # A reused partition must never serve a PREVIOUS run's tags, so a stale
     # record that survives is misattribution just as surely as a failed write.
     # `rm -f` is silent on an absent file, so the check is on the outcome
-    # rather than on the exit status.
+    # rather than on the exit status. The name has already been refused above
+    # if it is anything but a regular file or absent, so this removes a record
+    # this adapter wrote and nothing else.
     rm -f "${__CAPTURE_ENV}" 2>/dev/null || true
     if [ -e "${__CAPTURE_ENV}" ]; then
         echo "[session-store] this run has no tags but a previous run's" \
@@ -396,8 +567,10 @@ export CODEX_SESSIONS_ROOT="${PART_DIR}/codex"
 # in the reserved namespace with .capture-env rather than into a partition
 # directory the operator may own. The exporter treats this purely as a path to
 # read and write, so relocating it changes nothing for it; finalize.sh derives
-# both directories from this one variable (see its header).
-export EXPORTER_STATE_FILE="${META_DIR}/state.json"
+# both directories from this one variable (see its header). The name was
+# classified with .capture-env above, so what is handed over is a path inside
+# the proven namespace holding either a regular file or nothing.
+export EXPORTER_STATE_FILE="${__STATE_FILE}"
 
 # --- Deliberately NOT set -----------------------------------------------------
 # SESSION_STORE_ORIGIN_HOST is left unset so the exporter reports the real

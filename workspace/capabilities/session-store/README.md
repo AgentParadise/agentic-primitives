@@ -87,10 +87,25 @@ recognise. A refusal returns non-zero, so no symlink is created, the
 `symlinks_correct` doctor check fails, and the workspace stops at preflight
 with a named path.
 
-Inside the claimed namespace, this adapter does replace and remove its own
-files (see `.capture-env` below). That is not the prune coming back: it
-touches only files this adapter wrote, in a directory it has just proven it
-owns, and it cannot reach a transcript.
+The marker proves the namespace ROOT. It says nothing about
+`$PARTITION` below it, which is a multi-component path, so that chain is
+built one component at a time with plain `mkdir` (never `mkdir -p`, which
+walks a symlinked component silently). `mkdir` creates the component itself
+and fails on any existing name without resolving a link at it, so a success
+is proof this adapter created a real directory there; an existing name is
+classified and a symlink, or anything that is not a directory, is refused
+loudly with nothing removed or replaced. The finished path is then resolved
+and required to be the marked root plus the partition components.
+
+Inside that path, this adapter does replace and remove its own files (see
+`.capture-env` below). That is not the prune coming back: it touches only
+files this adapter wrote, at a path whose every component from the marked
+root down has been proven a real directory, and it cannot reach a
+transcript. `.capture-env` and `state.json` are themselves refused if the
+name is held by a symlink or by anything other than a regular file, and
+`.capture-env` is created with `O_CREAT|O_EXCL` (`set -o noclobber` in the
+writing subshell) after the stale copy is removed, so even a link planted
+between the check and the write fails the write rather than receiving it.
 
 A partition written by an older adapter has `state.json` and `.capture-env`
 directly in `$SPOOL/$PARTITION`. `finalize.sh` recognises that layout by the
