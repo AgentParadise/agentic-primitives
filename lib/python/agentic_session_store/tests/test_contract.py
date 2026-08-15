@@ -2,9 +2,11 @@ import dataclasses
 import pathlib
 import re
 import subprocess
+import urllib.parse
 
 import pytest
 from agentic_session_store.contract import (
+    AUTHORITY_PATTERN,
     CAPABILITY,
     Env,
     SessionStoreContract,
@@ -203,6 +205,42 @@ URL_SECRET = "hunter2-store-write"  # a test fixture, not a real credential
         f"https://store.example/token/{URL_SECRET}",
         f"https://store.example/token%2F{URL_SECRET}",
         f"https://store.example/{URL_SECRET}",
+        # Percent-encoded userinfo delimiters. urlsplit decodes none of these,
+        # so it reports a hostname of "user%3ahunter2...@..."-as-reg-name, an
+        # empty username, an empty password and no "@" in netloc: every
+        # field-based test sees a clean origin.
+        f"https://user%3A{URL_SECRET}%40store.example",
+        f"https://user%3a{URL_SECRET}%40store.example",
+        f"https://user%3A{URL_SECRET}%40store.example:8443",
+        f"https://{URL_SECRET}%40store.example",
+        f"https://{URL_SECRET}%40store.example/",
+        # Double-encoded, which a rule that decodes once and re-checks would
+        # pass straight through: unquote("%253A") is the literal "%3A".
+        f"https://user%253A{URL_SECRET}%2540store.example",
+        f"https://user%253a{URL_SECRET}%2540store.example",
+        # Triple-encoded, to pin that the rule is not counting decode rounds.
+        f"https://user%25253A{URL_SECRET}%252540store.example",
+        # A bare percent with no valid hex after it. Not a credential channel
+        # on its own, but the grammar refuses "%" outright rather than
+        # reasoning about what follows it, and that is the property under
+        # test.
+        "https://store.example%",
+        # Backslash, which some parsers fold to "/" and some do not.
+        f"https://store.example\\{URL_SECRET}",
+        # An encoded "/" in authority position: a path smuggled into the host.
+        f"https://store.example%2F{URL_SECRET}",
+        # Encoded query and fragment delimiters.
+        f"https://store.example%3Ftoken={URL_SECRET}",
+        f"https://store.example%23{URL_SECRET}",
+        # Whitespace, raw and encoded. urlsplit strips some control
+        # characters silently, which is exactly the kind of normalisation a
+        # field-based check inherits.
+        f"https://store.example %40{URL_SECRET}",
+        f"https://store.example%20{URL_SECRET}",
+        # A scheme-relative URL has no scheme to allowlist.
+        f"//user:{URL_SECRET}@store.example",
+        # A non-http scheme, which can carry a credential in its own syntax.
+        f"ftp://user:{URL_SECRET}@store.example",
     ],
 )
 def test_url_carrying_credentials_is_rejected(bad_url):
@@ -219,11 +257,16 @@ def test_url_carrying_credentials_is_rejected(bad_url):
     parses to a falsy field, so a check on the parsed fields alone would let
     that shape through.
 
-    The last three are the path, which a blocklist of userinfo/query/fragment
-    accepted. They are why this is now an allowlist: three of four channels
-    covered is the natural end state of a blocklist, and the percent-encoded
-    form shows that enumerating spellings of the fourth would not have
-    finished the job either.
+    The path cases are what a blocklist of userinfo/query/fragment accepted.
+    The percent-encoded, double-encoded and triple-encoded cases are what an
+    allowlist built on `urlsplit` fields accepted afterwards, because
+    `urlsplit` folds an encoded delimiter into ordinary hostname text and a
+    field-based check can only ever see what the parser chose to expose.
+
+    The list is deliberately not a list of reported cases. It is a sweep of
+    encodings and delimiters, including forms nobody has reported, because a
+    test that covers exactly the two spellings from the last bug report is
+    the same mistake as a blocklist that covers exactly the last channel.
     """
     with pytest.raises(ValueError) as excinfo:
         SessionStoreContract.from_env(
@@ -250,6 +293,20 @@ def test_url_carrying_credentials_is_rejected(bad_url):
         # A bare trailing slash is the same origin written two ways, and
         # every caller rstrips it anyway.
         "https://store.internal:8443/",
+        # A bare hostname with no dot, which is what a container on a compose
+        # network or a Kubernetes service name looks like.
+        "http://store:8080",
+        # Underscores appear in real service names on internal networks.
+        "http://session_store:8080",
+        # A punycode IDN is plain ASCII by the time it reaches this gate.
+        "https://xn--exmple-cua.test",
+        # A fully qualified name with the root dot.
+        "https://store.internal.",
+        # IPv4 and IPv6 literals. The bracketed form is the one authority
+        # shape that legitimately needs colons and brackets.
+        "http://127.0.0.1:8080",
+        "http://[::1]:8080",
+        "https://[2001:db8::1]",
     ],
 )
 def test_origin_only_urls_still_parse(good_url):
@@ -262,6 +319,52 @@ def test_origin_only_urls_still_parse(good_url):
         }
     )
     assert c is not None and c.url == good_url
+
+
+def test_the_gate_reads_raw_text_not_parser_fields():
+    """Pin the reason the last round failed, not just the value that showed it.
+
+    `urlsplit` reports a percent-encoded userinfo delimiter as ordinary
+    reg-name text. This asserts that first, so that if a future refactor
+    reintroduces a field-based check the failure names the cause rather than
+    just a rejected string. Then it asserts the contract refuses the value
+    anyway, which is only possible by looking at the raw characters.
+    """
+    smuggled = f"https://user%3A{URL_SECRET}%40store.example"
+    parsed = urllib.parse.urlsplit(smuggled)
+    assert parsed.username is None
+    assert parsed.password is None
+    assert "@" not in parsed.netloc
+    assert parsed.path == ""
+    assert parsed.query == ""
+    assert parsed.fragment == ""
+    assert parsed.hostname and URL_SECRET in parsed.hostname
+
+    with pytest.raises(ValueError, match=str(Env.URL)):
+        SessionStoreContract(
+            provider="seshmagic",
+            url=smuggled,
+            auth=None,
+            tags=None,
+            spool="/spool",
+            partition="w1/p2",
+        )
+
+
+def test_the_authority_grammar_admits_no_percent_at_all():
+    """The rule is "no `%` in the authority", not "no known encoding of `:`
+    and `@`".
+
+    That distinction is the whole fix. A rule phrased over known spellings
+    has to be extended each time someone finds another one, which is the
+    history this field already has. A rule that admits no `%` rejects every
+    encoding of every delimiter at every depth, including ones not yet
+    invented, for one reason that does not need updating.
+    """
+    assert not AUTHORITY_PATTERN.match("store.example%00")
+    assert not AUTHORITY_PATTERN.match("%")
+    assert not AUTHORITY_PATTERN.match("a%zzb")
+    assert AUTHORITY_PATTERN.match("store.example")
 
 
 def test_a_subpath_url_is_refused_loudly():

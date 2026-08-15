@@ -66,21 +66,23 @@ class ExporterEnv(StrEnum):
 
 URL_ORIGIN_ONLY_MESSAGE = (
     "must be an ORIGIN and nothing else: scheme://host[:port], with no "
-    "userinfo, no path, no query and no fragment. Every one of those can "
-    f"carry a credential. Put the store credential in {Env.AUTH}, which is "
+    "userinfo, no path, no query and no fragment, in any encoding. Every one "
+    f"of those can carry a credential. Put the store credential in {Env.AUTH}, which is "
     "never printed. The offending value is deliberately NOT echoed here, "
     "because this message reaches stderr and the durable doctor audit file."
 )
 """Why a URL that is more than an origin is refused, without repeating it.
 
-ALLOWLIST, NOT BLOCKLIST. This started as a blocklist and lost twice: it
-rejected userinfo, then gained query and fragment, and a later review found
-`https://store.example/token/hunter2` and its percent-encoded twin sailing
-through the path, which no entry covered. A blocklist keeps losing that way
-because each round can only name the channel just found. Scheme, host and
-port is the complete set of things the store endpoint needs, so accepting
-exactly that cannot be outflanked: an unanticipated URL component is refused
-by default rather than carried.
+ALLOWLIST, NOT BLOCKLIST. This started as a blocklist and lost three times:
+it rejected userinfo, then gained query and fragment, then a review found
+`https://store.example/token/hunter2` sailing through the path, and then
+`https://user%3Asecret%40store.example` sailing through a hostname that
+`urlsplit` had normalised into looking clean. Each round could only name the
+channel just found. Scheme, host and port is the complete set of things the
+store endpoint needs, so accepting exactly that, spelled as a grammar over
+the raw text, cannot be outflanked: an unanticipated URL component or
+encoding is refused by default rather than carried. See AUTHORITY_PATTERN for
+why the check reads raw characters rather than parser fields.
 
 The failure mode inverts too. A subpath deployment (a store behind a reverse
 proxy at `/api`) now breaks loudly at preflight, before any agent work, with
@@ -104,13 +106,82 @@ the value.
 """
 
 
+AUTHORITY_PATTERN = re.compile(
+    r"^(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?$"
+)
+"""The complete grammar the RAW authority substring must match.
+
+RAW TEXT, NOT PARSED FIELDS. The previous gate read `urlsplit()` fields, and
+`urlsplit` treats a percent-encoded userinfo delimiter as ordinary reg-name
+text: `https://user%3Asecret%40store.example` has a `hostname` of
+`user%3asecret%40store.example`, an empty `username`, an empty `password` and
+no `@` anywhere in `netloc`, so every field-based test reports a clean
+origin while the value still carries a credential. Any check that runs after
+a parser has normalised the text can only see what the parser chose to
+expose. This one runs before, on the characters the operator actually wrote.
+
+WHY THIS CLOSES THE CLASS. The set of allowed characters contains no `%`, so
+there is no way to spell an encoded delimiter at all. `%3A`, `%3a`, `%40`,
+`%2540` and `%253A` are rejected for the same single reason as `:` and `@`
+in userinfo position: they are not in the grammar. Double encoding does not
+help, because it adds a `%` rather than removing one, and case does not help,
+because the rule never looks at what follows the `%`. A future encoding
+nobody has thought of is rejected by default too, which is the property the
+last four rounds of this fix did not have.
+
+Brackets and inner colons are admitted only inside an IPv6 literal, which is
+the one legitimate authority form that needs them.
+"""
+
+
+def _split_raw_authority(url: str) -> tuple[str, str]:
+    """Return (authority, remainder) from the RAW url text, undecoded.
+
+    The authority is everything between `://` and the first `/`, `?` or `#`,
+    per RFC 3986's own delimiter set. The remainder is whatever followed it,
+    so a caller can require that to be empty (or a bare `/`) and cover path,
+    query and fragment with one rule instead of three.
+
+    Raises ValueError when there is no `://` at all, which is the same
+    outcome a non-http scheme gets and is checked by the caller.
+    """
+    marker = "://"
+    index = url.find(marker)
+    if index < 0:
+        raise ValueError(f"{Env.URL} must use the http or https scheme")
+    rest = url[index + len(marker) :]
+    end = len(rest)
+    for delimiter in "/?#":
+        found = rest.find(delimiter)
+        if found != -1:
+            end = min(end, found)
+    return rest[:end], rest[end:]
+
+
 def _require_origin_only_url(url: str) -> None:
     """Raise unless the store URL is exactly scheme://host[:port].
 
-    Checks the raw characters as well as the parsed fields: an empty-but-
-    present fragment or query (`http://store/#`) parses to a falsy field
-    while still being a URL shape this refuses to carry.
+    The grammar is checked on the raw text: the authority substring must
+    match AUTHORITY_PATTERN before any decoding, and nothing may follow it
+    except at most a single `/`. That covers userinfo, path, query and
+    fragment, in every encoding, with one positive rule.
+
+    `urlsplit` is still consulted afterwards, for the port range and for the
+    handful of malformed forms it rejects outright. It is a second gate, not
+    the gate.
     """
+    raw_authority, remainder = _split_raw_authority(url)
+
+    if not AUTHORITY_PATTERN.match(raw_authority):
+        raise ValueError(f"{Env.URL} {URL_ORIGIN_ONLY_MESSAGE}")
+
+    # A trailing "/" is the same origin written two ways, and rstrip'ing it is
+    # what every caller does anyway. Anything else here is a path, a query or
+    # a fragment, each of which has already carried a credential past an
+    # earlier version of this gate.
+    if remainder not in ("", "/"):
+        raise ValueError(f"{Env.URL} {URL_ORIGIN_ONLY_MESSAGE}")
+
     try:
         parsed = urllib.parse.urlsplit(url)
     except ValueError:
@@ -137,13 +208,16 @@ def _require_origin_only_url(url: str) -> None:
     if not parsed.hostname:
         raise ValueError(f"{Env.URL} must name a host")
 
+    # Unreachable while AUTHORITY_PATTERN runs first: a value that reaches
+    # here has an authority containing neither "@" nor "%" nor any character
+    # outside the reg-name set, and a remainder of "" or "/". These are kept
+    # deliberately, as a second gate, so that a future loosening of the
+    # pattern cannot silently restore userinfo, path, query or fragment
+    # without also deleting an explicit refusal of each.
     if (
         parsed.username
         or parsed.password
         or "@" in parsed.netloc
-        # A trailing "/" is the same origin written two ways, and rstrip'ing
-        # it is what every caller does anyway. Anything else in the path is a
-        # channel that has already carried a credential past this gate.
         or parsed.path not in ("", "/")
         or "?" in url
         or "#" in url
