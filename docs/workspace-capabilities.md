@@ -191,7 +191,39 @@ into a hard stop with a specific cause.
 Keep it portable shell. No `docker`, no host paths, no substrate
 assumptions.
 
-Three hazards `session-store` hit that are worth knowing before you hit them:
+Four hazards `session-store` hit that are worth knowing before you hit them.
+The first is a premise rather than a pitfall, so read it before you write a
+line:
+
+- **`set -e` does NOT work in your `init.sh`, no matter what you write at the
+  top of it.** Entrypoint 5.6 sources the adapter as the condition of an `if`
+  (`if . "${__init}"; then`), and bash disables errexit inside a command
+  evaluated as a condition, sourced files included. So a failing command does
+  not stop your adapter, and a later successful command makes it return zero,
+  which the lifecycle records as a healthy init. Verify it yourself in ten
+  seconds:
+
+  ```sh
+  printf 'set -e\nfalse\necho REACHED\n' > /tmp/p.sh
+  bash -c 'if . /tmp/p.sh; then echo "rc=0"; fi'
+  # REACHED
+  # rc=0
+  ```
+
+  **Check every command whose failure should matter, and `return 1`
+  explicitly.** Both shipped adapters do this. The cost of getting it wrong
+  is not a crash: it is a capability that reports ready and is silently
+  misconfigured, which for `session-store` meant transcripts uploading with
+  no tags and no error anywhere. Note this applies to `init.sh` alone.
+  `doctor.sh` is executed rather than sourced, so its `set -e` behaves
+  normally.
+
+  **`finalize.sh` is the reference implementation for this.** It declares
+  `set -u` and deliberately no `set -e`, because errexit would break its
+  contract of always exiting 0, so all of its error handling is explicit.
+  Two adapters declaring `set -e` and one omitting it looks like an
+  inconsistency and is not: the one omitting it is the one that was written
+  against how the shell actually behaves.
 
 - **Symlinks, not bind-mounts, under `$HOME`.** Docker creates a bind-mount
   root as root-owned while the container runs as uid 1000 (verified in
