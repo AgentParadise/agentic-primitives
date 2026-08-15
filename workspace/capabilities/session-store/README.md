@@ -259,6 +259,31 @@ assigns, which is why the `|| true` is correct rather than a swallowed
 error. It needs `bash`; the `$(...)` form above is the portable
 approximation.
 
+**Check that the decode succeeded, in a step where its status is
+visible.** The byte-exact form cannot do it: the `|| true` is for `read`,
+and `base64` runs inside a process substitution whose status is not the
+status of the enclosing command and is observed by nothing. A corrupt or
+truncated payload then yields an empty or partial tag string that looks
+exactly like a successful recovery. In the `$(...)` form the status does
+survive (`base64` is the last command of the pipeline, so the assignment
+carries its status), but it still has to be tested. `finalize.sh` decodes
+twice for this reason: once discarding the output, purely to take the
+status, and again to keep the bytes.
+
+```bash
+if ! printf '%s' "${b64}" | base64 -d > /dev/null 2>&1; then
+    # report it: recover nothing, export nothing, and say the upload
+    # will be unattributable
+fi
+```
+
+A payload that does not decode must never be presented as attribution.
+`finalize.sh` leaves `SESSION_STORE_TAGS` unset (an exported empty string
+reads as a real value), names the file in a `WARNING` on stderr, and
+sweeps on: the transcript still reaches the store, the spool is retained,
+and the record is left on disk so the session can be re-attributed by
+hand.
+
 #### Legacy records: a migration affordance, not a supported format
 
 `finalize.sh` falls back to a bare `SESSION_STORE_TAGS=<value>` line when no

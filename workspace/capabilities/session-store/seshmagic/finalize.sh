@@ -109,26 +109,48 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
         # init.sh writes this file only when the tag string is non-empty, so
         # that shape is already corrupt, and "recovered an empty tag" is the
         # same false signal in a different costume. A _B64 record that fails
-        # to decode is treated the same way, for the same reason.
+        # to decode is its own case, reported as such: see decode_failed
+        # below.
         __tags_value=""
         __tags_source="none"
 
         __tags_b64="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${__capture_env}" | head -1)"
         if [ -n "${__tags_b64}" ]; then
-            # `read -r -d ''` rather than `$(base64 -d)`: command
-            # substitution strips ALL trailing newlines, so a tag that
-            # legitimately ends in one would not round-trip byte-exact.
-            # Reading to a NUL delimiter (which a value out of the
-            # environment can never contain) keeps every byte. read returns
-            # non-zero at EOF without finding the delimiter and still
-            # assigns, which is why the `|| true` is correct and not a
-            # swallowed error. The later plain assignment out of
-            # __tags_value keeps those trailing bytes too, where a command
-            # substitution there would have thrown them away again.
-            IFS= read -r -d '' __tags_value \
-                < <(printf '%s' "${__tags_b64}" | base64 -d 2>/dev/null) || true
-            if [ -n "${__tags_value}" ]; then
-                __tags_source="b64"
+            # THE DECODE STATUS IS CHECKED IN A STEP OF ITS OWN, because the
+            # read below cannot report it. A process substitution's exit
+            # status is not the status of the command it feeds, and nothing
+            # else looks at it either, so a corrupt or truncated payload used
+            # to leave __tags_value empty or partial with no error anywhere:
+            # the sweep then uploaded the session untagged while the file's
+            # only complaint was the generic "no usable record". Silent
+            # misattribution is the failure this whole recovery path exists
+            # to prevent.
+            #
+            # Here `base64` is the LAST command of the pipeline, so the
+            # pipeline's status IS base64's status without needing pipefail,
+            # and the decoded bytes are thrown away: this run answers only
+            # "does the payload decode", and the read below is what keeps the
+            # bytes.
+            if ! printf '%s' "${__tags_b64}" | base64 -d > /dev/null 2>&1; then
+                __tags_source="decode_failed"
+            else
+                # `read -r -d ''` rather than `$(base64 -d)`: command
+                # substitution strips ALL trailing newlines, so a tag that
+                # legitimately ends in one would not round-trip byte-exact.
+                # Reading to a NUL delimiter (which a value out of the
+                # environment can never contain) keeps every byte. read
+                # returns non-zero at EOF without finding the delimiter and
+                # still assigns, which is why the `|| true` is correct and
+                # not a swallowed error; the decode's own status was taken
+                # above, where it is observable. The later plain assignment
+                # out of __tags_value keeps those trailing bytes too, where a
+                # command substitution there would have thrown them away
+                # again.
+                IFS= read -r -d '' __tags_value \
+                    < <(printf '%s' "${__tags_b64}" | base64 -d 2>/dev/null) || true
+                if [ -n "${__tags_value}" ]; then
+                    __tags_source="b64"
+                fi
             fi
         else
             # LEGACY record, written by an init.sh from before the base64
@@ -168,6 +190,27 @@ if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
                      "adapter. Tags were recovered, but a tag containing a newline" \
                      "would have been truncated when it was written" >&2
                 echo "[finalize] recovered tags from ${__capture_env}" >&2
+                ;;
+            decode_failed)
+                # A WARNING, NOT A HARD FAILURE, and deliberately so. This
+                # hook must always exit 0 and must never alter the run's exit
+                # code, so "fatal" could only mean skipping the sweep, which
+                # would trade an unattributable upload for a transcript that
+                # never reaches the store at all, on the strength of a
+                # decision nobody outside stderr would see. Untagged is
+                # recoverable: the store holds the transcript, the spool is
+                # retained, and the record below is still on disk to be
+                # decoded by hand and the session re-attributed. What must
+                # never happen is this passing as successful attribution, so
+                # SESSION_STORE_TAGS is left unset (an empty export would
+                # look like a real value) and the failure is named.
+                echo "[finalize] WARNING: the SESSION_STORE_TAGS_B64 record in" \
+                     "${__capture_env} does not decode as base64 (corrupt or" \
+                     "truncated); no tags were recovered and this upload will be" \
+                     "unattributable. The record is left in place: recover it with" \
+                     "\`sed -n 's/^SESSION_STORE_TAGS_B64=//p' ${__capture_env} |" \
+                     "head -1 | base64 -di\` and re-attribute the session in the" \
+                     "store" >&2
                 ;;
             *)
                 # No recovery happened, so nothing claims one. Leave

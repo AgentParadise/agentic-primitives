@@ -1152,7 +1152,6 @@ unset SESSION_STORE_TAGS
         pytest.param("TRUNCATED", id="foreign-content"),
         pytest.param("SESSION_STORE_TAGS_B64=\n", id="current-record-empty-value"),
         pytest.param("SESSION_STORE_TAGS=\n", id="legacy-record-empty-value"),
-        pytest.param("SESSION_STORE_TAGS_B64=!!!not!!!base64!!!\n", id="undecodable"),
     ],
 )
 def test_unrecognised_capture_env_claims_no_recovery(tmp_path: Path, content: str):
@@ -1171,6 +1170,10 @@ def test_unrecognised_capture_env_claims_no_recovery(tmp_path: Path, content: st
     These are not hypothetical shapes. A spool volume outliving the image is
     the case this whole branch exists to serve, and a truncated or foreign
     file is what such a volume produces.
+
+    A record that IS present but fails to decode is a different case with a
+    report of its own, and lives in
+    test_undecodable_capture_env_reports_the_decode_failure.
     """
     spool = _host_spool(tmp_path)
     # Written in the container, as the agent user, mode 0600: the file has
@@ -1216,6 +1219,92 @@ unset SESSION_STORE_TAGS
     # string) and the assertion below would pass against the bug it exists
     # to catch.
     assert "no usable tag record" in result.stderr, result.stderr
+    match = re.search(r"TAGS_SEEN_START(.*?)TAGS_SEEN_END", result.stderr, re.DOTALL)
+    assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert match.group(1) == "<unset>", (
+        f"SESSION_STORE_TAGS must stay unset, got {match.group(1)!r}"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("SESSION_STORE_TAGS_B64=!!!not!!!base64!!!\n", id="not-base64"),
+        # A real record with its payload cut short: base64.b64encode of
+        # "workflow:w1 phase:p2" with the tail removed, which is what a
+        # partial write of .capture-env leaves behind.
+        pytest.param(
+            "SESSION_STORE_TAGS_B64="
+            + base64.b64encode(b"workflow:w1 phase:p2").decode()[:-3]
+            + "\n",
+            id="truncated-payload",
+        ),
+    ],
+)
+def test_undecodable_capture_env_reports_the_decode_failure(
+    tmp_path: Path, content: str
+):
+    """A _B64 record that does not decode must be reported as a DECODE
+    failure, not swallowed into an untagged upload that looks routine.
+
+    `base64 -d` ran inside a process substitution feeding `read`, and a
+    process substitution's exit status is not the status of the enclosing
+    command. Nothing looked at it, so a corrupt or truncated payload
+    produced empty or partial tags and the sweep uploaded anyway. That is
+    silent misattribution, which is the failure this recovery path exists
+    to prevent: a session stored with the wrong tags is worse than one that
+    failed loudly, because nobody learns it is wrong.
+
+    The contract asserted here: finalize.sh still exits 0 and still sweeps
+    (a skipped upload would trade an unattributable session for a lost
+    one), but it names the decode failure on stderr, claims no recovery,
+    and leaves SESSION_STORE_TAGS unset so nothing downstream can mistake
+    an empty string for a real value.
+    """
+    spool = _host_spool(tmp_path)
+    # In the container, as the agent user, mode 0600: see _stage_partition_sh.
+    stage = _stage_partition_sh(
+        "undecodable-test",
+        {".capture-env": content},
+        modes={".capture-env": 0o600},
+    )
+
+    fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
+    script = f"""
+set -e
+{stage}
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+printf 'TAGS_SEEN_START%sTAGS_SEEN_END\\n' "${{SESSION_STORE_TAGS-<unset>}}"
+exit 0
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export SESSION_STORE_URL=http://unused.invalid
+export EXPORTER_STATE_FILE=/spool/undecodable-test/state.json
+unset SESSION_STORE_TAGS
+{fin}
+"""
+    result = _run(["bash", "-c", script], extra_mounts=[f"{spool}:/spool"])
+    assert result.returncode == 0, f"finalize.sh must always exit 0: {result.stderr}"
+    # The decode failure is named, and named as a decode failure: "no
+    # usable tag record" would describe a file with no record at all and
+    # send the operator looking for the wrong thing.
+    assert "does not decode as base64" in result.stderr, (
+        f"a decode failure must be visible on stderr: {result.stderr!r}"
+    )
+    assert "unattributable" in result.stderr, result.stderr
+    assert "recovered tags from" not in result.stderr, (
+        "claimed a recovery that did not happen"
+    )
+    assert "legacy pre-base64" not in result.stderr, (
+        "a present-but-corrupt record is not a legacy record"
+    )
+    # ${SESSION_STORE_TAGS-<unset>}, without the colon, on purpose: `:-`
+    # would report "<unset>" for an exported empty string too, and pass
+    # against the bug this exists to catch.
     match = re.search(r"TAGS_SEEN_START(.*?)TAGS_SEEN_END", result.stderr, re.DOTALL)
     assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert match.group(1) == "<unset>", (
