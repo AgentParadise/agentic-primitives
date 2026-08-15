@@ -5,6 +5,27 @@
 # SeshMagicSessionExporter reads. Sourced by /opt/agentic/entrypoint.sh
 # section 5.6 so exports propagate to later process spawns.
 
+# ERREXIT DOES NOT FIRE IN THIS FILE. Kept only for the case where somebody
+# runs this script directly, and stated plainly so the next reader does not
+# rebuild the assumption a previous one did.
+#
+# entrypoint.sh 5.6 sources this file as the condition of an `if`
+# (`if . "${__init}"; then`). Bash disables errexit for the whole command that
+# forms such a condition, including a sourced script, so every `set -e` below
+# this line is inert in production. Verified directly:
+#
+#   $ printf 'set -e\nfalse\necho REACHED\n' > probe.sh
+#   $ bash -c 'if . probe.sh; then echo "rc=0"; fi'
+#   REACHED
+#   rc=0
+#
+# So a failing command here does NOT stop the file, and a later successful
+# command makes the source return zero, which the lifecycle records as a
+# successful init. EVERY command below whose failure matters is therefore
+# checked EXPLICITLY, and reports with `return 1` (which the `if` at 5.6 does
+# see) or warns to stderr. The fix is not to change how 5.6 sources this file:
+# that call site is generic lifecycle code shared by every capability, and the
+# withhold-attribution diff around it depends on its current shape.
 set -e
 
 SPOOL="${AGENTIC_SESSION_STORE_SPOOL:-/spool}"
@@ -91,7 +112,16 @@ fi
 # does not recognise, is REFUSED LOUDLY. It is never emptied, overwritten or
 # reused. Refusing costs a workspace start, which is recoverable; overwriting
 # somebody else's file is not.
-mkdir -p "${PART_DIR}"
+# Checked, not bare: without a writable partition there is nowhere for a
+# transcript to land, so continuing would produce a workspace that reports a
+# successful init and captures nothing.
+if ! mkdir -p "${PART_DIR}"; then
+    echo "[session-store] cannot create the transcript partition ${PART_DIR};" \
+         "nothing would be captured. Check that the spool is mounted and" \
+         "writable by uid $(id -u), or point AGENTIC_SESSION_STORE_SPOOL" \
+         "somewhere that is." >&2
+    return 1
+fi
 
 __META_ROOT="${SPOOL}/.agentic-session-store"
 __META_MARKER="${__META_ROOT}/.owner"
@@ -163,21 +193,68 @@ unset -f __claim_metadata_namespace
 # `rm -f` removes exactly one file this adapter wrote, inside that namespace;
 # it is not a prune, it cannot reach a transcript, and it exists because a
 # reused partition must never serve a previous run's tags.
+#
+# EVERY STEP BELOW IS CHECKED, and a failure ends the adapter with `return 1`.
+# This is the write whose silent failure costs the most: the session still
+# uploads, but with the wrong tags or none, and nothing says so. The operator
+# is building a corpus to run learning loops over, so a misattributed row is
+# expensive and unfindable after the fact. Failing the init instead costs a
+# workspace start, which is recoverable.
 __CAPTURE_ENV="${META_DIR}/.capture-env"
 if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
+    # Encode in two checked steps rather than one pipeline inside the printf
+    # below. A pipeline reports only its LAST command's status, so a failing
+    # `base64` in `$(... | base64 | tr -d '\n')` would have produced an empty
+    # substitution and a perfectly well-formed record claiming the run had no
+    # tags. Splitting it makes each stage's status visible without turning on
+    # pipefail, which is a shell option this file cannot set: it is sourced,
+    # so the setting would persist into the entrypoint and every later
+    # command in it.
+    #
+    # `printf '%s'` (no trailing newline) so the encoded bytes are exactly the
+    # tag string, and `tr -d '\n'` because GNU base64 wraps its output at 76
+    # columns, which would put the record back on multiple lines.
+    if ! __tags_b64_wrapped="$(printf '%s' "${AGENTIC_SESSION_STORE_TAGS}" | base64)" ||
+       ! __tags_b64="$(printf '%s' "${__tags_b64_wrapped}" | tr -d '\n')" ||
+       [ -z "${__tags_b64}" ]; then
+        unset __tags_b64_wrapped __tags_b64
+        echo "[session-store] failed to encode the correlation tags for" \
+             "${__CAPTURE_ENV}; a recovery sweep would upload this session" \
+             "with no tags at all, so the adapter is failing instead." >&2
+        return 1
+    fi
+    unset __tags_b64_wrapped
+
     # umask, not a post-hoc chmod: a post-hoc chmod leaves a window where the
     # file is created world-readable before the permission fix lands.
-    (
+    #
+    # The subshell's status is the redirect's: if the file cannot be opened,
+    # printf never runs and the subshell exits non-zero.
+    if ! (
         umask 077
-        # `printf '%s'` (no trailing newline) so the encoded bytes are exactly
-        # the tag string, and `tr -d '\n'` because GNU base64 wraps its output
-        # at 76 columns, which would put the record back on multiple lines.
-        printf 'SESSION_STORE_TAGS_B64=%s\n' \
-            "$(printf '%s' "${AGENTIC_SESSION_STORE_TAGS}" | base64 | tr -d '\n')" \
-            > "${__CAPTURE_ENV}"
-    )
+        printf 'SESSION_STORE_TAGS_B64=%s\n' "${__tags_b64}" > "${__CAPTURE_ENV}"
+    ); then
+        unset __tags_b64
+        echo "[session-store] could not write ${__CAPTURE_ENV}; this run's" \
+             "sessions would be uploaded with the wrong tags or none, and" \
+             "nothing later would report it. Check that the directory is" \
+             "writable by uid $(id -u)." >&2
+        return 1
+    fi
+    unset __tags_b64
 else
-    rm -f "${__CAPTURE_ENV}"
+    # A reused partition must never serve a PREVIOUS run's tags, so a stale
+    # record that survives is misattribution just as surely as a failed write.
+    # `rm -f` is silent on an absent file, so the check is on the outcome
+    # rather than on the exit status.
+    rm -f "${__CAPTURE_ENV}" 2>/dev/null || true
+    if [ -e "${__CAPTURE_ENV}" ]; then
+        echo "[session-store] this run has no tags but a previous run's" \
+             "${__CAPTURE_ENV} could not be removed; a recovery sweep would" \
+             "attribute these sessions to the earlier run. Refusing to start" \
+             "rather than mislabel them." >&2
+        return 1
+    fi
 fi
 
 # --- Spool layout -------------------------------------------------------------

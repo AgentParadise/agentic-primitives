@@ -11,10 +11,12 @@ See ADR-040 and docs/superpowers/sdd/2026-08-12-workspace-capability-modules/.
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
 import os
 import re
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -47,6 +49,33 @@ STORE_URL_FROM_HOST = os.getenv("SESSION_STORE_URL_FROM_HOST", "http://127.0.0.1
 # hindsight adapter. Mirrors test_entrypoint_memory.py's own reachability
 # check.
 HINDSIGHT_BACKEND_URL = os.getenv("HINDSIGHT_BACKEND_URL_FROM_HOST", "http://127.0.0.1:9077")
+
+
+def _capability_env_enum(package: str):
+    """Load a capability package's `Env` StrEnum straight from its source file.
+
+    Each capability declares every env var name it reads exactly once, in its
+    contract module. Those packages are not installed in the repo-root test
+    environment, so the module is executed by path rather than the names being
+    restated here: a rename then breaks at collection instead of at runtime in
+    a container. The contract modules import stdlib only, so loading one has
+    no side effects.
+    """
+    contract = (
+        Path(__file__).parents[2] / "lib" / "python" / package / package / "contract.py"
+    )
+    spec = importlib.util.spec_from_file_location(f"_{package}_contract", contract)
+    module = importlib.util.module_from_spec(spec)
+    # Registered before execution because @dataclass resolves its own module
+    # out of sys.modules while the class body is being processed, and raises
+    # if it is not there yet.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.Env
+
+
+SessionStoreEnv = _capability_env_enum("agentic_session_store")
+MemoryEnv = _capability_env_enum("agentic_memory")
 
 
 def _hindsight_reachable() -> bool:
@@ -2427,3 +2456,104 @@ def test_withhold_ignores_a_name_that_is_not_a_shell_identifier():
     )
     assert "kept-out-of-the-agent" not in result.stdout, result.stdout
     assert "invalid name in AGENTIC_CAPABILITY_WITHHOLD" in result.stderr
+
+
+# The ownership marker init.sh writes into the reserved namespace. Restated
+# here (not an env var, so it has no Env member) to build a namespace the
+# adapter accepts as its own; see __META_MARKER_ID in the seshmagic init.sh.
+_METADATA_OWNER_MARKER = "agentic-session-store-metadata-v1\n"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_capture_env_write_failure_is_never_silent(tmp_path: Path):
+    """A failed .capture-env write must fail the adapter, not pass quietly.
+
+    init.sh carries `set -e`, but entrypoint.sh 5.6 sources it as the
+    condition of an `if`, and bash disables errexit for a command evaluated
+    as a condition. So every unchecked command in that file ran with no
+    stop-on-failure at all, and a later successful command made the source
+    return zero: the lifecycle recorded a successful init.
+
+    For this write that is the expensive failure. The session still uploads,
+    with the wrong tags or none, and nothing reports it, so the corpus gains
+    rows nobody can tell are misattributed.
+
+    The namespace is pre-built here with a VALID ownership marker, so the
+    adapter's claim step succeeds and the only thing that fails is the write
+    itself: the partition metadata directory is not writable by the agent.
+    """
+    spool = _host_spool(tmp_path)
+    reserved = spool / _RESERVED
+    reserved.mkdir()
+    (reserved / ".owner").write_text(_METADATA_OWNER_MARKER)
+    meta_dir = reserved / "w1" / "p2"
+    meta_dir.mkdir(parents=True)
+    os.chmod(reserved, 0o777)
+    os.chmod(reserved / "w1", 0o777)
+    # Readable and traversable, NOT writable: `mkdir -p` on it still succeeds,
+    # so the adapter gets all the way to the write before anything fails.
+    os.chmod(meta_dir, 0o555)
+
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            SessionStoreEnv.PROVIDER: "seshmagic",
+            SessionStoreEnv.URL: STORE_URL,
+            SessionStoreEnv.TAGS: "workflow:w1,phase:p2",
+            SessionStoreEnv.SPOOL: "/spool",
+            SessionStoreEnv.PARTITION: "w1/p2",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert not (meta_dir / ".capture-env").exists(), (
+        "the fixture did not actually block the write"
+    )
+    # The adapter names the file and says what the consequence would be.
+    assert "could not write" in result.stderr, result.stderr
+    assert ".capture-env" in result.stderr, result.stderr
+    # And the failure reaches the lifecycle rather than stopping at a message:
+    # 5.6 reports the non-zero source, and because init returned before the
+    # symlink work, 5.7's symlinks_correct fails and the agent never runs.
+    assert "adapter init failed" in result.stderr, result.stderr
+    assert result.returncode != 0, "the workspace started with wrong tags anyway"
+    assert "AGENT_RAN" not in result.stdout, result.stdout
+
+
+@pytest.mark.integration
+def test_memory_config_write_failure_is_never_silent(tmp_path: Path):
+    """The same inert-errexit defect in the sibling capability's adapter.
+
+    memory/hindsight/init.sh is sourced through the same generic line, so its
+    `set -e` is inert too. An unwritable ~/.hindsight meant the requested
+    config (extra recall banks, for instance) was silently dropped and the run
+    proceeded looking healthy.
+
+    Only stderr is asserted: whether the container exits non-zero depends on
+    the memory doctor and on backend reachability, and the property under test
+    is that the failure is reported at all.
+    """
+    config_dir = tmp_path / "hindsight-config"
+    config_dir.mkdir()
+    os.chmod(config_dir, 0o555)
+
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={
+            "AGENTIC_CAPABILITIES": "memory",
+            MemoryEnv.PROVIDER: "hindsight",
+            MemoryEnv.URL: HINDSIGHT_BACKEND_URL,
+            MemoryEnv.NAMESPACE: "capability-init-audit",
+            MemoryEnv.CONFIG_JSON: '{"recallAdditionalBanks": ["shared"]}',
+        },
+        extra_mounts=[f"{config_dir}:/home/agent/.hindsight:ro"],
+    )
+    assert "could not write" in result.stderr, result.stderr
+    assert "claude-code.json" in result.stderr, result.stderr
+    assert "adapter init failed" in result.stderr, result.stderr
+    assert not (config_dir / "claude-code.json").exists()
