@@ -474,20 +474,33 @@ never repair it. Then resolve the finished path and require it to be the
 root plus the components, which catches a component swapped during the
 walk.
 
-A check still leaves a window before the write, so make the write itself
-unable to escape: create the file with `O_CREAT|O_EXCL` (`set -o noclobber`
-inside the writing subshell, which is where a sourced adapter must confine
-a shell option), removing your own stale copy first. `O_EXCL` refuses every
-existing name, a dangling symlink included, so a link planted after the
-check fails the write instead of receiving it.
+A check still leaves a window before the write, so narrow it at the write
+too: create the file with `O_CREAT|O_EXCL` (`set -o noclobber` inside the
+writing subshell, which is where a sourced adapter must confine a shell
+option), removing your own stale copy first. `O_EXCL` refuses every
+existing name, a dangling symlink included, so a link planted at that name
+after the check fails the write instead of receiving it.
+
+**Know what that buys and say so where you claim it.** `O_EXCL` constrains
+the FINAL component and nothing above it: the kernel resolves the parent
+directories on the way to that name as it always does, so a parent swapped
+for a symlink after your walk finished is still followed. And a path you
+merely hand onward (the exporter's `state.json`, opened later by another
+process, after the agent has run) has no `O_EXCL` cover at all; classifying
+its name at init time rules out a link that is already there and nothing
+that appears afterwards. Both are races that a writer with access to the
+spool can win. Shell cannot close them, since that needs per-component
+`openat` with `O_NOFOLLOW` from a directory fd, so write them down as known
+limitations. A comment claiming the writes cannot escape is worse than no
+comment: the next reader plans around a guarantee that is not there.
 
 With that in place, replacing a stale copy of your own metadata file is a
 normal write, and removing a stale copy when this run produces no value for
 it is what stops a reused partition serving a previous run's data. Neither
 is a prune: they touch only files this adapter wrote, at a path whose every
-component from the marked root down has been proven a real directory this
-adapter created or accepted, and they can never reach the payload
-directory.
+component from the marked root down was proven a real directory this
+adapter created or accepted when the walk ran, and no payload directory
+lies on that path.
 
 A path is not the only thing an adapter can overwrite by mistake. Audit
 every filesystem mutation you perform against the same question: `rm`,

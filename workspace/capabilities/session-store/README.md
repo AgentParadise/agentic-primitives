@@ -100,12 +100,27 @@ and required to be the marked root plus the partition components.
 Inside that path, this adapter does replace and remove its own files (see
 `.capture-env` below). That is not the prune coming back: it touches only
 files this adapter wrote, at a path whose every component from the marked
-root down has been proven a real directory, and it cannot reach a
-transcript. `.capture-env` and `state.json` are themselves refused if the
-name is held by a symlink or by anything other than a regular file, and
+root down was proven a real directory when the walk ran, and no transcript
+directory lies on it. `.capture-env` and `state.json` are themselves
+refused if the name is held by a symlink or by anything else that is not a
+regular file, and
 `.capture-env` is created with `O_CREAT|O_EXCL` (`set -o noclobber` in the
-writing subshell) after the stale copy is removed, so even a link planted
-between the check and the write fails the write rather than receiving it.
+writing subshell) after the stale copy is removed, so a link planted at
+that name between the check and the write fails the write rather than
+receiving it.
+
+**What that does not cover**, stated here so nobody plans around a
+guarantee the code does not provide. `O_EXCL` constrains the FINAL
+component only; the kernel still resolves the directories above it
+normally, so a parent swapped for a symlink after the walk and the resolve
+is followed, and the write lands wherever it points. `state.json` gets no
+`O_EXCL` cover at all: `init.sh` only classifies the name and exports the
+path, and the file is opened later by the exporter, in a different process,
+after the agent has run, so anything that changes that path in between is
+observed by nobody. Both are races against a writer that already has access
+to `$SPOOL`. Closing them needs per-component `openat` with `O_NOFOLLOW`,
+which shell cannot express, so they are recorded as known limitations of
+this adapter rather than half-fixed with more checks.
 
 A partition written by an older adapter has `state.json` and `.capture-env`
 directly in `$SPOOL/$PARTITION`. `finalize.sh` recognises that layout by the

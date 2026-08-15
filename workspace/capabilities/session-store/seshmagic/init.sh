@@ -210,16 +210,23 @@ __claim_metadata_namespace() {
 #     re-run case: inside a namespace the marker proves this adapter owns.
 #
 # TOCTOU. Accepting an existing directory is a check, and a check has a window
-# after it. The window is closed at both ends rather than papered over:
+# after it. Two things narrow that window, and neither of them shuts it:
 #
 #   * The completed chain is re-resolved and the PHYSICAL path of ${META_DIR}
 #     must equal the physical path of the marked root plus the partition
-#     components. A component swapped for a link during the walk shows up
-#     here, before the first write.
-#   * The writes cannot escape even so. `.capture-env` is created with
-#     O_CREAT|O_EXCL (`set -o noclobber`, below), which refuses ANY existing
-#     name including a symlink, dangling or not, so a link planted after the
-#     resolve makes the write fail loudly instead of following it.
+#     components. A component swapped for a link DURING the walk shows up
+#     here, before the first write. A component swapped AFTER this resolve
+#     does not.
+#   * `.capture-env` is created with O_CREAT|O_EXCL (`set -o noclobber`,
+#     below), which refuses ANY existing name including a symlink, dangling or
+#     not, so a link planted at THAT NAME after the resolve makes the write
+#     fail loudly instead of receiving it. O_EXCL applies to the final
+#     component only; it does not stop the kernel resolving a symlinked parent
+#     on the way to it.
+#
+# What remains open after both, including the exporter's state file, which
+# this adapter never opens, is spelled out where ${META_DIR} is handed to the
+# writes below. It is a known limitation, not something these checks cover.
 __build_owned_metadata_path() {
     local -a __comps=()
     local __comp __path="${__META_ROOT}" __expected __root_real __dir_real
@@ -307,14 +314,37 @@ unset -f __claim_metadata_namespace __build_owned_metadata_path
 # adapter's ownership marker; every component from it down to ${META_DIR} was
 # either created by a plain `mkdir` that cannot follow a symlink, or found to
 # be a real directory and refused otherwise; and ${META_DIR}'s resolved
-# physical path is that marked root plus the partition components, so no part
-# of it leads out of the namespace. The writes below add O_EXCL on top, so
-# they cannot follow a link planted after that proof either.
+# physical path, AT THE MOMENT IT WAS RESOLVED, was that marked root plus the
+# partition components, so no part of it led out of the namespace then.
 #
-# The `rm -f` removes exactly one regular file this adapter wrote, inside that
-# namespace, and only after the name has been refused if it is anything else;
-# it is not a prune, it cannot reach a transcript, and it exists because a
-# reused partition must never serve a previous run's tags.
+# WHAT IS NOT PROVEN, written down because the last three versions of this
+# comment claimed a guarantee the code does not provide. All of the above is a
+# check, and a check has a window after it. Two of those windows are open:
+#
+#   * O_EXCL, added by the `.capture-env` write below, covers THE FINAL
+#     COMPONENT ONLY. It refuses to open a name that already exists, so a
+#     symlink planted at `.capture-env` itself after the classification makes
+#     the write fail instead of following it. It says nothing about the
+#     directories above that name: `open` resolves those normally, so a PARENT
+#     swapped for a symlink after the walk finished is still followed, and the
+#     write lands wherever it points.
+#   * The exporter's state file, ${META_DIR}/state.json, gets no O_EXCL at
+#     all. This adapter only classifies the NAME (below) and then exports the
+#     path in EXPORTER_STATE_FILE; the file is opened later, by the
+#     exporter, in a different process, after the agent has run. Every window
+#     between here and there is unobserved by anything.
+#
+# Both are races that a writer with access to ${SPOOL} could win, and NEITHER
+# IS CLOSED HERE. Closing them needs per-component openat with O_NOFOLLOW from
+# a directory fd, which this shell cannot express, so it is recorded as a known
+# limitation of the adapter rather than half-fixed with more checks. Do not
+# reword any of the above into a claim that the writes cannot escape.
+#
+# The `rm -f` names exactly one file inside that namespace, and runs only
+# after that name has been classified and refused if it was anything other
+# than a regular file (with the same window caveat as everything else here);
+# it is not a prune, no transcript directory is on that path, and it exists
+# because a reused partition must never serve a previous run's tags.
 #
 # EVERY STEP BELOW IS CHECKED, and a failure ends the adapter with `return 1`.
 # This is the write whose silent failure costs the most: the session still
@@ -332,7 +362,10 @@ __CAPTURE_ENV="${META_DIR}/.capture-env"
 # a refusal, and nothing is removed on the way out. The exporter's state file
 # is checked with it: the exporter opens that path itself, so a link left at
 # the name would send its writes out of the namespace, and this adapter is the
-# only thing that looks at the path before it is used.
+# only thing that looks at the path before it is used. For the state file this
+# check is ALL there is, and it is a check made now about an open that happens
+# in another process after the agent has run, so it rules out a link that is
+# already there and nothing that appears afterwards.
 __STATE_FILE="${META_DIR}/state.json"
 for __meta_file in "${__CAPTURE_ENV}" "${__STATE_FILE}"; do
     if [ -L "${__meta_file}" ]; then
@@ -385,11 +418,14 @@ if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
     # to open ANY name that already exists, a symlink included, dangling or
     # not (verified in this image: `set -o noclobber; printf x > link` fails
     # for a link to an existing file AND for a dangling one, and the target is
-    # neither truncated nor created). That is what makes this a write that
-    # CANNOT escape the namespace rather than a write behind a check: the
-    # classification above has a window
-    # after it, and a link planted in that window fails this open instead of
-    # being followed. The stale record is removed first because O_EXCL will not
+    # neither truncated nor created). What that buys, exactly: the
+    # classification above has a window after it, and a link planted AT THIS
+    # NAME in that window fails this open instead of being followed. It buys
+    # nothing above the name, because O_EXCL constrains the final component
+    # only and the kernel still resolves the parent directories normally, so
+    # this is not a write that cannot escape the namespace. See the
+    # "WHAT IS NOT PROVEN" block above for the two windows that stay open.
+    # The stale record is removed first because O_EXCL will not
     # truncate one, and by here the name has already been proven to be a
     # regular file or absent.
     #
