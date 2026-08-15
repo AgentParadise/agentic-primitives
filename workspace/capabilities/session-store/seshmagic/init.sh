@@ -179,7 +179,43 @@ __claim_metadata_namespace() {
                  "not create. Nothing was modified." >&2
             return 1
         fi
-        printf '%s\n' "${__META_MARKER_ID}" > "${__META_MARKER}" || return 1
+        # The marker is created with O_CREAT|O_EXCL, exactly as `.capture-env`
+        # is below and for the same reason. The two tests above are CHECKS, and
+        # a check has a window after it: a plain `>` here would FOLLOW a symlink
+        # planted at this name in that window and truncate whatever it points
+        # at, which is the unnamespaced-write defect committed by the very code
+        # that exists to prevent it. `set -o noclobber` makes `>` refuse ANY
+        # existing final component, a symlink included, dangling or not, so the
+        # open fails and nothing is followed, truncated or created elsewhere.
+        # It buys nothing ABOVE the name: O_EXCL constrains the final component
+        # only and the kernel still resolves ${__META_ROOT} normally, so a root
+        # swapped for a symlink after the `-L` test at the top of this function
+        # is still followed. That remaining window is the same class as the two
+        # recorded in the "WHAT IS NOT PROVEN" block below, and it is not closed
+        # here either. This is not a write that cannot escape; it is a write
+        # that cannot be REDIRECTED BY ITS OWN NAME.
+        #
+        # The option is set INSIDE this subshell only. This file is SOURCED, so
+        # setting it in the parent would persist into the entrypoint and every
+        # later command it runs; same reason as the `.capture-env` write below.
+        #
+        # The status is checked EXPLICITLY because errexit is inert here (see
+        # the file header). The subshell's status is the redirect's: if the open
+        # fails, printf never runs. Nothing is removed to make room, on this
+        # path or any other: a name that appears here is not one this adapter
+        # wrote, and its contents are not read or echoed.
+        if ! (
+            set -o noclobber
+            printf '%s\n' "${__META_MARKER_ID}" > "${__META_MARKER}"
+        ); then
+            echo "[session-store] could not create the ownership marker" \
+                 "${__META_MARKER}; either something created that name after this" \
+                 "adapter found the namespace empty, in which case the namespace" \
+                 "is not this adapter's to claim, or ${__META_ROOT} is not" \
+                 "writable by uid $(id -u). Refusing: nothing was written," \
+                 "followed or removed." >&2
+            return 1
+        fi
     fi
 
     return 0

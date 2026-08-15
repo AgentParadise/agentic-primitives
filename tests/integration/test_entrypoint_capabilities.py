@@ -2744,3 +2744,77 @@ def test_init_refuses_a_symlinked_component_of_the_metadata_path(
     link = spool / _RESERVED / link_at
     assert os.path.islink(link), f"{label}: the adapter replaced the symlink"
     assert os.readlink(link) == "/victim"
+
+
+# The container-local spool the marker test below builds its fixture in, and
+# the path outside the reserved namespace that the planted link points at.
+_LOCAL_SPOOL = "/tmp/spool"
+_MARKER_LINK_TARGET = "/tmp/victim-outside-the-namespace"
+
+
+@pytest.mark.integration
+def test_init_refuses_a_symlink_planted_at_the_ownership_marker():
+    """The marker write must not follow a link that appears at its own name.
+
+    The claim step decides the namespace is unowned by checking that no
+    marker is there and that the directory is empty, and then wrote the
+    marker with a plain truncating `>`. Both of those are checks, and a
+    check has a window after it: a symlink sitting at `.owner` when the
+    redirect opens is FOLLOWED, and whatever it names is created or
+    truncated, outside the namespace the marker exists to bound. That is the
+    unnamespaced-write defect, committed by the code written to prevent it.
+
+    THE FIXTURE STANDS IN FOR THE RACE, deliberately, because a race cannot
+    be driven deterministically from a test. It reproduces the state the race
+    produces, which is what the write actually sees: the checks report an
+    empty namespace with no marker while the name is in fact taken by a
+    symlink. `ls -A` prints nothing for a directory it cannot read and its
+    error goes to /dev/null, so a namespace root that is writable and
+    searchable but not readable puts the claim step in exactly that state
+    with no timing involved. `[ -e ]` on a dangling link is false for the
+    same reason it is false during the race window: the name resolves to
+    nothing that can be stat'ed.
+
+    The fixture lives on the CONTAINER's own filesystem rather than on a
+    bind-mounted spool, and the adapter is sourced here rather than reached
+    through the entrypoint, because both of those are forced by the same
+    measurement: a Docker Desktop bind mount reports the mode back faithfully
+    (`stat -c %a` says 333) and then serves `ls -A` to the mounting user
+    anyway, so the unreadable-directory state cannot be staged on one. A
+    fixture that must exist BEFORE the adapter runs and cannot live on a
+    mount cannot be staged by a first container either, so the test stages it
+    and sources the adapter in one, exactly as entrypoint.sh 5.6 does: as the
+    condition of an `if`, which is what makes the file's `set -e` inert and
+    the explicit status check the only thing that reports the refusal.
+    """
+    init = "/opt/agentic/capabilities/session-store/seshmagic/init.sh"
+    script = f"""
+set -u
+mkdir -p {_LOCAL_SPOOL}/{_RESERVED}
+ln -s {_MARKER_LINK_TARGET} {_LOCAL_SPOOL}/{_RESERVED}/.owner
+# Writable and searchable, NOT readable: `ls -A` fails and prints nothing,
+# so the claim step reads the namespace as empty while `.owner` is taken.
+chmod 0333 {_LOCAL_SPOOL}/{_RESERVED}
+export {SessionStoreEnv.SPOOL}={_LOCAL_SPOOL}
+export {SessionStoreEnv.PARTITION}=w1/p2
+export {SessionStoreEnv.URL}=http://unused.invalid
+export {SessionStoreEnv.TAGS}=workflow:w1,phase:p2
+if . {init}; then echo INIT=ok; else echo INIT=refused; fi
+if [ -e {_MARKER_LINK_TARGET} ]; then echo VICTIM=written; else echo VICTIM=absent; fi
+printf 'LINK=%s\\n' "$(readlink {_LOCAL_SPOOL}/{_RESERVED}/.owner 2>/dev/null || echo gone)"
+"""
+
+    result = _run(["bash", "-c", script])
+
+    assert "VICTIM=absent" in result.stdout, (
+        f"the marker write followed the planted link and wrote to "
+        f"{_MARKER_LINK_TARGET}: stdout={result.stdout!r}"
+    )
+    assert "INIT=refused" in result.stdout, (
+        f"the adapter reported a successful init: stdout={result.stdout!r}"
+    )
+    # Loud, and naming the path, so an operator can find what is in the way.
+    assert "could not create the ownership marker" in result.stderr, result.stderr
+    assert f"{_LOCAL_SPOOL}/{_RESERVED}/.owner" in result.stderr, result.stderr
+    # Refusing deletes nothing, the planted link included.
+    assert f"LINK={_MARKER_LINK_TARGET}" in result.stdout, result.stdout
