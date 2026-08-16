@@ -2047,11 +2047,18 @@ def test_finalize_keeps_partition_and_transcripts_on_a_clean_sweep(tmp_path: Pat
 def test_finalize_reports_a_sweep_with_only_duplicate_and_unchanged_as_complete(
     tmp_path: Path,
 ):
-    """duplicate and skipped_unchanged are confirmations, not losses:
-    duplicate means the store already holds that content (it dedups on
-    content_hash) and skipped_unchanged means a prior sweep uploaded it.
-    Neither may be reported as an incomplete sweep, or every repeat sweep
+    """Neither duplicate nor skipped_unchanged is a per-sweep loss, so
+    neither may be reported as an incomplete sweep, or every repeat sweep
     cries wolf and the INCOMPLETE signal stops meaning anything.
+
+    They are not equally strong, though, and only one of them is evidence
+    of an upload. duplicate means the store already holds that content,
+    which it knows because it dedups on content_hash. skipped_unchanged
+    means only that the exporter's state file marks the item done, and the
+    exporter marks rejected items done too, so it is equally consistent
+    with a transcript the store refused. What covers that case is the
+    persisted rejection record, not this counter: see
+    test_finalize_never_reports_complete_after_a_recorded_rejection.
     """
     summary = (
         "run: discovered=5 skipped_unchanged=3 uploaded=2 accepted=0 "
@@ -2215,6 +2222,13 @@ def test_finalize_keeps_a_rejected_transcript_across_the_next_sweep(tmp_path: Pa
     authorized a prune. It is not one any more for the reason that closes the
     whole class: no sweep, clean or otherwise, deletes anything. Sweep 1's
     report is still the operator's signal, and it must name the counter.
+
+    This partition is in the LEGACY layout (the state file sits in the
+    transcript partition, which is what the shared helper stages), so no
+    rejection record can be written for it: that would put a file of this
+    adapter's into a directory the operator may own. The current-layout
+    behaviour, where sweep 2 does not read clean, is
+    test_finalize_never_reports_complete_after_a_recorded_rejection.
     """
     rejected_sweep = (
         'echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 '
@@ -2241,6 +2255,198 @@ def test_finalize_keeps_a_rejected_transcript_across_the_next_sweep(tmp_path: Pa
     )
     assert "INCOMPLETE" in result.stderr, "sweep 1 must report the incomplete sweep"
     assert "rejected=1" in result.stderr, "sweep 1 must name the rejecting counter"
+
+
+# --- A rejection outlives the container that saw it ---------------------------
+#
+# The counters of a LATER sweep cannot see a rejection: the exporter marks a
+# rejected item done, so it is counted as skipped_unchanged from then on and
+# every loss counter reads zero. Without a persisted record, that later sweep
+# prints "session-store upload complete" about a partition holding a transcript
+# the store refused. Nothing is deleted, so this is a false completion claim
+# rather than data loss, which for a corpus feeding learning loops is the
+# expensive failure: an absent session is what nothing downstream can notice.
+#
+# These tests drive finalize.sh in SEPARATE CONTAINERS over one host-backed
+# spool, because "a later sweep in a different container" is the case the
+# record has to survive and a second call inside one container would not test
+# it. The partition is staged in the CURRENT layout, with the metadata in the
+# reserved namespace, since that is the only layout where a record may be
+# written at all.
+
+_META_SEGMENT = ".agentic-session-store"
+
+
+def _stage_namespaced_partition_sh(part_name: str) -> str:
+    """Shell staging a current-layout partition: transcripts and metadata split.
+
+    Both halves are built in the container as the agent user, for the reason
+    _stage_partition_sh gives: a host-written fixture carries the host's uid,
+    and a metadata directory finalize.sh cannot write into would pass a
+    "no record was written" assertion for entirely the wrong reason.
+    """
+    return "\n".join(
+        [
+            _stage_partition_sh(part_name, {"claude/s.jsonl": "{}\n"}),
+            _stage_partition_sh(f"{_META_SEGMENT}/{part_name}", {"state.json": "{}\n"}),
+        ]
+    )
+
+
+def _finalize_in_its_own_container(
+    spool: Path,
+    part_name: str,
+    stub_body: str,
+    stage: str = "",
+    legacy_layout: bool = False,
+) -> subprocess.CompletedProcess:
+    """One finalize.sh run, in a container of its own, over a shared spool."""
+    meta = f"/spool/{part_name}" if legacy_layout else f"/spool/{_META_SEGMENT}/{part_name}"
+    script = f"""
+set -e
+{stage}
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+{stub_body}
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export {ExporterEnv.URL}=http://unused.invalid
+export {ExporterEnv.STATE_FILE}={meta}/state.json
+{_FINALIZE_SH}
+echo "FINALIZE_RC=$?"
+"""
+    return _run(["bash", "-c", script], extra_mounts=[f"{spool}:/spool"])
+
+
+_REJECTED_SWEEP = (
+    'echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 '
+    'duplicate=0 rejected=1 skipped_oversize=0 failed=0"\nexit 0\n'
+)
+# Exactly what the exporter reports next time: the rejected item is marked in
+# its state file, so it is counted as unchanged and never offered again.
+_CLEAN_LOOKING_SWEEP = (
+    'echo "run: discovered=1 skipped_unchanged=1 uploaded=0 accepted=0 '
+    'duplicate=0 rejected=0 skipped_oversize=0 failed=0"\nexit 0\n'
+)
+
+
+@pytest.mark.integration
+def test_finalize_never_reports_complete_after_a_recorded_rejection(tmp_path: Path):
+    """A partition that has ever had a rejection may never afterwards report
+    a complete upload, no matter how clean a later sweep's counters read.
+
+    Sweep 1 (container A) hits rejected=1. Sweep 2 (container B, same spool)
+    sees only skipped_unchanged, so all three loss counters are zero and the
+    counters alone would say "upload complete" about a transcript the store
+    refused and will never hold.
+
+    The report must also be actionable: it names the record and says the
+    transcript is in the spool and not in the store, because a warning an
+    operator cannot act on decays into one they scroll past.
+    """
+    spool = _host_spool(tmp_path)
+    part = "rejected-sticky"
+
+    first = _finalize_in_its_own_container(
+        spool, part, _REJECTED_SWEEP, stage=_stage_namespaced_partition_sh(part)
+    )
+    assert first.returncode == 0, f"container failed: {first.stderr}"
+    assert "FINALIZE_RC=0" in first.stdout, "finalize.sh must always exit 0"
+    assert "INCOMPLETE" in first.stderr and "rejected=1" in first.stderr, first.stderr
+
+    record = spool / _META_SEGMENT / part / ".sweep-rejected"
+    assert record.exists(), (
+        "the rejection was recorded nowhere, so nothing outlives this container"
+    )
+
+    second = _finalize_in_its_own_container(spool, part, _CLEAN_LOOKING_SWEEP)
+    assert second.returncode == 0, f"container failed: {second.stderr}"
+    assert "FINALIZE_RC=0" in second.stdout, "finalize.sh must always exit 0"
+    assert "upload complete" not in second.stderr, (
+        "a sweep whose counters read clean reported a COMPLETE upload for a "
+        "partition holding a transcript the store refused"
+    )
+    assert "INCOMPLETE" in second.stderr, second.stderr
+    assert ".sweep-rejected" in second.stderr, (
+        "the report must name the record so an operator can find and clear it"
+    )
+    assert (spool / part / "claude" / "s.jsonl").exists(), (
+        "nothing on this path may delete a transcript"
+    )
+    assert record.exists(), "the record must not be cleared by the hook itself"
+
+
+@pytest.mark.integration
+def test_finalize_still_reports_completion_on_a_partition_that_never_rejected(
+    tmp_path: Path,
+):
+    """The rejection record must not make every sweep report a problem.
+
+    A signal that fires on partitions with nothing wrong is the failure this
+    fix is supposed to prevent, one step removed: an operator who learns to
+    ignore INCOMPLETE cannot be told about the real one. Two sweeps, two
+    containers, one spool, no rejection anywhere: both report completion and
+    no record is written.
+    """
+    spool = _host_spool(tmp_path)
+    part = "never-rejected"
+    clean = (
+        'echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 '
+        'duplicate=0 rejected=0 skipped_oversize=0 failed=0"\nexit 0\n'
+    )
+
+    first = _finalize_in_its_own_container(
+        spool, part, clean, stage=_stage_namespaced_partition_sh(part)
+    )
+    assert first.returncode == 0, f"container failed: {first.stderr}"
+    assert "upload complete" in first.stderr, first.stderr
+
+    second = _finalize_in_its_own_container(spool, part, _CLEAN_LOOKING_SWEEP)
+    assert second.returncode == 0, f"container failed: {second.stderr}"
+    assert "upload complete" in second.stderr, second.stderr
+    assert "INCOMPLETE" not in second.stderr, second.stderr
+    assert not (spool / _META_SEGMENT / part / ".sweep-rejected").exists(), (
+        "a partition that never had a rejection must carry no record"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_refuses_to_record_a_rejection_in_a_legacy_partition(tmp_path: Path):
+    """On the legacy layout the metadata directory IS the transcript
+    partition, which the operator may own, and this adapter writes no file of
+    its own there. So the record is refused rather than written outside the
+    reserved namespace: a health signal is not worth the unnamespaced-write
+    defect that the namespace exists to close.
+
+    Refusing silently would be its own false claim, so the sweep that hits the
+    rejection must say that it could not record it and that a later sweep will
+    read clean. That is the gap, stated where an operator sees it.
+    """
+    spool = _host_spool(tmp_path)
+    part = "legacy-rejected"
+
+    result = _finalize_in_its_own_container(
+        spool,
+        part,
+        _REJECTED_SWEEP,
+        stage=_stage_partition_sh(part, {"state.json": "{}\n", "claude/s.jsonl": "{}\n"}),
+        legacy_layout=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert "INCOMPLETE" in result.stderr and "rejected=1" in result.stderr, result.stderr
+    assert "WARNING" in result.stderr and "skipped_unchanged" in result.stderr, (
+        "a rejection that cannot be recorded must be reported as such"
+    )
+    written = sorted(p.name for p in (spool / part).iterdir())
+    assert ".sweep-rejected" not in written, (
+        f"finalize.sh wrote into the operator-owned transcript partition: {written}"
+    )
+    assert not (spool / _META_SEGMENT).exists(), (
+        "a legacy partition must not gain a metadata namespace from a finalize run"
+    )
 
 
 @pytest.mark.integration

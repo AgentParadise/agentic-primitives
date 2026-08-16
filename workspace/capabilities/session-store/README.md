@@ -90,6 +90,7 @@ $SPOOL/.agentic-session-store/           <- ADAPTER METADATA. Reserved namespace
   $PARTITION/
     state.json      <- EXPORTER_STATE_FILE (exporter-owned, created on first sweep)
     .capture-env    <- mode 600, DATA not shell (see below), present only when AGENTIC_SESSION_STORE_TAGS was set
+    .sweep-rejected <- written by finalize.sh when the store REFUSES a transcript (see below); removed only by an operator
 ```
 
 **Two directories, two owners.** Transcripts must land where the harnesses
@@ -199,6 +200,59 @@ fix for the previous one. Removing the delete removes the class.
 Unbounded spool growth is the accepted tradeoff. Reclaiming space is an
 operator decision, made against a view of the store that a finalize hook does
 not have.
+
+### A rejection is remembered (`.sweep-rejected`)
+
+`finalize.sh` writes exactly one file, and only when the store **rejects** a
+transcript: `.sweep-rejected`, in the reserved metadata namespace, created
+with `O_CREAT|O_EXCL` and never removed by this adapter. Every later sweep of
+that partition reports `INCOMPLETE` and names the record, instead of
+`session-store upload complete`.
+
+It exists because a rejection vanishes from the counters after the sweep that
+hit it. The exporter marks state for every item the store returned a result
+for, rejected included, on the reasoning that the store processed it and a
+re-send would be wasted. But rejected means the store **refused** it:
+processed, not stored. So sweep 1 reports `rejected=1`, and every sweep after
+that counts the same transcript as `skipped_unchanged` with all three loss
+counters at zero. Nothing is deleted any more, so this is not data loss; it is
+a false completion claim, which for a corpus feeding learning loops is the
+expensive failure, because an absent session is exactly what nothing
+downstream can notice.
+
+`failed` and `skipped_oversize` are deliberately **not** recorded. The
+exporter leaves those unmarked, so they are recounted every sweep and clear on
+their own when they resolve, and a sticky record would turn one transient
+network blip into a partition that reads `INCOMPLETE` forever.
+
+**To clear it**, find out why the store refused the transcript, upload it by
+hand once that is fixed, then remove `.sweep-rejected` from the metadata
+namespace. That is an operator action on purpose: the hook cannot see the
+remote side, which is the same reason it no longer prunes.
+
+**On a legacy partition** (metadata directly in `$SPOOL/$PARTITION`, see
+"Spool layout"), and on the unsupported path where `EXPORTER_STATE_FILE` is
+unset, there is no proven-owned directory to write into, and this adapter puts
+no file of its own into the transcript partition. A rejection there is
+reported by the sweep that hit it and warns, in the same breath, that it could
+not be recorded and that a later sweep will read clean. Writing outside the
+namespace to keep the signal would be the unnamespaced-write defect all over
+again, so the signal is what gives way.
+
+#### Known limitation: this is a workaround for an exporter behaviour
+
+The real fix belongs in the exporter, which should not mark a rejected item as
+done. It is recording "the store processed it" where the only useful predicate
+is "the store stored it", and by the second sweep the distinction is gone from
+its output entirely, so no hook can recover it. All `finalize.sh` can do is
+remember that it once saw it.
+
+The exporter is provisioned externally (see the provisioning contract at the
+top of this file) and is not built from this repository, so the fix cannot
+land here. When a version of the exporter exists that leaves rejected items
+unmarked, the doctor should enforce a minimum exporter version and this record
+can retire. Until then, treat `skipped_unchanged` as a statement about the
+exporter's state file and never as proof that a transcript reached the store.
 
 Transcript roots live outside `$HOME` and are symlinked in, rather than
 bind-mounted under `$HOME` directly — Docker creates a bind-mount root as

@@ -658,16 +658,58 @@ grew each round and the delete stayed exactly as destructive.
 
 So the capability was removed rather than hardened again, along with
 everything that existed only to gate it (the `.agentic-partition` marker and
-the `.sweep-rejected` sentinel). The remote store is the durable copy, the
+the `.sweep-rejected` sentinel, the latter of which turned out to be needed by
+the reporting too and came back for that; see below). The remote store is the
+durable copy, the
 spool is an append-only local cache, and unbounded spool growth is the
 accepted tradeoff. Reclaiming that space is an operator decision, made with
 a view of the remote side that a hook running inside the container stop
 grace does not have.
 
-The sweep reporting survives unchanged, because the question an operator
-actually needs answered is not "was anything deleted" but "did every
-transcript reach the store", which the exporter's summary counters answer on
-every path.
+The question an operator actually needs answered is not "was anything deleted"
+but "did every transcript reach the store", so the sweep reporting stayed.
+
+**One sweep's counters do not answer that question, and this section used to
+say they did.** The rejected-transcript defect above is not only a prune
+defect; it is a defect in the signal, and removing the prune left the signal
+half of it in place. The exporter marks a rejected item as done, so every
+later sweep counts it as `skipped_unchanged`, all three loss counters read
+zero, and `finalize.sh` prints `session-store upload complete` about a
+partition holding a transcript the store refused and will never hold. Nothing
+is lost from disk any more, so this is a **false completion claim** rather
+than data loss: an operator, or a later automated check reading that log, is
+told the corpus is whole while a session is silently absent from it. For a
+corpus feeding learning loops, the absent row nobody knows about is the
+expensive failure.
+
+So `finalize.sh` records a rejection and consults the record before it reports
+a completed upload. `.sweep-rejected` is created (`O_CREAT|O_EXCL`) in the
+reserved `$SPOOL/.agentic-session-store/$PARTITION/` metadata namespace, never
+in the transcript partition, and never removed by this adapter; a partition
+that has ever had a rejection reports `INCOMPLETE` with the path of the record
+and the procedure to clear it until an operator clears it by hand. **This is
+the only file `finalize.sh` writes**, and it gates a report, not a delete: the
+sentinel is back, the prune it once gated is not.
+
+Only `rejected` is recorded. `failed` and `skipped_oversize` are left unmarked
+by the exporter, so they recur on every sweep and clear when they resolve; a
+sticky record for those would make one transient network blip read
+`INCOMPLETE` forever, and a signal nobody believes is the same failure wearing
+different clothes.
+
+**Known limitation: this is a workaround, and the real fix is in the
+exporter.** Marking an item the store refused as done is the exporter
+recording "processed" where the only useful predicate is "stored". No amount
+of care in the hook recovers the distinction, because by the second sweep the
+information is gone from the exporter's output; the hook can only remember
+that it once saw it. The exporter is provisioned externally (see the
+capability README's exporter provisioning contract) and is out of this
+repository's control, so the fix cannot land here. When an exporter version
+exists that leaves rejected items unmarked, the doctor should enforce a
+minimum version and this record can retire. Until then the record stands, and
+`skipped_unchanged` must not be read anywhere as proof that a transcript
+reached the store: it is a statement about the exporter's state file, not
+about the store.
 
 ### 14. Adapter metadata lives in a reserved, marked namespace
 

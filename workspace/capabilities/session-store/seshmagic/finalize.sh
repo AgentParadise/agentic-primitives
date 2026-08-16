@@ -17,7 +17,22 @@
 # retained partition is safe: the store dedups on content_hash, so a repeat
 # sweep is a no-op rather than a corruption risk. What the reporting below
 # still does is tell an operator whether everything actually reached the
-# store, which is the question the counters answer.
+# store.
+#
+# ONE SWEEP'S COUNTERS CANNOT ANSWER THAT ON THEIR OWN, and this header used
+# to say they could. A transcript the store REJECTED is marked done in the
+# exporter's state file, so every later sweep counts it as skipped_unchanged
+# and every blocking counter reads zero. The counters of the later sweep are
+# therefore consistent with a transcript that was refused and is not in the
+# store, which is why this file also keeps a persisted record of a rejection
+# and consults it before it reports a completed upload. See the
+# "A REJECTION IS REMEMBERED" block below.
+#
+# THIS HOOK WRITES ONE FILE, and until that block was added it wrote none at
+# all. The file is `.sweep-rejected`, created only inside the reserved
+# ${SPOOL}/.agentic-session-store/${PARTITION} metadata namespace init.sh
+# claims and marks, never in the transcript partition, which the operator may
+# own. It is created and never removed: this hook still deletes nothing.
 
 set -u
 
@@ -99,12 +114,25 @@ else
          "AGENTIC_SESSION_STORE_SPOOL and AGENTIC_SESSION_STORE_PARTITION and" \
          "let this hook run normally." >&2
 fi
+#
+# The same classification decides WHERE, and whether, a rejection can be
+# recorded. `__rejection_record` is a path only on the current layout, where
+# the reserved segment proves the metadata directory is the namespace init.sh
+# claimed and marked. On the legacy layout the metadata directory IS the
+# transcript partition, which the operator may own and into which this adapter
+# writes no file of its own, ever; on the unset-EXPORTER_STATE_FILE path there
+# is no directory at all, only a placeholder string. Both leave it empty, and
+# an empty value means "a rejection cannot be remembered here", which is
+# reported rather than worked around. Refusing to write is the only option
+# that does not put this hook's file into somebody else's directory.
 case "${__meta_dir}" in
     */"${__RESERVED_SEGMENT}"/*)
         __part_dir="${__meta_dir%%/"${__RESERVED_SEGMENT}"/*}/${__meta_dir#*/"${__RESERVED_SEGMENT}"/}"
+        __rejection_record="${__meta_dir}/.sweep-rejected"
         ;;
     *)
         __part_dir="${__meta_dir}"
+        __rejection_record=""
         ;;
 esac
 
@@ -431,16 +459,23 @@ fi
 # transcript is not in the store". A nonzero one is reported as INCOMPLETE and
 # named, so the operator knows what to chase.
 #
-# Note that a rejected item is reported only by the sweep that hit it. The
+# Note that a rejected item is counted only by the sweep that hit it. The
 # exporter marks state for every item the store returned a result for, rejected
 # included (lib.rs:202-204), so the NEXT sweep counts it as skipped_unchanged
-# and reads clean. failed and skipped_oversize are left unmarked and so recur
-# until they resolve.
+# and its counters read clean. failed and skipped_oversize are left unmarked
+# and so recur until they resolve. That asymmetry is why a rejection, and only
+# a rejection, is written down: see the block below the counters.
 #
 # duplicate and skipped_unchanged are NOT failures and must never be reported as
-# such: duplicate means the store already holds that content (it dedups on
-# content_hash) and skipped_unchanged means a prior sweep already uploaded the
-# file. Both are confirmations, not losses.
+# such, but they carry different weights and only one of them is evidence.
+# duplicate means the store already holds that content, which it knows because
+# it dedups on content_hash, so it is a positive statement about the store.
+# skipped_unchanged is a statement about the EXPORTER'S STATE FILE and nothing
+# else: it means the file has not changed since the exporter last marked it,
+# and the exporter marks rejected items too. So skipped_unchanged is consistent
+# with "already uploaded" AND with "the store refused it and never will hold
+# it", and it cannot tell those apart. Neither is a loss to report per sweep;
+# neither is proof of an upload either.
 #
 # No parseable summary means no evidence of success, so it is reported as
 # unknown rather than as complete. That is also what covers the timeout path
@@ -468,9 +503,110 @@ __incomplete=""
 [ "${__oversize}" -ne 0 ] && __incomplete="${__incomplete} skipped_oversize=${__oversize}"
 [ "${__rejected}" -ne 0 ] && __incomplete="${__incomplete} rejected=${__rejected}"
 
+# --- A REJECTION IS REMEMBERED, because the counters forget it ----------------
+#
+# A rejection is the one outcome that disappears from the counters after the
+# sweep that hit it, so it is the one outcome this file writes down.
+#
+# The exporter marks state for every item the store returned a result for,
+# rejected included (crates/seshmagic-session-store-exporter/src/lib.rs:202-204,
+# "the store processed it and a re-send would be wasted"). But rejected means
+# the store REFUSED the transcript: processed, not stored. So:
+#
+#   Sweep 1: T rejected  -> rejected=1, reported INCOMPLETE, and recorded here.
+#   Sweep 2: state says T is current -> counted as skipped_unchanged. failed,
+#            skipped_oversize and rejected all read 0.
+#
+# Without a record, sweep 2 prints "session-store upload complete" about a
+# partition holding a transcript the store refused and will never hold. That is
+# a FALSE COMPLETION CLAIM: an operator, or a later automated check that greps
+# this log, is told the corpus is whole when a session is silently absent from
+# it, and absent sessions are exactly what nothing downstream can notice.
+#
+# Sweep 2 is not a recovery scenario. It happens on any later run with a stable
+# AGENTIC_SESSION_STORE_PARTITION, since only the ${HOSTNAME} default is
+# per-container, which is also why the record has to survive the container: it
+# lives in the spool, which outlives every container that mounts it.
+#
+# THIS IS NOT THE OLD PRUNE SENTINEL COMING BACK, though it carries the same
+# name. That file gated an `rm -rf` and was deleted along with the prune, on
+# the reasoning that it existed only to gate it. That reasoning was incomplete:
+# the health signal needs the same memory, and this is the half that was still
+# required. Nothing here deletes, moves or truncates anything; it gates a
+# REPORT.
+#
+# ONLY REJECTED IS RECORDED, deliberately. failed and skipped_oversize are left
+# unmarked by the exporter, so they are recounted by every sweep and clear on
+# their own when they resolve. A record for those would turn one transient
+# network blip into a partition that reads INCOMPLETE forever, and an operator
+# who stops believing the signal is back where this started.
+#
+# WRITE DISCIPLINE, the same as init.sh's `.owner`: `set -o noclobber` makes
+# `>` open with O_CREAT|O_EXCL inside a subshell, so a name planted at this
+# path fails the open instead of being followed and truncated, and the
+# subshell's status is checked explicitly because this file runs without
+# errexit. Nothing is removed to make room, on any path. There is no umask
+# here, unlike `.capture-env`: the content is a fixed literal this file writes
+# and holds nothing secret. O_EXCL covers the final component only; a parent
+# swapped for a symlink is still resolved, the same known limitation the
+# adapter records for every other write into this namespace.
+readonly __REJECTION_RECORD_ID="agentic-session-store-rejection-v1"
+if [ "${__rejected}" -ne 0 ]; then
+    if [ -z "${__rejection_record}" ]; then
+        echo "[finalize] WARNING: the store REFUSED ${__rejected} transcript(s), but this" \
+             "partition's metadata is not in the reserved ${__RESERVED_SEGMENT} namespace" \
+             "(a legacy partition, or EXPORTER_STATE_FILE is unset), so there is nowhere" \
+             "this hook is allowed to record it: the only candidate directory holds" \
+             "transcripts and the operator may own it. This run's report is therefore the" \
+             "ONLY notice of these rejections. A later sweep will count them as" \
+             "skipped_unchanged and report a complete upload." >&2
+    elif [ -e "${__rejection_record}" ] || [ -L "${__rejection_record}" ]; then
+        # Already recorded by an earlier sweep. Nothing to add, and nothing to
+        # remove: one unresolved rejection is what the file already says.
+        echo "[finalize] the store REFUSED ${__rejected} transcript(s); ${__rejection_record}" \
+             "already records an unresolved rejection for this partition" >&2
+    elif (
+        set -o noclobber
+        printf '%s\n' "${__REJECTION_RECORD_ID}" > "${__rejection_record}"
+    ); then
+        echo "[finalize] recorded ${__rejection_record}: the store REFUSED ${__rejected}" \
+             "transcript(s), which the exporter marks as done, so no later sweep can" \
+             "re-detect them from its counters" >&2
+    else
+        echo "[finalize] WARNING: could not write ${__rejection_record}, so the" \
+             "${__rejected} transcript(s) the store REFUSED are recorded nowhere and a" \
+             "later sweep will report a complete upload. Check that the directory is" \
+             "writable by uid $(id -u), and that nothing else is creating that name" \
+             "underneath this adapter. This run's report is the only notice." >&2
+    fi
+fi
+
 if [ -n "${__incomplete}" ]; then
     echo "[finalize] session-store sweep INCOMPLETE (${__incomplete# }): at least one transcript" \
          "did not reach the store; spool retained at ${__part_dir}" >&2
+    exit 0
+fi
+
+# CLEAN COUNTERS ARE NOT A CLEAN PARTITION while a rejection is unresolved.
+# This is the check the counters above cannot make, for the reason spelled out
+# in the record block: the item is marked done, so it reads as
+# skipped_unchanged forever. The record is consulted on EVERY sweep, including
+# ones that discovered nothing at all, because "no work this time" is not
+# evidence about work an earlier sweep did.
+#
+# The record is never removed here. Clearing it is an operator action taken
+# after they have looked at the store, which is the same reasoning that
+# removed the prune: this hook cannot see the remote side.
+if [ -n "${__rejection_record}" ] &&
+   { [ -e "${__rejection_record}" ] || [ -L "${__rejection_record}" ]; }; then
+    echo "[finalize] session-store sweep INCOMPLETE (unresolved rejection recorded at" \
+         "${__rejection_record}): this sweep's counters are clean, but the store REFUSED" \
+         "at least one transcript on an earlier sweep and the exporter marks a rejected" \
+         "item as done, so it now counts as skipped_unchanged and no sweep can re-detect" \
+         "it. That transcript is in the spool at ${__part_dir} and is NOT in the store." \
+         "Find out why the store refused it, upload it by hand once that is fixed, then" \
+         "remove ${__rejection_record} to acknowledge; this hook never removes it and" \
+         "will keep reporting INCOMPLETE until you do." >&2
     exit 0
 fi
 
