@@ -51,8 +51,8 @@ STORE_URL_FROM_HOST = os.getenv("SESSION_STORE_URL_FROM_HOST", "http://127.0.0.1
 HINDSIGHT_BACKEND_URL = os.getenv("HINDSIGHT_BACKEND_URL_FROM_HOST", "http://127.0.0.1:9077")
 
 
-def _capability_env_enum(package: str):
-    """Load a capability package's `Env` StrEnum straight from its source file.
+def _capability_contract_module(package: str):
+    """Load a capability package's contract module straight from its source file.
 
     Each capability declares every env var name it reads exactly once, in its
     contract module. Those packages are not installed in the repo-root test
@@ -71,11 +71,18 @@ def _capability_env_enum(package: str):
     # if it is not there yet.
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module.Env
+    return module
 
 
-SessionStoreEnv = _capability_env_enum("agentic_session_store")
-MemoryEnv = _capability_env_enum("agentic_memory")
+def _capability_env_enum(package: str):
+    """That module's `Env` StrEnum: every env var name the capability reads."""
+    return _capability_contract_module(package).Env
+
+
+SessionStoreContract = _capability_contract_module("agentic_session_store")
+MemoryContract = _capability_contract_module("agentic_memory")
+SessionStoreEnv = SessionStoreContract.Env
+MemoryEnv = MemoryContract.Env
 
 
 def _hindsight_reachable() -> bool:
@@ -367,7 +374,7 @@ def test_exporter_absent_is_a_specific_doctor_failure():
     assert result.returncode == 1
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     checks = {c["name"]: c for c in payload["checks"]}
-    assert len(checks) == 5, "all five checks must run even when the binary is absent"
+    assert len(checks) == 6, "every check must run even when the binary is absent"
     assert checks["exporter_present"]["passed"] is False
     assert "SeshMagicSessionExporter" in checks["exporter_present"]["detail"]
 
@@ -831,7 +838,7 @@ def test_full_doctor_passes_with_real_exporter_and_live_store(tmp_path: Path):
     assert result.returncode == 0, f"doctor failed: {result.stdout} {result.stderr}"
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     checks = {c["name"]: c for c in payload["checks"]}
-    assert len(checks) == 5
+    assert len(checks) == 6
     for name, check in checks.items():
         assert check["passed"] is True, f"{name} failed: {check['detail']}"
 
@@ -2818,3 +2825,313 @@ printf 'LINK=%s\\n' "$(readlink {_LOCAL_SPOOL}/{_RESERVED}/.owner 2>/dev/null ||
     assert f"{_LOCAL_SPOOL}/{_RESERVED}/.owner" in result.stderr, result.stderr
     # Refusing deletes nothing, the planted link included.
     assert f"LINK={_MARKER_LINK_TARGET}" in result.stdout, result.stdout
+
+
+# --- An init that failed must never be reported as a healthy workspace -------
+#
+# entrypoint.sh 5.6 sources each adapter's init.sh as the condition of an `if`
+# and, on failure, warns and carries on because "doctor in 5.7 will surface
+# the cause". That is an assumption about COVERAGE -- that every check a
+# doctor runs is a superset of everything its init can fail at -- and it was
+# never verified. It is false for memory: with a read-only ~/.hindsight the
+# adapter's config write fails and it returns 1, while the memory doctor
+# validates the REQUESTED json, the backend, and the config file ALREADY on
+# disk, all of which a stale but well-formed file satisfies.
+#
+# Each init.sh now records a completion marker as its LAST act, and each
+# doctor asserts it. The marker holds a token the init mints fresh per run,
+# because the spool and (optionally) $HOME outlive the container: a marker
+# that only had to exist would be satisfied by the previous run's file, which
+# is the same stale state one layer up.
+
+_SS_INIT_MARKER = SessionStoreContract.init_marker_path("/spool", "w1/p2")
+_SS_META_DIR = _SS_INIT_MARKER.rsplit("/", 1)[0]
+_MEM_INIT_MARKER = MemoryContract.init_marker_path("/home/agent")
+_MEM_MARKER_NAME = MemoryContract.INIT_MARKER_BASENAME
+
+
+def _audit_dir(tmp_path: Path) -> Path:
+    """Host directory the entrypoint's 5.7 doctor appends its JSON into.
+
+    A failing preflight never reaches CMD, so the doctor's stdout cannot be
+    read off the container's stdout the way the on-demand tests read it. The
+    audit file is where the entrypoint puts it, and mounting it is the only
+    way to assert on the payload of the run that actually hard-failed.
+    """
+    audit = tmp_path / "audit"
+    audit.mkdir()
+    os.chmod(audit, 0o777)
+    return audit
+
+
+def _doctor_record(audit: Path, capability: str) -> dict:
+    """The last audit record that capability's doctor wrote."""
+    lines = [
+        line
+        for path in sorted(audit.glob("*.jsonl"))
+        for line in path.read_text().splitlines()
+        if line.strip()
+    ]
+    assert lines, f"the 5.7 doctor wrote no audit record into {audit}"
+    records = [json.loads(line) for line in lines]
+    mine = [r for r in records if r.get("capability") == capability]
+    assert mine, f"no {capability} record among {[r.get('capability') for r in records]}"
+    return mine[-1]
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+@pytest.mark.parametrize(
+    ("keep_marker", "expected_detail"),
+    [
+        pytest.param(True, "DIFFERENT run's token", id="stale-marker-kept"),
+        pytest.param(False, "absent or unreadable", id="marker-removed"),
+    ],
+)
+def test_session_store_failed_init_fails_the_doctor_even_with_a_stale_marker(
+    tmp_path: Path, keep_marker: bool, expected_detail: str
+):
+    """A failed init must fail the doctor, and last run's marker must not save it.
+
+    Three containers against ONE spool and ONE persisted home, which is the
+    configuration that makes this hazard real:
+
+      1. a healthy run, which writes the marker for its own token;
+      2. a staging run with the capability disabled, which makes the metadata
+         directory read-only as the agent user (and, in the second case,
+         removes the marker first);
+      3. the run under test, whose `.capture-env` write therefore fails, so
+         its init returns 1 before it can record anything.
+
+    In run 3 every other check passes: the partition is writable, the
+    symlinks from run 1 survive in the persisted home, the exporter is
+    mounted and the store is live. So init_complete is the only thing between
+    a failed init and a workspace that reports itself healthy while serving a
+    previous run's correlation tags.
+    """
+    spool = _host_spool(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    _open_perms(home)
+    audit = _audit_dir(tmp_path)
+
+    capability_env = {
+        "AGENTIC_CAPABILITIES": "session-store",
+        SessionStoreEnv.PROVIDER: "seshmagic",
+        SessionStoreEnv.URL: STORE_URL,
+        SessionStoreEnv.TAGS: "workflow:w1,phase:p2",
+        SessionStoreEnv.SPOOL: "/spool",
+        SessionStoreEnv.PARTITION: "w1/p2",
+    }
+    mounts = [
+        f"{spool}:/spool",
+        f"{home}:/home/agent",
+        f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+    ]
+
+    healthy = _run(
+        ["bash", "-c", f"cat {_SS_INIT_MARKER}"],
+        env=capability_env,
+        extra_mounts=mounts,
+        add_host_gateway=True,
+        tmpfs_home=False,
+    )
+    assert healthy.returncode == 0, f"the healthy run failed: {healthy.stderr}"
+    first_token = healthy.stdout.strip()
+    assert first_token, (
+        "a successful init recorded no completion marker:\n"
+        f"stdout={healthy.stdout!r} stderr={healthy.stderr!r}"
+    )
+
+    # Staged in the container, as the agent user that owns these paths: see
+    # _stage_partition_sh for why a host-written fixture would not do.
+    if not keep_marker:
+        staging = _run(
+            ["bash", "-c", f"rm -f {_SS_INIT_MARKER}"],
+            extra_mounts=mounts,
+            tmpfs_home=False,
+        )
+        assert staging.returncode == 0, f"staging failed: {staging.stderr}"
+
+    # The metadata directory is made unwritable by REMOUNTING it read-only
+    # rather than by chmod: Docker Desktop's bind-mount layer reports a mode
+    # back faithfully and then serves the write anyway, so a chmod fixture
+    # passes for the wrong reason on a developer's Mac (measured: the whole
+    # run stayed green). A read-only mount is enforced by the kernel on both
+    # platforms.
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={**capability_env, "AGENTIC_CAPABILITY_AUDIT_DIR": "/audit"},
+        extra_mounts=[
+            *mounts,
+            f"{audit}:/audit",
+            f"{spool}/{_RESERVED}/w1/p2:{_SS_META_DIR}:ro",
+        ],
+        add_host_gateway=True,
+        tmpfs_home=False,
+    )
+    assert result.returncode != 0, (
+        f"a failed init started the workspace anyway: {result.stdout} {result.stderr}"
+    )
+    assert "AGENT_RAN" not in result.stdout, "the agent ran on a failed init"
+
+    record = _doctor_record(audit, "session-store")
+    checks = {c["name"]: c for c in record["checks"]}
+    assert checks["init_complete"]["passed"] is False, checks["init_complete"]
+    assert expected_detail in checks["init_complete"]["detail"]
+    assert _SS_INIT_MARKER in checks["init_complete"]["detail"]
+    # The point of the check: nothing else noticed. Without init_complete this
+    # doctor passes and the workspace runs with run 1's tags.
+    other = {n: c for n, c in checks.items() if n != "init_complete"}
+    assert all(c["passed"] for c in other.values()), (
+        "this fixture is meant to fail init_complete ALONE; another check "
+        f"failed too, so it no longer proves the gap: {other}"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _hindsight_reachable(), reason="hindsight backend unreachable")
+@pytest.mark.parametrize(
+    ("keep_marker", "expected_message"),
+    [
+        pytest.param(True, "DIFFERENT run's token", id="stale-marker-kept"),
+        pytest.param(False, "absent or unreadable", id="marker-removed"),
+    ],
+)
+def test_memory_failed_init_fails_the_doctor_even_with_a_stale_marker(
+    tmp_path: Path, keep_marker: bool, expected_message: str
+):
+    """The motivating scenario, reproduced directly: a read-only ~/.hindsight.
+
+    Run 1 asks for one config and gets it. The staging run makes ~/.hindsight
+    read-only. Run 3 asks for a DIFFERENT config, its write fails, and its
+    init returns 1 -- with run 1's config still on disk, well-formed, with
+    dynamicBankId already false, so config_json_valid, backend_dns,
+    backend_health and the hindsight doctor.sh are all green. Only
+    init_complete separates that from a healthy workspace, and a marker left
+    by run 1 on the persisted $HOME must not satisfy it either.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    _open_perms(home)
+    audit = _audit_dir(tmp_path)
+    hindsight_dir = "/home/agent/.hindsight"
+    config_path = f"{hindsight_dir}/claude-code.json"
+
+    def memory_env(banks: str) -> dict:
+        return {
+            "AGENTIC_CAPABILITIES": "memory",
+            MemoryEnv.PROVIDER: "hindsight",
+            MemoryEnv.URL: "http://host.docker.internal:9077",
+            MemoryEnv.NAMESPACE: "init-marker-test",
+            MemoryEnv.CONFIG_JSON: '{"dynamicBankId": false, '
+            f'"recallAdditionalBanks": ["{banks}"]}}',
+        }
+
+    healthy = _run(
+        ["bash", "-c", f"cat {_MEM_INIT_MARKER}"],
+        env=memory_env("from-run-one"),
+        extra_mounts=[f"{home}:/home/agent"],
+        add_host_gateway=True,
+        tmpfs_home=False,
+    )
+    assert healthy.returncode == 0, f"the healthy run failed: {healthy.stderr}"
+    first_token = healthy.stdout.strip()
+    assert first_token, (
+        "a successful init recorded no completion marker:\n"
+        f"stdout={healthy.stdout!r} stderr={healthy.stderr!r}"
+    )
+
+    if not keep_marker:
+        staging = _run(
+            ["bash", "-c", f"rm -f {_MEM_INIT_MARKER}"],
+            extra_mounts=[f"{home}:/home/agent"],
+            tmpfs_home=False,
+        )
+        assert staging.returncode == 0, f"staging failed: {staging.stderr}"
+
+    # ~/.hindsight is made read-only by REMOUNTING it, not by chmod: Docker
+    # Desktop's bind-mount layer serves the write anyway when only the mode
+    # says otherwise (measured: the run stayed green), so a chmod fixture
+    # would prove nothing on a developer's Mac. $HOME itself stays writable,
+    # which is the point -- the marker is not written because init returns
+    # before reaching it, not because it could not be written.
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN"],
+        env={
+            **memory_env("from-run-three"),
+            "AGENTIC_CAPABILITY_AUDIT_DIR": "/audit",
+        },
+        extra_mounts=[
+            f"{home}:/home/agent",
+            f"{home}/.hindsight:{hindsight_dir}:ro",
+            f"{audit}:/audit",
+        ],
+        add_host_gateway=True,
+        tmpfs_home=False,
+    )
+    assert result.returncode != 0, (
+        f"a failed init started the workspace anyway: {result.stdout} {result.stderr}"
+    )
+    assert "AGENT_RAN" not in result.stdout, "the agent ran on a failed init"
+
+    record = _doctor_record(audit, "memory")
+    checks = {c["name"]: c for c in record["checks"]}
+    assert checks["init_complete"]["status"] == "fail", checks["init_complete"]
+    assert expected_message in checks["init_complete"]["message"]
+    assert _MEM_INIT_MARKER in checks["init_complete"]["message"]
+    other = {n: c for n, c in checks.items() if n != "init_complete"}
+    assert all(c["status"] != "fail" for c in other.values()), (
+        "this fixture is meant to fail init_complete ALONE; another check "
+        f"failed too, so it no longer proves the gap: {other}"
+    )
+
+    # And the configuration the agent would have run against is the one run 1
+    # asked for, which is what makes the silent pass expensive.
+    stale = _run(
+        ["bash", "-c", f"cat {config_path}"],
+        extra_mounts=[f"{home}:/home/agent"],
+        tmpfs_home=False,
+    )
+    assert "from-run-one" in stale.stdout, stale.stdout
+    assert "from-run-three" not in stale.stdout, stale.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "provider",
+    [pytest.param(None, id="provider-unset"), pytest.param("none", id="provider-none")],
+)
+def test_a_disabled_capability_writes_no_init_marker(tmp_path: Path, provider):
+    """Opting out stays a complete no-op: no doctor, no marker, no writes.
+
+    entrypoint.sh 5.6 skips a capability whose provider is unset or "none",
+    and both doctors print nothing and exit 0 with no contract. The
+    completion marker must not change any of that: a disabled capability
+    writes nothing, into the spool or into $HOME.
+    """
+    spool = _host_spool(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    _open_perms(home)
+
+    env = {"AGENTIC_CAPABILITIES": "memory session-store"}
+    if provider is not None:
+        env[SessionStoreEnv.PROVIDER] = provider
+        env[MemoryEnv.PROVIDER] = provider
+
+    result = _run(
+        ["bash", "-c", "echo AGENT_RAN; ls -A /spool; ls -A /home/agent"],
+        env=env,
+        extra_mounts=[f"{spool}:/spool", f"{home}:/home/agent"],
+        tmpfs_home=False,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "AGENT_RAN" in result.stdout
+    assert _RESERVED not in result.stdout, result.stdout
+    assert _MEM_MARKER_NAME not in result.stdout, result.stdout
+    assert "doctor" not in result.stderr.lower(), result.stderr
+    # Asserted on the host too: `ls -A` shows the mount points, and these
+    # names must not exist under either of them at all.
+    assert not (spool / _RESERVED).exists()
+    assert not (home / _MEM_MARKER_NAME).exists()

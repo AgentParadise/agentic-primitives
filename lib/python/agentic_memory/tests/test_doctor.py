@@ -8,12 +8,18 @@ from __future__ import annotations
 
 import http.server
 import json
+import pathlib
 import stat
 import threading
 import urllib.request
 from typing import ClassVar
 
-from agentic_memory.contract import CAPABILITY, Env, MemoryContract
+from agentic_memory.contract import (
+    CAPABILITY,
+    Env,
+    MemoryContract,
+    init_marker_path,
+)
 from agentic_memory.doctor import (
     AdapterExistsCheck,
     BackendDnsCheck,
@@ -21,6 +27,7 @@ from agentic_memory.doctor import (
     CheckStatus,
     ConfigJsonValidCheck,
     EnvContractCheck,
+    InitCompleteCheck,
     NamespaceWellFormedCheck,
     ProviderKnownCheck,
     ProviderSpecificCheck,
@@ -200,6 +207,67 @@ class TestBackendHealthCheck:
         assert "http or https" in r.message
 
 
+class TestInitCompleteCheck:
+    """A failed init must not look like a successful one.
+
+    entrypoint.sh 5.6 sources init.sh as the condition of an `if` and, on
+    failure, warns and carries on because "the doctor in 5.7 will surface
+    the cause". That holds only for the failures some other check happens
+    to observe: with a read-only ~/.hindsight the adapter's config write
+    fails, and config_json_valid, backend_health and the provider's own
+    doctor.sh are all still green. These pin the check that closes it.
+    """
+
+    def _marker(self, tmp_path, token):
+        marker = pathlib.Path(init_marker_path(str(tmp_path)))
+        marker.write_text(f"{token}\n")
+        return marker
+
+    def test_passes_when_the_marker_holds_this_runs_token(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+        self._marker(tmp_path, "token-for-this-run")
+
+        r = InitCompleteCheck().run(_contract())
+        assert r.status == CheckStatus.OK, r.message
+
+    def test_fails_when_the_marker_is_absent(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+
+        r = InitCompleteCheck().run(_contract())
+        assert r.status == CheckStatus.FAIL
+        assert "did not finish" in r.message
+
+    def test_fails_on_a_marker_left_by_a_previous_run(self, tmp_path, monkeypatch):
+        """THE hazard: $HOME can be persisted across containers."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+        self._marker(tmp_path, "token-from-the-container-before-this-one")
+
+        r = InitCompleteCheck().run(_contract())
+        assert r.status == CheckStatus.FAIL
+        assert "DIFFERENT run's token" in r.message
+
+    def test_fails_when_no_token_was_minted(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.delenv(Env.INIT_TOKEN, raising=False)
+        self._marker(tmp_path, "some-token")
+
+        r = InitCompleteCheck().run(_contract())
+        assert r.status == CheckStatus.FAIL
+        assert str(Env.INIT_TOKEN) in r.message
+
+    def test_does_not_raise_on_an_unreadable_marker(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+        pathlib.Path(init_marker_path(str(tmp_path))).mkdir()
+
+        r = InitCompleteCheck().run(_contract())
+        assert r.status == CheckStatus.FAIL
+        assert "absent or unreadable" in r.message
+
+
 class TestProviderSpecificCheck:
     def test_skips_when_no_doctor_sh(self, tmp_path):
         (tmp_path / "hindsight").mkdir()
@@ -291,7 +359,7 @@ class TestCli:
         payload = json.loads(captured.out)
         assert payload["status"] == "fail"
         assert payload["exit_code"] == 1
-        assert len(payload["checks"]) == 8
+        assert len(payload["checks"]) == 9
         # capability attribution: with AGENTIC_CAPABILITY_AUDIT_DIR shared
         # across capabilities, this is the only field that lets a reader
         # attribute a record back to memory (see ADR-040 fix wave).

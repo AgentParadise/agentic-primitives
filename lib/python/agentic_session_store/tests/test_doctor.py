@@ -1,12 +1,18 @@
 import http.server
 import json
+import pathlib
 import subprocess
 import sys
 import threading
 from typing import ClassVar
 
 import agentic_session_store.doctor as doctor_module
-from agentic_session_store.contract import CAPABILITY, Env, SessionStoreContract
+from agentic_session_store.contract import (
+    CAPABILITY,
+    Env,
+    SessionStoreContract,
+    init_marker_path,
+)
 from agentic_session_store.doctor import run_checks
 
 
@@ -63,7 +69,7 @@ def test_no_contract_is_clean_exit_zero(monkeypatch):
     assert proc.returncode == 0
 
 
-def test_malformed_url_is_a_contract_failure_and_still_emits_all_five(
+def test_malformed_url_is_a_contract_failure_and_still_emits_every_check(
     tmp_path, monkeypatch
 ):
     """A URL with no scheme must not crash the doctor or short-circuit the run.
@@ -76,7 +82,7 @@ def test_malformed_url_is_a_contract_failure_and_still_emits_all_five(
     The origin-only URL rule now catches this earlier, at contract parse, so
     it reports as a contract failure rather than as one failed check. That is
     the same shape an audit reader parses either way, which is what this test
-    exists to pin: one JSON object, five checks, exit 1, no traceback.
+    exists to pin: one JSON object, all six checks, exit 1, no traceback.
     """
     monkeypatch.setenv(Env.PROVIDER, "seshmagic")
     monkeypatch.setenv(Env.URL, "store-internal-host")
@@ -93,11 +99,11 @@ def test_malformed_url_is_a_contract_failure_and_still_emits_all_five(
     payload = json.loads(proc.stdout.strip().splitlines()[-1])
     assert payload["capability"] == CAPABILITY
     assert payload["passed"] is False
-    assert len(payload["checks"]) == 5
+    assert len(payload["checks"]) == 6
     by_name = {c["name"]: c for c in payload["checks"]}
     assert by_name["contract_parses"]["passed"] is False
     assert str(Env.URL) in by_name["contract_parses"]["detail"]
-    # The other four are reported as failed-but-not-run, never omitted.
+    # The others are reported as failed-but-not-run, never omitted.
     assert by_name["store_reachable"]["passed"] is False
     assert by_name["spool_writable"]["passed"] is False
     assert doctor_module.CONTRACT_FAILURE_DETAIL == by_name["spool_writable"]["detail"]
@@ -202,7 +208,7 @@ def _assert_contract_failure(proc, payload, expected_in_detail):
     assert checks["contract_parses"]["passed"] is False
     assert expected_in_detail in checks["contract_parses"]["detail"]
     # Same shape as a normal run: an audit reader parses one schema, not two.
-    assert len(payload["checks"]) == 5
+    assert len(payload["checks"]) == 6
 
 
 def test_missing_url_emits_json_and_exits_1(tmp_path, monkeypatch):
@@ -492,7 +498,7 @@ def test_credentialed_url_never_reaches_stderr_or_the_audit_json(tmp_path, monke
     same string into every failed-check line.
 
     The schema is asserted alongside it, because the fix must not change the
-    shape an audit reader parses: one object, five checks, capability set,
+    shape an audit reader parses: one object, six checks, capability set,
     passed false.
     """
     secret = "hunter2-store-write"  # a test fixture, not a real credential
@@ -510,3 +516,80 @@ def test_credentialed_url_never_reaches_stderr_or_the_audit_json(tmp_path, monke
     assert secret not in proc.stderr, proc.stderr
     assert "store.example" not in proc.stdout, proc.stdout
     assert "store.example" not in proc.stderr, proc.stderr
+
+
+# --- init_complete: a failed init must not look like a successful one ---------
+#
+# entrypoint.sh 5.6 sources init.sh as the condition of an `if` and, on
+# failure, warns and carries on because "the doctor in 5.7 will surface the
+# cause". That is only true for the failures some other check happens to
+# observe. These pin the check that makes it true in general.
+
+
+def _write_marker(tmp_path, token):
+    """Write a marker where the adapter would, for the _contract() fixture."""
+    marker = pathlib.Path(init_marker_path(str(tmp_path), "w1/p2"))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(f"{token}\n")
+    return marker
+
+
+def test_init_complete_passes_when_the_marker_holds_this_runs_token(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+    _write_marker(tmp_path, "token-for-this-run")
+
+    result = doctor_module._init_complete(_contract(tmp_path))
+
+    assert result.passed is True, result.detail
+
+
+def test_init_complete_fails_when_the_marker_is_absent(tmp_path, monkeypatch):
+    """init.sh writes the marker last, so no marker means it did not finish."""
+    monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+
+    result = doctor_module._init_complete(_contract(tmp_path))
+
+    assert result.passed is False
+    assert "init.sh did not finish" in result.detail
+
+
+def test_init_complete_fails_on_a_marker_left_by_a_previous_run(tmp_path, monkeypatch):
+    """THE hazard: the spool outlives the container.
+
+    A marker that only had to exist would be satisfied by the previous run's
+    file, so an init that failed before writing anything would pass on its
+    predecessor's word — the same stale state this check exists to detect,
+    one layer up.
+    """
+    monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+    _write_marker(tmp_path, "token-from-the-container-before-this-one")
+
+    result = doctor_module._init_complete(_contract(tmp_path))
+
+    assert result.passed is False
+    assert "DIFFERENT run's token" in result.detail
+
+
+def test_init_complete_fails_when_no_token_was_minted(tmp_path, monkeypatch):
+    """No token means init.sh never reached its first line."""
+    monkeypatch.delenv(Env.INIT_TOKEN, raising=False)
+    _write_marker(tmp_path, "some-token")
+
+    result = doctor_module._init_complete(_contract(tmp_path))
+
+    assert result.passed is False
+    assert str(Env.INIT_TOKEN) in result.detail
+
+
+def test_init_complete_does_not_raise_on_an_unreadable_marker(tmp_path, monkeypatch):
+    """A directory at the marker's name is an OSError on open, not a crash."""
+    monkeypatch.setenv(Env.INIT_TOKEN, "token-for-this-run")
+    marker = pathlib.Path(init_marker_path(str(tmp_path), "w1/p2"))
+    marker.mkdir(parents=True)
+
+    result = doctor_module._init_complete(_contract(tmp_path))
+
+    assert result.passed is False
+    assert "absent or unreadable" in result.detail

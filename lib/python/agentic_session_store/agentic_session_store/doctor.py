@@ -30,7 +30,12 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from agentic_session_store.contract import CAPABILITY, Env, SessionStoreContract
+from agentic_session_store.contract import (
+    CAPABILITY,
+    Env,
+    SessionStoreContract,
+    init_marker_path,
+)
 
 EXPORTER_BINARY = "SeshMagicSessionExporter"
 """Name of the exporter binary this capability expects on PATH."""
@@ -63,6 +68,79 @@ def _contract_parses(contract: SessionStoreContract) -> CheckResult:
         passed=True,
         detail=f"provider={contract.provider} partition={contract.partition}",
     )
+
+
+INIT_MARKER_READ_BYTES = 4096
+"""How much of the marker to read. It holds one short token and a newline."""
+
+
+def _init_complete(contract: SessionStoreContract) -> CheckResult:
+    """Fail unless THIS run's init.sh reached its last line.
+
+    WHY A DOCTOR NEEDS THIS AT ALL. entrypoint.sh 5.6 sources each adapter's
+    init.sh as the condition of an `if` and, on failure, warns and carries on
+    in the belief that this doctor will name the cause. That belief was never
+    verified, and it is not free-standing: it holds only for the failures the
+    other checks happen to observe. Everything init.sh does that no other
+    check looks at (writing `.capture-env`, for one) could fail with every
+    other check still green.
+
+    WHY A TOKEN AND NOT JUST A FILE. The spool outlives the container, on
+    purpose. A marker that only had to EXIST would be satisfied by the one a
+    previous run left behind, so a run whose init died before writing
+    anything would pass on its predecessor's word, which is the same
+    stale-state failure this check exists to remove, one layer up. So the
+    marker carries the value of Env.INIT_TOKEN, which init.sh mints fresh
+    (and exports) at its first line, and this compares the two. A marker from
+    any other run holds another run's token and fails here.
+
+    WHAT THIS DOES NOT PROVE: that the marker was written by the adapter.
+    Anything that can write inside the reserved namespace can write this file
+    too, and it would have to know this run's token to write a passing one.
+    That is not a boundary this check defends; the namespace's ownership
+    marker is what governs who writes there.
+    """
+    marker = init_marker_path(contract.spool, contract.partition)
+    token = os.environ.get(Env.INIT_TOKEN, "").strip()
+    if not token:
+        return CheckResult(
+            name="init_complete",
+            passed=False,
+            detail=(
+                f"{Env.INIT_TOKEN} is unset, so the {contract.provider} adapter's "
+                "init.sh never ran or died before its first line. Look for "
+                f"[{CAPABILITY}] messages earlier in the container's stderr."
+            ),
+        )
+    try:
+        with open(marker, encoding="utf-8", errors="replace") as handle:
+            recorded = handle.read(INIT_MARKER_READ_BYTES).strip()
+    except OSError as e:
+        return CheckResult(
+            name="init_complete",
+            passed=False,
+            detail=(
+                f"{marker} is absent or unreadable ({e}), so the "
+                f"{contract.provider} adapter's init.sh did not finish: it writes "
+                "that file as its last act. The workspace would run with whatever "
+                "spool layout and correlation tags a previous run left behind. Look "
+                f"for [{CAPABILITY}] messages earlier in the container's stderr."
+            ),
+        )
+    if recorded != token:
+        return CheckResult(
+            name="init_complete",
+            passed=False,
+            detail=(
+                f"{marker} records a DIFFERENT run's token, so it was left by an "
+                f"earlier container and the {contract.provider} adapter's init.sh "
+                "did not finish this time. The spool outlives the container, so a "
+                "stale marker is expected here; what is not expected is this run "
+                "failing to replace it. Look for "
+                f"[{CAPABILITY}] messages earlier in the container's stderr."
+            ),
+        )
+    return CheckResult(name="init_complete", passed=True, detail=marker)
 
 
 def _spool_writable(contract: SessionStoreContract) -> CheckResult:
@@ -292,6 +370,7 @@ def _store_reachable(contract: SessionStoreContract) -> CheckResult:
 
 CHECKS: list[tuple[str, Callable[[SessionStoreContract], CheckResult]]] = [
     ("contract_parses", _contract_parses),
+    ("init_complete", _init_complete),
     ("spool_writable", _spool_writable),
     ("symlinks_correct", _symlinks_correct),
     ("exporter_present", _exporter_present),
@@ -300,14 +379,14 @@ CHECKS: list[tuple[str, Callable[[SessionStoreContract], CheckResult]]] = [
 
 
 def run_checks(contract: SessionStoreContract) -> list[CheckResult]:
-    """Run all five checks against a validated contract, in order.
+    """Run every check in CHECKS against a validated contract, in order.
 
-    All five always run, even after an earlier one fails or raises, so a
+    All of them always run, even after an earlier one fails or raises, so a
     single invocation gives the operator the full picture. Each check is
     called through this outer guard: a check that raises (a malformed URL,
     an embedded null byte in a path, anything unanticipated) is converted
-    into a failed CheckResult rather than propagating and killing the other
-    four checks along with it. Individual checks additionally catch their
+    into a failed CheckResult rather than propagating and killing the rest
+    along with it. Individual checks additionally catch their
     own expected failure modes so the detail string is specific rather than
     a generic "raised: ..." message.
     """
@@ -327,18 +406,18 @@ def run_checks(contract: SessionStoreContract) -> list[CheckResult]:
 
 
 CONTRACT_FAILURE_DETAIL = "not run: the contract did not parse"
-"""Detail recorded for the four checks a malformed contract never reaches."""
+"""Detail recorded for the checks a malformed contract never reaches."""
 
 
 def _contract_failure_results(message: str) -> list[CheckResult]:
     """Build the full result list for a contract that would not parse.
 
     The list is the SAME length and order as a normal run: contract_parses
-    carries the parser's own message, and the other four are reported as
+    carries the parser's own message, and the others are reported as
     failed-but-not-run rather than omitted. An audit-log reader then parses
     one schema instead of two, and `passed: false` on a check that never
-    executed is honest -- nothing about the spool, symlinks, exporter, or
-    store was verified.
+    executed is honest -- nothing about the adapter's completion, the spool,
+    symlinks, exporter, or store was verified.
     """
     return [
         CheckResult(

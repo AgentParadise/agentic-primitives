@@ -40,6 +40,37 @@ class Env(StrEnum):
     URL = "AGENTIC_MEMORY_URL"
     AUTH = "AGENTIC_MEMORY_AUTH"
     CONFIG_JSON = "AGENTIC_MEMORY_CONFIG_JSON"
+    # NOT operator input. The provider adapter's init.sh mints a fresh value
+    # for this on every run and exports it; the doctor's init_complete check
+    # reads it back and compares it with the marker file the same init.sh
+    # writes as its last act. It lives here because this enum is where every
+    # name this package reads is spelled, and it sits beside the same
+    # lifecycle's AGENTIC_MEMORY_READY, which entrypoint.sh 5.6 exports on the
+    # same event. A value injected from outside the container cannot make a
+    # failed init look complete: init.sh assigns it unconditionally before it
+    # does anything else.
+    INIT_TOKEN = "AGENTIC_MEMORY_INIT_TOKEN"
+
+
+INIT_MARKER_BASENAME = ".agentic-memory-init-complete"
+"""Name of the marker each memory adapter's init.sh writes on success.
+
+Restated in every provider adapter's init.sh, which is shell and cannot
+import this; the spellings must agree. It sits directly in $HOME rather than
+in a provider's own state directory because the marker is a CAPABILITY
+lifecycle artifact: the doctor that reads it is provider-agnostic, and every
+provider's init.sh writes the same file.
+
+The file holds the value of `Env.INIT_TOKEN` for the run that wrote it, so a
+marker left behind on a persisted $HOME does not vouch for a later run.
+"""
+
+
+def init_marker_path(home: str | None = None) -> str:
+    """Where this run's init-completion marker lives."""
+    return os.path.join(
+        home if home is not None else os.path.expanduser("~"), INIT_MARKER_BASENAME
+    )
 
 
 NAMESPACE_PATTERN = re.compile(r"^[a-zA-Z0-9._:-]+$")

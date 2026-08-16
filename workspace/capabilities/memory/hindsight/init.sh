@@ -33,6 +33,42 @@
 # generic lifecycle code shared by every capability.
 set -e
 
+# --- This run's init-completion token -----------------------------------------
+# Minted FIRST, before anything can fail, and written to the marker file LAST,
+# after every consequential step has succeeded (see the end of this file). The
+# doctor's init_complete check compares the two.
+#
+# WHY A TOKEN RATHER THAN JUST A FILE. $HOME can be persisted across
+# containers, which is a supported configuration, so a marker whose only job
+# was to exist would still be there on the next run: an init that failed
+# before writing anything would be vouched for by its predecessor's file,
+# which is the stale state this marker exists to detect, one layer up. A token
+# that is fresh per run cannot do that.
+#
+# Clearing a previous run's marker here instead was considered and rejected:
+# the clear is itself a write, and the case that matters most is exactly the
+# one where writes fail, so a failed clear would leave the stale marker in
+# place and pass.
+#
+# The value is assigned unconditionally, never defaulted from the environment,
+# so a value injected into the container cannot stand in for one this adapter
+# minted. It is not a secret, and an on-demand doctor re-run later needs it.
+AGENTIC_MEMORY_INIT_TOKEN="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || true)"
+if [ -z "${AGENTIC_MEMORY_INIT_TOKEN}" ]; then
+    # No /proc (this file also runs outside the workspace image in tests).
+    # $$ separates concurrent processes, the nanosecond clock separates
+    # sequential ones, and $RANDOM covers a coarse `date` on a host without %N.
+    AGENTIC_MEMORY_INIT_TOKEN="$$-$(date -u +%s%N 2>/dev/null)-${RANDOM}${RANDOM}"
+fi
+export AGENTIC_MEMORY_INIT_TOKEN
+
+# Where that token is written on success. The name is restated in
+# agentic_memory.contract as INIT_MARKER_BASENAME, because the doctor has to
+# find the same file; the two spellings must agree. It is a capability-level
+# artifact, not a hindsight one, so it goes in $HOME rather than in
+# ~/.hindsight: every memory provider's adapter writes this same file.
+__memory_init_marker="${HOME}/.agentic-memory-init-complete"
+
 # --- Backend URL --------------------------------------------------------------
 export HINDSIGHT_API_URL="${AGENTIC_MEMORY_URL}"
 
@@ -74,3 +110,49 @@ if [ -n "${AGENTIC_MEMORY_CONFIG_JSON:-}" ]; then
     fi
     unset __hindsight_config_dir
 fi
+
+# --- Record that this init completed ------------------------------------------
+# LAST, and reached only when every step above returned success, because the
+# doctor's init_complete check reads this file as a statement that all of them
+# did. Anything added to this adapter belongs ABOVE this write: a marker
+# written before the work it vouches for is worse than no marker, since it
+# turns a detectable failure into a pass.
+#
+# The name is classified before either write touches it. A symlink here is not
+# a file this adapter wrote, so `>` would truncate whatever it points at and
+# `rm -f` would drop the link; both are refusals instead, with nothing removed.
+if [ -L "${__memory_init_marker}" ] ||
+   { [ -e "${__memory_init_marker}" ] && [ ! -f "${__memory_init_marker}" ]; }; then
+    echo "[memory] ${__memory_init_marker} exists and is not a regular file" \
+         "this adapter could have written; refusing to replace it. Nothing was" \
+         "modified." >&2
+    unset __memory_init_marker
+    return 1
+fi
+
+# umask so the file is never briefly world-readable, `set -o noclobber`
+# (O_CREAT|O_EXCL) so a name planted here after the classification above fails
+# the open instead of being followed, the previous run's marker removed first
+# because O_EXCL will not truncate one, and the subshell's status checked
+# explicitly because errexit is inert in this file. Both options are set
+# inside the subshell only: this file is sourced, so setting either in the
+# parent would persist into the entrypoint and every later command it runs.
+# O_EXCL constrains the final component only; a parent directory swapped for a
+# symlink is still resolved normally, so this is not a write that cannot
+# escape $HOME.
+if ! (
+    umask 077
+    set -o noclobber
+    rm -f "${__memory_init_marker}" &&
+        printf '%s\n' "${AGENTIC_MEMORY_INIT_TOKEN}" > "${__memory_init_marker}"
+); then
+    echo "[memory] could not write ${__memory_init_marker}, so nothing can" \
+         "distinguish this run's initialization from a previous one's. Check" \
+         "that ${HOME} is writable by uid $(id -u). Failing the init rather" \
+         "than starting a workspace whose doctor would have no way to tell" \
+         "that it had." >&2
+    unset __memory_init_marker
+    return 1
+fi
+unset __memory_init_marker
+return 0

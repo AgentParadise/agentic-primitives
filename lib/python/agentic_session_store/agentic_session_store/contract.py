@@ -7,6 +7,7 @@ a renamed variable must break at import, not at runtime in a container.
 
 from __future__ import annotations
 
+import os
 import re
 import urllib.parse
 from collections.abc import Mapping
@@ -18,6 +19,34 @@ CAPABILITY = "session-store"
 
 PROVIDER_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 DEFAULT_SPOOL = "/spool"
+
+METADATA_NAMESPACE = ".agentic-session-store"
+"""The reserved directory the adapter writes its own metadata under.
+
+Restated from the seshmagic adapter's init.sh (`__META_ROOT`) and its
+finalize.sh (`__RESERVED_SEGMENT`), which are shell and cannot import this.
+The three spellings must agree; `init_marker_path` below is the only reason
+this package needs the name at all.
+"""
+
+INIT_MARKER_NAME = ".init-complete"
+"""Basename of the adapter's init-completion marker, inside METADATA_NAMESPACE.
+
+Written by init.sh as its LAST act, and only once every step before it
+succeeded. Read by the doctor's `init_complete` check. The file holds the
+value of `Env.INIT_TOKEN` for the run that wrote it, so a marker left behind
+by an earlier container does not vouch for this one.
+"""
+
+
+def init_marker_path(spool: str, partition: str) -> str:
+    """Where this run's init-completion marker lives for a given contract.
+
+    Same construction as the adapter's `${META_DIR}/.init-complete`: the
+    reserved namespace under the spool, then the partition components, then
+    the marker name.
+    """
+    return os.path.join(spool, METADATA_NAMESPACE, partition, INIT_MARKER_NAME)
 
 
 def capability_env_name(capability: str, field: str) -> str:
@@ -47,6 +76,16 @@ class Env(StrEnum):
     TAGS = "AGENTIC_SESSION_STORE_TAGS"
     SPOOL = "AGENTIC_SESSION_STORE_SPOOL"
     PARTITION = "AGENTIC_SESSION_STORE_PARTITION"
+    # NOT operator input. The adapter's init.sh generates a fresh value for
+    # this on every run and exports it; the doctor reads it back and compares
+    # it with the marker on disk. It sits in Env because the doctor READS it
+    # and this enum is where every name this package reads is spelled, next to
+    # the same lifecycle's AGENTIC_<CAP>_READY, which entrypoint.sh 5.6
+    # exports on the same event. A value inherited from outside the container
+    # cannot make a failed init look complete: init.sh overwrites it before it
+    # does anything else, so the doctor never compares against a value the
+    # adapter did not just mint.
+    INIT_TOKEN = "AGENTIC_SESSION_STORE_INIT_TOKEN"
 
 
 class ExporterEnv(StrEnum):

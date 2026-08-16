@@ -28,6 +28,37 @@
 # withhold-attribution diff around it depends on its current shape.
 set -e
 
+# --- This run's init-completion token -----------------------------------------
+# Minted FIRST, before anything can fail, and written to the marker file LAST,
+# after every consequential step has succeeded (see the end of this file). The
+# doctor at entrypoint.sh 5.7 compares the two.
+#
+# WHY A TOKEN RATHER THAN JUST A FILE. The spool outlives the container by
+# design, so a marker whose only job was to exist would still be there on the
+# next run: an init that failed before writing anything would be vouched for by
+# its predecessor's file, which is the stale state this marker exists to
+# detect, one layer up. A token that is fresh per run cannot do that, on a
+# persisted spool or a persisted $HOME.
+#
+# Clearing a previous run's marker here instead was considered and rejected:
+# the clear is itself a write, and the case that matters most is exactly the
+# one where writes fail, so a failed clear would leave the stale marker in
+# place and pass.
+#
+# The value is assigned unconditionally, never defaulted from the environment,
+# so a value injected into the container cannot stand in for one this adapter
+# minted. It is not a secret and is deliberately not withheld from the agent:
+# an on-demand doctor re-run later needs it to say anything true.
+AGENTIC_SESSION_STORE_INIT_TOKEN="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || true)"
+if [ -z "${AGENTIC_SESSION_STORE_INIT_TOKEN}" ]; then
+    # No /proc (this file also runs outside the workspace image in tests).
+    # $$ separates concurrent processes, the nanosecond clock separates
+    # sequential ones, and $RANDOM covers a coarse `date` on a host without
+    # %N.
+    AGENTIC_SESSION_STORE_INIT_TOKEN="$$-$(date -u +%s%N 2>/dev/null)-${RANDOM}${RANDOM}"
+fi
+export AGENTIC_SESSION_STORE_INIT_TOKEN
+
 SPOOL="${AGENTIC_SESSION_STORE_SPOOL:-/spool}"
 PARTITION="${AGENTIC_SESSION_STORE_PARTITION:-${HOSTNAME}}"
 PART_DIR="${SPOOL}/${PARTITION}"
@@ -403,7 +434,12 @@ __CAPTURE_ENV="${META_DIR}/.capture-env"
 # in another process after the agent has run, so it rules out a link that is
 # already there and nothing that appears afterwards.
 __STATE_FILE="${META_DIR}/state.json"
-for __meta_file in "${__CAPTURE_ENV}" "${__STATE_FILE}"; do
+# The init-completion marker (written at the very end of this file) is
+# classified with them, for the same reason and with the same window caveat.
+# Its name is restated in agentic_session_store.contract as INIT_MARKER_NAME,
+# because the doctor has to find the same file; the two spellings must agree.
+__INIT_MARKER="${META_DIR}/.init-complete"
+for __meta_file in "${__CAPTURE_ENV}" "${__STATE_FILE}" "${__INIT_MARKER}"; do
     if [ -L "${__meta_file}" ]; then
         echo "[session-store] ${__meta_file} is a symlink, so it is not a file" \
              "this adapter wrote; refusing to write through it or to remove it." \
@@ -664,4 +700,36 @@ if [ "${__migrate_failed}" -ne 0 ]; then
     return 1
 fi
 unset __migrate_failed
+
+# --- Record that this init completed ------------------------------------------
+# LAST, and reached only when every step above returned success, because the
+# doctor's init_complete check reads this file as a statement that all of them
+# did. Anything added to this adapter belongs ABOVE this write: a marker
+# written before the work it vouches for is worse than no marker, since it
+# converts a detectable failure into a pass.
+#
+# Same write discipline as `.capture-env`: umask so the file is never briefly
+# world-readable, `set -o noclobber` (O_CREAT|O_EXCL) inside a subshell so a
+# name planted here after the classification above fails the open instead of
+# being followed, the stale record removed first because O_EXCL will not
+# truncate one, and the subshell's status checked explicitly because errexit
+# is inert in this file. Both options are set inside the subshell only: this
+# file is sourced, so setting either in the parent would persist into the
+# entrypoint and every later command it runs.
+#
+# What O_EXCL buys is the final component and nothing above it; the two open
+# windows recorded in the "WHAT IS NOT PROVEN" block above apply here too.
+if ! (
+    umask 077
+    set -o noclobber
+    rm -f "${__INIT_MARKER}" &&
+        printf '%s\n' "${AGENTIC_SESSION_STORE_INIT_TOKEN}" > "${__INIT_MARKER}"
+); then
+    echo "[session-store] could not write ${__INIT_MARKER}, so nothing can" \
+         "distinguish this run's initialization from a previous one's. Check" \
+         "that the directory is writable by uid $(id -u). Failing the init" \
+         "rather than starting a workspace whose doctor would have no way to" \
+         "tell that it had." >&2
+    return 1
+fi
 return 0

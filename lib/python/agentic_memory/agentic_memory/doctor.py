@@ -1,8 +1,8 @@
 """Memory doctor — preflight validation for the memory contract.
 
 The doctor runs at container start (entrypoint section 5.7) and is also
-invocable on demand. It performs eight standard checks plus optional
-provider-specific checks delegated to the adapter's `doctor.sh`.
+invocable on demand. It performs the standard checks in DEFAULT_CHECKS plus
+optional provider-specific checks delegated to the adapter's `doctor.sh`.
 
 Hard-fail on any failure. Setting `AGENTIC_MEMORY_PROVIDER` is opting into
 hard-fail; there is no soft-fail mode.
@@ -32,6 +32,7 @@ from agentic_memory.contract import (
     CAPABILITY,
     Env,
     MemoryContract,
+    init_marker_path,
     is_namespace_well_formed,
     is_provider_well_formed,
     sanitize_namespace,
@@ -320,6 +321,92 @@ class AdapterExistsCheck(Check):
         )
 
 
+INIT_MARKER_READ_BYTES = 4096
+"""How much of the marker to read. It holds one short token and a newline."""
+
+
+class InitCompleteCheck(Check):
+    """Fail unless THIS run's adapter init.sh reached its last line.
+
+    WHY THE OTHER CHECKS ARE NOT ENOUGH. entrypoint.sh 5.6 sources each
+    adapter's init.sh as the condition of an `if`, and on failure it warns
+    and carries on, on the assumption that this doctor will name the cause.
+    The assumption was never verified and is false: with a read-only
+    ~/.hindsight, the hindsight adapter's config write fails and it returns
+    1, but `config_json_valid` only validates the REQUESTED json,
+    `backend_health` only talks to the backend, and the provider's own
+    doctor.sh reads whatever config file is already on disk. A stale but
+    well-formed file passes all three, so the workspace ran against memory
+    configuration nobody asked for and nothing said so.
+
+    WHY A TOKEN AND NOT JUST A FILE. $HOME can be persisted (it is a
+    supported configuration), so a marker that only had to EXIST would be
+    satisfied by the one a previous container left behind: a failed init
+    would pass on its predecessor's word, which is the same stale-state
+    failure one layer up. The marker instead holds the value of
+    Env.INIT_TOKEN, which init.sh mints fresh and exports at its first line,
+    and this check compares the two.
+
+    WHAT THIS DOES NOT PROVE: that the adapter wrote the marker. Anything
+    running as this uid can write in $HOME, and would have to know this run's
+    token to write a passing one. This check reports on completion, not on
+    who wrote the file.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(name="init_complete")
+
+    def run(self, contract: MemoryContract) -> CheckResult:
+        marker = init_marker_path()
+        token = os.environ.get(Env.INIT_TOKEN, "").strip()
+        if not token:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message=(
+                    f"{Env.INIT_TOKEN} is unset, so the '{contract.provider}' "
+                    "adapter's init.sh never ran or died before its first line. "
+                    "Look for [memory] messages earlier in the container's stderr."
+                ),
+                details={"marker": marker},
+            )
+        try:
+            with open(marker, encoding="utf-8", errors="replace") as handle:
+                recorded = handle.read(INIT_MARKER_READ_BYTES).strip()
+        except OSError as e:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message=(
+                    f"{marker} is absent or unreadable ({e}), so the "
+                    f"'{contract.provider}' adapter's init.sh did not finish: it "
+                    "writes that file as its last act. The workspace would run "
+                    "against whatever memory configuration was already on disk. "
+                    "Look for [memory] messages earlier in the container's stderr."
+                ),
+                details={"marker": marker, "error": str(e)},
+            )
+        if recorded != token:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message=(
+                    f"{marker} records a DIFFERENT run's token, so it was left by "
+                    f"an earlier container and the '{contract.provider}' adapter's "
+                    "init.sh did not finish this time. A persisted $HOME keeps the "
+                    "marker across runs, so finding an old one is expected; this "
+                    "run failing to replace it is not. Look for [memory] messages "
+                    "earlier in the container's stderr."
+                ),
+                details={"marker": marker},
+            )
+        return CheckResult(
+            name=self.name,
+            status=CheckStatus.OK,
+            details={"marker": marker},
+        )
+
+
 class ConfigJsonValidCheck(Check):
     """Verify AGENTIC_MEMORY_CONFIG_JSON parses as JSON (when set)."""
 
@@ -593,6 +680,7 @@ DEFAULT_CHECKS: list[Check] = [
     NamespaceWellFormedCheck(),
     ProviderKnownCheck(),
     AdapterExistsCheck(),
+    InitCompleteCheck(),
     ConfigJsonValidCheck(),
     BackendDnsCheck(),
     BackendHealthCheck(),
