@@ -46,6 +46,16 @@ jobs:
             pytest-args: "-x -q --cov-fail-under=90"
             typecheck: true
 
+          - name: "Memory"
+            path: "lib/python/agentic_memory"
+            python: "3.11"
+            pytest-args: "-x -q"
+
+          - name: "Session Store"
+            path: "lib/python/agentic_session_store"
+            python: "3.11"
+            pytest-args: "-x -q"
+
 
     steps:
       - uses: actions/checkout@v7.0.1

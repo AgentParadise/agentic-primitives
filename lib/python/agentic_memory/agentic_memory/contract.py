@@ -13,7 +13,64 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
+
+CAPABILITY = "memory"
+"""This capability's registry name, as it appears in AGENTIC_CAPABILITIES."""
+
+
+def capability_env_name(capability: str, field_name: str) -> str:
+    """Build an env var name per the ADR-040 rule: AGENTIC_<CAP>_<FIELD>.
+
+    The entrypoint derives the same name in shell (see
+    `__capability_env_prefix`), so this function and that shell helper are
+    the two implementations of one rule. The conformance test in
+    tests/test_contract.py pins them together.
+    """
+    normalize = lambda part: part.upper().replace("-", "_")
+    return f"AGENTIC_{normalize(capability)}_{normalize(field_name)}"
+
+
+class Env(StrEnum):
+    """Every env var the memory capability reads. Single source of truth."""
+
+    PROVIDER = "AGENTIC_MEMORY_PROVIDER"
+    NAMESPACE = "AGENTIC_MEMORY_NAMESPACE"
+    NAMESPACE_KIND = "AGENTIC_MEMORY_NAMESPACE_KIND"
+    URL = "AGENTIC_MEMORY_URL"
+    AUTH = "AGENTIC_MEMORY_AUTH"
+    CONFIG_JSON = "AGENTIC_MEMORY_CONFIG_JSON"
+    # NOT operator input. The provider adapter's init.sh mints a fresh value
+    # for this on every run and exports it; the doctor's init_complete check
+    # reads it back and compares it with the marker file the same init.sh
+    # writes as its last act. It lives here because this enum is where every
+    # name this package reads is spelled, and it sits beside the same
+    # lifecycle's AGENTIC_MEMORY_READY, which entrypoint.sh 5.6 exports on the
+    # same event. A value injected from outside the container cannot make a
+    # failed init look complete: init.sh assigns it unconditionally before it
+    # does anything else.
+    INIT_TOKEN = "AGENTIC_MEMORY_INIT_TOKEN"
+
+
+INIT_MARKER_BASENAME = ".agentic-memory-init-complete"
+"""Name of the marker each memory adapter's init.sh writes on success.
+
+Restated in every provider adapter's init.sh, which is shell and cannot
+import this; the spellings must agree. It sits directly in $HOME rather than
+in a provider's own state directory because the marker is a CAPABILITY
+lifecycle artifact: the doctor that reads it is provider-agnostic, and every
+provider's init.sh writes the same file.
+
+The file holds the value of `Env.INIT_TOKEN` for the run that wrote it, so a
+marker left behind on a persisted $HOME does not vouch for a later run.
+"""
+
+
+def init_marker_path(home: str | None = None) -> str:
+    """Where this run's init-completion marker lives."""
+    return os.path.join(
+        home if home is not None else os.path.expanduser("~"), INIT_MARKER_BASENAME
+    )
 
 
 NAMESPACE_PATTERN = re.compile(r"^[a-zA-Z0-9._:-]+$")
@@ -22,8 +79,8 @@ underscore, colon, hyphen. No spaces, no slashes, no shell metacharacters."""
 
 PROVIDER_PATTERN = re.compile(r"^[a-zA-Z0-9._-]+$")
 """Allowed characters in AGENTIC_MEMORY_PROVIDER — provider names map to
-directories under /opt/agentic/memory, so slashes and shell metacharacters are
-not allowed."""
+directories under /opt/agentic/capabilities/memory, so slashes and shell
+metacharacters are not allowed."""
 
 
 class NamespaceKind(str, Enum):
@@ -44,7 +101,7 @@ class NamespaceKind(str, Enum):
     CUSTOM = "custom"
 
     @classmethod
-    def parse(cls, value: str | None) -> "NamespaceKind":
+    def parse(cls, value: str | None) -> NamespaceKind:
         if not value:
             return cls.TASK
         try:
@@ -72,7 +129,7 @@ class MemoryContract:
     config_dict: dict | None = field(default=None, compare=False)
 
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> "MemoryContract | None":
+    def from_env(cls, env: dict[str, str] | None = None) -> MemoryContract | None:
         """Parse contract from env vars. Returns None if AGENTIC_MEMORY_PROVIDER
         is unset or set to 'none' — i.e. the contract has not been opted into.
 
@@ -82,11 +139,11 @@ class MemoryContract:
         """
         e = env if env is not None else os.environ
 
-        provider = e.get("AGENTIC_MEMORY_PROVIDER", "").strip()
+        provider = e.get(Env.PROVIDER, "").strip()
         if not provider or provider.lower() == "none":
             return None
 
-        config_json = e.get("AGENTIC_MEMORY_CONFIG_JSON")
+        config_json = e.get(Env.CONFIG_JSON)
         config_dict: dict | None = None
         if config_json:
             try:
@@ -98,10 +155,10 @@ class MemoryContract:
 
         return cls(
             provider=provider,
-            namespace=e.get("AGENTIC_MEMORY_NAMESPACE", "").strip(),
-            url=e.get("AGENTIC_MEMORY_URL", "").strip() or None,
-            namespace_kind=NamespaceKind.parse(e.get("AGENTIC_MEMORY_NAMESPACE_KIND")),
-            auth=e.get("AGENTIC_MEMORY_AUTH") or None,
+            namespace=e.get(Env.NAMESPACE, "").strip(),
+            url=e.get(Env.URL, "").strip() or None,
+            namespace_kind=NamespaceKind.parse(e.get(Env.NAMESPACE_KIND)),
+            auth=e.get(Env.AUTH) or None,
             config_json=config_json,
             config_dict=config_dict,
         )

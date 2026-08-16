@@ -37,6 +37,7 @@ import yaml
 ROOT = Path(__file__).parent.parent
 PROVIDERS_DIR = ROOT / "providers" / "workspaces"
 PLUGINS_DIR = ROOT / "plugins"
+WORKSPACE_DIR = ROOT / "workspace"
 PYTHON_PACKAGES_DIR = ROOT / "lib" / "python"
 BUILD_DIR = ROOT / "build"
 
@@ -114,25 +115,44 @@ def stage_scripts(provider: str, build_context: Path) -> None:
             print(f"  ✓ Script: {path.relative_to(scripts_dst)}")
 
 
-def stage_memory(provider: str, build_context: Path) -> None:
-    """Copy the memory/ adapter directory to the build context (ADR-036).
+def stage_workspace_runtime(build_context: Path) -> None:
+    """Copy the shared workspace runtime to the build context (ADR-040).
 
-    Mirrors stage_scripts. The Dockerfile then COPYs build_context/memory/
-    to /opt/agentic/memory/ where the entrypoint section 5.6 + 5.7 expects it.
+    The runtime is harness-neutral and lives at the repo root in workspace/:
+    the entrypoint that drives the capability loops, and the capabilities/
+    adapter tree it iterates. Any provider image can stage it, so a second
+    image is a Dockerfile rather than a fork of this tree.
+
+    The Dockerfile then COPYs build_context/workspace/entrypoint.sh to
+    /opt/agentic/entrypoint.sh and build_context/workspace/capabilities/ to
+    /opt/agentic/capabilities/ where the entrypoint section 5.6 + 5.7
+    expects it.
     """
-    memory_src = PROVIDERS_DIR / provider / "memory"
-    if not memory_src.exists():
-        print("  ⊘ No memory adapters configured")
+    if not WORKSPACE_DIR.exists():
+        print("  ⊘ No workspace runtime found")
         return
 
-    memory_dst = build_context / "memory"
-    if memory_dst.exists():
-        shutil.rmtree(memory_dst)
-    shutil.copytree(memory_src, memory_dst)
+    workspace_dst = build_context / "workspace"
+    if workspace_dst.exists():
+        shutil.rmtree(workspace_dst)
+    workspace_dst.mkdir(parents=True)
 
-    for path in sorted(memory_dst.rglob("*")):
+    entrypoint_src = WORKSPACE_DIR / "entrypoint.sh"
+    if entrypoint_src.exists():
+        shutil.copy2(entrypoint_src, workspace_dst / "entrypoint.sh")
+        print("  ✓ Workspace runtime: entrypoint.sh")
+
+    capabilities_src = WORKSPACE_DIR / "capabilities"
+    if not capabilities_src.exists():
+        print("  ⊘ No capabilities configured")
+        return
+
+    capabilities_dst = workspace_dst / "capabilities"
+    shutil.copytree(capabilities_src, capabilities_dst)
+
+    for path in sorted(capabilities_dst.rglob("*")):
         if path.is_file():
-            print(f"  ✓ Memory: {path.relative_to(memory_dst)}")
+            print(f"  ✓ Capability: {path.relative_to(capabilities_dst)}")
 
 
 def build_wheels(build_context: Path) -> None:
@@ -142,8 +162,9 @@ def build_wheels(build_context: Path) -> None:
 
     # Packages to include in the image
     # agentic_events is the core observability package used by plugin hooks
-    # agentic_memory is the memory contract + doctor (ADR-036)
-    required_packages = ["agentic_events", "agentic_memory"]
+    # agentic_memory is the memory capability contract + doctor (ADR-036)
+    # agentic_session_store is the session-store capability contract + doctor (ADR-040)
+    required_packages = ["agentic_events", "agentic_memory", "agentic_session_store"]
 
     for pkg_name in required_packages:
         pkg_path = PYTHON_PACKAGES_DIR / pkg_name
@@ -264,7 +285,7 @@ def main():
     stage_dockerfile(provider, build_context)
     stage_scripts(provider, build_context)
     stage_plugins(manifest, build_context)
-    stage_memory(provider, build_context)
+    stage_workspace_runtime(build_context)
     build_wheels(build_context)
 
     if args.stage_only:

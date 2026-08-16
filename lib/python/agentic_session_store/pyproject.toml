@@ -1,7 +1,7 @@
 [project]
-name = "agentic-memory"
-version = "0.2.0"
-description = "Memory primitive contract + doctor for agentic-primitives workspaces"
+name = "agentic-session-store"
+version = "0.1.0"
+description = "Session-store capability contract + env-var interface for agentic-primitives workspaces"
 readme = "README.md"
 license = { text = "MIT" }
 # 3.11 is the real floor: contract.py imports enum.StrEnum, added in 3.11.
@@ -9,7 +9,7 @@ requires-python = ">=3.11"
 authors = [
     { name = "Agentic Primitives Team" }
 ]
-keywords = ["ai", "agents", "memory", "hindsight", "workspace", "doctor"]
+keywords = ["ai", "agents", "session-store", "workspace", "doctor"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -29,13 +29,10 @@ dev = [
     "ruff==0.16.1",
 ]
 
-[project.scripts]
-agentic-memory-doctor = "agentic_memory.doctor:main"
-
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["agentic_memory*"]
+include = ["agentic_session_store*"]
 exclude = ["tests*"]

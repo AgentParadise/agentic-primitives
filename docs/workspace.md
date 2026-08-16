@@ -149,7 +149,7 @@ matching the bundled Claude CLI release.
 - **Design spec:** [`docs/superpowers/specs/2026-05-12-workspace-injection-contract-design.md`](superpowers/specs/2026-05-12-workspace-injection-contract-design.md)
 - **ADR:** [`docs/adrs/035-workspace-injection-contract.md`](adrs/035-workspace-injection-contract.md)
 - **Implementation plan:** [`docs/superpowers/plans/2026-05-12-workspace-injection-contract.md`](superpowers/plans/2026-05-12-workspace-injection-contract.md)
-- **Entrypoint script (source of truth for behavior):** [`providers/workspaces/claude-cli/scripts/entrypoint.sh`](../providers/workspaces/claude-cli/scripts/entrypoint.sh)
+- **Entrypoint script (source of truth for behavior):** [`workspace/entrypoint.sh`](../workspace/entrypoint.sh)
 - **Python helper:** [`lib/python/agentic_isolation/agentic_isolation/workspace_files.py`](../lib/python/agentic_isolation/agentic_isolation/workspace_files.py)
 - **Integration tests:** [`tests/integration/test_entrypoint_workspace_injection.py`](../tests/integration/test_entrypoint_workspace_injection.py)
 - **Sibling spec (consumer side, runner):** [agentic-domain-runner per-domain context injection design](https://gitea.neuralempowerment.xyz/HomeLab/agentic-domain-runner/src/branch/main/docs/superpowers/specs/2026-05-12-per-domain-context-injection-design.md)

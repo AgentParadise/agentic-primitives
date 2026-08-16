@@ -262,7 +262,7 @@ just list-providers
 2. **Isolate** the agent's effects (tmpfs home, read-only context mount, network whitelisting, per-task volumes).
 3. **Observe** what the agent did (git hooks → JSONL on stderr, `--output-format stream-json` on stdout, output artifacts in `/workspace/artifacts/output/`).
 
-See [`docs/workspace.md`](docs/workspace.md) for the canonical reference, [`docs/adrs/035-workspace-injection-contract.md`](docs/adrs/035-workspace-injection-contract.md) for the design decisions, and [`providers/workspaces/claude-cli/scripts/entrypoint.sh`](providers/workspaces/claude-cli/scripts/entrypoint.sh) for the source of truth.
+See [`docs/workspace.md`](docs/workspace.md) for the canonical reference, [`docs/adrs/035-workspace-injection-contract.md`](docs/adrs/035-workspace-injection-contract.md) for the design decisions, and [`workspace/entrypoint.sh`](workspace/entrypoint.sh) for the source of truth.
 
 ---
 
