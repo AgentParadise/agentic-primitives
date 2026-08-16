@@ -1649,6 +1649,110 @@ def test_init_refuses_to_retarget_a_transcript_symlink_outside_the_spool(
     )
 
 
+def _run_with_persisted_home(
+    spool: Path, home: Path, partition: str, extra_mounts: list[str] | None = None
+) -> subprocess.CompletedProcess:
+    """Start the workspace against a real (bind-mounted) $HOME and spool.
+
+    A persisted home is what makes the transcript-root branches reachable at
+    all: on the tmpfs home every other test uses, ~/.claude/projects never
+    pre-exists, which is why the original data-loss defect there survived a
+    green suite.
+    """
+    cmd = ["docker", "run", "--rm"]
+    for k, v in {
+        # The registry variable belongs to the lifecycle, not to this
+        # capability, so it has no member in SessionStoreEnv; every other
+        # test in this file spells it the same way.
+        "AGENTIC_CAPABILITIES": SessionStoreContract.CAPABILITY,
+        SessionStoreEnv.PROVIDER: "seshmagic",
+        SessionStoreEnv.URL: STORE_URL,
+        SessionStoreEnv.SPOOL: "/spool",
+        SessionStoreEnv.PARTITION: partition,
+    }.items():
+        cmd.extend(["-e", f"{k}={v}"])
+    cmd.append("--add-host=host.docker.internal:host-gateway")
+    cmd.extend(["-v", f"{spool}:/spool"])
+    cmd.extend(["-v", f"{home}:/home/agent"])
+    cmd.extend(["-v", f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro"])
+    for m in extra_mounts or []:
+        cmd.extend(["-v", m])
+    cmd.extend([IMAGE, "bash", "-c", "echo AGENT_RAN"])
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+@pytest.mark.parametrize(
+    ("partition", "link_target", "refused", "why"),
+    [
+        pytest.param(
+            "retarget-sibling",
+            "/spool/another-partition/claude",
+            True,
+            "a live link into a DIFFERENT partition of the same spool",
+            id="sibling-partition",
+        ),
+        pytest.param(
+            "retarget-dangling",
+            "/spool/no-such-partition/claude",
+            True,
+            "a dangling link, which proves nothing about who made it",
+            id="dangling",
+        ),
+        pytest.param(
+            "retarget-own",
+            "/spool/retarget-own/claude",
+            False,
+            "this run's own link, which must keep working on a re-run",
+            id="own-link",
+        ),
+    ],
+)
+def test_transcript_symlink_ownership_is_the_target_not_the_spool_prefix(
+    tmp_path: Path, partition: str, link_target: str, refused: bool, why: str
+):
+    """Under the spool is not a proof of ownership; the target is.
+
+    The spool is a directory the operator owns, so a link into it says
+    neither that this adapter created it nor that it points at the partition
+    this run captures into. The first case is the one the prefix test got
+    wrong and the one that costs data attention: a link into a sibling
+    partition was silently repointed, so whatever was still writing through
+    it stopped being captured, and the destination that had been in force was
+    not even named in the log.
+
+    The third case is here so the fix cannot be "refuse everything": a
+    persisted $HOME whose link this adapter wrote on a previous run must
+    still start.
+    """
+    spool = _host_spool(tmp_path)
+    (spool / "another-partition" / "claude").mkdir(parents=True)
+    os.chmod(spool / "another-partition", 0o777)
+    os.chmod(spool / "another-partition" / "claude", 0o777)
+
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / ".codex").mkdir(parents=True)
+    (home / ".claude" / "projects").symlink_to(link_target)
+    for d in (home, home / ".claude", home / ".codex"):
+        os.chmod(d, 0o777)
+
+    result = _run_with_persisted_home(spool, home, partition)
+
+    if refused:
+        assert result.returncode != 0, f"the adapter retargeted {why}: {result.stdout}"
+        assert "AGENT_RAN" not in result.stdout
+        assert "refusing to retarget" in result.stderr, result.stderr
+        assert os.readlink(home / ".claude" / "projects") == link_target, (
+            f"the adapter replaced {why}"
+        )
+    else:
+        assert result.returncode == 0, f"the adapter refused {why}: {result.stderr}"
+        assert "AGENT_RAN" in result.stdout, result.stderr
+        assert os.readlink(home / ".claude" / "projects") == link_target
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
 def test_finalize_keeps_the_partition_on_success(tmp_path: Path):

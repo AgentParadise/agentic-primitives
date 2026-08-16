@@ -206,10 +206,20 @@ root-owned while the container runs as uid 1000 (verified in EXP-07),
 which breaks writes.
 
 If `~/.claude/projects` or `~/.codex/sessions` already exists as a **symlink**,
-it is replaced only when it is already this adapter's own (it resolves into
-`$SPOOL`) or when it dangles. A link resolving anywhere else is the
-operator's, and retargeting it silently moves capture away from where they
-pointed it, so the adapter refuses and names the path instead.
+it is replaced only when it already points at **this run's** partition
+directory — the raw target equals `$SPOOL/$PARTITION/{claude,codex}`, or
+resolves to the same physical path, which is what keeps a spool reached
+through a link or a bind mount working on a re-run. Every other link is
+refused loudly and left exactly as it is, including a dangling one.
+
+Being *under* `$SPOOL` is deliberately **not** the test, and used to be. The
+spool is a directory the operator owns, so a link into it proves neither that
+this adapter created it nor that it points at the partition this run captures
+into: a link into a *different* partition passed that test and was silently
+repointed, which stopped capture where it had been going and lost the previous
+destination from the log. The target itself is the proof, in the same way the
+`.owner` marker is the proof for the metadata namespace: a positive mark this
+adapter put there, not an inference from where the thing happens to live.
 
 If `~/.claude/projects` or `~/.codex/sessions` already exists as a real
 directory (a persisted `$HOME`, or a prior harness run), `init.sh` **migrates

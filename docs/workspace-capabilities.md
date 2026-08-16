@@ -242,12 +242,16 @@ line:
   place leaves the source intact and the adapter returns non-zero rather than
   guessing. A missing path is fine to leave to `ln -sfn`. A workspace that
   refuses to start is recoverable; a deleted transcript is not.
-- **An existing symlink is not automatically yours.** `ln -sfn` replaces one
-  silently. That is right when the link is your own from a previous run
-  (it already points into your spool) or when it dangles, and wrong when the
-  operator made it: retargeting deletes nothing and still stops the capture
-  happening where they asked, with nothing in the doctor output saying so.
-  Check where it resolves and refuse loudly otherwise.
+- **An existing symlink is not automatically yours, and "inside your
+  directory" does not prove that it is.** `ln -sfn` replaces one silently.
+  That is right when the link already points at the exact destination this
+  run captures into, and wrong for every other link: retargeting deletes
+  nothing and still stops the capture happening where the operator asked,
+  with nothing in the doctor output saying so. Test the target against the
+  one value you would have written, not against a path prefix. `session-store`
+  accepted any link resolving anywhere under its spool, which silently
+  repointed a link into a *different* partition of that same spool. A
+  dangling link is not yours either.
 
 **Withholding a value from the agent.** If your adapter puts a credential in
 the environment and only your `finalize.sh` needs it, declare the names so

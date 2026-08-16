@@ -554,43 +554,70 @@ fi
 #
 # A non-existent path is left to `ln -sfn`, which handles it on its own.
 #
-# AN EXISTING SYMLINK IS NOT AUTOMATICALLY OURS. `ln -sfn` replaces one
-# silently, and that is right for a re-run of this adapter (the link already
-# points into the spool) but wrong for a link the operator made: retargeting
-# it does not delete their transcripts, but it does silently stop capturing
-# where they said to capture, and nothing in the doctor output would say so.
-# So a link already pointing into ${SPOOL}, or a dangling one (its target does
-# not exist, so nothing can be orphaned), is replaced; anything else is
-# refused loudly and left exactly as it is.
+# AN EXISTING SYMLINK IS NOT AUTOMATICALLY OURS, AND "UNDER THE SPOOL" IS NOT
+# A PROOF THAT IT IS. `ln -sfn` replaces a link silently, which is right for a
+# re-run of this adapter and wrong for anybody else's link: retargeting it
+# deletes no transcript, but it does stop capture happening where the operator
+# said to capture it, from that moment on, and nothing in the doctor output
+# would say so.
+#
+# This used to accept any link whose target was anywhere beneath ${SPOOL}.
+# That test proves neither of the two things it was standing in for. It does
+# not prove this adapter created the link: the spool is a directory the
+# operator owns and may point anything into. And it does not prove the link
+# points at THIS run's partition: a link into a DIFFERENT partition under the
+# same spool passed it and was silently repointed, so the transcripts still
+# being written to the old destination stopped being captured, and the path
+# that had been the capture destination was lost from the log.
+#
+# THE OWNERSHIP TEST IS THE TARGET ITSELF. The only value this adapter ever
+# writes at this name is ${dst}, the harness directory of the partition this
+# run captures into, so a link that already holds that value is provably one
+# of ours (or already correct, which is the same outcome) and a link holding
+# anything else is provably not. That is the same shape as the metadata
+# namespace's ownership marker: a positive mark this adapter put there, rather
+# than an inference from where the thing happens to live.
+#
+# Both spellings count as a match, because they are the same link written two
+# ways: the raw target text equal to ${dst}, or the resolved physical path
+# equal to the resolved ${dst}. The second is what keeps a spool reached
+# through a symlink, or a bind mount presented under another name, from making
+# this adapter refuse its own link on the second run. ${dst} exists by the
+# time this runs (the caller `mkdir -p`s it), so it always resolves.
+#
+# ANYTHING ELSE IS REFUSED LOUDLY AND LEFT EXACTLY AS IT IS, including a
+# DANGLING link, which the previous version replaced on the grounds that
+# nothing can be orphaned. Nothing is orphaned, but the operator's stated
+# destination is still discarded, and a dangling link is a normal state for a
+# tree in the middle of being set up or repaired. It also cannot be one of
+# ours: ${dst} exists, so a link this adapter wrote does not dangle. Refusing
+# costs a workspace start with a named path in the error, which is
+# recoverable.
 __link_transcript_root() {
     local src="$1" dst="$2" label="$3"
-    local entry base mv_failed=0 target spool_real
-
-    if [ -L "${src}" ] && [ ! -e "${src}" ]; then
-        # Dangling: the link resolves to nothing, so replacing it can orphan
-        # nothing.
-        ln -sfn "${dst}" "${src}" || return 1
-        return 0
-    fi
+    local entry base mv_failed=0 target_raw target dst_real
 
     if [ -L "${src}" ]; then
+        target_raw="$(readlink "${src}" 2>/dev/null || true)"
         target="$(readlink -f "${src}" 2>/dev/null || true)"
-        # Compare against the spool BOTH as configured and as resolved: a
-        # spool reached through a symlink (or a bind mount presented under a
-        # different name) would otherwise make this adapter refuse its own
-        # link on the second run.
-        spool_real="$(readlink -f "${SPOOL}" 2>/dev/null || true)"
-        if [ "${target}" != "${dst}" ] &&
-           [ "${target#"${SPOOL}"/}" = "${target}" ] &&
-           { [ -z "${spool_real}" ] || [ "${target#"${spool_real}"/}" = "${target}" ]; }; then
-            echo "[session-store] ${label}: ${src} is a symlink to ${target}," \
-                 "which is outside ${SPOOL}; refusing to retarget a link this" \
-                 "adapter did not create. Remove it, or point" \
-                 "AGENTIC_SESSION_STORE_SPOOL at that tree." >&2
-            return 1
+        dst_real="$(readlink -f "${dst}" 2>/dev/null || true)"
+        if [ "${target_raw}" = "${dst}" ] ||
+           { [ -n "${target}" ] && [ -n "${dst_real}" ] && [ "${target}" = "${dst_real}" ]; }; then
+            # Already this run's capture destination. Rewriting it is a no-op
+            # in effect and keeps the re-run path a single code path.
+            ln -sfn "${dst}" "${src}" || return 1
+            return 0
         fi
-        ln -sfn "${dst}" "${src}" || return 1
-        return 0
+        echo "[session-store] ${label}: ${src} is a symlink to" \
+             "${target_raw:-an unreadable target}, not to ${dst}; refusing to" \
+             "retarget a link this adapter did not create. Being under the" \
+             "spool would not make it this adapter's, and repointing it would" \
+             "silently move capture away from where it currently goes. The" \
+             "link is untouched and its target was not read, written or" \
+             "removed. Remove the link, or point" \
+             "AGENTIC_SESSION_STORE_PARTITION at the partition it already" \
+             "names." >&2
+        return 1
     fi
 
     if [ ! -e "${src}" ]; then
