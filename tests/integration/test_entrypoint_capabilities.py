@@ -2467,11 +2467,18 @@ def test_docker_stop_stubborn_agent_is_killed_and_still_runs_finalize(
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ENTRYPOINT_SH = _REPO_ROOT / "workspace" / "entrypoint.sh"
 
-# The whole `if [ "${__rc}" -gt 128 ]; then ... fi` escalation window, lifted
-# verbatim out of entrypoint.sh. Extracted rather than restated so the test
-# exercises the shipped code: a restatement would only test the test.
+# The whole classification -- `__signaled=0` and the escalation window it
+# gates -- lifted verbatim out of entrypoint.sh. Extracted rather than
+# restated so the test exercises the shipped code: a restatement would only
+# test the test. The `__signaled=0` line is included because the clean path's
+# whole observable behavior is that the block leaves it alone.
+#
+# Deliberately tolerant of the condition's tail, so this extraction still
+# matches the pre-fix shape (`-gt 128` alone) as well as the shipped one
+# (`-gt 128` AND a signal actually received). A test that could only extract
+# the fixed block could not be run against the commit it was written for.
 _ESCALATION_BLOCK = re.compile(
-    r'^if \[ "\$\{__rc\}" -gt 128 \]; then$.*?^fi$',
+    r'^__signaled=0$\n^if \[ "\$\{__rc\}" -gt 128 \][^\n]*; then$.*?^fi$',
     re.MULTILINE | re.DOTALL,
 )
 
@@ -2513,6 +2520,9 @@ def test_escalation_survives_the_child_dying_mid_kill(tmp_path: Path):
         "__TERM_GRACE_TICKS=2\n"
         "__child=424242\n"
         "__rc=143\n"
+        # A signal really did reach the wrapper in each of these: rc=143 is
+        # what `wait` reports when the TERM trap interrupts it.
+        "__signal_received=1\n"
         # The stub IS the race: alive when probed, gone when signalled.
         "kill() {\n"
         '    case "$1" in\n'
@@ -2558,6 +2568,9 @@ def test_escalation_survives_the_two_non_race_outcomes(
         "__TERM_GRACE_TICKS=2\n"
         "__child=424242\n"
         "__rc=143\n"
+        # A signal really did reach the wrapper in each of these: rc=143 is
+        # what `wait` reports when the TERM trap interrupts it.
+        "__signal_received=1\n"
         "kill() {\n"
         '    case "$1" in\n'
         f"        -0) return {kill0_rc} ;;\n"
@@ -2574,6 +2587,129 @@ def test_escalation_survives_the_two_non_race_outcomes(
     )
     assert "REACHED" in result.stdout, f"{label}: {result.stderr}"
     assert result.returncode == 0, result.stderr
+
+
+# --- An exit status above 128 is not the same thing as a signal ---------
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("rc", "signal_received", "want_signaled", "want_rc", "label"),
+    [
+        pytest.param(
+            200, 0, 0, 200, "an ordinary exit with a status above 128", id="exit-200"
+        ),
+        pytest.param(
+            143, 1, 1, 137, "a real SIGTERM teardown", id="signalled"
+        ),
+        pytest.param(
+            137, 0, 0, 137, "a child killed by something outside this wrapper",
+            id="external-kill",
+        ),
+    ],
+)
+def test_only_a_signal_this_wrapper_received_takes_the_signal_path(
+    tmp_path: Path,
+    rc: int,
+    signal_received: int,
+    want_signaled: int,
+    want_rc: int,
+    label: str,
+):
+    """`wait` returning above 128 does not mean the agent was signalled.
+
+    128+signum is how `wait` reports a signalled child, but a process may also
+    just exit with a status in that range. `exit 200` is an ordinary exit, and
+    the classification tested `-gt 128` alone, so it took the signal path:
+    the tight signal-path finalize budget (measured against `docker stop -t 5`)
+    plus a kill escalation, on a run with no stop deadline anywhere in it. The
+    budgets are asymmetric by measurement, so that is not a mislabel, it is a
+    truncated sweep and transcripts that never reach the store.
+
+    The evidence used instead is direct: the traps record that a signal
+    actually reached this wrapper, which is the only way `docker stop` or a
+    Ctrl-C can. The third case pins the other direction -- a child killed by
+    something that never signalled PID 1 has no stop grace running and is
+    already dead, so it belongs on the clean path too.
+
+    Runs the SHIPPED block under `set -e`, the discipline entrypoint.sh runs
+    it under, with `wait` stubbed to the status the second wait would report.
+    """
+    script = tmp_path / f"classify-{rc}-{signal_received}.sh"
+    script.write_text(
+        "set -e\n"
+        "__TERM_GRACE_TICKS=2\n"
+        "__child=424242\n"
+        f"__rc={rc}\n"
+        f"__signal_received={signal_received}\n"
+        # Child already gone in every case: the escalation must be skipped
+        # entirely on the clean path, not merely be a no-op.
+        "kill() { return 1; }\n"
+        # What the second wait would report. Reaching it at all on a clean
+        # exit is the defect: it replaces the agent's real status.
+        "wait() { return 137; }\n"
+        f"{_escalation_block()}\n"
+        'echo "REACHED signaled=${__signaled} rc=${__rc}"\n'
+    )
+    result = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=30
+    )
+    assert "REACHED" in result.stdout, f"{label}: {result.stderr}"
+    assert result.returncode == 0, result.stderr
+    assert f"signaled={want_signaled}" in result.stdout, (
+        f"{label} was classified wrongly, so the wrong finalize budget applies: "
+        f"{result.stdout}"
+    )
+    assert f"rc={want_rc}" in result.stdout, (
+        f"{label}: the agent's exit code must survive the classification: "
+        f"{result.stdout}"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_an_exit_above_128_gets_the_clean_finalize_budget(tmp_path: Path):
+    """The consequence, end to end: an agent exiting 200 must get a sweep.
+
+    The classification is only interesting because of what it selects. A stub
+    exporter that takes 5s completes inside the clean budget (120s) and is cut
+    off by the signal budget (2s), so the report an operator reads says which
+    path the run took -- and the agent's exit code must still come out
+    unchanged either way.
+    """
+    spool = _host_spool(tmp_path)
+    slow_exporter = tmp_path / "slow-exporter"
+    slow_exporter.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "${1:-}" = "--version" ]; then echo "stub 0.0.0-slow"; exit 0; fi\n'
+        "sleep 5\n"
+        'echo "run: discovered=0 skipped_unchanged=0 uploaded=0 accepted=0 '
+        'duplicate=0 rejected=0 skipped_oversize=0 failed=0"\n'
+        "exit 0\n"
+    )
+    os.chmod(slow_exporter, 0o755)
+
+    result = _run(
+        ["bash", "-c", "exit 200"],
+        env={
+            "AGENTIC_CAPABILITIES": SessionStoreContract.CAPABILITY,
+            SessionStoreEnv.PROVIDER: "seshmagic",
+            SessionStoreEnv.URL: STORE_URL,
+            SessionStoreEnv.SPOOL: "/spool",
+            SessionStoreEnv.PARTITION: "exit-above-128",
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{slow_exporter}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert result.returncode == 200, "the agent's exit code must survive finalize"
+    assert "upload complete" in result.stderr, (
+        "an ordinary exit above 128 was given the signal-path budget, so the "
+        f"sweep was cut short: {result.stderr}"
+    )
+    assert "TIMED OUT" not in result.stderr, result.stderr
 
 
 # --- The same `set -e` class in the trap bodies and the grace loop -------
@@ -2642,6 +2778,9 @@ def test_grace_loop_survives_an_interrupted_sleep(tmp_path: Path):
         "__TERM_GRACE_TICKS=2\n"
         "__child=424242\n"
         "__rc=143\n"
+        # A signal really did reach the wrapper in each of these: rc=143 is
+        # what `wait` reports when the TERM trap interrupts it.
+        "__signal_received=1\n"
         # Alive throughout, so the loop actually runs its body.
         "kill() { return 0; }\n"
         # What an interrupted sleep reports.

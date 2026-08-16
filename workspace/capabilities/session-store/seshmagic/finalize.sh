@@ -301,8 +301,11 @@ fi
 #
 # THE BUDGET IS ASYMMETRIC, because the deadline only exists on one path.
 # entrypoint.sh calls __run_finalizers on BOTH exits, but its escalation window
-# only runs when the agent's status is >128, i.e. the signal path. On an
-# ordinary agent exit there is no `docker stop -t 5` ticking and nothing to stay
+# only runs on the signal path, which it identifies as "a signal reached the
+# wrapper AND the wait returned above 128 because of it" rather than as a
+# status above 128 on its own; an agent that exits 200 is an ordinary exit and
+# gets the generous budget. On an ordinary agent exit there is no
+# `docker stop -t 5` ticking and nothing to stay
 # inside. A single tight bound applied to both would kill a legitimate 4s sweep
 # on every normal run, so for a heavy user no sweep would ever complete and
 # their transcripts would never reach the store. So entrypoint.sh picks the

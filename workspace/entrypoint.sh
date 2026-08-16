@@ -527,8 +527,10 @@ fi
 #
 # The budget is asymmetric because the deadline only exists on one path. This
 # function is called on BOTH exits, but the escalation window below only runs
-# when the agent's status is >128, i.e. the signal path, where `docker stop -t`
-# is already ticking. On an ordinary agent exit nothing is waiting on us. A
+# on the signal path, where `docker stop -t` is already ticking: this wrapper
+# was signalled AND the wait returned above 128 because of it. An agent that
+# merely exits with a status above 128 is not that path, and gets the clean
+# budget. On an ordinary agent exit nothing is waiting on us. A
 # single tight bound applied to both would kill a legitimate multi-second
 # transcript sweep on every normal run, so for a heavy user no sweep would ever
 # complete. Callers pass the value for their path.
@@ -604,6 +606,24 @@ readonly __FINALIZE_BUDGET_CLEAN_S=120
 
 "$@" <&0 &
 __child=$!
+# DID THIS WRAPPER ITSELF GET SIGNALLED? Set by the trap bodies below, and
+# read by the classification after the wait.
+#
+# The two questions "was the agent torn down" and "did the agent exit with a
+# status above 128" are not the same question, and the code below used to
+# treat them as one. `wait` reports a signalled child as 128+signum, but a
+# process may also just exit with a status in that range: `exit 200` is a
+# perfectly ordinary exit, and 200 > 128. Classifying it as signalled gave a
+# normal run the tight signal-path finalize budget and a kill escalation, with
+# no stop deadline in play at all, which for the session-store capability
+# means a sweep cut short and transcripts left un-uploaded.
+#
+# This flag is the direct evidence, not an inference from a number. There is
+# exactly one way `docker stop` (or a Ctrl-C) reaches this wrapper, and that
+# is a signal delivered to PID 1, which runs one of these traps. It can only
+# fire while this shell is blocked in the `wait` below, because that is where
+# this shell spends the agent's entire lifetime.
+__signal_received=0
 # Forward the signal actually received, not always TERM: under
 # `docker run -it` job control is off, the child shares PID 1's process
 # group and already receives the tty's SIGINT directly. Also sending it a
@@ -621,8 +641,10 @@ __child=$!
 #
 # The `2>/dev/null` only hides the diagnostic; it does not change the status.
 # Any trap body added here later needs the same guard.
-trap 'kill -TERM "${__child}" 2>/dev/null || true' TERM
-trap 'kill -INT "${__child}" 2>/dev/null || true' INT
+# The flag is set FIRST in each body, before the kill that may fail: a plain
+# assignment cannot fail, so it is recorded whatever the kill then does.
+trap '__signal_received=1; kill -TERM "${__child}" 2>/dev/null || true' TERM
+trap '__signal_received=1; kill -INT "${__child}" 2>/dev/null || true' INT
 # `set -e` is in effect for this whole script (line 30). A bare
 # `wait "${__child}"; __rc=$?` is a classic set -e trap: if the child exits
 # non-zero, `wait`'s own non-zero status is a simple command not shielded by
@@ -637,8 +659,35 @@ if wait "${__child}"; then __rc=0; else __rc=$?; fi
 # runs finalize at all. Bound the wait and escalate.
 # Recorded BEFORE the escalation block, which reassigns __rc from the second
 # wait: by the time finalizers run, __rc no longer says which path we took.
+#
+# BOTH CONDITIONS, and neither alone is the test.
+#
+#   `-gt 128` alone was the bug. It is true of a signalled child AND of an
+#   agent that simply exited with a status in that range, and `exit 200` then
+#   took the signal path: the tight finalize budget plus a kill escalation, on
+#   a run where nothing was tearing the container down and no `docker stop -t`
+#   was ticking. The budgets are asymmetric by measurement (see
+#   __FINALIZE_BUDGET_SIGNAL_S), so misclassifying a clean exit does not just
+#   mislabel it, it cuts the sweep short.
+#
+#   The flag alone is not the test either. It says a signal reached this
+#   wrapper, not that the wait ended because of one, and the escalation below
+#   only makes sense for a `wait` that returned while the child may still be
+#   alive.
+#
+# Together they are exactly the signal path: `wait` returns >128 the instant a
+# trap runs, so a signal that reached this wrapper and a wait that ended above
+# 128 is that wait being interrupted by that signal. Every currently signalled
+# case is classified the same way it was before; the only run whose
+# classification changes is the one with no signal anywhere in it.
+#
+# A child killed by a signal nothing routed through this wrapper (an external
+# `kill -9` on the agent, or the OOM killer) takes the clean path now. That is
+# correct rather than incidental: no stop grace is running, so there is no
+# deadline to stay inside, and the child is already dead, so there is nothing
+# to escalate to.
 __signaled=0
-if [ "${__rc}" -gt 128 ]; then
+if [ "${__rc}" -gt 128 ] && [ "${__signal_received}" -eq 1 ]; then
     __signaled=1
     __n=0
     # `sleep ... || true`: the same class again, one line further on. Under
