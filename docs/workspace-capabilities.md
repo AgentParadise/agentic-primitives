@@ -301,11 +301,19 @@ Five rules, each of which cost something to learn:
    stdout and stderr to fd2 so its summary line was visible, which put
    whatever that build chose to print -- an environment dump, an
    `Authorization` header, a request body -- into durable container logs.
-3. **Assume it may run standalone.** A recovery sweep of a spool left by a
-   SIGKILLed container has none of `init.sh`'s exported env. Guard every
-   variable you read (`${VAR:-}`), because a bare expansion under `set -u`
-   aborts the script and breaks the "always exit 0" contract on exactly the
-   failure path recovery exists to handle.
+3. **Assume it may run without your `init.sh`'s environment.** Section 5.6
+   warns and continues when an adapter's init fails, so section 6 still runs
+   your finalizer with whatever is left. Guard every variable you read
+   (`${VAR:-}`), because a bare expansion under `set -u` aborts the script and
+   breaks the "always exit 0" contract on exactly that path. **Then say so.**
+   A guard that only prevents the crash turns a broken run into a silent one,
+   and "always exit 0" means the only report you have is a warning on stderr.
+   Do not document a hand-invocation or recovery procedure your hook does not
+   implement: `session-store`'s finalize claimed to be runnable standalone for
+   a recovery sweep, and an operator following that got a success status and
+   no output. A recovery path that belongs to the lifecycle (start a workspace
+   with the same configuration and let the hook run) is a procedure you can
+   document, because it is one the code actually has.
 4. **Be fast.** You are inside the container stop grace. See the timing
    budget below.
 5. **Delete nothing.** A finalize hook may write and it may report, but it

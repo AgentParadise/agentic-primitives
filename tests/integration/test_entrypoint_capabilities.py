@@ -83,6 +83,9 @@ SessionStoreContract = _capability_contract_module("agentic_session_store")
 MemoryContract = _capability_contract_module("agentic_memory")
 SessionStoreEnv = SessionStoreContract.Env
 MemoryEnv = MemoryContract.Env
+# The names the seshmagic adapter EXPORTS for the exporter to read, spelled
+# once in the same contract module for the same reason.
+ExporterEnv = SessionStoreContract.ExporterEnv
 
 
 def _hindsight_reachable() -> bool:
@@ -1335,13 +1338,13 @@ def test_finalize_survives_unset_exporter_state_file_on_failure():
     """Regression test: finalize.sh must not crash under `set -u` when
     EXPORTER_STATE_FILE is unset and the exporter fails.
 
-    This is the standalone recovery-sweep shape .capture-env exists to
-    serve (see the parse test above) -- SESSION_STORE_URL set, but no
-    adapter env at all otherwise. finalize.sh's own failure-path log line
-    used to reference `${EXPORTER_STATE_FILE%/*}` unguarded, unlike every
-    other reference to that var in the file; under `set -u` that aborts
-    the script with a nonzero exit, which breaks the one contract this
-    hook cannot break ("finalize.sh must always exit 0").
+    This is what section 6 produces when an adapter's init FAILED: 5.6 warns
+    and continues, so the finalizer still runs, with a store URL in the
+    environment and none of init.sh's exports. finalize.sh's own failure-path
+    log line used to reference `${EXPORTER_STATE_FILE%/*}` unguarded, unlike
+    every other reference to that var in the file; under `set -u` that aborts
+    the script with a nonzero exit, which breaks the one contract this hook
+    cannot break ("finalize.sh must always exit 0").
     """
     fin = "/opt/agentic/capabilities/session-store/seshmagic/finalize.sh"
     script = f"""
@@ -1361,6 +1364,56 @@ echo "FINALIZE_RC=$?"
     result = _run(["bash", "-c", script])
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "FINALIZE_RC=0" in result.stdout, result.stdout
+
+
+@pytest.mark.integration
+def test_finalize_warns_when_it_runs_without_the_adapters_environment():
+    """Surviving the missing environment is not enough; it has to be reported.
+
+    finalize.sh's header documented a standalone recovery path: invoke the
+    hook by hand over a spool a SIGKILLed container left behind. Nothing
+    implemented it. Without the adapter's environment the hook has no store
+    URL, no credential, no spool and no transcript roots, so it returned 0
+    having uploaded nothing and warned nothing, and an operator following the
+    documented procedure got a success status and silence.
+
+    The claim is gone from the file and the capability README. The case that
+    is real -- section 5.6's init failed, 5.6 warned and continued, and
+    section 6 ran the finalizer anyway -- now warns, because "always exit 0"
+    means a warning on stderr is the only report this hook can make.
+
+    The warning must name what is actually degraded (no spool path in the
+    report, no .capture-env tag recovery, a state file that is not this
+    partition's), or it is just another line to scroll past.
+    """
+    script = f"""
+set -e
+mkdir -p /tmp/fakebin
+cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
+#!/usr/bin/env bash
+echo "run: discovered=0 skipped_unchanged=0 uploaded=0 accepted=0 duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+exit 0
+FAKE_EXPORTER_EOF
+chmod +x /tmp/fakebin/SeshMagicSessionExporter
+export PATH=/tmp/fakebin:$PATH
+export {ExporterEnv.URL}=http://unused.invalid
+unset {ExporterEnv.STATE_FILE}
+{_FINALIZE_SH}
+echo "FINALIZE_RC=$?"
+"""
+    result = _run(["bash", "-c", script])
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert "WARNING" in result.stderr and ExporterEnv.STATE_FILE in result.stderr, (
+        "a sweep without the adapter's environment must not be silent"
+    )
+    assert "not a standalone recovery tool" in result.stderr, (
+        "the removed claim must be contradicted where an operator would act on it"
+    )
+    assert ".capture-env" in result.stderr, (
+        "the warning must say tag recovery is unavailable, since the upload "
+        "may then be unattributable"
+    )
 
 
 @pytest.mark.integration
@@ -1859,7 +1912,7 @@ def _finalize_with_stub_exporter(
 
     budget_s is exported as AGENTIC_FINALIZE_BUDGET_S, standing in for what
     entrypoint.sh passes per exit path. It is kept small here so a hung stub
-    fails fast rather than sitting on finalize.sh's generous standalone
+    fails fast rather than sitting on finalize.sh's generous no-budget
     default.
 
     Returns (result, transcript_path, elapsed_seconds). The transcript file

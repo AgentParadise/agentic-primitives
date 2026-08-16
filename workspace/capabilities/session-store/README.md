@@ -376,6 +376,27 @@ the same tags the original capture had, byte for byte. This adapter
 assigns no meaning to the tag string in either direction; it only
 persists what it was given, verbatim.
 
+#### How to actually run a recovery sweep
+
+**Start a workspace over the same spool**, with the same
+`AGENTIC_SESSION_STORE_SPOOL` and `AGENTIC_SESSION_STORE_PARTITION` as the
+run that was killed. `finalize.sh` then sweeps that partition at the end of
+the run exactly as it does on any other, recovers the tags from
+`.capture-env` as described above, and uploads. Re-sweeping a partition
+that was already partly uploaded costs nothing: the spool is append-only
+and the store dedups on `content_hash`.
+
+**`finalize.sh` is not a standalone recovery tool, and must not be invoked
+by hand.** Its header used to say it was meant to run standalone. Nothing
+implemented that: run without the adapter's environment it has no store
+URL, no credential, no spool and no transcript roots, so it returned 0
+having uploaded nothing and said nothing, and it must always exit 0, so it
+could not have reported the failure either. It now warns when it finds
+itself running without `EXPORTER_STATE_FILE` — which happens for real when
+`init.sh` failed and the lifecycle ran the finalizer anyway — and names
+what is degraded: no spool path in its report, no tag recovery, and the
+exporter falling back to a state file that is not this partition's.
+
 ### What this adapter deliberately does not do
 
 - **It never sets `SESSION_STORE_ORIGIN_HOST`.** The live corpus uses

@@ -36,12 +36,33 @@ fi
 #                  directory the operator may own, so nothing here writes to
 #                  it at all.
 #
-# Both come from EXPORTER_STATE_FILE, which is normally exported by init.sh.
-# This hook is also meant to run standalone -- a recovery sweep of a partition
-# left behind by a SIGKILLed container (see below) -- where it is unset. A
-# bare `${EXPORTER_STATE_FILE%/*}` in that case trips `set -u` and aborts the
-# script, breaking the "always exit 0" contract on exactly the failure path
-# this recovery mechanism exists to handle.
+# Both come from EXPORTER_STATE_FILE, which init.sh exports.
+#
+# THIS HOOK IS NOT A STANDALONE RECOVERY TOOL, and this header used to say it
+# was. The claim was never implemented and could not be satisfied by anything
+# in this file: run without the adapter's environment, it has no store URL, no
+# credential, no spool, no partition and no transcript roots, so the guard at
+# the top of the file returns 0 immediately and an operator following the
+# documented procedure got silence and a success status. A hook that must
+# always exit 0 is the worst possible place to put a procedure that can fail
+# invisibly.
+#
+# What a recovery sweep of a partition left by a SIGKILLed container actually
+# is: START A WORKSPACE with the same AGENTIC_SESSION_STORE_SPOOL and
+# AGENTIC_SESSION_STORE_PARTITION and let this hook run under the adapter's
+# environment, exactly as it does on any other run. The spool is append-only
+# and the store dedups on content_hash, so re-sweeping a partition that was
+# already partly uploaded costs nothing. The .capture-env recovery below is
+# what makes that sweep attributable, because the tag string died with the
+# killed process and the new run may not carry it.
+#
+# EXPORTER_STATE_FILE IS STILL GUARDED, for a case that is real. The
+# entrypoint runs finalizers even when an adapter's init FAILED (5.6 warns
+# and continues), so this file can genuinely execute with a store URL in the
+# environment and no state file. A bare `${EXPORTER_STATE_FILE%/*}` trips
+# `set -u` there and aborts the script, breaking the one contract this hook
+# cannot break. That case is now also REPORTED rather than absorbed: see the
+# warning below.
 #
 # LEGACY LAYOUT. A spool volume outlives the image, so a partition written by
 # an older init.sh has its state file (and .capture-env) directly in the
@@ -52,7 +73,31 @@ readonly __RESERVED_SEGMENT=".agentic-session-store"
 if [ -n "${EXPORTER_STATE_FILE:-}" ]; then
     __meta_dir="${EXPORTER_STATE_FILE%/*}"
 else
-    __meta_dir="<unset>"
+    # A WARNING, NOT A SKIP, and not silence either. This hook must always
+    # exit 0, so "fail loudly" here can only mean saying something an operator
+    # can act on. Skipping the sweep would be worse than sweeping blind: the
+    # exporter can still find transcripts through its own defaults, and
+    # refusing to run would strand them for a reason nobody asked for.
+    #
+    # Everything that is degraded is named, because each one changes what the
+    # report below means: the spool cannot be named in any later line, this
+    # partition's .capture-env cannot be found so a killed run's tags cannot
+    # be recovered, and the exporter falls back to whatever state file its own
+    # defaults pick, which is not this partition's and so re-offers work a
+    # previous sweep already did.
+    __meta_dir="(unknown: EXPORTER_STATE_FILE is unset)"
+    echo "[finalize] WARNING: EXPORTER_STATE_FILE is unset, so this hook is" \
+         "running without the session-store adapter's environment. Either" \
+         "init.sh did not complete (the doctor output above says why) or this" \
+         "hook was invoked by hand, which is not supported: it is not a" \
+         "standalone recovery tool. The sweep still runs so nothing is" \
+         "stranded, but it cannot name the spool it swept, it cannot recover" \
+         "this partition's tags from .capture-env, so the upload may be" \
+         "unattributable, and the exporter will use a default state file" \
+         "rather than this partition's. To sweep a partition left behind by a" \
+         "killed container, start a workspace with the same" \
+         "AGENTIC_SESSION_STORE_SPOOL and AGENTIC_SESSION_STORE_PARTITION and" \
+         "let this hook run normally." >&2
 fi
 case "${__meta_dir}" in
     */"${__RESERVED_SEGMENT}"/*)
@@ -63,10 +108,14 @@ case "${__meta_dir}" in
         ;;
 esac
 
-# Recovery path (EXP-08 arm A5): when invoked without the adapter's env - a
-# sweep of a partition left behind by a SIGKILLed container - recover the tags
-# the partition was created with. Without this the session uploads untagged
-# and is unattributable.
+# Recovery path (EXP-08 arm A5): a sweep that reaches a partition an earlier,
+# killed run left behind has no SESSION_STORE_TAGS, because that value died
+# with that process, so recover the tags the partition was created with.
+# Without this the session uploads untagged and is unattributable.
+#
+# This runs on any normal workspace start whose spool and partition were used
+# before and whose own environment carries no tags; it needs no special
+# invocation, which is exactly why none is offered.
 if [ -z "${SESSION_STORE_TAGS:-}" ] && [ -n "${EXPORTER_STATE_FILE:-}" ]; then
     # Current layout first, then the legacy one. On a legacy partition the two
     # paths are identical, so the fallback only ever reaches a DIFFERENT file
@@ -270,10 +319,10 @@ fi
 #   * CLEAN exit -- generous. Nothing is waiting on us, so the bound exists only
 #     to stop a wedged exporter hanging forever, not to hit a deadline.
 #
-# The default below is the generous one, because an unset budget means this hook
-# was invoked standalone (a recovery sweep of a partition left by a SIGKILLed
-# container, see the EXPORTER_STATE_FILE note above), and that too has no grace
-# ticking. A non-numeric value is ignored rather than trusted.
+# The default below is the generous one, because an unset budget means nothing
+# in the environment named a deadline, so there is no grace to stay inside and
+# the only thing left to bound is a wedged exporter. A non-numeric value is
+# ignored rather than trusted.
 #
 # A timeout is an upload FAILURE: report it and exit 0. The spool is kept, as
 # it is on every other path.
