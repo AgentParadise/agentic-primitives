@@ -8,7 +8,13 @@
 # "still available to finalize" two separate, checkable claims rather than one
 # claim that could be satisfied by simply breaking the upload.
 #
-# It reports PRESENCE, never the value: this output lands in container logs.
+# It reports PRESENCE, never the value.
+#
+# The report goes to a FILE under the spool, not to a stream. finalize.sh
+# captures the exporter's stdout and stderr and deliberately never replays
+# them, because a real exporter is an operator-supplied binary whose output
+# is not trusted in a durable log, so anything printed here reaches nobody.
+# The test reads the file from the host side of the spool mount.
 set -eu
 
 if [ "${1:-}" = "--version" ]; then
@@ -16,10 +22,11 @@ if [ "${1:-}" = "--version" ]; then
     exit 0
 fi
 
+__report="/spool/.stub-exporter-token-report"
 if [ -n "${SESSIONS_WRITE_TOKEN:-}" ]; then
-    echo "STUB_EXPORTER_TOKEN=present" >&2
+    echo "STUB_EXPORTER_TOKEN=present" > "${__report}"
 else
-    echo "STUB_EXPORTER_TOKEN=absent" >&2
+    echo "STUB_EXPORTER_TOKEN=absent" > "${__report}"
 fi
 
 echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 duplicate=0 rejected=0 skipped_oversize=0 failed=0"

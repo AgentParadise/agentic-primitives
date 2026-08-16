@@ -291,23 +291,47 @@ readonly __UPLOAD_TIMEOUT_S
 # SIGKILL 1s later, which is what makes this an actual bound.
 readonly __UPLOAD_KILL_AFTER_S=1
 
-# Both the exporter's stdout and stderr go to OUR stderr, never our stdout.
-# Under the old `exec "$@"`, container stdout was exclusively the agent's;
-# now that finalize runs after the agent exits, letting exporter chatter
-# reach stdout would corrupt anything parsing it (e.g. an agent CMD invoked
-# with a structured --output-format). We capture both streams into a variable
-# (`2>&1` inside the command substitution) and replay them to fd2, which keeps
-# that stdout-cleanliness property while making the exporter's machine-readable
-# summary line available to the reporting below.
+# THE EXPORTER'S OUTPUT IS CAPTURED AND NEVER REPLAYED. Two independent
+# reasons, and each one alone is sufficient:
+#
+#   * STDOUT CLEANLINESS. Under the old `exec "$@"`, container stdout was
+#     exclusively the agent's; now that finalize runs after the agent exits,
+#     letting exporter chatter reach stdout would corrupt anything parsing it
+#     (e.g. an agent CMD invoked with a structured --output-format). Capturing
+#     both streams (`2>&1` inside the command substitution) keeps stdout clean
+#     whatever the exporter writes to.
+#
+#   * THE EXPORTER IS NOT PART OF THIS IMAGE. It is a binary the operator
+#     mounts or bakes in at deploy time (see the capability README's
+#     "Exporter provisioning contract"), so nothing here can know what any
+#     given build of it prints. This block used to replay the captured bytes
+#     to fd2 verbatim, which meant a build that dumped its environment,
+#     echoed an `Authorization: Bearer ...` diagnostic, or logged a request
+#     body put the store's write credential straight into durable container
+#     logs, on every single run, with no way for an operator to opt out. That
+#     replay is gone.
+#
+# So the only exporter-derived bytes this file emits are the counters parsed
+# out of the summary line below, each of them matched as `[0-9][0-9]*` and
+# therefore incapable of carrying anything but digits, printed next to counter
+# names this file spells out itself. The report is RECONSTRUCTED, never echoed.
 __exporter_out="$(timeout -k "${__UPLOAD_KILL_AFTER_S}" "${__UPLOAD_TIMEOUT_S}" \
     SeshMagicSessionExporter 2>&1)"
 __exporter_rc=$?
-if [ -n "${__exporter_out}" ]; then
-    printf '%s\n' "${__exporter_out}" >&2
-fi
 
 # 124 is timeout's own "deadline reached"; 137 is what surfaces when -k had to
 # follow through with SIGKILL. Both mean the same thing here.
+#
+# WHAT A FAILED SWEEP REPORTS, decided deliberately. The operator still has to
+# be able to diagnose it, and the exporter's own diagnostic is the only thing
+# that says why it failed -- but that diagnostic is exactly the untrusted
+# stream above, so it cannot be copied into a durable log to make the failure
+# legible. What this path gives instead is everything this file knows for
+# certain (which of the two failure classes it was, the exporter's status, the
+# bound it was given, the spool that was kept) plus the procedure that
+# recovers the missing half. Re-running the exporter is safe and is not a
+# workaround for a lost message: the spool is retained on every path and the
+# store dedups on content_hash, so a repeat sweep re-uploads nothing.
 if [ "${__exporter_rc}" -ne 0 ]; then
     if [ "${__exporter_rc}" -eq 124 ] || [ "${__exporter_rc}" -eq 137 ]; then
         echo "[finalize] session-store upload TIMED OUT after ${__UPLOAD_TIMEOUT_S}s;" \
@@ -316,6 +340,13 @@ if [ "${__exporter_rc}" -ne 0 ]; then
         echo "[finalize] session-store upload FAILED (rc=${__exporter_rc});" \
              "spool retained at ${__part_dir}" >&2
     fi
+    echo "[finalize] the exporter's own output is deliberately NOT reproduced" \
+         "here: it is an operator-supplied binary, this stream is durable, and" \
+         "a build that prints its environment or an auth header would leak the" \
+         "store write credential into the logs. To see it, re-run" \
+         "SeshMagicSessionExporter by hand with the same environment; the spool" \
+         "is retained and the store dedups on content_hash, so a repeat sweep" \
+         "uploads nothing twice." >&2
     exit 0
 fi
 
@@ -332,10 +363,17 @@ fi
 # be told: those five exist only in the spool, and only the store copy is
 # durable.
 #
-# The report reads the summary line the exporter already prints:
+# The report is built from the summary line the exporter prints:
 #
 #   run: discovered=N skipped_unchanged=N uploaded=N accepted=N duplicate=N \
 #        rejected=N skipped_oversize=N failed=N
+#
+# BUILT FROM, not quoted from. Every value below comes through __counter,
+# whose sed expression matches `[0-9][0-9]*` and prints the captured digits
+# and nothing else, and every counter NAME is a literal in this file. So the
+# reconstructed line cannot carry a byte the exporter chose, which is the
+# whole point: see the capture block above for why none of its output is
+# trusted enough to appear in this log.
 #
 # failed, skipped_oversize and rejected are the three counters that mean "this
 # transcript is not in the store". A nonzero one is reported as INCOMPLETE and
@@ -387,7 +425,23 @@ fi
 # A clean sweep is reported and nothing else happens: the partition and every
 # transcript in it stay exactly where they are. That is the whole contract now,
 # so say so, because this line used to be followed by a delete.
-echo "[finalize] session-store upload complete (${__summary#run: });" \
+#
+# The counters are re-emitted one at a time from __counter rather than by
+# quoting the matched summary line, which is what this line used to do. Only
+# the three loss counters are REQUIRED (checked above); the rest are reported
+# when present and simply omitted when they are not, so a future exporter that
+# drops or renames an informational counter narrows this line instead of
+# turning a clean sweep into an unparseable one.
+__report=""
+for __name in discovered skipped_unchanged uploaded accepted duplicate \
+              rejected skipped_oversize failed; do
+    __value="$(__counter "${__name}")"
+    [ -n "${__value}" ] || continue
+    __report="${__report} ${__name}=${__value}"
+done
+unset __name __value
+
+echo "[finalize] session-store upload complete (${__report# });" \
      "spool retained at ${__part_dir}" >&2
 
 exit 0

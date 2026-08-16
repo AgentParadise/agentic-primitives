@@ -32,6 +32,28 @@ When the exporter becomes public under AgentParadise, provisioning route
 contract (the doctor check, the env vars the adapter exports for the
 exporter to read) does not change.
 
+### The exporter's output never reaches the logs
+
+Because the binary comes from deployment rather than from this image,
+`finalize.sh` treats everything it writes as untrusted: both streams are
+captured and **none of it is replayed**. It used to be echoed verbatim to
+stderr so the summary line was visible, which meant any build that printed
+its environment, an `Authorization: Bearer ...` diagnostic, or a request
+dump wrote the store's write credential into durable container logs on
+every run.
+
+What the hook reports instead is reconstructed: the counter values are
+matched as digits out of the summary line and re-emitted next to counter
+names `finalize.sh` spells out itself, so no byte the exporter chose can
+appear in the log.
+
+A **failed** sweep therefore reports the failure class, the exporter's exit
+status, the bound it was given and the spool it kept, and then names the
+recovery procedure rather than reproducing the diagnostic: re-run
+`SeshMagicSessionExporter` by hand with the same environment. That is safe
+on any path, because the spool is retained and the store dedups on
+`content_hash`, so a repeat sweep uploads nothing twice.
+
 `tests/integration/fixtures/stub-exporter` is a committed test double
 satisfying `exporter_present` and emitting the real binary's summary-line
 shape, for tests that need the contract satisfied without a real binary

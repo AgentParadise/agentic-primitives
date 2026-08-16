@@ -289,7 +289,14 @@ Five rules, each of which cost something to learn:
    was exclusively the agent's. Finalize now runs after the agent, so
    chatter on stdout corrupts anything parsing it (an agent CMD invoked
    with a structured `--output-format`, for instance). Send both streams to
-   stderr with `>&2 2>&1`, in that order.
+   stderr with `>&2 2>&1`, in that order. **Redirecting a subprocess is not
+   the same as replaying one.** If the subprocess is a binary deployment
+   supplies rather than one this image builds, its output is untrusted
+   input: capture it, parse what you need, and report values you
+   reconstructed. `session-store`'s finalize echoed the exporter's captured
+   stdout and stderr to fd2 so its summary line was visible, which put
+   whatever that build chose to print -- an environment dump, an
+   `Authorization` header, a request body -- into durable container logs.
 3. **Assume it may run standalone.** A recovery sweep of a spool left by a
    SIGKILLed container has none of `init.sh`'s exported env. Guard every
    variable you read (`${VAR:-}`), because a bare expansion under `set -u`

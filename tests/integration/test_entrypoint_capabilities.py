@@ -990,7 +990,7 @@ set -e
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
-printf 'CHILD_SAW_START%sCHILD_SAW_END\\n' "$SESSION_STORE_TAGS"
+printf 'CHILD_SAW_START%sCHILD_SAW_END\\n' "$SESSION_STORE_TAGS" > /tmp/exporter-observed
 exit 0
 FAKE_EXPORTER_EOF
 chmod +x /tmp/fakebin/SeshMagicSessionExporter
@@ -999,6 +999,7 @@ export SESSION_STORE_URL=http://unused.invalid
 export EXPORTER_STATE_FILE=/spool/recovery-test/state.json
 unset SESSION_STORE_TAGS
 {fin}
+cat /tmp/exporter-observed
 test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
 """
     result = _run(
@@ -1006,10 +1007,15 @@ test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
         extra_mounts=[f"{spool}:/spool"],
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    # The exporter's own stdout is intentionally routed to finalize.sh's
-    # stderr (F3 fix: `SeshMagicSessionExporter >&2 2>&1`), so the fake
-    # exporter's CHILD_SAW markers land in stderr here, not stdout.
-    match = re.search(r"CHILD_SAW_START(.*?)CHILD_SAW_END", result.stderr, re.DOTALL)
+    # The fake exporter records what it saw in a FILE, which the script
+    # cats back out after finalize.sh has returned. finalize.sh captures the
+    # exporter's streams and deliberately never replays them (an exporter is
+    # an operator-supplied binary and its output is not trusted in a durable
+    # log), so a marker printed to either stream reaches nobody. Observing
+    # through a file is also the stronger claim: it says the CHILD PROCESS
+    # received the value, independently of anything finalize.sh chooses to
+    # log.
+    match = re.search(r"CHILD_SAW_START(.*?)CHILD_SAW_END", result.stdout, re.DOTALL)
     assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert match.group(1) == malicious_tag, (
         f"tag corrupted in round-trip: got {match.group(1)!r}, want {malicious_tag!r}"
@@ -1054,13 +1060,14 @@ set -e
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
-printf 'ROUNDTRIP_START%sROUNDTRIP_END\\n' "$SESSION_STORE_TAGS"
+printf 'ROUNDTRIP_START%sROUNDTRIP_END\\n' "$SESSION_STORE_TAGS" > /tmp/exporter-observed
 exit 0
 FAKE_EXPORTER_EOF
 chmod +x /tmp/fakebin/SeshMagicSessionExporter
 export PATH=/tmp/fakebin:$PATH
 unset SESSION_STORE_TAGS
 /opt/agentic/capabilities/session-store/seshmagic/finalize.sh
+cat /tmp/exporter-observed
 test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
 """
     result = _run(
@@ -1080,8 +1087,9 @@ test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION
         add_host_gateway=True,
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    # finalize.sh routes the exporter's stdout to its own stderr on purpose.
-    match = re.search(r"ROUNDTRIP_START(.*?)ROUNDTRIP_END", result.stderr, re.DOTALL)
+    # Via a file, not a stream: finalize.sh captures the exporter's output
+    # and never replays it. See the parse test above.
+    match = re.search(r"ROUNDTRIP_START(.*?)ROUNDTRIP_END", result.stdout, re.DOTALL)
     assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert match.group(1) == nasty, (
         f"tags did not round-trip: got {match.group(1)!r}, want {nasty!r}"
@@ -1131,7 +1139,7 @@ set -e
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
-printf 'LEGACY_SAW_START%sLEGACY_SAW_END\\n' "$SESSION_STORE_TAGS"
+printf 'LEGACY_SAW_START%sLEGACY_SAW_END\\n' "$SESSION_STORE_TAGS" > /tmp/exporter-observed
 exit 0
 FAKE_EXPORTER_EOF
 chmod +x /tmp/fakebin/SeshMagicSessionExporter
@@ -1140,10 +1148,11 @@ export SESSION_STORE_URL=http://unused.invalid
 export EXPORTER_STATE_FILE=/spool/legacy-test/state.json
 unset SESSION_STORE_TAGS
 {fin}
+cat /tmp/exporter-observed
 """
     result = _run(["bash", "-c", script], extra_mounts=[f"{spool}:/spool"])
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    match = re.search(r"LEGACY_SAW_START(.*?)LEGACY_SAW_END", result.stderr, re.DOTALL)
+    match = re.search(r"LEGACY_SAW_START(.*?)LEGACY_SAW_END", result.stdout, re.DOTALL)
     assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert match.group(1) == legacy_tag
     assert "legacy pre-base64" in result.stderr, (
@@ -1199,7 +1208,7 @@ set -e
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
-printf 'TAGS_SEEN_START%sTAGS_SEEN_END\\n' "${{SESSION_STORE_TAGS-<unset>}}"
+printf 'TAGS_SEEN_START%sTAGS_SEEN_END\\n' "${{SESSION_STORE_TAGS-<unset>}}" > /tmp/exporter-observed
 exit 0
 FAKE_EXPORTER_EOF
 chmod +x /tmp/fakebin/SeshMagicSessionExporter
@@ -1208,6 +1217,7 @@ export SESSION_STORE_URL=http://unused.invalid
 export EXPORTER_STATE_FILE=/spool/garbage-test/state.json
 unset SESSION_STORE_TAGS
 {fin}
+cat /tmp/exporter-observed
 """
     result = _run(["bash", "-c", script], extra_mounts=[f"{spool}:/spool"])
     assert result.returncode == 0, f"finalize.sh must always exit 0: {result.stderr}"
@@ -1226,7 +1236,7 @@ unset SESSION_STORE_TAGS
     # string) and the assertion below would pass against the bug it exists
     # to catch.
     assert "no usable tag record" in result.stderr, result.stderr
-    match = re.search(r"TAGS_SEEN_START(.*?)TAGS_SEEN_END", result.stderr, re.DOTALL)
+    match = re.search(r"TAGS_SEEN_START(.*?)TAGS_SEEN_END", result.stdout, re.DOTALL)
     assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert match.group(1) == "<unset>", (
         f"SESSION_STORE_TAGS must stay unset, got {match.group(1)!r}"
@@ -1284,7 +1294,7 @@ set -e
 mkdir -p /tmp/fakebin
 cat > /tmp/fakebin/SeshMagicSessionExporter << 'FAKE_EXPORTER_EOF'
 #!/usr/bin/env bash
-printf 'TAGS_SEEN_START%sTAGS_SEEN_END\\n' "${{SESSION_STORE_TAGS-<unset>}}"
+printf 'TAGS_SEEN_START%sTAGS_SEEN_END\\n' "${{SESSION_STORE_TAGS-<unset>}}" > /tmp/exporter-observed
 exit 0
 FAKE_EXPORTER_EOF
 chmod +x /tmp/fakebin/SeshMagicSessionExporter
@@ -1293,6 +1303,7 @@ export SESSION_STORE_URL=http://unused.invalid
 export EXPORTER_STATE_FILE=/spool/undecodable-test/state.json
 unset SESSION_STORE_TAGS
 {fin}
+cat /tmp/exporter-observed
 """
     result = _run(["bash", "-c", script], extra_mounts=[f"{spool}:/spool"])
     assert result.returncode == 0, f"finalize.sh must always exit 0: {result.stderr}"
@@ -1312,7 +1323,7 @@ unset SESSION_STORE_TAGS
     # ${SESSION_STORE_TAGS-<unset>}, without the colon, on purpose: `:-`
     # would report "<unset>" for an exported empty string too, and pass
     # against the bug this exists to catch.
-    match = re.search(r"TAGS_SEEN_START(.*?)TAGS_SEEN_END", result.stderr, re.DOTALL)
+    match = re.search(r"TAGS_SEEN_START(.*?)TAGS_SEEN_END", result.stdout, re.DOTALL)
     assert match is not None, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert match.group(1) == "<unset>", (
         f"SESSION_STORE_TAGS must stay unset, got {match.group(1)!r}"
@@ -1903,6 +1914,111 @@ def test_finalize_reports_a_sweep_with_only_duplicate_and_unchanged_as_complete(
     assert "INCOMPLETE" not in result.stderr, result.stderr
 
 
+# The exporter is a binary DEPLOYMENT supplies (see the capability README's
+# provisioning contract), not one this image builds, so finalize.sh cannot
+# know what a given build prints. It used to replay the captured combined
+# output to stderr verbatim so the summary line was visible, which put
+# whatever that build chose to print into durable container logs. This canary
+# stands in for the thing that costs the most: the store write credential the
+# adapter withholds from the agent precisely so it reaches nothing but the
+# exporter.
+_EXPORTER_CANARY = "Authorization: Bearer sk-store-write-CANARY123"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("part_name", "stub_body", "expected_report"),
+    [
+        pytest.param(
+            "canary-clean",
+            f'echo "{_EXPORTER_CANARY}" >&2\n'
+            'echo "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 '
+            'duplicate=0 rejected=0 skipped_oversize=0 failed=0"\n'
+            "exit 0\n",
+            "upload complete",
+            id="clean-sweep",
+        ),
+        pytest.param(
+            "canary-failed",
+            f'echo "{_EXPORTER_CANARY}" >&2\nexit 9\n',
+            "rc=9",
+            id="failed-sweep",
+        ),
+    ],
+)
+def test_finalize_never_replays_the_exporters_own_output(
+    tmp_path: Path, part_name: str, stub_body: str, expected_report: str
+):
+    """No byte the exporter chose may reach this hook's log, on any path.
+
+    Both paths are covered because the failure path is the one with a reason
+    to relent: the exporter's diagnostic is the only thing that says why a
+    sweep failed, so "just this once, so the operator can debug it" is exactly
+    how the replay would come back. It must still report enough to act on --
+    the failure class, the status, the retained spool, and the procedure that
+    recovers the missing diagnostic -- without reproducing the stream.
+    """
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path, stub_body, part_name
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert transcript.exists(), "the spool is retained on every path"
+    assert "CANARY123" not in result.stderr, (
+        "the exporter's output was replayed into the container log; a build "
+        "that prints an auth header leaks the store write credential"
+    )
+    assert "CANARY123" not in result.stdout, result.stdout
+    assert expected_report in result.stderr, result.stderr
+
+
+@pytest.mark.integration
+def test_finalize_reports_a_failed_sweep_without_the_exporters_diagnostic(
+    tmp_path: Path,
+):
+    """A failure an operator cannot act on is not an acceptable trade for the
+    leak. Withholding the exporter's own diagnostic is only defensible if the
+    report names the procedure that recovers it, so that is asserted here
+    rather than left to the reviewer's memory of the comment.
+    """
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        'echo "boom" >&2\nexit 9\n',
+        "failure-is-diagnosable",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FAILED (rc=9)" in result.stderr, result.stderr
+    assert "spool retained" in result.stderr, result.stderr
+    assert "re-run" in result.stderr and "SeshMagicSessionExporter" in result.stderr, (
+        "a withheld diagnostic must come with the way to get it back"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_reconstructs_the_summary_rather_than_quoting_it(tmp_path: Path):
+    """The clean-sweep report is rebuilt from the parsed counters.
+
+    A stub whose summary line carries trailing junk after the last counter
+    proves it: quoting the matched line would carry that junk into the log,
+    reconstructing from `[0-9][0-9]*` matches cannot.
+    """
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        'echo "run: discovered=2 skipped_unchanged=0 uploaded=2 accepted=2 '
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0 "
+        'token=sk-store-write-CANARY123"\nexit 0\n',
+        "reconstructed-summary",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "upload complete" in result.stderr, result.stderr
+    assert "discovered=2" in result.stderr and "uploaded=2" in result.stderr, (
+        "the reconstructed report must still carry the counters"
+    )
+    assert "CANARY123" not in result.stderr, (
+        "the summary line was quoted rather than rebuilt from its counters"
+    )
+
+
 @pytest.mark.integration
 def test_finalize_keeps_spool_when_no_summary_line_is_printed(tmp_path: Path):
     """An unreadable summary is not evidence of success. Absent the line, the
@@ -2458,13 +2574,18 @@ def test_store_credential_is_withheld_from_the_agent_but_reaches_finalize(
 
     # Finalize still uploads: the stub reports that the credential was in its
     # environment, and the sweep completed.
-    assert "STUB_EXPORTER_TOKEN=present" in result.stderr, (
+    assert (spool / _TOKEN_REPORT).read_text().strip() == "STUB_EXPORTER_TOKEN=present", (
         "withholding broke the upload: the exporter ran without the credential"
     )
     assert "[finalize] session-store upload complete" in result.stderr, result.stderr
 
 
 _PROBE_CAPABILITY = Path(__file__).parent / "fixtures" / "probe-capability"
+
+# Where stub-exporter-reports-token records whether the credential reached it.
+# A file, because finalize.sh captures the exporter's streams and never
+# replays them; see that fixture's header.
+_TOKEN_REPORT = ".stub-exporter-token-report"
 
 
 @pytest.mark.integration
@@ -2519,7 +2640,9 @@ def test_withheld_values_reach_only_the_declaring_capabilitys_finalizer(
     assert secret not in result.stderr, "the credential's value reached another finalizer"
     # The declaring capability's own finalizer is unaffected: it still gets
     # the credential and still completes the upload.
-    assert "STUB_EXPORTER_TOKEN=present" in result.stderr, result.stderr
+    assert (spool / _TOKEN_REPORT).read_text().strip() == "STUB_EXPORTER_TOKEN=present", (
+        "the declaring capability's own finalizer lost its credential"
+    )
     assert "[finalize] session-store upload complete" in result.stderr, result.stderr
     # And the agent never saw either.
     assert "probe-owns-this" not in result.stdout, result.stdout
