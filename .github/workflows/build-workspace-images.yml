@@ -181,16 +181,42 @@ jobs:
       # -------------------------------------------------------------------
       - name: Determine version
         id: version
+        # This job holds packages: write and id-token: write, so nothing
+        # variable is interpolated into the shell source below. Every value
+        # arrives as an environment variable and is read as "$VAR", which makes
+        # it data rather than code. That matters for more than the dispatch
+        # input: git allows $, backtick, parenthesis, semicolon and pipe in
+        # branch names, so github.ref is not safe to splice into a script
+        # either.
+        env:
+          TAG_OVERRIDE: ${{ inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          PROVIDER: ${{ matrix.provider }}
         run: |
           # Provider manifest version
-          MANIFEST_VERSION=$(grep '^version:' providers/workspaces/${{ matrix.provider }}/manifest.yaml | awk '{print $2}' | tr -d '"')
-          # CLI version from staged Dockerfile
-          CLI_VERSION=$(grep 'ARG CLAUDE_CLI_VERSION=' build/${{ matrix.provider }}/Dockerfile | cut -d= -f2)
-          # Tag override from input
-          TAG_OVERRIDE="${{ inputs.tag }}"
+          MANIFEST_VERSION=$(grep '^version:' "providers/workspaces/${PROVIDER}/manifest.yaml" | awk '{print $2}' | tr -d '"')
+          # CLI version from staged Dockerfile. Absent for providers that
+          # bundle no Claude CLI, hence the tolerated empty result.
+          CLI_VERSION=$(grep 'ARG CLAUDE_CLI_VERSION=' "build/${PROVIDER}/Dockerfile" | cut -d= -f2)
+
+          # An OCI reference tag is /[A-Za-z0-9_][A-Za-z0-9._-]{0,127}/. The
+          # input is validated against that both as given and after the
+          # optional leading "v" is stripped, because stripping can produce an
+          # invalid tag from a valid one (v.1 -> .1).
+          OCI_TAG_RE='^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$'
 
           if [[ -n "$TAG_OVERRIDE" ]]; then
+            if [[ ! "$TAG_OVERRIDE" =~ $OCI_TAG_RE ]]; then
+              echo "::error::The 'tag' input is not a valid OCI tag. Expected ${OCI_TAG_RE}."
+              exit 1
+            fi
             VERSION="${TAG_OVERRIDE#v}"
+            if [[ ! "$VERSION" =~ $OCI_TAG_RE ]]; then
+              echo "::error::The 'tag' input is not a valid OCI tag once the leading 'v' is stripped. Expected ${OCI_TAG_RE}."
+              exit 1
+            fi
           else
             VERSION="${MANIFEST_VERSION}"
           fi
@@ -216,14 +242,14 @@ jobs:
           IS_RELEASE=false
           IS_DEV=false
 
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            if [[ "${{ github.ref }}" == "refs/heads/release" ]]; then
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$GIT_REF" == "refs/heads/release" ]]; then
               IS_RELEASE=true
-            elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            elif [[ "$GIT_REF" == "refs/heads/main" ]]; then
               IS_DEV=true
             fi
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.dry_run }}" != "true" ]]; then
-            if [[ "${{ github.ref }}" == "refs/heads/release" ]]; then
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && "$DRY_RUN" != "true" ]]; then
+            if [[ "$GIT_REF" == "refs/heads/release" ]]; then
               IS_RELEASE=true
             else
               IS_DEV=true
@@ -338,9 +364,9 @@ jobs:
         if: steps.version.outputs.should_push == 'true'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.image }}
           COSIGN_YES: "true"
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.image }}"
           echo "Signing ${IMAGE}@${DIGEST}"
           cosign sign "${IMAGE}@${DIGEST}"
 
@@ -348,26 +374,41 @@ jobs:
       # Summary
       # -------------------------------------------------------------------
       - name: Write build summary
+        # manifest_version and cli_version are read out of files in the repo,
+        # so they are content a release PR can choose. Same rule as the
+        # "Determine version" step: pass through env, read as "$VAR", never
+        # interpolate into the script body.
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.image }}
+          IMAGE_NAME: ${{ matrix.image }}
+          PROVIDER: ${{ matrix.provider }}
+          PLATFORMS: ${{ matrix.platforms }}
+          MANIFEST_VERSION: ${{ steps.version.outputs.manifest_version }}
+          CLI_VERSION: ${{ steps.version.outputs.cli_version }}
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          SHOULD_PUSH: ${{ steps.version.outputs.should_push }}
+          IS_DEV: ${{ steps.version.outputs.is_dev }}
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          echo "## Workspace Image: ${{ matrix.image }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Workspace Image: ${IMAGE_NAME}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Provider | \`${{ matrix.provider }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Manifest Version | \`${{ steps.version.outputs.manifest_version }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| CLI Version | \`${{ steps.version.outputs.cli_version }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Platforms | \`${{ matrix.platforms }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Channel | \`${{ steps.version.outputs.channel }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Pushed | \`${{ steps.version.outputs.should_push }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "${{ steps.version.outputs.should_push }}" == "true" ]]; then
-            echo "| Digest | \`${{ steps.push.outputs.digest }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Provider | \`${PROVIDER}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Manifest Version | \`${MANIFEST_VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CLI Version | \`${CLI_VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platforms | \`${PLATFORMS}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Channel | \`${CHANNEL}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Pushed | \`${SHOULD_PUSH}\` |" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$SHOULD_PUSH" == "true" ]]; then
+            echo "| Digest | \`${DIGEST}\` |" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [[ "${{ steps.version.outputs.is_dev }}" == "true" ]]; then
+            if [[ "$IS_DEV" == "true" ]]; then
               echo "> Edge build from \`main\`. Unstable and unreviewed. Do not depend on it; use a release digest instead." >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
             fi
             echo "### Verify" >> "$GITHUB_STEP_SUMMARY"
             echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-            echo "cosign verify ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.image }}@${{ steps.push.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "cosign verify ${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
