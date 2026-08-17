@@ -209,11 +209,11 @@ jobs:
 
           BASE = "origin/release"
 
-          # The providers build-workspace-images.yml actually publishes. Other
-          # directories under providers/workspaces/ (base, omni-agent) are not
-          # pushed to GHCR, so a stale version there ships nothing and failing
-          # on it would be noise.
-          PUBLISHED_PROVIDERS = ("claude-cli", "interactive-tmux")
+          # The providers build-workspace-images.yml actually publishes. The
+          # remaining directory under providers/workspaces/ (base) is not pushed
+          # to GHCR, so a stale version there ships nothing and failing on it
+          # would be noise.
+          PUBLISHED_PROVIDERS = ("claude-cli", "interactive-tmux", "omni-agent")
 
           # Paths whose contents end up inside every provider image, or that
           # change how the image is assembled. This mirrors the path filter on
