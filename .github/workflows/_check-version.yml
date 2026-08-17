@@ -36,25 +36,48 @@ jobs:
         with:
           fetch-depth: 0 # Need release branch history for comparison
 
-      # The `release` branch does not exist until Phase 2b creates it. Until
-      # then there is no baseline to diff against, so the check reports why it
-      # is inert instead of failing with a confusing "unknown revision" error.
-      - name: Resolve release branch
-        id: baseline
+      # This check only ever runs from release-gate.yml, whose sole trigger is
+      # `pull_request: branches: [release]`. A pull request cannot target a
+      # branch that does not exist, so on every run that reaches this step the
+      # `release` branch exists on origin. There is therefore no legitimate
+      # missing-baseline case here and no bootstrap path.
+      #
+      # Everything else that can go wrong (auth, network, a ref update
+      # conflict, a GitHub outage) is an operational failure, not an absent
+      # baseline. Treating those as "no baseline, pass as inert" would turn
+      # this gate into a silent no-op on a bad network day, so the step fails
+      # closed on all of them.
+      - name: Resolve release baseline
         run: |
-          if git fetch --no-tags --quiet origin release:refs/remotes/origin/release 2>/dev/null; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+          # ls-remote separates the two cases the old code conflated:
+          #   exit 0  the connection worked and the ref exists
+          #   exit 2  the connection worked and there is no such ref
+          #   other   the connection itself failed
+          set +e
+          git ls-remote --exit-code --heads origin refs/heads/release >/dev/null 2>&1
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 2 ]]; then
+            echo "::error::No 'release' branch exists on origin, yet this gate runs only on pull requests targeting 'release'. A PR cannot target a branch that does not exist, so this is a broken configuration and not a bootstrap case. Failing closed."
+            exit 1
           fi
 
-      - name: Report missing baseline
-        if: steps.baseline.outputs.exists != 'true'
-        run: |
-          echo "::notice::No 'release' branch exists on origin yet, so there is no baseline to compare against. The version bump check is inert until the release branch is created."
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::Could not reach origin to resolve the 'release' branch (git ls-remote exit ${status}). This is an operational failure, not a missing baseline. Failing closed."
+            exit 1
+          fi
+
+          # The leading + forces the update, so a diverged local remote-tracking
+          # ref is not mistaken for an unreachable baseline.
+          if ! git fetch --no-tags --quiet origin +release:refs/remotes/origin/release; then
+            echo "::error::'release' exists on origin but fetching it failed. Failing closed rather than treating an unreachable baseline as no baseline."
+            exit 1
+          fi
+
+          git rev-parse --verify origin/release >/dev/null
 
       - name: Validate published package versions are bumped
-        if: steps.baseline.outputs.exists == 'true'
         run: |
           python3 <<'PY'
           import pathlib
