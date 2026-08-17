@@ -9,16 +9,33 @@
 # this gate first.
 #
 # Checks:
-#   1. Version bump      — a changed published package must move its version
-#   2. Changelog         — a release PR without release notes fails
-#   3. Docker dry run    — every workspace image builds, nothing is pushed
-#   4. Security scans    — OSV, pip-audit, dependency review
+#   1. Version bump:     a changed published package must move its version,
+#                        and a changed provider image must move its manifest
+#   2. Changelog:        a release PR without release notes fails
+#   3. Docker dry run:   every workspace image builds, nothing is pushed
+#   4. Workflow changes: a release PR may not also rewrite CI (see below)
+#   5. Security scans:   OSV, pip-audit, dependency review
 #
 # Full QA (tests, lint, typecheck) also runs on these PRs via qa.yml, which
 # has an unfiltered `pull_request` trigger.
 #
-# This workflow is inert until the `release` branch exists. It is landed on
-# main first so that the branch carries it when it is cut from main.
+# This workflow never runs until the `release` branch exists, because a pull
+# request cannot target a branch that does not exist. It is landed on main
+# first so that the branch carries it when it is cut from main. The checks it
+# calls fail closed rather than passing as inert if they cannot resolve the
+# `release` baseline.
+#
+# HONEST LIMIT OF THIS GATE
+#
+# GitHub evaluates a `pull_request` workflow from the pull request's own merge
+# ref. A release PR that edits this file or the `_check-*` workflows therefore
+# changes the gate that grades it while still producing the "Release Gate"
+# status check name branch protection requires. The workflow-changes check
+# below makes that edit fail loudly unless it is labelled, which turns it into
+# a visible, deliberate act. It does not make it impossible. The control that
+# would make it impossible is CODEOWNERS over .github/ plus required review
+# from a second person, which this single-maintainer repository cannot adopt
+# because GitHub does not count self-approval. See _check-workflow-changes.yml.
 #
 # The `_check-*` reusable workflows live at the top level of
 # .github/workflows/ because GitHub Actions does not support reusable
@@ -45,6 +62,18 @@ jobs:
 
   docker-dry-run:
     uses: ./.github/workflows/_check-docker-dry-run.yml
+
+  # The override is a label on the PR. Applying a label needs write access to
+  # the repository, so it is not something an outside contributor can do, and
+  # it lands in the PR timeline where it can be seen after the fact. The label
+  # is evaluated here rather than as a job-level `if:` so the job still runs
+  # and still reports success, which keeps release-gate-success from reading a
+  # skipped job as a failure.
+  workflow-changes:
+    uses: ./.github/workflows/_check-workflow-changes.yml
+    with:
+      override: ${{ contains(github.event.pull_request.labels.*.name, 'ci-workflow-change') }}
+      override_label: ci-workflow-change
 
   # ---------------------------------------------------------------------------
   # Security scans — inline, not duplicated elsewhere in this repo
@@ -122,6 +151,7 @@ jobs:
       - version-check
       - changelog-check
       - docker-dry-run
+      - workflow-changes
       - osv-scan
       - pip-audit
       - dependency-review
@@ -141,6 +171,7 @@ jobs:
           check "version-check"     "${{ needs.version-check.result }}"
           check "changelog-check"   "${{ needs.changelog-check.result }}"
           check "docker-dry-run"    "${{ needs.docker-dry-run.result }}"
+          check "workflow-changes"  "${{ needs.workflow-changes.result }}"
           check "osv-scan"          "${{ needs.osv-scan.result }}"
           check "pip-audit"         "${{ needs.pip-audit.result }}"
           check "dependency-review" "${{ needs.dependency-review.result }}"
