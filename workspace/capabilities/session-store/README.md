@@ -1,8 +1,8 @@
 # session-store capability
 
 Opts a workspace image into session export via the APS-V1-0004 standard.
-See `doctor` in this directory for the five preflight checks
-(`contract_parses`, `spool_writable`, `symlinks_correct`,
+See `doctor` in this directory for the six preflight checks
+(`contract_parses`, `init_complete`, `spool_writable`, `symlinks_correct`,
 `exporter_present`, `store_reachable`) and
 `lib/python/agentic_session_store/agentic_session_store/contract.py` for
 the env-var contract (`Env` in that module is the single source of truth
@@ -90,6 +90,7 @@ $SPOOL/.agentic-session-store/           <- ADAPTER METADATA. Reserved namespace
   $PARTITION/
     state.json      <- EXPORTER_STATE_FILE (exporter-owned, created on first sweep)
     .capture-env    <- mode 600, DATA not shell (see below), present only when AGENTIC_SESSION_STORE_TAGS was set
+    .init-complete  <- mode 600, holds this run's AGENTIC_SESSION_STORE_INIT_TOKEN; written last, read by the init_complete check
     .sweep-rejected <- written by finalize.sh when the store REFUSES a transcript (see below); removed only by an operator
 ```
 
