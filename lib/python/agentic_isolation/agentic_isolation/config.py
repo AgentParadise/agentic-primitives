@@ -222,11 +222,26 @@ class WorkspaceConfig:
     # Mounts
     mounts: list[MountConfig] = field(default_factory=list)
 
-    # Secrets (injected as environment variables)
-    secrets: dict[str, str] = field(default_factory=dict)
+    # Secrets (injected as environment variables).
+    #
+    # `repr=False` because the generated `__repr__` renders values in plaintext,
+    # and a config is rendered far more often than anyone intends: a failed
+    # assertion in any test that compares configs, a debugger frame, an
+    # exception whose message interpolates the object, a DEBUG log line. One
+    # assertion failure is enough to put a live credential in CI output.
+    secrets: dict[str, str] = field(default_factory=dict, repr=False)
 
-    # Environment variables (non-secret)
-    environment: dict[str, str] = field(default_factory=dict)
+    # Environment variables.
+    #
+    # Historically documented as "non-secret", and that is no longer true of how
+    # this field is used. A capability contract delivered through here can carry
+    # a credential (AGENTIC_SESSION_STORE_AUTH is the live example), so this
+    # field is treated as secret-bearing and gets the same `repr=False`.
+    #
+    # Moving credentials into `secrets` is NOT an alternative to this: that
+    # field had the identical exposure until this change, so the advice "put
+    # secrets in `secrets`" was a mitigation that did nothing.
+    environment: dict[str, str] = field(default_factory=dict, repr=False)
 
     # Resource limits
     limits: ResourceLimits = field(default_factory=ResourceLimits)
