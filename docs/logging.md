@@ -436,13 +436,12 @@ logger.info("Hello")
 
 ## Architecture Decision Record
 
-See [ADR-014: Centralized Agentic Logging](/docs/adrs/014-centralized-agentic-logging.md) for the full design rationale and trade-offs.
+See [ADR-014: Centralized Agentic Logging](adrs/014-centralized-agentic-logging.md) for the full design rationale and trade-offs.
 
 ## Related Documentation
 
-- [Library README](/lib/python/agentic_logging/README.md) - Detailed API documentation
-- [ADR-014](/docs/adrs/014-centralized-agentic-logging.md) - Architecture decision
-- [Analytics Integration](/docs/analytics-integration.md) - Analytics-specific usage
+- [Library README](../lib/python/agentic_logging/README.md) - Detailed API documentation
+- [ADR-014](adrs/014-centralized-agentic-logging.md) - Architecture decision
 
 ---
 
