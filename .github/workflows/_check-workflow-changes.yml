@@ -1,0 +1,118 @@
+# =============================================================================
+# Check: Workflow Changes in a Release PR
+# =============================================================================
+# Fails when a PR into `release` also modifies anything under
+# .github/workflows/.
+#
+# WHAT THIS IS, PRECISELY
+#
+# The release gate is defined by files that live in the same tree the gate
+# judges. GitHub evaluates a `pull_request` workflow from the pull request's
+# own merge ref, so a release PR that edits release-gate.yml or one of the
+# `_check-*` workflows changes the gate that is about to grade it, while still
+# reporting the same "Release Gate" status check name that branch protection
+# requires. Nothing here removes that property.
+#
+# What this check does is make the edit visible and separate. A release PR
+# that also rewrites CI fails, and the only ways forward are to land the
+# workflow change in its own PR first, or to attach the override label. Both
+# are deliberate acts that show up in the PR timeline.
+#
+# THIS IS A SPEED BUMP, NOT AN AUTHORISATION CONTROL
+#
+# A determined actor with write access can add the label to their own PR, or
+# delete this job from the workflow inside the same PR. It raises the cost of
+# a silent gate edit and creates an audit trail. It does not prevent one.
+#
+# The control that actually prevents one is CODEOWNERS over .github/ plus
+# required review from someone other than the author. That is not deployed
+# here because this repository has a single maintainer and GitHub does not
+# count self-approval, so required review would lock the maintainer out of
+# their own releases. Deploy CODEOWNERS plus required review the moment a
+# second reviewer exists, and delete this workflow at that point.
+#
+# Called by: release-gate.yml
+#
+# NOTE: reusable workflows must live at the top level of .github/workflows/.
+# The `_check-` prefix is the convention for workflow_call-only workflows.
+# =============================================================================
+
+name: Check - Workflow Changes
+
+on:
+  workflow_call:
+    inputs:
+      override:
+        description: >-
+          True when the caller has determined the release PR carries the
+          documented override label. The job then reports the workflow changes
+          as a warning instead of failing.
+        type: boolean
+        required: true
+      override_label:
+        description: "Name of the override label, for the failure message."
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  workflow-changes:
+    name: Workflow Changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      # Same fail-closed baseline resolution as the other release-gate checks.
+      # A PR cannot target a branch that does not exist, so an unresolvable
+      # `release` is an operational failure and never a bootstrap case.
+      - name: Resolve release baseline
+        run: |
+          set +e
+          git ls-remote --exit-code --heads origin refs/heads/release >/dev/null 2>&1
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 2 ]]; then
+            echo "::error::No 'release' branch exists on origin, yet this gate runs only on pull requests targeting 'release'. Failing closed."
+            exit 1
+          fi
+
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::Could not reach origin to resolve the 'release' branch (git ls-remote exit ${status}). This is an operational failure, not a missing baseline. Failing closed."
+            exit 1
+          fi
+
+          if ! git fetch --no-tags --quiet origin +release:refs/remotes/origin/release; then
+            echo "::error::'release' exists on origin but fetching it failed. Failing closed."
+            exit 1
+          fi
+
+          git rev-parse --verify origin/release >/dev/null
+
+      - name: Fail when a release PR also edits CI
+        env:
+          OVERRIDE: ${{ inputs.override }}
+          OVERRIDE_LABEL: ${{ inputs.override_label }}
+        run: |
+          TOUCHED=$(git diff --name-only origin/release...HEAD -- .github/workflows/)
+
+          if [[ -z "$TOUCHED" ]]; then
+            echo "No .github/workflows/ changes in this release PR."
+            exit 0
+          fi
+
+          echo "Workflow files changed versus release:"
+          echo "$TOUCHED"
+
+          if [[ "$OVERRIDE" == "true" ]]; then
+            echo "::warning::This release PR modifies .github/workflows/ and carries the '${OVERRIDE_LABEL}' label, so the check is being overridden deliberately. The gate that graded this PR is the version defined inside it. Confirm the workflow diff by hand."
+            exit 0
+          fi
+
+          echo "::error::This PR targets 'release' and also modifies .github/workflows/. The release gate is defined by those files and is evaluated from this PR's own merge ref, so a CI change riding along inside a release PR edits the rules it is being graded by. Land the workflow change in its own PR first, or add the '${OVERRIDE_LABEL}' label to state that the combination is intentional."
+          exit 1
