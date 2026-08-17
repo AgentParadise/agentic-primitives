@@ -52,12 +52,22 @@ on:
     branches: [main, release]
     paths:
       - "providers/workspaces/**"
+      # The shared capability runtime. build-provider.py stages this tree into
+      # every provider image, so an entrypoint or adapter change alone must
+      # trigger a rebuild. Omitting it meant a workspace/-only change shipped
+      # nothing, and the image kept serving the previous entrypoint.
+      - "workspace/**"
       - "plugins/**"
       - "lib/python/**"
       - "scripts/build-provider.py"
   pull_request:
     paths:
       - "providers/workspaces/**"
+      # The shared capability runtime. build-provider.py stages this tree into
+      # every provider image, so an entrypoint or adapter change alone must
+      # trigger a rebuild. Omitting it meant a workspace/-only change shipped
+      # nothing, and the image kept serving the previous entrypoint.
+      - "workspace/**"
       - "plugins/**"
       - "lib/python/**"
       - "scripts/build-provider.py"
