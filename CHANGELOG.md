@@ -9,6 +9,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 📦 agentic-isolation 0.5.0 (BREAKING)
+
+`agentic-isolation` is bumped `0.4.0` to `0.5.0`. This is the release note for
+everything that reached a consumer between commit `944e4b5` and `d31c88a`.
+
+Read this first if you consume this repo as a git submodule pinned to a raw
+commit. The package version did **not** change across that range while the
+package's Python floor, its dependency list, and the workspace image's PID 1
+behaviour all did, so "0.4.0" names two materially different packages depending
+on when you pulled. The bump exists to make that distinguishable. The project is
+pre-1.0, so a minor bump is the SemVer-sanctioned way to carry breaking changes,
+but they are breaking and are listed as such below.
+
+#### Breaking Changes
+
+**1. `requires-python` moved `>=3.10` to `>=3.11`.**
+
+Committed in `bcef534`. The classifier list dropped
+`Programming Language :: Python :: 3.10` in the same change, and `[tool.mypy]`
+`python_version` moved to `3.11`.
+
+Read the change as a metadata correction rather than a withdrawal of working
+support. At `944e4b5` the package advertised `>=3.10` and installed on 3.10, but
+the package root already failed to import there: `agentic_isolation.providers.base`
+imports `datetime.UTC` (3.11+) and `agentic_isolation.providers.claude_cli.types`
+declares `EventType(enum.StrEnum)` (3.11+), both on the unconditional root import
+path. Verified: `import agentic_isolation` on CPython 3.10.20 against a wheel
+built from `944e4b5` raises
+`ImportError: cannot import name 'UTC' from 'datetime'`.
+
+What changes for you: on 3.10 the failure moves from import time to install
+time. `0.5.0` refuses to resolve on 3.10 instead of installing and then failing
+on first import. If you are on 3.10, upgrade to 3.11 or later. There is no
+version of this package on either side of this range that works on 3.10.
+
+**2. A previously dependency-free package now has a hard, exactly pinned
+dependency.**
+
+`dependencies` moved from `[]` to exactly one entry, `pydantic==2.13.4`. The pin
+is exact, not a range, so it will conflict with any environment holding a
+different pydantic 2.x. The `docker` extra (`docker>=7.0.0`) is unchanged and
+still optional.
+
+The dependency is not needed by the isolation API this package exports. Nothing
+reachable from `import agentic_isolation` imports pydantic; only the run-contract
+modules do (`agent_run_spec`, `agent_run_result`, `agent_run_events`,
+`run_client`, `workspace_run`, `recipe`, `itmux_client`), and none of those are
+re-exported from the package root. Verified: installing the `0.5.0` wheel with
+`--no-deps` into a pydantic-free 3.12 environment leaves `import agentic_isolation`
+working, while `import agentic_isolation.agent_run_spec` raises
+`ModuleNotFoundError: No module named 'pydantic'`.
+
+If the exact pin is a problem for you and you do not use the run contract, you
+can install with `--no-deps` today. That is an observation about the current
+import graph, not a supported contract.
+
+**3. The workspace entrypoint changed PID 1 semantics, then changed back.**
+
+Affected range: exactly one commit, `c56b9eb`. Introduced there, fixed in
+`5744b86`, which is its immediate successor. If your pin is `c56b9eb`, you are
+affected. If your pin is `5744b86` or later, or `944e4b5` or earlier, you are
+not.
+
+At `c56b9eb` the capability runtime wrapped `CMD` unconditionally so that
+`finalize.sh` hooks could run after the agent exits. It wrapped even when no
+capability was enabled and no finalizer existed, which cost a consumer who opted
+into nothing two things:
+
+- **PID 1.** With `AGENTIC_CAPABILITIES=""` the command ran as a child of the
+  entrypoint shell rather than as PID 1.
+- **Docker's stop grace.** The wrapper's own bounded wait is
+  `__TERM_GRACE_TICKS=15` iterations of `sleep 0.1`, so it escalated to SIGKILL
+  1.5 seconds after being signalled regardless of `docker stop -t`. A command
+  that trapped SIGTERM to flush for longer than that was killed mid-flush and
+  the container exited 137 instead of the command's own status.
+
+`5744b86` restores `exec "$@"` when no finalizer would run, and wraps only when
+there is post-agent work. Both answers come from one discovery function so the
+two notions of "active capability" cannot drift. The wrapper path itself is
+unchanged.
+
+#### Added
+
+- **Workspace capability modules** (`c56b9eb`, ADR-040). A named capability
+  registry driven by `AGENTIC_CAPABILITIES` (space separated, image default
+  `"memory session-store"`), with a three-hook lifecycle per capability
+  adapter: `init.sh` is sourced before the agent starts (entrypoint 5.6),
+  `doctor` runs as preflight (5.7), and `finalize.sh` runs after the agent
+  exits (section 6). Adding a capability is a directory plus a registry entry,
+  with no entrypoint edit. Memory is the migrated first instance and
+  session-store is the second. The breaking path and env-var renames that came
+  with this are documented in the ADR-040 section below, which is part of the
+  same unreleased range.
+- **Harness-neutral `workspace/` runtime** (`c56b9eb`). The entrypoint and the
+  capability adapters moved out of the Claude-specific provider tree to
+  `workspace/entrypoint.sh` and `workspace/capabilities/<capability>/<provider>/`,
+  and are staged into every image at `/opt/agentic/`. The ADR-040 section
+  below still cites the old
+  `providers/workspaces/claude-cli/capabilities/session-store/` path; the
+  runtime is now shared rather than per-harness.
+- **`omni-agent-workspace` image** (`c56b9eb`,
+  `providers/workspaces/omni-agent/`). A single workspace image hosting both
+  the Claude CLI and the Codex CLI on the shared capability runtime, manifest
+  `omni-agent` 1.0.0, image tag `omni-agent-workspace`. It contributes no
+  capability code of its own. Its `otel_native: true` describes the default
+  harness (claude) only; Codex's OTel support is not exercised here.
+- **`agentic_session_store` Python package** (`c56b9eb`,
+  `lib/python/agentic_session_store/`): the `AGENTIC_SESSION_STORE_*` contract,
+  a five-check doctor, and env-name conformance tests.
+
+#### Fixed
+
+- **`WorkspaceConfig` no longer prints credentials when rendered** (`d31c88a`).
+  `secrets` and `environment` are now `field(..., repr=False)`, so neither
+  appears in `repr()`, `str()`, an f-string, or `"{}".format(...)`, and by
+  extension not in the repr of anything that embeds a `WorkspaceConfig`. Both
+  fields are covered, not just `secrets`: `environment` is the field a
+  capability credential such as `AGENTIC_SESSION_STORE_AUTH` actually travels
+  in, and before this change moving a secret into `secrets` was a mitigation
+  that did nothing because that field had the identical exposure.
+
+  Stated limit, with a test recording it: `repr=False` does not affect
+  `dataclasses.asdict`, which still returns the values, and the same is true of
+  `astuple`. Anything serialising a config for output must still redact for
+  itself. Field access is unchanged, so no caller behaviour changes.
+
+#### Notes
+
+- `agentic_isolation.__version__` is bumped alongside `pyproject.toml`, and both
+  `uv.lock` files that pin the package are regenerated so the repo's
+  `uv sync --locked` gate stays green. No other file changes.
+- No tag is cut by this change. Preparing the release is separate from cutting
+  it.
+
+---
+
 ### 🧩 Workspace Capability Modules (ADR-040, BREAKING)
 
 Generalizes ADR-036's memory-only adapter mechanism into a named capability
