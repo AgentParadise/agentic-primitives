@@ -1,14 +1,23 @@
 # =============================================================================
 # Check: Version Bump vs release
 # =============================================================================
-# For every published Python package under lib/python/, if the package's
-# shipped content changed relative to the `release` branch, its version in
-# pyproject.toml must be greater than the version currently on `release`.
+# Two checks of the same shape, one per kind of versioned artifact.
 #
-# This is the control whose absence let agentic-isolation 0.5.0's predecessor
-# 0.4.0 describe two materially different packages: the requires-python floor
-# moved from >=3.10 to >=3.11 and an exact pydantic pin appeared, all under an
-# unchanged version number.
+# 1. Python packages. For every published package under lib/python/, if the
+#    package's shipped content changed relative to `release`, its version in
+#    pyproject.toml must be greater than the version currently on `release`.
+#
+#    This is the control whose absence let agentic-isolation 0.5.0's
+#    predecessor 0.4.0 describe two materially different packages: the
+#    requires-python floor moved from >=3.10 to >=3.11 and an exact pydantic
+#    pin appeared, all under an unchanged version number.
+#
+# 2. Provider images. For every provider build-workspace-images.yml publishes,
+#    if anything that ends up inside that image changed relative to `release`,
+#    its manifest.yaml version must be greater than the one on `release`.
+#    Otherwise a release changes what is inside the image while the published
+#    tag stays the same. Partial fix for issue #304; see the SCOPE note in that
+#    step for what it does not cover.
 #
 # Called by: release-gate.yml
 #
@@ -174,4 +183,151 @@ jobs:
               sys.exit(1)
 
           print(f"Version bump check passed across {checked} published package(s).")
+          PY
+
+      - name: Validate provider manifest versions are bumped
+        run: |
+          python3 <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          # Same shape as the Python package check above, applied to the
+          # provider images. Without it a release could change what is inside
+          # the claude-cli image while its manifest version, and therefore its
+          # published image tag, stayed put. See issue #304.
+          #
+          # SCOPE. This closes the release-gate half of #304 only. The deeper
+          # defect is in build-workspace-images.yml, where the CLI-version tag
+          # is derived by grepping `ARG CLAUDE_CLI_VERSION` out of the staged
+          # Dockerfile. That tag is inherently content-nonunique: two different
+          # images can legitimately bundle the same CLI version, so the tag can
+          # be moved onto new content even when this gate passes. Fixing the
+          # tag derivation is #304 / Phase 4 and is deliberately not attempted
+          # here.
+
+          BASE = "origin/release"
+
+          # The providers build-workspace-images.yml actually publishes. Other
+          # directories under providers/workspaces/ (base, omni-agent) are not
+          # pushed to GHCR, so a stale version there ships nothing and failing
+          # on it would be noise.
+          PUBLISHED_PROVIDERS = ("claude-cli", "interactive-tmux")
+
+          # Paths whose contents end up inside every provider image, or that
+          # change how the image is assembled. This mirrors the path filter on
+          # build-workspace-images.yml, plus workspace/, which
+          # scripts/build-provider.py stages into every image via
+          # stage_workspace_runtime (ADR-040).
+          #
+          # plugins/ is treated as affecting every image rather than resolving
+          # each manifest's plugins.include list. That over-approximates: a
+          # change to a plugin a given image does not bundle will still demand
+          # a version bump. The over-approximation is deliberate. A parser that
+          # got the include list subtly wrong would silently narrow the gate,
+          # and a spurious version bump costs one line while a missed one ships
+          # changed content under an unchanged tag.
+          SHARED_PREFIXES = (
+              "workspace/",
+              "plugins/",
+              "lib/python/",
+              "scripts/build-provider.py",
+          )
+
+          # Test sources are not baked into any image.
+          TEST_PATH_RE = re.compile(r"(^|/)tests?/")
+
+          VERSION_RE = re.compile(r'^version:\s*"?([^"\s]+)"?', re.MULTILINE)
+
+
+          def git(*args: str) -> str | None:
+              proc = subprocess.run(
+                  ["git", *args], capture_output=True, text=True, check=False
+              )
+              if proc.returncode != 0:
+                  return None
+              return proc.stdout
+
+
+          def parse_version(raw: str) -> tuple[int, ...]:
+              """Parse a dotted numeric version prefix, ignoring any suffix."""
+              match = re.match(r"^\s*(\d+(?:\.\d+)*)", raw)
+              if match is None:
+                  raise ValueError(f"cannot parse version: {raw!r}")
+              return tuple(int(part) for part in match.group(1).split("."))
+
+
+          def manifest_version(text: str, where: str) -> str:
+              match = VERSION_RE.search(text)
+              if match is None:
+                  raise ValueError(f"no top-level 'version:' key in {where}")
+              return match.group(1)
+
+
+          changed_raw = git("diff", "--name-only", f"{BASE}...HEAD")
+          if changed_raw is None:
+              print(f"::error::Could not diff against {BASE}.")
+              sys.exit(1)
+          changed = [
+              line
+              for line in changed_raw.splitlines()
+              if line and not TEST_PATH_RE.search(line)
+          ]
+
+          failures: list[str] = []
+          checked = 0
+
+          for provider in PUBLISHED_PROVIDERS:
+              manifest_path = pathlib.Path(
+                  f"providers/workspaces/{provider}/manifest.yaml"
+              )
+              if not manifest_path.exists():
+                  failures.append(
+                      f"{provider}: expected {manifest_path} to exist. This check "
+                      f"lists the providers that build-workspace-images.yml "
+                      f"publishes; if a provider was renamed or retired, update "
+                      f"PUBLISHED_PROVIDERS here to match."
+                  )
+                  continue
+
+              prefixes = (f"providers/workspaces/{provider}/", *SHARED_PREFIXES)
+              touched = [f for f in changed if f.startswith(prefixes)]
+
+              head_version = manifest_version(manifest_path.read_text(), "HEAD")
+
+              release_blob = git("show", f"{BASE}:{manifest_path.as_posix()}")
+              if release_blob is None:
+                  print(f"{provider}: new provider, not present on {BASE}. OK.")
+                  continue
+
+              release_version = manifest_version(release_blob, BASE)
+              checked += 1
+
+              if not touched:
+                  print(
+                      f"{provider}: image inputs unchanged vs {BASE} at "
+                      f"{release_version}. OK."
+                  )
+                  continue
+
+              if parse_version(head_version) > parse_version(release_version):
+                  print(f"{provider}: {release_version} -> {head_version}. OK.")
+                  continue
+
+              failures.append(
+                  f"{provider} image content changed versus {BASE} but its "
+                  f"manifest version did not move ({release_version} on release, "
+                  f"{head_version} here), so the published image tag would be "
+                  f"reused for different content. "
+                  f"Changed files: {', '.join(touched[:10])}"
+              )
+
+          for failure in failures:
+              print(f"::error::{failure}")
+
+          if failures:
+              sys.exit(1)
+
+          print(f"Manifest bump check passed across {checked} published provider(s).")
           PY
