@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔒 Security: pytest and pygments advisories
+
+`agentic-events` 0.1.1, `agentic-isolation` 0.5.1, `agentic-logging` 0.1.2.
+
+Two advisories surfaced by the release gate's dependency audit on its first
+run, both in development dependencies rather than in shipped runtime code:
+
+| Package | Was | Advisory | Now |
+|---|---|---|---|
+| pytest | 9.0.2 | PYSEC-2026-1845 | 9.1.1 |
+| pygments | 2.19.2 | PYSEC-2026-2987 | 2.21.0 |
+
+`agentic-memory` and `agentic-session-store` already carried fixed versions
+and are unchanged.
+
+### 🐳 omni-agent is published
+
+`omni-agent` enters the image build matrix and is published as
+`omni-agent-workspace` for the first time. It has existed as source since the
+capability work but was never built by CI, so the image did not exist in the
+registry.
+
+This also makes `test_omni_hosts_the_shared_capability_runtime` run. That test
+was guarded on the omni image being available and had therefore silently
+skipped in CI since it was written, despite being the only test that checks
+whether the ADR-040 section 12 image contract holds for a second image.
+
+`omni-agent` is added to the release gate's published-provider list and to the
+docker dry-run matrix, without which a release could ship changed omni content
+under an unchanged image tag.
+
+### 📚 Documentation
+
+Documentation synced with the capability system and the two-channel release
+process, net -697 lines. New `docs/release-process.md`. Two corrections worth
+naming: the `.capture-env` parse was documented as a raw line when the file
+holds `SESSION_STORE_TAGS_B64=<base64>`, so the documented parse silently
+produced no tags, and the session-store doctor has six checks rather than the
+five documented.
+
 ### 📦 agentic-isolation 0.5.0 (BREAKING)
 
 `agentic-isolation` is bumped `0.4.0` to `0.5.0`. This is the release note for

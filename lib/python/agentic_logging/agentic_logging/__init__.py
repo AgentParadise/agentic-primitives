@@ -26,7 +26,7 @@ from agentic_logging.config import LogConfig
 from agentic_logging.formatters import HumanFormatter, JSONFormatter
 from agentic_logging.logger import get_logger, setup_logging
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 
 __all__ = [
     "get_logger",
