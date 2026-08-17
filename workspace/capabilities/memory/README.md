@@ -5,7 +5,7 @@ retain/recall tools reach a real, correctly-scoped memory bank.
 
 This module predates the capability system: it was ADR-036's memory
 primitive, and it moved under `/opt/agentic/capabilities/memory/` when
-[ADR-040](../../../../../docs/adrs/040-workspace-capability-modules.md)
+[ADR-040](../../../docs/adrs/040-workspace-capability-modules.md)
 generalized that design. ADR-036's reasoning still governs this module's
 posture; only its plumbing changed.
 
