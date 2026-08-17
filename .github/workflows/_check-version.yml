@@ -1,0 +1,154 @@
+# =============================================================================
+# Check: Version Bump vs release
+# =============================================================================
+# For every published Python package under lib/python/, if the package's
+# shipped content changed relative to the `release` branch, its version in
+# pyproject.toml must be greater than the version currently on `release`.
+#
+# This is the control whose absence let agentic-isolation 0.5.0's predecessor
+# 0.4.0 describe two materially different packages: the requires-python floor
+# moved from >=3.10 to >=3.11 and an exact pydantic pin appeared, all under an
+# unchanged version number.
+#
+# Called by: release-gate.yml
+#
+# NOTE on the `_check-` prefix and flat layout:
+# GitHub Actions does NOT support reusable workflows in subdirectories of
+# .github/workflows/. They must live at the top level. The `_check-` prefix is
+# the convention for grouping reusable-only (workflow_call) workflows.
+# =============================================================================
+
+name: Check - Version Bump
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    name: Version Bump vs release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0 # Need release branch history for comparison
+
+      # The `release` branch does not exist until Phase 2b creates it. Until
+      # then there is no baseline to diff against, so the check reports why it
+      # is inert instead of failing with a confusing "unknown revision" error.
+      - name: Resolve release branch
+        id: baseline
+        run: |
+          if git fetch --no-tags --quiet origin release:refs/remotes/origin/release 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report missing baseline
+        if: steps.baseline.outputs.exists != 'true'
+        run: |
+          echo "::notice::No 'release' branch exists on origin yet, so there is no baseline to compare against. The version bump check is inert until the release branch is created."
+
+      - name: Validate published package versions are bumped
+        if: steps.baseline.outputs.exists == 'true'
+        run: |
+          python3 <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import sys
+          import tomllib
+
+          BASE = "origin/release"
+          ROOT = pathlib.Path("lib/python")
+
+
+          def git(*args: str) -> str | None:
+              """Run git, returning stdout or None when the command fails."""
+              proc = subprocess.run(
+                  ["git", *args], capture_output=True, text=True, check=False
+              )
+              if proc.returncode != 0:
+                  return None
+              return proc.stdout
+
+
+          def parse_version(raw: str) -> tuple[int, ...]:
+              """Parse a dotted numeric version prefix, ignoring any suffix.
+
+              Only the numeric release segment is compared. A pre-release or
+              local suffix does not participate in the ordering here, so
+              1.2.0rc1 and 1.2.0 compare equal. That is deliberate: this gate
+              asks whether the release segment moved, not which pre-release
+              won.
+              """
+              match = re.match(r"^\s*(\d+(?:\.\d+)*)", raw)
+              if match is None:
+                  raise ValueError(f"cannot parse version: {raw!r}")
+              return tuple(int(part) for part in match.group(1).split("."))
+
+
+          def version_at(ref: str, path: str) -> str | None:
+              blob = git("show", f"{ref}:{path}")
+              if blob is None:
+                  return None
+              return tomllib.loads(blob)["project"]["version"]
+
+
+          changed_raw = git("diff", "--name-only", f"{BASE}...HEAD")
+          if changed_raw is None:
+              print(f"::error::Could not diff against {BASE}.")
+              sys.exit(1)
+          changed = [line for line in changed_raw.splitlines() if line]
+
+          failures: list[str] = []
+          checked = 0
+
+          for pyproject in sorted(ROOT.glob("*/pyproject.toml")):
+              package_dir = pyproject.parent
+              prefix = f"{package_dir.as_posix()}/"
+              # Test sources are not shipped in the wheel, so a test-only change
+              # is not a change to the published package.
+              test_prefix = f"{prefix}tests/"
+              touched = [
+                  f
+                  for f in changed
+                  if f.startswith(prefix) and not f.startswith(test_prefix)
+              ]
+
+              head_version = tomllib.loads(pyproject.read_text())["project"]["version"]
+              name = tomllib.loads(pyproject.read_text())["project"]["name"]
+              release_version = version_at(BASE, pyproject.as_posix())
+
+              if release_version is None:
+                  print(f"{name}: new package, not present on {BASE}. OK.")
+                  continue
+
+              checked += 1
+
+              if not touched:
+                  print(f"{name}: unchanged vs {BASE} at {release_version}. OK.")
+                  continue
+
+              if parse_version(head_version) > parse_version(release_version):
+                  print(f"{name}: {release_version} -> {head_version}. OK.")
+                  continue
+
+              failures.append(
+                  f"{name} changed versus {BASE} but its version did not move "
+                  f"({release_version} on release, {head_version} here). "
+                  f"Changed files: {', '.join(touched[:10])}"
+              )
+
+          for failure in failures:
+              print(f"::error::{failure}")
+
+          if failures:
+              sys.exit(1)
+
+          print(f"Version bump check passed across {checked} published package(s).")
+          PY

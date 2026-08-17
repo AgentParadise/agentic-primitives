@@ -1,0 +1,62 @@
+# =============================================================================
+# Check: Changelog Entry
+# =============================================================================
+# A PR into `release` ships whatever it contains to consumers, so it must carry
+# release notes. This fails when the PR touches no CHANGELOG.md anywhere in the
+# tree (the repo keeps a root CHANGELOG.md plus one per plugin).
+#
+# Called by: release-gate.yml
+#
+# NOTE: reusable workflows must live at the top level of .github/workflows/.
+# The `_check-` prefix is the convention for workflow_call-only workflows.
+# =============================================================================
+
+name: Check - Changelog
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-check:
+    name: Changelog Entry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      # The `release` branch does not exist until Phase 2b creates it. Without
+      # it there is no diff to inspect, so the check says so rather than
+      # failing on an unknown revision.
+      - name: Resolve release branch
+        id: baseline
+        run: |
+          if git fetch --no-tags --quiet origin release:refs/remotes/origin/release 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report missing baseline
+        if: steps.baseline.outputs.exists != 'true'
+        run: |
+          echo "::notice::No 'release' branch exists on origin yet, so there is no diff to inspect. The changelog check is inert until the release branch is created."
+
+      - name: Require a changelog entry
+        if: steps.baseline.outputs.exists == 'true'
+        run: |
+          CHANGED=$(git diff --name-only origin/release...HEAD)
+          echo "Files changed versus release:"
+          echo "${CHANGED}"
+
+          if echo "${CHANGED}" | grep -qE '(^|/)CHANGELOG\.md$'; then
+            echo "Changelog entry present."
+            exit 0
+          fi
+
+          echo "::error::This PR targets 'release' but changes no CHANGELOG.md. Add release notes describing what consumers will receive."
+          exit 1

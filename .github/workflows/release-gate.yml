@@ -1,0 +1,152 @@
+# =============================================================================
+# Release Gate — Pre-merge validation for main -> release PRs
+# =============================================================================
+#
+# Runs on PRs targeting the `release` branch. All jobs must pass before merge.
+#
+# `release` is the only branch that publishes signed images to GHCR
+# (build-workspace-images.yml). Everything a consumer receives passes through
+# this gate first.
+#
+# Checks:
+#   1. Version bump      — a changed published package must move its version
+#   2. Changelog         — a release PR without release notes fails
+#   3. Docker dry run    — every workspace image builds, nothing is pushed
+#   4. Security scans    — OSV, pip-audit, dependency review
+#
+# Full QA (tests, lint, typecheck) also runs on these PRs via qa.yml, which
+# has an unfiltered `pull_request` trigger.
+#
+# This workflow is inert until the `release` branch exists. It is landed on
+# main first so that the branch carries it when it is cut from main.
+#
+# The `_check-*` reusable workflows live at the top level of
+# .github/workflows/ because GitHub Actions does not support reusable
+# workflows in subdirectories. The prefix groups them visually and signals
+# they only fire via workflow_call.
+# =============================================================================
+
+name: Release Gate
+
+on:
+  pull_request:
+    branches: [release]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  version-check:
+    uses: ./.github/workflows/_check-version.yml
+
+  changelog-check:
+    uses: ./.github/workflows/_check-changelog.yml
+
+  docker-dry-run:
+    uses: ./.github/workflows/_check-docker-dry-run.yml
+
+  # ---------------------------------------------------------------------------
+  # Security scans — inline, not duplicated elsewhere in this repo
+  # ---------------------------------------------------------------------------
+  osv-scan:
+    name: OSV Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      # Lockfiles for the published Python libraries and for the Rust driver
+      # that ships inside the interactive-tmux image. Test-harness lockfiles
+      # under tests/ are deliberately excluded: they are not shipped.
+      - name: Run OSV Scanner
+        uses: google/osv-scanner-action/osv-scanner-action@19ec1116569a47416e11a45848722b1af31a857b # v1.9.0
+        with:
+          scan-args: |-
+            --lockfile=lib/python/agentic_events/uv.lock
+            --lockfile=lib/python/agentic_isolation/uv.lock
+            --lockfile=lib/python/agentic_logging/uv.lock
+            --lockfile=lib/python/agentic_memory/uv.lock
+            --lockfile=lib/python/agentic_session_store/uv.lock
+            --lockfile=providers/workspaces/interactive-tmux/driver-rs/Cargo.lock
+
+  pip-audit:
+    name: "Python Dependency Audit: ${{ matrix.package }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - agentic_events
+          - agentic_isolation
+          - agentic_logging
+          - agentic_memory
+          - agentic_session_store
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v6
+        with:
+          enable-cache: true
+
+      - name: Install pip-audit
+        run: uv tool install pip-audit==2.7.3
+
+      - name: Audit Python dependencies
+        working-directory: lib/python/${{ matrix.package }}
+        run: |
+          uv export --format requirements-txt --no-hashes --frozen --quiet \
+            | uv tool run pip-audit --disable-pip --no-deps -r /dev/stdin
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@f5b971718edcbb31275a1db40004592335c0e031 # v4.9.0
+
+  # ---------------------------------------------------------------------------
+  # Aggregator — the single required status check for branch protection on
+  # `release` (Phase 2b). Runs with `if: always()` so a skipped or cancelled
+  # upstream job is reported as a failure rather than silently passing.
+  # ---------------------------------------------------------------------------
+  release-gate-success:
+    name: Release Gate
+    if: always()
+    needs:
+      - version-check
+      - changelog-check
+      - docker-dry-run
+      - osv-scan
+      - pip-audit
+      - dependency-review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all gates passed
+        run: |
+          FAILED=0
+          check() {
+            local job="$1" result="$2"
+            echo "${job}: ${result}"
+            if [[ "$result" != "success" ]]; then
+              echo "::error::${job} did not pass (result: ${result})"
+              FAILED=1
+            fi
+          }
+          check "version-check"     "${{ needs.version-check.result }}"
+          check "changelog-check"   "${{ needs.changelog-check.result }}"
+          check "docker-dry-run"    "${{ needs.docker-dry-run.result }}"
+          check "osv-scan"          "${{ needs.osv-scan.result }}"
+          check "pip-audit"         "${{ needs.pip-audit.result }}"
+          check "dependency-review" "${{ needs.dependency-review.result }}"
+
+          if [[ "$FAILED" == "1" ]]; then
+            exit 1
+          fi
+
+          echo "All release gates passed."
