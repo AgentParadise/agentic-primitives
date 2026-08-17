@@ -519,9 +519,66 @@ fi
 # -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
-# Wrapper rather than exec, so capability finalize hooks get a post-agent
-# moment. The agent's exit code is preserved exactly; finalize cannot change
-# it. See ADR-040 and EXP-08 for why this is not `exec "$@"`.
+# Two paths, and which one runs is decided by whether any finalizer exists.
+#
+#   NO finalizer -> `exec "$@"`, exactly as this entrypoint did before the
+#   capability runtime landed. The command becomes PID 1 and the substrate's
+#   own signal and grace semantics reach it untouched.
+#
+#   AT LEAST ONE finalizer -> the wrapper below, so capability finalize hooks
+#   get a post-agent moment. The agent's exit code is preserved exactly;
+#   finalize cannot change it. See ADR-040 and EXP-08 for why that path is
+#   not `exec "$@"`.
+#
+# The wrapper was unconditional, and that cost a consumer who enabled nothing
+# both PID 1 and their stop grace: __TERM_GRACE_TICKS SIGKILLed the command
+# 1.5s into a `docker stop -t 10`, so a command that trapped TERM to flush was
+# killed mid-flush and its exit code replaced by 137. Nothing was being
+# finalized on that run; the wrapper was pure cost.
+
+# THE SINGLE SOURCE OF TRUTH for "which finalizers would actually run".
+# Prints one "<ENV_PREFIX>:<path to finalize.sh>" line per finalizer, and
+# nothing at all when there is none. Both readers go through it: the exec/wrap
+# decision below asks whether the output is empty, and __run_finalizers
+# iterates it. Deliberately one function rather than two similar loops -- a
+# second, parallel notion of which capabilities are active is exactly how the
+# two answers drift apart, and either direction of drift is a defect (wrapping
+# with nothing to run, or execing past a finalizer that needed to run).
+#
+# Neither field can contain whitespace or a colon: __capability_name_safe
+# bounds the name to [a-z0-9-] and __capability_provider_safe bounds the
+# provider to [a-zA-Z0-9._-], so the caller's word-split and ":" split are
+# safe. The filters are the ones the finalize loop already applied, in the
+# same order and for the same reasons, which are recorded inline below.
+__discover_finalizers() {
+    for __cap in ${AGENTIC_CAPABILITIES:-}; do
+        # __capability_name_safe (narrow [a-z0-9-] charset), not
+        # __capability_provider_safe: the latter's wider charset
+        # (a-zA-Z0-9._-) lets a name like "a.b" through, which then
+        # uppercases into an invalid prefix (AGENTIC_A.B) and blows up the
+        # eval below with a bash bad-substitution under `set -e` -- the
+        # exact bug 5.6/5.7 above guard against for the same loop variable.
+        __capability_name_safe "${__cap}" || continue
+        __prefix="$(__capability_env_prefix "${__cap}")"
+        eval "__provider=\${${__prefix}_PROVIDER:-}"
+        # A capability registered but left unset, or set to "none", is not
+        # active: 5.6 skipped its adapter entirely, so it has no finalizer.
+        [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
+        # 5.6 rejects an unsafe provider name and exits before CMD ever
+        # runs -- but only on the *hard*-fail path. Its init-failure branch
+        # (unreadable/missing init.sh, adapter returning non-zero) only
+        # warns and continues, so an unsafe provider string can still be
+        # sitting in "${__provider}" when we get here. One more check is
+        # cheap; a path built from an unvalidated provider name is not.
+        __capability_provider_safe "${__provider}" || continue
+        __fin="/opt/agentic/capabilities/${__cap}/${__provider}/finalize.sh"
+        # An active capability whose adapter ships no finalize.sh (memory's
+        # hindsight adapter, today) has no post-agent work, so it is not a
+        # reason to wrap.
+        [ -f "${__fin}" ] || continue
+        printf '%s:%s\n' "${__prefix}" "${__fin}"
+    done
+}
 
 # $1 = seconds each finalizer may spend, exported as AGENTIC_FINALIZE_BUDGET_S.
 #
@@ -537,26 +594,11 @@ fi
 __run_finalizers() {
     AGENTIC_FINALIZE_BUDGET_S="${1}"
     export AGENTIC_FINALIZE_BUDGET_S
-    for __cap in ${AGENTIC_CAPABILITIES:-}; do
-        # __capability_name_safe (narrow [a-z0-9-] charset), not
-        # __capability_provider_safe: the latter's wider charset
-        # (a-zA-Z0-9._-) lets a name like "a.b" through, which then
-        # uppercases into an invalid prefix (AGENTIC_A.B) and blows up the
-        # eval below with a bash bad-substitution under `set -e` -- the
-        # exact bug 5.6/5.7 above guard against for the same loop variable.
-        __capability_name_safe "${__cap}" || continue
-        __prefix="$(__capability_env_prefix "${__cap}")"
-        eval "__provider=\${${__prefix}_PROVIDER:-}"
-        [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
-        # 5.6 rejects an unsafe provider name and exits before CMD ever
-        # runs -- but only on the *hard*-fail path. Its init-failure branch
-        # (unreadable/missing init.sh, adapter returning non-zero) only
-        # warns and continues, so an unsafe provider string can still be
-        # sitting in "${__provider}" when we get here. One more check is
-        # cheap; a path built from an unvalidated provider name is not.
-        __capability_provider_safe "${__provider}" || continue
-        __fin="/opt/agentic/capabilities/${__cap}/${__provider}/finalize.sh"
-        [ -f "${__fin}" ] || continue
+    # Word-splitting the discovery output is safe: see __discover_finalizers
+    # for why neither field can hold whitespace or a colon.
+    for __entry in $(__discover_finalizers); do
+        __prefix="${__entry%%:*}"
+        __fin="${__entry#*:}"
         # Restore only THIS capability's withheld names, and only in a
         # SUBSHELL. The two guards answer two different questions, and the
         # comment here used to claim the second one answered both:
@@ -585,6 +627,23 @@ __run_finalizers() {
         ) || true
     done
 }
+
+# NOTHING TO FINALIZE -> hand the command PID 1 and get out of the way.
+# `exec` replaces this shell, so nothing below runs, and nothing below is
+# needed: every line after this point exists to give a finalizer its
+# post-agent moment, and the whole point of this branch is that there is no
+# finalizer. This entrypoint installs no EXIT trap and has no cleanup that
+# depends on outliving CMD (sections 1-5.8 have all completed by here, and
+# 5.8's withholding is done by unsetting variables in this process image,
+# which `exec` carries forward exactly as before).
+#
+# The consumer-visible difference is the point: the command is PID 1, so it
+# receives `docker stop`'s SIGTERM directly and keeps the full `-t` grace
+# instead of this wrapper's 1.5s window, and its exit code is the container's
+# with no wrapper in between.
+if [ -z "$(__discover_finalizers)" ]; then
+    exec "$@"
+fi
 
 # Coupled with lib/python/agentic_isolation/agentic_isolation/providers/
 # docker.py's `docker stop -t 5` (see the matching comment there). This
