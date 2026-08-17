@@ -2668,6 +2668,149 @@ def test_docker_stop_stubborn_agent_is_killed_and_still_runs_finalize(
     assert "[finalize] session-store upload complete" in logs, logs
 
 
+# --- No finalizer to run means no wrapper at all ------------------------
+#
+# Every other test in this file enables a capability, which is exactly why the
+# unconditional wrapper shipped: a consumer who opted into nothing still got
+# it, lost PID 1, and lost the substrate's stop grace to the wrapper's own
+# 1.5s window. These cover the shape nothing else did.
+
+_NOFINALIZE_CAPABILITY = Path(__file__).parent / "fixtures" / "nofinalize-capability"
+
+# A command that traps TERM and needs longer than the wrapper's
+# __TERM_GRACE_TICKS (1.5s) to finish flushing. Under the unconditional
+# wrapper this was SIGKILLed mid-flush: FLUSH_COMPLETE never printed and the
+# container exited 137 instead of the command's own 0.
+_PID_1_COMM = 'echo "PID1_COMM=$(cat /proc/1/comm)"'
+
+_FLUSHING_AGENT = (
+    'trap "echo CAUGHT_TERM; sleep 3; echo FLUSH_COMPLETE; exit 0" TERM; '
+    "echo READY; while true; do sleep 0.2; done"
+)
+
+
+@pytest.mark.integration
+def test_no_capability_keeps_the_substrates_full_stop_grace():
+    """`docker stop -t 10` on a container that enabled no capability must give
+    the command the full grace, not the wrapper's 1.5s.
+
+    This is the regression, verbatim: a 10s grace, a 3s flush, and before the
+    fix a SIGKILL at 1.5s that cost both the flush and the exit code.
+    """
+    grace_s = 10
+    exit_code, elapsed, logs = _docker_stop_scenario(
+        _FLUSHING_AGENT,
+        "no-capability-grace-test",
+        grace_s,
+        env={"AGENTIC_CAPABILITIES": ""},
+    )
+    assert "CAUGHT_TERM" in logs, f"the command never received SIGTERM; logs=\n{logs}"
+    assert "FLUSH_COMPLETE" in logs, (
+        f"the command was killed mid-flush inside the grace; logs=\n{logs}"
+    )
+    assert exit_code == 0, f"expected the command's own exit code, not 137; logs=\n{logs}"
+    # It really used the grace rather than exiting early for some other
+    # reason: the flush alone is 3s, well past the 1.5s wrapper window.
+    assert elapsed >= 3, f"the 3s flush cannot have run in {elapsed:.2f}s"
+    assert elapsed < grace_s, (
+        f"the command exited on its own, before docker's SIGKILL, took {elapsed:.2f}s"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("case", "env", "mounts"),
+    [
+        # Nothing registered at all: the consumer opted into nothing.
+        ("no-capabilities", {"AGENTIC_CAPABILITIES": ""}, []),
+        # Registered but never given a provider. 5.6 skips its adapter, so
+        # there is no finalizer and no reason to wrap.
+        ("registered-unset", {"AGENTIC_CAPABILITIES": "session-store memory"}, []),
+        # Explicitly disabled with the "none" sentinel, same reasoning.
+        (
+            "provider-none",
+            {
+                "AGENTIC_CAPABILITIES": "session-store",
+                "AGENTIC_SESSION_STORE_PROVIDER": "none",
+            },
+            [],
+        ),
+        # Genuinely active -- registered, provider set, doctor passing,
+        # adapter sourced -- but the adapter ships no finalize.sh, so there
+        # is still no post-agent work to stay alive for.
+        (
+            "active-without-finalize",
+            {
+                "AGENTIC_CAPABILITIES": "nofinalize",
+                "AGENTIC_NOFINALIZE_PROVIDER": "plain",
+            },
+            [f"{_NOFINALIZE_CAPABILITY}:/opt/agentic/capabilities/nofinalize:ro"],
+        ),
+    ],
+)
+def test_command_is_pid_1_when_no_finalizer_would_run(
+    case: str, env: dict[str, str], mounts: list[str]
+):
+    """With nothing to finalize, the entrypoint must `exec`, so the command is
+    PID 1 and the substrate's signal and grace semantics reach it directly.
+
+    PID 1 is the observable that distinguishes exec from the wrapper, and it
+    is the property the grace test above depends on.
+
+    The command is written so that bash stays PID 1: given a single external
+    command, `bash -c` execs it in place, and the answer would then be that
+    program's name rather than the shell the substrate was handed.
+    """
+    result = _run(["bash", "-c", _PID_1_COMM], env=env, extra_mounts=mounts)
+    assert result.returncode == 0, f"container failed [{case}]: {result.stderr}"
+    assert "PID1_COMM=bash" in result.stdout, (
+        f"[{case}] expected the command at PID 1, got {result.stdout.strip()!r}"
+    )
+
+
+@pytest.mark.integration
+def test_an_active_finalizer_still_gets_the_wrapper():
+    """The other half of the decision: one real finalizer and the wrapper is
+    back, command not PID 1, finalize running after the command exits.
+
+    Uses the probe fixture rather than session-store so this holds with no
+    backend reachable, and asserts on the fixture's own finalize output.
+    """
+    result = _run(
+        ["bash", "-c", _PID_1_COMM],
+        env={
+            "AGENTIC_CAPABILITIES": "probe",
+            "AGENTIC_PROBE_PROVIDER": "probe",
+        },
+        extra_mounts=[f"{_PROBE_CAPABILITY}:/opt/agentic/capabilities/probe:ro"],
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "PID1_COMM=entrypoint.sh" in result.stdout, (
+        f"expected the wrapper at PID 1, got {result.stdout.strip()!r}"
+    )
+    assert "PROBE_FINALIZE PROBE_SECRET=probe-owns-this" in result.stderr, result.stderr
+
+
+@pytest.mark.integration
+def test_an_active_finalizer_still_runs_on_docker_stop():
+    """And the wrapper's post-agent moment survives `docker stop`, which is
+    the behaviour the exec branch must not be allowed to cost.
+    """
+    grace_s = 10
+    exit_code, _elapsed, logs = _docker_stop_scenario(
+        'trap "exit 3" TERM; while true; do :; done',
+        "probe-capability-stop-test",
+        grace_s,
+        env={
+            "AGENTIC_CAPABILITIES": "probe",
+            "AGENTIC_PROBE_PROVIDER": "probe",
+        },
+        extra_mounts=[f"{_PROBE_CAPABILITY}:/opt/agentic/capabilities/probe:ro"],
+    )
+    assert exit_code == 3, f"expected the agent's own exit code; logs=\n{logs}"
+    assert "PROBE_FINALIZE PROBE_SECRET=probe-owns-this" in logs, logs
+
+
 # --- The escalation window's set -e race --------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

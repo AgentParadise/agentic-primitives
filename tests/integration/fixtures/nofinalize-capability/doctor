@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Preflight for the nofinalize test capability. Always passes: this fixture
+# exists to exercise one branch of the entrypoint's exec/wrap decision
+# (ADR-040 section 6), not to check anything of its own.
+set -eu
+if [ "${1:-}" = "--json" ]; then
+    printf '{"capability":"nofinalize","passed":true,"checks":[]}\n'
+fi
+exit 0
