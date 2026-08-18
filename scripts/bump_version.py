@@ -605,7 +605,10 @@ def check_all(names: list[str]) -> bool:
 
 
 def _write_text(path: Path, text: str) -> None:
-    """Single funnel for every write, so tests can make one write fail.
+    """Single funnel for every version write, so tests can make one write fail.
+
+    The rollback path deliberately does not come through here: a restore must
+    still work when this funnel is the thing that failed.
 
     Replacement is atomic: the new contents go to a temporary file in the same
     directory and are then moved over the target with os.replace, which is
@@ -669,10 +672,13 @@ def _restore(snapshots: dict[Path, bytes | None]) -> tuple[list[Path], list[str]
 
 
 def _write_bytes(path: Path, data: bytes) -> None:
-    """Atomic byte for byte replacement, used by the rollback path.
+    """Atomic byte for byte replacement, used only by the rollback path.
 
     Bytes rather than text because a restore must reproduce the original
     exactly, including any line endings and encoding the reader normalised.
+    Separate from _write_text for the same reason: whatever broke the bump,
+    including a sabotaged or failing _write_text, must not also break the
+    restore that has to undo it.
     """
     fd, tmp_name = tempfile.mkstemp(
         dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
