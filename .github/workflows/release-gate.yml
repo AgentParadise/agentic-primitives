@@ -144,6 +144,11 @@ jobs:
   # Tracked in the issue linked from the release process doc. Restore this job
   # once the dependency graph is available, rather than leaving a permanently
   # red check that teaches people to ignore the gate.
+  #
+  # When restoring it, add it back in BOTH places: the `needs:` list and the
+  # `check` calls below. They must stay in sync. A `check` call naming a job
+  # absent from `needs:` interpolates to the empty string, which is not
+  # "success", so the gate fails with `result: ` and no job to point at.
 
   # ---------------------------------------------------------------------------
   # Aggregator — the single required status check for branch protection on
@@ -179,7 +184,6 @@ jobs:
           check "workflow-changes"  "${{ needs.workflow-changes.result }}"
           check "osv-scan"          "${{ needs.osv-scan.result }}"
           check "pip-audit"         "${{ needs.pip-audit.result }}"
-          check "dependency-review" "${{ needs.dependency-review.result }}"
 
           if [[ "$FAILED" == "1" ]]; then
             exit 1
