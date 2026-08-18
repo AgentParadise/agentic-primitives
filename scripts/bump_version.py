@@ -66,6 +66,7 @@ the workflow wins.
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import re
 import stat
@@ -93,11 +94,6 @@ SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 # `version = "..."` on its own line. Anchored to the line start so an indented
 # key inside a nested table is never mistaken for the project version.
 PYPROJECT_VERSION_LINE_RE = re.compile(r'^(version\s*=\s*")([^"]*)(")\s*$')
-
-# `__version__ = "..."` at module level, single or double quoted.
-DUNDER_VERSION_LINE_RE = re.compile(
-    r'^(__version__\s*[:=][^"\']*["\'])([^"\']*)(["\'])'
-)
 
 # Top-level `version:` key of a provider manifest. Anchored to the line start,
 # which is what makes it pick the manifest's own version and not the nested
@@ -200,12 +196,54 @@ def _read_pyproject_version(text: str) -> str | None:
     return version if isinstance(version, str) else None
 
 
+def _dunder_literal(text: str) -> ast.Constant | None:
+    """The single module-level `__version__` string literal, if there is one.
+
+    Parsed rather than pattern matched. A regex over lines cannot tell an
+    assignment from a comparison, cannot see that an assignment is nested
+    inside a function, and cannot tell where the literal ends, so it can both
+    miss a real version and mangle a line that is not one. That is the same
+    failure mode as the sed this script replaced: a change that does not do
+    what it claims, and then verifies itself against its own mistake.
+
+    Returns None when the module declares no rewritable literal version. That
+    covers a module with no `__version__` at all and one that computes it at
+    import time, for example from importlib.metadata. Neither is a location
+    this script can edit.
+    """
+    try:
+        module = ast.parse(text)
+    except SyntaxError as exc:
+        raise BumpError(f"could not parse as Python: {exc}") from exc
+
+    values: list[tuple[int, ast.expr | None]] = []
+    for node in module.body:  # module level only, never a nested scope
+        if isinstance(node, ast.Assign):
+            if any(_is_dunder_version(target) for target in node.targets):
+                values.append((node.lineno, node.value))
+        elif isinstance(node, ast.AnnAssign) and _is_dunder_version(node.target):
+            values.append((node.lineno, node.value))
+
+    if not values:
+        return None
+
+    value = values[0][1]
+    if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+        return None
+    if value.lineno != value.end_lineno:
+        # A literal spread over several lines has no single span to swap, and
+        # guessing at one is how a rewrite corrupts a file.
+        return None
+    return value
+
+
+def _is_dunder_version(node: ast.expr) -> bool:
+    return isinstance(node, ast.Name) and node.id == "__version__"
+
+
 def _read_dunder_version(text: str) -> str | None:
-    for line in text.splitlines():
-        match = DUNDER_VERSION_LINE_RE.match(line)
-        if match is not None:
-            return match.group(2)
-    return None
+    literal = _dunder_literal(text)
+    return literal.value if literal is not None else None
 
 
 def _read_manifest_version(text: str) -> str | None:
@@ -259,14 +297,16 @@ def read_location(location: Location, text: str, dist_name: str) -> str | None:
 def render_location(location: Location, text: str, target: str) -> str:
     """Return `text` with the version replaced by `target`.
 
-    Line oriented on purpose. The incident this script exists to prevent came
-    from a multi-line regex address form that behaved differently on two seds;
-    a single anchored match per line has one behaviour everywhere.
+    Line oriented for the two data formats, and AST driven for Python. The
+    incident this script exists to prevent came from a multi-line regex address
+    form that behaved differently on two seds; a single anchored match per line
+    has one behaviour everywhere, and for Python source an exact node span is
+    the only way to know where the version ends and the rest of the line begins.
     """
     if location.kind == "pyproject":
         return _render_pyproject(text, target)
     if location.kind == "dunder":
-        return _render_line(text, DUNDER_VERSION_LINE_RE, target)
+        return _render_dunder(text, target)
     if location.kind == "manifest":
         return _render_line(text, MANIFEST_VERSION_LINE_RE, target)
     raise BumpError(f"location kind {location.kind!r} is not text-editable")
@@ -290,6 +330,46 @@ def _render_pyproject(text: str, target: str) -> str:
                 replaced = True
         out.append(line)
     return "".join(out)
+
+
+def _render_dunder(text: str, target: str) -> str:
+    """Replace only the `__version__` string literal, byte span for byte span.
+
+    Everything outside the literal survives, because everything outside it is
+    either executable code or a comment someone wrote on purpose. The previous
+    regex rebuilt the line from three capture groups and discarded whatever
+    followed the closing quote, so a trailing comment or a trailing statement
+    was silently deleted. The read back then passed anyway, because it re-read
+    the same mangled line.
+
+    AST column offsets are byte offsets into the line, so the splice is done on
+    the encoded line rather than on characters.
+    """
+    if any(char in target for char in "\\'\"\n\r"):
+        raise BumpError(f"refusing to write {target!r} into a Python string literal")
+
+    literal = _dunder_literal(text)
+    if literal is None:
+        raise BumpError("no rewritable module-level __version__ string literal")
+
+    lines = text.splitlines(keepends=True)
+    raw = lines[literal.lineno - 1].encode("utf-8")
+    old = raw[literal.col_offset : literal.end_col_offset].decode("utf-8")
+
+    quotes = [index for index in (old.find("'"), old.find('"')) if index != -1]
+    if not quotes:
+        raise BumpError(f"__version__ literal {old!r} has no quote to preserve")
+    quote_at = min(quotes)
+    prefix = old[:quote_at]  # a string prefix such as r or u, usually empty
+    quote = old[quote_at : quote_at + 3]
+    if quote not in {'"""', "'''"}:
+        quote = old[quote_at]
+
+    replacement = f"{prefix}{quote}{target}{quote}".encode()
+    lines[literal.lineno - 1] = (
+        raw[: literal.col_offset] + replacement + raw[literal.end_col_offset :]
+    ).decode("utf-8")
+    return "".join(lines)
 
 
 def _render_line(text: str, pattern: re.Pattern[str], target: str) -> str:

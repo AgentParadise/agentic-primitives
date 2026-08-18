@@ -420,6 +420,112 @@ class TestBump:
 
 
 # ---------------------------------------------------------------------------
+# __version__ parsing
+#
+# A dunder that is read or rewritten by pattern matching rather than by
+# understanding Python is the same defect as the sed that started all this:
+# it can half-apply a change and then verify its own mistake.
+# ---------------------------------------------------------------------------
+
+
+class TestDunderVersion:
+    def test_a_comparison_is_not_an_assignment(self, tmp_path):
+        """`__version__ == "1.0.0"` declares nothing and must not be a location."""
+        package_dir = make_package(tmp_path, "0.1.0")
+        (package_dir / "demo_package" / "compat.py").write_text(
+            "from demo_package import __version__\n\n"
+            'SUPPORTED = __version__ == "1.0.0"\n'
+        )
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        dunders = {loc.path.name for loc in artifact.locations if loc.kind == "dunder"}
+        assert dunders == {"__init__.py"}
+        assert bv.check_artifact(artifact) is True
+
+    def test_a_bare_comparison_statement_is_not_an_assignment(self, tmp_path):
+        package_dir = make_package(tmp_path, "0.1.0")
+        (package_dir / "demo_package" / "compat.py").write_text(
+            '__version__ == "1.0.0"\n'
+        )
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        dunders = {loc.path.name for loc in artifact.locations if loc.kind == "dunder"}
+        assert dunders == {"__init__.py"}
+
+    def test_a_trailing_comment_survives_a_bump(self, tmp_path):
+        """Everything after the version literal is executable or documentary.
+
+        Discarding it and then verifying the mangled line is the worst shape of
+        this bug: the file is corrupted and the tool reports success.
+        """
+        package_dir = make_package(tmp_path, "0.1.0")
+        init_py = package_dir / "demo_package" / "__init__.py"
+        init_py.write_text('__version__ = "0.1.0"  # public API\n')
+
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        bv.bump_artifact(artifact, "patch", refresh_lock=fake_lock_refresh("0.1.1"))
+
+        assert init_py.read_text() == '__version__ = "0.1.1"  # public API\n'
+
+    def test_trailing_code_survives_a_bump(self, tmp_path):
+        package_dir = make_package(tmp_path, "0.1.0")
+        init_py = package_dir / "demo_package" / "__init__.py"
+        init_py.write_text('__version__ = "0.1.0"; __all__ = ["__version__"]\n')
+
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        bv.bump_artifact(artifact, "patch", refresh_lock=fake_lock_refresh("0.1.1"))
+
+        assert (
+            init_py.read_text() == '__version__ = "0.1.1"; __all__ = ["__version__"]\n'
+        )
+
+    def test_an_annotated_assignment_is_still_a_location(self, tmp_path):
+        package_dir = make_package(tmp_path, "0.1.0")
+        init_py = package_dir / "demo_package" / "__init__.py"
+        init_py.write_text('__version__: str = "0.1.0"\n')
+
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        bv.bump_artifact(artifact, "patch", refresh_lock=fake_lock_refresh("0.1.1"))
+
+        assert init_py.read_text() == '__version__: str = "0.1.1"\n'
+
+    def test_single_quotes_are_preserved(self, tmp_path):
+        package_dir = make_package(tmp_path, "0.1.0")
+        init_py = package_dir / "demo_package" / "__init__.py"
+        init_py.write_text("__version__ = '0.1.0'\n")
+
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        bv.bump_artifact(artifact, "patch", refresh_lock=fake_lock_refresh("0.1.1"))
+
+        assert init_py.read_text() == "__version__ = '0.1.1'\n"
+
+    def test_an_indented_assignment_is_not_a_module_level_location(self, tmp_path):
+        """A dunder set inside a function or class is not the module's version."""
+        package_dir = make_package(tmp_path, "0.1.0")
+        (package_dir / "demo_package" / "compat.py").write_text(
+            'def pin():\n    __version__ = "9.9.9"\n    return __version__\n'
+        )
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        dunders = {loc.path.name for loc in artifact.locations if loc.kind == "dunder"}
+        assert dunders == {"__init__.py"}
+
+    def test_a_dynamic_version_is_not_a_location(self, tmp_path):
+        """`__version__ = version("demo")` has no literal to rewrite."""
+        package_dir = make_package(tmp_path, "0.1.0")
+        (package_dir / "demo_package" / "compat.py").write_text(
+            "from importlib.metadata import version\n\n"
+            '__version__ = version("demo-package")\n'
+        )
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        dunders = {loc.path.name for loc in artifact.locations if loc.kind == "dunder"}
+        assert dunders == {"__init__.py"}
+
+    def test_a_source_file_that_is_not_python_is_an_error(self, tmp_path):
+        package_dir = make_package(tmp_path, "0.1.0")
+        (package_dir / "demo_package" / "broken.py").write_text("def (:\n")
+        with pytest.raises(bv.BumpError, match="could not parse"):
+            bv.find_artifact("demo_package", root=tmp_path)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
