@@ -210,6 +210,12 @@ def _dunder_literal(text: str) -> ast.Constant | None:
     covers a module with no `__version__` at all and one that computes it at
     import time, for example from importlib.metadata. Neither is a location
     this script can edit.
+
+    Raises when a module assigns `__version__` more than once at module level.
+    The last assignment is the effective value at import time, so bumping and
+    verifying the first would report success over a stale version. Two
+    module-level assignments is already a bug, so this refuses rather than
+    trying to keep them in step.
     """
     try:
         module = ast.parse(text)
@@ -224,6 +230,14 @@ def _dunder_literal(text: str) -> ast.Constant | None:
         elif isinstance(node, ast.AnnAssign) and _is_dunder_version(node.target):
             values.append((node.lineno, node.value))
 
+    if len(values) > 1:
+        lines = ", ".join(str(lineno) for lineno, _ in values)
+        raise BumpError(
+            f"assigns __version__ more than once at module level (lines {lines}). "
+            f"The last assignment is the effective version at import time, so "
+            f"bumping the first would leave a stale value behind and still look "
+            f"like it worked. Collapse them into one assignment."
+        )
     if not values:
         return None
 

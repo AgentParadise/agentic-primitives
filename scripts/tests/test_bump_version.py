@@ -429,6 +429,24 @@ class TestBump:
 
 
 class TestDunderVersion:
+    def test_two_assignments_are_rejected(self, tmp_path):
+        """The second assignment is the effective one at import time.
+
+        Updating only the first, then verifying only the first, is a success
+        report over a stale value. Two module-level __version__ assignments is
+        already a bug, so this refuses rather than trying to keep both in sync.
+        """
+        package_dir = make_package(tmp_path, "0.1.0")
+        init_py = package_dir / "demo_package" / "__init__.py"
+        init_py.write_text('__version__ = "0.1.0"\n__version__ = "0.1.0"\n')
+        before = snapshot_tree(tmp_path)
+
+        with pytest.raises(bv.BumpError, match="more than once"):
+            artifact = bv.find_artifact("demo_package", root=tmp_path)
+            bv.bump_artifact(artifact, "patch", refresh_lock=fake_lock_refresh("0.1.1"))
+
+        assert snapshot_tree(tmp_path) == before
+
     def test_a_comparison_is_not_an_assignment(self, tmp_path):
         """`__version__ == "1.0.0"` declares nothing and must not be a location."""
         package_dir = make_package(tmp_path, "0.1.0")
