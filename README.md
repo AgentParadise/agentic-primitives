@@ -163,7 +163,7 @@ Replace `sdlc` with any plugin name from the [Available Plugins](#available-plug
 | **workspace** | -- | -- | -- | Session lifecycle, tool observability, structured JSONL event emission |
 | **research** | `scrape_docs` | -- | -- | -- |
 | **meta** | `create-command`, `create-prime`, `create-doc-sync` | `prompt-generator` | -- | -- |
-| **docs** | -- | `fuma` (Fumadocs integration), `system-infographic` | -- | -- |
+| **docs** | -- | `fuma` (Fumadocs integration), `system-infographic`, `html-guide` | -- | -- |
 | **notifications** | -- | -- | -- | Notification, Stop, TaskCompleted → ntfy/macOS/Pushover with sound themes |
 | **observability** | -- | -- | -- | All 14 lifecycle events → structured JSONL via agentic_events |
 | **delegation** | -- | `delegating-to-claude-p`, `delegating-to-codex`, `writing-handoffs` | -- | -- |
