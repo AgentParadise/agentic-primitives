@@ -57,7 +57,7 @@ Two further constraints came from evidence rather than design taste.
 **EXP-07** established that a mistimed sweep silently misattributes
 sessions. That made the trigger mechanism a question worth measuring
 rather than guessing, which is what
-[EXP-08](../../experiments/EXP-08-capability-capture-lifecycle.md) did.
+EXP-08 did.
 EXP-08 scored 3 of 6 predictions correct, and both wrong predictions would
 have shipped as silent data-loss defects. Its findings are load bearing
 throughout the Decision below and are cited inline.
@@ -960,7 +960,7 @@ gained the public `Env` and `CAPABILITY` symbols and the
 - [ADR-035: Workspace Injection Contract](035-workspace-injection-contract.md) - the env-var and entrypoint-section conventions this ADR extends
 - [ADR-033: Plugin-Native Workspace Images](033-plugin-native-workspace-images.md)
 - [ADR-027: Provider-Based Workspace Images](027-provider-workspace-images.md)
-- [EXP-08: Workspace capability capture lifecycle](../../experiments/EXP-08-capability-capture-lifecycle.md) - the empirical basis for sections 6, 8, and 9
+- EXP-08: Workspace capability capture lifecycle - the empirical basis for sections 6, 8, and 9. The `experiments/` tree moved to a private archive in `9371a0b`, so it is not linkable from here.
 - [Authoring guide: workspace capabilities](../workspace-capabilities.md)
 - [session-store module README](../../workspace/capabilities/session-store/README.md)
 - [memory module README](../../workspace/capabilities/memory/README.md)

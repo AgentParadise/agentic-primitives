@@ -111,8 +111,9 @@ two coordinated extensions of the workspace injection contract (ADR-035):
    can `tail`, `grep`, and dashboard the diagnostics across every container
    start.
 
-Detailed design lives in
-[the spec doc](../superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md).
+Detailed design lived in
+`docs/superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md`,
+which is no longer in the repository.
 
 ## Alternatives Considered
 
@@ -276,7 +277,7 @@ pattern from `test_entrypoint_workspace_injection.py`.
 
 ## References
 
-- [Design spec](../superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md)
+- Design spec: `docs/superpowers/specs/2026-05-13-memory-primitive-and-doctor-design.md` (no longer in the repository)
 - [ADR-040: Workspace Capability Modules](040-workspace-capability-modules.md) (supersedes this ADR's mechanism)
 - [Authoring guide: workspace capabilities](../workspace-capabilities.md)
 - [ADR-035: Workspace Injection Contract](035-workspace-injection-contract.md)

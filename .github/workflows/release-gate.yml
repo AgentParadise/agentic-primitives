@@ -129,15 +129,26 @@ jobs:
           uv export --format requirements-txt --no-hashes --frozen --quiet \
             | uv tool run pip-audit --disable-pip --no-deps -r /dev/stdin
 
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@f5b971718edcbb31275a1db40004592335c0e031 # v4.9.0
+  # REMOVED: dependency-review.
+  #
+  # actions/dependency-review-action fails on this repository with
+  # "Dependency review is not supported on this repository. Please ensure that
+  # Dependency graph is enabled." It failed on every run, including after a
+  # rerun, so it was a check that could only ever block.
+  #
+  # Vulnerability coverage is NOT lost. osv-scan and the per-package pip-audit
+  # matrix both run in this gate and both catch advisories; they are what found
+  # PYSEC-2026-1845 and PYSEC-2026-2987 on this gate's first run. What is lost
+  # is dependency-review's PR-diff-scoped view and its license checking.
+  #
+  # Tracked in the issue linked from the release process doc. Restore this job
+  # once the dependency graph is available, rather than leaving a permanently
+  # red check that teaches people to ignore the gate.
+  #
+  # When restoring it, add it back in BOTH places: the `needs:` list and the
+  # `check` calls below. They must stay in sync. A `check` call naming a job
+  # absent from `needs:` interpolates to the empty string, which is not
+  # "success", so the gate fails with `result: ` and no job to point at.
 
   # ---------------------------------------------------------------------------
   # Aggregator — the single required status check for branch protection on
@@ -154,7 +165,6 @@ jobs:
       - workflow-changes
       - osv-scan
       - pip-audit
-      - dependency-review
     runs-on: ubuntu-latest
     steps:
       - name: Check all gates passed
@@ -174,7 +184,6 @@ jobs:
           check "workflow-changes"  "${{ needs.workflow-changes.result }}"
           check "osv-scan"          "${{ needs.osv-scan.result }}"
           check "pip-audit"         "${{ needs.pip-audit.result }}"
-          check "dependency-review" "${{ needs.dependency-review.result }}"
 
           if [[ "$FAILED" == "1" ]]; then
             exit 1

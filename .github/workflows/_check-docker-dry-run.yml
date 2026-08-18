@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [claude-cli, interactive-tmux]
+        provider: [claude-cli, interactive-tmux, omni-agent]
 
     steps:
       - name: Checkout repository

@@ -22,20 +22,30 @@ equivalent. The only hard bound is an external one (see the budget section).
 ## The validated invocation
 
 ```sh
-codex exec --full-auto \
+codex exec -s workspace-write \
   --json \
   -o ./codex-last.txt \
   -C /path/to/project \
   "$TASK_PROMPT"
 ```
 
+> **Flag drift.** Older releases spelled the autonomy mode `--full-auto`. That
+> flag was **removed** by `codex-cli 0.147.0` — passing it now aborts the run
+> with `error: unexpected argument '--full-auto'`. Use `-s workspace-write`
+> instead, as above. `codex exec --help | grep full-auto` returning nothing is
+> the quick check. Everything else in this recipe (`--json`, `-o`, `-C`,
+> `--ephemeral`, `--add-dir`, `--output-schema`, `--skip-git-repo-check`) is
+> unchanged and verified present on 0.147.0.
+
 ### Per-flag rationale
 
-- **`--full-auto`** — the realistic autonomy mode. Expands to
-  `--sandbox workspace-write --ask-for-approval never`: Codex may write files
-  and run commands inside the workspace sandbox without prompting. This is the
-  Codex analog of `claude -p --permission-mode bypassPermissions`, but narrower —
-  it does *not* grant network access or writes outside the workspace.
+- **`-s workspace-write` / `--sandbox workspace-write`** — the realistic
+  autonomy mode: Codex may write files and run commands inside the workspace
+  sandbox, and `codex exec` does not prompt. This is the Codex analog of
+  `claude -p --permission-mode bypassPermissions`, but narrower — it does *not*
+  grant network access or writes outside the workspace. (`--ask-for-approval`
+  is no longer an `exec` flag; `--approve-for-me` routes approval requests
+  through automatic review using the same sandbox.)
 - **`--json`** — emit the run as a JSONL event stream on stdout. Without it the
   transcript is prose and unscoreable, exactly as `claude -p` text mode is. See
   the event-schema section for what it carries.
@@ -57,7 +67,7 @@ Pick the least privilege that lets the task finish. Granularity Codex exposes:
 | Setting | Grants | Use when |
 |---|---|---|
 | `-s read-only` | Read files; no writes, no commands | Analysis / review only |
-| `-s workspace-write` (via `--full-auto`) | Write + run inside the workspace; no network | The default for fmt/test/edit loops |
+| `-s workspace-write` | Write + run inside the workspace; no network | The default for fmt/test/edit loops |
 | `-s danger-full-access` | Writes anywhere, network | Almost never; prefer adding `--add-dir` to widen scope precisely |
 | `--dangerously-bypass-approvals-and-sandbox` | No sandbox, no prompts | ONLY when the host is already externally sandboxed (CI container, disposable VM) |
 
@@ -74,12 +84,46 @@ the process:
 
 ```sh
 # macOS lacks `timeout`; install coreutils for `gtimeout`, or use a CI step limit
-gtimeout 600 codex exec --full-auto --json -o ./codex-last.txt "$TASK_PROMPT"
+gtimeout 600 codex exec -s workspace-write --json -o ./codex-last.txt "$TASK_PROMPT"
 ```
 
 Treat an external wall-clock bound (`gtimeout`, a CI job timeout, a wrapper
 watchdog) as mandatory for unattended runs. A wedged Codex run will otherwise
 consume tokens until it finishes or is killed by hand.
+
+## `codex exec review` — the built-in diff reviewer
+
+0.147.0 ships a `review` subcommand that scopes itself to a diff instead of
+needing you to describe one:
+
+```sh
+codex exec review --base main --json -o ./review.md --ephemeral
+codex exec review --uncommitted --json -o ./review.md   # staged + unstaged + untracked
+codex exec review --commit <SHA> --json -o ./review.md
+```
+
+**The catch:** `--base` / `--uncommitted` / `--commit` are **mutually exclusive
+with `[PROMPT]`**. Passing both fails:
+
+```
+error: the argument '--base <BRANCH>' cannot be used with '[PROMPT]'
+```
+
+So you get either Codex's stock review rubric *or* your own instructions, never
+both. It also exposes no `-s` or `-C`, so it is inherently read-only and runs
+against the current directory.
+
+Choose accordingly:
+
+| Want | Use |
+|---|---|
+| A quick review with Codex's own rubric | `codex exec review --base <branch>` |
+| A review steered at specific risks, or one that runs the test suite to verify its own claims | plain `codex exec -s workspace-write` with a prompt telling it to `git diff <base>...HEAD` |
+
+For the steered form, add an explicit **"do NOT modify any tracked file"** to the
+prompt — `workspace-write` permits edits, and you want the review read-only while
+still letting Codex run tests. Confirm with `git status` afterwards; treat a dirty
+tree as a failed review run, not a bonus.
 
 ## What `--json` emits (for triage)
 
@@ -127,7 +171,7 @@ and name it in the prompt.** Two mechanisms:
 - **stdin (best for one-shot)** — pipe the skill body in; Codex appends it as a
   `<stdin>` block. Name the skill and the task in the prompt arg:
   ```sh
-  cat path/to/skills/review/SKILL.md | codex exec --full-auto --json \
+  cat path/to/skills/review/SKILL.md | codex exec -s workspace-write --json \
     -o ./review.md -C /path/to/project \
     "Apply the review skill provided on stdin to review this repo against plan.md. Follow its Report format exactly. Read-only: do not modify files."
   ```
@@ -147,14 +191,18 @@ the format section is what steers the output. See Trial T2.
 |---|---|---|
 | Run consumes tokens indefinitely | No built-in budget cap | Wrap in `gtimeout`/CI timeout; `usage` is only reported post-hoc |
 | Unscoreable prose transcript | Default output is not JSONL | Add `--json`; read `-o` file for the conclusion |
-| Cannot write files / run commands | Default sandbox is `read-only` | Use `--full-auto` (workspace-write) or set `-s` explicitly |
+| `error: unexpected argument '--full-auto'` | Flag removed by 0.147.0 | Use `-s workspace-write`; re-check with `codex exec --help` |
+| `--base <BRANCH> cannot be used with [PROMPT]` | `codex exec review` takes its built-in rubric OR custom instructions, not both | Pick one: `review --base` for the stock rubric, or plain `codex exec` with your own prompt |
+| Cannot write files / run commands | Default sandbox is `read-only` | Set `-s workspace-write` explicitly |
 | Refuses to run | Not inside a git repo | Add `--skip-git-repo-check` |
 | Writes need a dir outside the workspace | `workspace-write` is workspace-scoped | Add `--add-dir <dir>` rather than escalating to `danger-full-access` |
-| Command fails on a quirky local env (e.g. `pytest` exit 127 under pyenv) | Sandbox shell inherits host PATH quirks | `--full-auto` Codex often self-recovers (Trial T1); for wrappers, pre-set env via `-c shell_environment_policy...` |
+| Command fails on a quirky local env (e.g. `pytest` exit 127 under pyenv) | Sandbox shell inherits host PATH quirks | Under `-s workspace-write` Codex often self-recovers (Trial T1); for wrappers, pre-set env via `-c shell_environment_policy...` |
 
 ## Trial T1 — empirical reference
 
-A real `codex exec --full-auto --json` run, recorded 2026-06-08:
+A real workspace-write run, recorded 2026-06-08 on `codex-cli 0.137.0`, where
+the mode was still spelled `--full-auto`. The invocation below is left as it was
+actually executed; on 0.147.0+ substitute `-s workspace-write`.
 
 - **Task**: add `is_palindrome(s)` + a 3-case `pytest` file to a fresh repo, run
   the tests.
@@ -207,5 +255,9 @@ exactly what a pr-review skill enforces.
 - **`experiments:running-experiments`** — the discipline for designing a paired
   trial to extend or contest Trial T1.
 - Codex CLI flags here are described by behavior to stay valid across releases;
-  verified against `codex-cli 0.137.0` on 2026-06-08. Re-run `codex exec --help`
-  to confirm flag availability in your installed version.
+  verified against `codex-cli 0.137.0` on 2026-06-08, re-verified against
+  `0.147.0` on 2026-08-17 (which removed `--full-auto` and added
+  `codex exec review`). Re-run `codex exec --help` to confirm flag availability
+  in your installed version — this surface has already drifted once between
+  documented releases, so treat the check as part of the recipe rather than an
+  optional precaution.

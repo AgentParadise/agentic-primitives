@@ -91,13 +91,18 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Integration gate (claude-cli): build the image single-arch, run the
-  # entrypoint integration suite against it. build-push depends on this, so a
-  # broken entrypoint/memory surface never gets published or signed.
-  # See ADR-037.
+  # Integration gate: build the workspace images single-arch, run the entrypoint
+  # integration suite once against them. build-push depends on this, so a broken
+  # entrypoint/memory surface never gets published or signed. See ADR-037.
+  #
+  # The suite is one pytest run, not one run per image. Most cases target
+  # AGENTIC_WORKSPACE_IMAGE (claude-cli). test_omni_hosts_the_shared_capability_runtime
+  # targets AGENTIC_OMNI_IMAGE and is skipped unless that image exists locally,
+  # so before omni-agent was built here that case never executed in CI. Building
+  # it adds one image build and zero extra suite runs.
   # ---------------------------------------------------------------------------
   integration-gate:
-    name: "Integration Gate: claude-cli"
+    name: "Integration Gate"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -126,6 +131,12 @@ jobs:
       # default). No push.
       - name: Build claude-cli image (loaded into daemon)
         run: uv run scripts/build-provider.py claude-cli
+
+      # Same default build: tags omni-agent-workspace:latest into the local
+      # daemon, which is the image test_omni_hosts_the_shared_capability_runtime
+      # resolves via AGENTIC_OMNI_IMAGE. Without this step that test skips.
+      - name: Build omni-agent image (loaded into daemon)
+        run: uv run scripts/build-provider.py omni-agent
 
       # Deps from the agentic_isolation env (docker + dev extras: pytest,
       # pytest-asyncio, docker SDK). Tests live at repo root tests/integration.
@@ -156,6 +167,14 @@ jobs:
             platforms: linux/amd64,linux/arm64
           - provider: interactive-tmux
             image: agentic-workspace-interactive-tmux
+            platforms: linux/amd64,linux/arm64
+          # Image name is `omni-agent-workspace`, not
+          # `agentic-workspace-omni-agent`. It is taken from image.tag in
+          # providers/workspaces/omni-agent/manifest.yaml; the
+          # `agentic-workspace-` prefix is dropped because the org namespace
+          # (ghcr.io/agentparadise) already supplies it.
+          - provider: omni-agent
+            image: omni-agent-workspace
             platforms: linux/amd64,linux/arm64
 
     steps:

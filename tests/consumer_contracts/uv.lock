@@ -4,7 +4,7 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "agentic-events"
-version = "0.1.0"
+version = "0.1.1"
 source = { directory = "../../lib/python/agentic_events" }
 
 [package.metadata]
@@ -23,7 +23,7 @@ dev = [
 
 [[package]]
 name = "agentic-isolation"
-version = "0.5.0"
+version = "0.5.1"
 source = { directory = "../../lib/python/agentic_isolation" }
 dependencies = [
     { name = "pydantic" },
@@ -42,7 +42,7 @@ provides-extras = ["docker", "dev"]
 
 [[package]]
 name = "agentic-logging"
-version = "0.1.1"
+version = "0.1.2"
 source = { directory = "../../lib/python/agentic_logging" }
 dependencies = [
     { name = "python-json-logger" },

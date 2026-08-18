@@ -5,6 +5,9 @@ build/
 dist/
 target/
 
+# Local git worktrees
+.worktrees/
+
 
 # Python
 __pycache__/

@@ -151,10 +151,20 @@ failure modes so the detail string is specific rather than a generic
 "raised: ...". A doctor that dies on a malformed URL takes the other four
 checks down with it and tells the operator nothing.
 
-`session-store` ships five checks, and their shape is a reasonable
-template: `contract_parses`, `spool_writable`, `symlinks_correct`,
-`exporter_present`, `store_reachable`. Memory ships eight, including a
-`ProviderSpecificCheck` that shells out to the adapter's own `doctor.sh`.
+`session-store` ships six checks, and their shape is a reasonable template:
+`contract_parses`, `init_complete`, `spool_writable`, `symlinks_correct`,
+`exporter_present`, `store_reachable` (the list in `CHECKS` in
+`agentic_session_store/doctor.py` is the source of truth). Memory ships
+eight, including a `ProviderSpecificCheck` that shells out to the adapter's
+own `doctor.sh`.
+
+`init_complete` is worth copying. `init.sh` mints a per-run token, exports
+it, and writes it to a marker file as its very last act; the doctor checks
+that the marker holds *this* run's token. A marker whose only job was to
+exist would be satisfied by a previous run's file on a persisted spool,
+which is exactly the stale state it needs to detect. If your `init.sh` can
+fail partway and still return zero (see the `set -e` hazard below), you
+want this.
 
 Add the bash entry point at
 `workspace/capabilities/<name>/doctor`. It is a thin
@@ -420,7 +430,7 @@ sourced**.
 section for why that path is not `$SPOOL/$PARTITION`):
 
 ```
-SESSION_STORE_TAGS=<opaque tag string, exactly as received>
+SESSION_STORE_TAGS_B64=<base64 of the opaque tag string, exactly as received>
 ```
 
 It looks like shell. Sourcing it is arbitrary code execution in a process
@@ -429,15 +439,33 @@ tag of `workflow:$(touch /tmp/PWNED)` executed on source, and any tag
 containing a space truncated the value to empty, destroying the very
 attribution the file exists to preserve.
 
-The correct read is line-oriented and quote-agnostic:
+**Encode the value if the format is line-oriented and the value is
+opaque.** A raw record survived the shell-injection fix and still lost a tag
+containing a newline: any read-one-line consumer truncated at the first
+line. base64 makes the encoded value a single line of `[A-Za-z0-9+/=]` by
+construction, so the record stays trivially parseable, and no character in
+that alphabet means anything to a shell, so it cannot reintroduce what the
+first fix removed.
+
+The correct read parses the line, then decodes:
 
 ```bash
-SESSION_STORE_TAGS="$(sed -n 's/^SESSION_STORE_TAGS=//p' "${capture_env}" | head -1)"
+b64="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${capture_env}" | head -1)"
+IFS= read -r -d '' SESSION_STORE_TAGS < <(printf '%s' "${b64}" | base64 -d) || true
 export SESSION_STORE_TAGS
 ```
 
-`export` is required because the consumer is a child process; a bare shell
-variable never reaches it.
+`read -r -d ''` rather than `$(base64 -d)`, because command substitution
+strips trailing newlines from a value this layer treats as opaque. `export`
+is required because the consumer is a child process; a bare shell variable
+never reaches it.
+
+`session-store`'s `finalize.sh` also accepts a legacy bare
+`SESSION_STORE_TAGS=` record, for partitions written before the encoding
+changed, and warns on stderr whenever that path fires. If you introduce an
+encoding change to a record that outlives the container, plan the same
+shape: read both, prefer the current one, and say loudly when the old one
+was used.
 
 Write such files under `umask 077` in a subshell, not with a post-hoc
 `chmod`, which leaves a window where the file is world-readable.
@@ -468,6 +496,7 @@ Separate the two questions, because they have two different owners:
     .owner                                <- ownership marker, versioned id
     $PARTITION/
       .capture-env
+      .init-complete
       state.json
   ```
 
@@ -532,11 +561,18 @@ its job where they asked.
 
 ## Step 6: Register it
 
-Add the name to `AGENTIC_CAPABILITIES` in the Dockerfile's `ENV` block:
+Add the name to `AGENTIC_CAPABILITIES` in the `ENV` block of **every**
+Dockerfile that hosts capabilities. Two do today,
+`providers/workspaces/claude-cli/Dockerfile` and
+`providers/workspaces/omni-agent/Dockerfile`, and they must agree:
 
 ```dockerfile
 AGENTIC_CAPABILITIES="memory session-store" \
 ```
+
+`interactive-tmux` and `base` host no capabilities. They stage neither
+`workspace/entrypoint.sh` nor `workspace/capabilities/` and set no
+registry, so nothing here applies to them.
 
 Space-separated. The lifecycle iterates this list in both 5.6 and 5.7, and
 a listed capability with no `AGENTIC_<CAP>_PROVIDER` set is a silent no-op,
@@ -549,10 +585,18 @@ otherwise does nothing. That is deliberate (an operator may be disabling a
 capability on purpose), but it means an override that forgets a name
 silently disables it.
 
-Then bump `providers/workspaces/claude-cli/manifest.yaml`. A new capability
-is a minor bump. Moving or renaming an interface that an ADR names is a
-major bump, as the 1.3.0 to 2.0.0 move on this branch was (1.2.0 was the
-last released version; the intermediate 1.3.0 never shipped).
+Then bump the `manifest.yaml` of each provider you touched. A new
+capability is a minor bump. Moving or renaming an interface that an ADR
+names is a major bump, as the 1.3.0 to 2.0.0 move on `claude-cli` was
+(1.2.0 was the last released version; the intermediate 1.3.0 never
+shipped).
+
+The bump is not optional for a published provider: `_check-version.yml`
+fails a release PR when a provider's own directory or any shared path
+(`workspace/`, `plugins/`, `lib/python/`, `scripts/build-provider.py`)
+changed without its manifest version moving. A capability lives under
+`workspace/`, so it trips that rule for every published provider. See
+[`docs/release-process.md`](release-process.md).
 
 ---
 
@@ -641,6 +685,9 @@ natural host-side half. Start there.
 - [ADR-040: Workspace Capability Modules](adrs/040-workspace-capability-modules.md)
 - [ADR-036: Memory Primitive and Doctor](adrs/036-memory-primitive-and-doctor.md)
 - [ADR-035: Workspace Injection Contract](adrs/035-workspace-injection-contract.md)
-- [EXP-08: Workspace capability capture lifecycle](../experiments/EXP-08-capability-capture-lifecycle.md)
+- EXP-08: Workspace capability capture lifecycle. Cited throughout for the
+  measurements behind sections 6, 8 and 9 of ADR-040. The `experiments/`
+  tree moved to a private archive in `9371a0b`, so there is no link to
+  follow from this repository.
 - [session-store module README](../workspace/capabilities/session-store/README.md)
 - [memory module README](../workspace/capabilities/memory/README.md)

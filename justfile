@@ -193,6 +193,25 @@ lint-fix: python-lint-fix
 test: python-test rust-test
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# VERSIONING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# List every versioned artifact and the files that declare its version
+[group('qa')]
+list-versions:
+    uv run scripts/bump_version.py --list
+
+# Check that every file declaring an artifact's version agrees
+[group('qa')]
+check-versions *artifacts:
+    uv run scripts/bump_version.py --check {{ artifacts }}
+
+# Bump one artifact: just bump-version patch agentic_logging
+[group('qa')]
+bump-version part artifact:
+    uv run scripts/bump_version.py bump {{ part }} {{ artifact }}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # QUALITY ASSURANCE
 # ═══════════════════════════════════════════════════════════════════════════════
 
