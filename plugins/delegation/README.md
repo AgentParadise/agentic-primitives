@@ -12,7 +12,9 @@ other coding agents.
   reference grounded in real arc data (5 paired trials + 22 sub-experiments
   total, from the agentic-harness-lab v0.8.0 dogfood arc). The skill body is
   generic — it documents how `claude -p` actually behaves, not project-specific
-  conventions.
+  conventions. Includes a constrained, read-only PR review recipe that captures
+  Claude's terminal JSON result as a durable artifact for PR comments and
+  merge gates.
 
 - **`delegating-to-codex` skill** (under `skills/delegating-to-codex/`):
   The validated non-interactive `codex exec` invocation for handing a task to
