@@ -1,5 +1,32 @@
 # Changelog - delegation plugin
 
+## 1.2.2 - 2026-08-18
+
+Makes `< /dev/null` part of the canonical `codex exec` invocation in
+`delegating-to-codex`, rather than something the caller is expected to know.
+
+`codex exec` reads stdin **in addition to** the prompt argument. Launched from
+any context whose stdin never reaches EOF - a background shell, a CI step, an
+agent harness - it prints `Reading additional input from stdin...` and hangs
+forever: no events, no error, no tokens consumed, just a wedged process until
+something kills it. Because the skill's documented invocation omitted the
+redirect, **following this skill verbatim reproduced the hang.**
+
+It recurred on 2026-08-17 during Syntropic137 #829: two review dispatches
+wedged for roughly 20 minutes each, and both were misread as the model being
+slow because nobody inspected the stream file. The tell is now documented
+alongside the fix - a wedged run's `--json` stream stalls at ~39 bytes, the
+exact length of that banner, while a healthy run passes 100KB within a minute.
+
+The redirect is applied to every invocation the skill shows (canonical,
+`review` subcommand, `gtimeout` example), with a new failure-mode row and a
+per-flag rationale entry.
+
+One deliberate exception is called out: the skill-injection recipe pipes a
+`SKILL.md` in on stdin, and that pipe closes on its own, which is precisely
+what Codex is waiting for. Redirecting from `/dev/null` there would defeat the
+mechanism.
+
 ## 1.2.1 - 2026-08-17
 
 Fixes `delegating-to-codex` against `codex-cli 0.147.0`. The documented
