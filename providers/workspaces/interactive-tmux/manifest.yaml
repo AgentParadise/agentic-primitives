@@ -12,7 +12,7 @@
 # See ADR-027: Provider-Based Workspace Images
 
 name: interactive-tmux
-version: "0.1.1"
+version: "0.1.2"
 description: Interactive multi-agent (claude/codex/gemini) workspace driven over tmux from the host
 
 # Image build configuration
