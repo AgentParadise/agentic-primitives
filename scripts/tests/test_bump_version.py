@@ -89,6 +89,20 @@ def make_provider(root: Path, version: str = "1.0.0") -> Path:
     return provider_dir
 
 
+def snapshot_tree(root: Path) -> dict[str, bytes]:
+    """Every file under `root`, keyed by relative path, as raw bytes.
+
+    Byte level on purpose. A restore that puts back a different line ending,
+    or truncates a file it rewrote, is exactly the half-applied state these
+    tests are here to catch, and a text level comparison can hide it.
+    """
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
 def no_lock_refresh(project_dir: Path) -> None:
     """Stand-in for `uv lock` that regenerates nothing.
 
@@ -292,6 +306,63 @@ class TestBump:
             bv.bump_artifact(artifact, "patch", refresh_lock=fake_lock_refresh("0.1.1"))
 
         assert 'version = "0.1.0"' in pyproject.read_text()
+
+    def test_a_write_that_raises_leaves_the_tree_byte_identical(
+        self, tmp_path, monkeypatch
+    ):
+        """A bump that dies partway must not leave a partially bumped tree.
+
+        pyproject.toml is written first, so making the __init__.py write raise
+        reproduces the exact shape of the original incident from the other
+        direction: one file moved, one did not. The tool that exists to stop
+        that state must not be able to create it.
+        """
+        make_package(tmp_path, "0.1.0")
+        package_dir = tmp_path / "lib" / "python" / "demo_package"
+        init_py = package_dir / "demo_package" / "__init__.py"
+        before = snapshot_tree(tmp_path)
+
+        real_write = bv._write_text
+
+        def exploding(path, text):
+            if path == init_py:
+                raise OSError("no space left on device")
+            real_write(path, text)
+
+        monkeypatch.setattr(bv, "_write_text", exploding)
+
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        with pytest.raises(bv.BumpError, match="rolled back"):
+            bv.bump_artifact(artifact, "patch", refresh_lock=fake_lock_refresh("0.1.1"))
+
+        assert snapshot_tree(tmp_path) == before
+
+    def test_a_failing_lock_refresh_leaves_the_tree_byte_identical(self, tmp_path):
+        """`uv lock` failing after the text edits landed must roll those back."""
+        make_package(tmp_path, "0.1.0")
+        before = snapshot_tree(tmp_path)
+
+        def failing_lock(project_dir: Path) -> None:
+            (project_dir / "uv.lock").write_text(UV_LOCK.format(version="0.1.1"))
+            raise bv.BumpError(f"`uv lock` failed in {project_dir}")
+
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+        with pytest.raises(bv.BumpError, match="uv lock"):
+            bv.bump_artifact(artifact, "patch", refresh_lock=failing_lock)
+
+        assert snapshot_tree(tmp_path) == before
+
+    def test_a_failed_bump_names_what_it_restored(self, tmp_path, capsys):
+        """A rollback the caller cannot see is its own kind of silent failure."""
+        make_package(tmp_path, "0.1.0")
+        artifact = bv.find_artifact("demo_package", root=tmp_path)
+
+        with pytest.raises(bv.BumpError):
+            bv.bump_artifact(artifact, "patch", refresh_lock=no_lock_refresh)
+
+        err = capsys.readouterr().err
+        assert "restored" in err
+        assert "pyproject.toml" in err
 
     def test_a_lock_that_does_not_refresh_fails(self, tmp_path):
         """`uv lock` succeeding without moving the version is still a failure."""

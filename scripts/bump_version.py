@@ -28,6 +28,12 @@ every location is read back from disk afterwards and compared to the target.
 A location that does not read back as the target version is an error, not a
 warning, and not something the caller can miss.
 
+The second rule follows from the first: a bump either lands everywhere or
+nowhere. Every file a bump can touch is snapshotted before the first write,
+and any failure, including a `uv lock` that fails after an earlier file was
+already rewritten, restores all of them and names what it restored. Otherwise
+this tool could leave behind the very half-applied tree it exists to detect.
+
 What it knows about
 -------------------
 Two kinds of versioned artifact, because two release gates check two kinds:
@@ -62,8 +68,11 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -502,8 +511,111 @@ def check_all(names: list[str]) -> bool:
 
 
 def _write_text(path: Path, text: str) -> None:
-    """Single funnel for every write, so tests can make one write fail."""
-    path.write_text(text, encoding="utf-8")
+    """Single funnel for every write, so tests can make one write fail.
+
+    Replacement is atomic: the new contents go to a temporary file in the same
+    directory and are then moved over the target with os.replace, which is
+    atomic within a filesystem. Path.write_text() truncates the target first,
+    so a crash between the truncate and the write leaves a half written file,
+    which is the same class of outcome this script exists to prevent.
+    """
+    fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        # mkstemp creates the temp file 0600, so the original mode has to be
+        # carried over or the replacement would silently tighten permissions.
+        if path.exists():
+            os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _snapshot(paths: Iterable[Path]) -> dict[Path, bytes | None]:
+    """Raw contents of every path, before anything is written.
+
+    A path that does not exist yet is recorded as None so that restoring can
+    delete it again rather than leaving a file the bump invented.
+    """
+    snapshots: dict[Path, bytes | None] = {}
+    for path in paths:
+        snapshots[path] = path.read_bytes() if path.is_file() else None
+    return snapshots
+
+
+def _restore(snapshots: dict[Path, bytes | None]) -> tuple[list[Path], list[str]]:
+    """Put every changed path back. Returns (restored paths, restore failures).
+
+    Only paths whose bytes actually differ are touched, so the report names
+    what really moved. A restore that itself fails is returned rather than
+    raised, because the caller is already handling an error and losing that
+    error to a second one would hide the reason the bump failed.
+    """
+    restored: list[Path] = []
+    failures: list[str] = []
+    for path, original in snapshots.items():
+        try:
+            if original is None:
+                if path.exists():
+                    path.unlink()
+                    restored.append(path)
+                continue
+            if path.is_file() and path.read_bytes() == original:
+                continue
+            _write_bytes(path, original)
+            restored.append(path)
+        except OSError as exc:
+            failures.append(f"{_rel(path)}: {exc}")
+    return restored, failures
+
+
+def _write_bytes(path: Path, data: bytes) -> None:
+    """Atomic byte for byte replacement, used by the rollback path.
+
+    Bytes rather than text because a restore must reproduce the original
+    exactly, including any line endings and encoding the reader normalised.
+    """
+    fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        if path.exists():
+            os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _report_rollback(outcome: tuple[list[Path], list[str]]) -> None:
+    """Say exactly which files were put back, and which could not be.
+
+    Printed to stderr before the error that caused it is raised, so a failed
+    bump reads as "these files moved and were restored" rather than leaving
+    the caller to guess what state the tree is in.
+    """
+    restored, failures = outcome
+    if restored:
+        print("  restored to their pre-bump contents:", file=sys.stderr)
+        for path in restored:
+            print(f"    {_rel(path)}", file=sys.stderr)
+    elif not failures:
+        print(
+            "  nothing had been written yet, so nothing was restored", file=sys.stderr
+        )
+    for failure in failures:
+        print(
+            f"  COULD NOT RESTORE {failure}. This file must be repaired by hand.",
+            file=sys.stderr,
+        )
 
 
 def _refresh_lock(project_dir: Path) -> None:
@@ -575,25 +687,44 @@ def bump_artifact(
 
     print(f"{artifact.name}: {current} -> {target}")
 
-    for location, new_text in pending:
-        _write_text(location.path, new_text)
+    # Everything from here on is transactional. Every file that this bump can
+    # touch is snapshotted first, and any failure at all, including one raised
+    # from inside `uv lock` or from the read back, puts all of them back. A
+    # partially bumped tree is the disagreeing-version state this script exists
+    # to detect, so the script must not be able to produce one itself.
+    snapshots = _snapshot(loc.path for loc in artifact.locations)
+    try:
+        for location, new_text in pending:
+            _write_text(location.path, new_text)
 
-    for project_dir in artifact.lock_projects:
-        refresh_lock(project_dir)
+        for project_dir in artifact.lock_projects:
+            refresh_lock(project_dir)
 
-    # Read back from disk. Anything that does not now say `target` is a
-    # failure, including a lock that `uv lock` declined to move.
-    after = current_versions(artifact)
-    wrong = [
-        f"{loc}: {version if version is not None else 'NO VERSION FOUND'}"
-        for loc, version in after.items()
-        if version != target
-    ]
-    if wrong:
+        # Read back from disk. Anything that does not now say `target` is a
+        # failure, including a lock that `uv lock` declined to move.
+        after = current_versions(artifact)
+        wrong = [
+            f"{loc}: {version if version is not None else 'NO VERSION FOUND'}"
+            for loc, version in after.items()
+            if version != target
+        ]
+        if wrong:
+            raise BumpError(
+                f"bump of {artifact.name} to {target} did NOT fully apply, so it "
+                f"was rolled back (see the restore report above).\n  "
+                + "\n  ".join(wrong)
+            )
+    except BaseException as exc:
+        _report_rollback(_restore(snapshots))
+        if isinstance(exc, BumpError):
+            raise
+        # Anything else would reach the caller as a bare traceback that says
+        # nothing about what happened to the tree, which is precisely the
+        # illegible failure this script is meant to replace.
         raise BumpError(
-            f"bump of {artifact.name} to {target} did NOT fully apply. The tree is "
-            f"now inconsistent and must be repaired by hand.\n  " + "\n  ".join(wrong)
-        )
+            f"bump of {artifact.name} to {target} failed and was rolled back: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
     for location in artifact.locations:
         print(f"  updated {location}")
