@@ -86,10 +86,19 @@ class Env(StrEnum):
     # does anything else, so the doctor never compares against a value the
     # adapter did not just mint.
     INIT_TOKEN = "AGENTIC_SESSION_STORE_INIT_TOKEN"
+    # Optional operator override naming the exporter executable. The capability
+    # depends on the APS-V1-0004 Exporter PROFILE, not on one client, so any
+    # conformant binary under any name can be pointed at with this.
+    EXPORTER_BIN = "AGENTIC_SESSION_STORE_EXPORTER_BIN"
+    # OPTIONAL deployment identity (APS-V1-0004 2.0.0 `origin.deployment`):
+    # WHICH deployment produced a session, as distinct from the runtime CLASS.
+    # Every containerised run reports the same class, so without this a
+    # multi-tier install is unattributable in a shared corpus.
+    DEPLOYMENT = "AGENTIC_SESSION_STORE_DEPLOYMENT"
 
 
 class ExporterEnv(StrEnum):
-    """Env vars this adapter EXPORTS for SeshMagicSessionExporter to read.
+    """Env vars this adapter EXPORTS for the exporter to read.
 
     Named here so the doctor can assert on them without restating literals.
     ORIGIN_HOST is deliberately absent: see the adapter's init.sh.
@@ -101,6 +110,9 @@ class ExporterEnv(StrEnum):
     CLAUDE_ROOT = "CLAUDE_PROJECTS_ROOT"
     CODEX_ROOT = "CODEX_SESSIONS_ROOT"
     STATE_FILE = "EXPORTER_STATE_FILE"
+    #: The exporter's own name for the deployment identity, translated from
+    #: Env.DEPLOYMENT by init.sh.
+    ORIGIN_DEPLOYMENT = "SESSION_STORE_ORIGIN_DEPLOYMENT"
 
 
 URL_ORIGIN_ONLY_MESSAGE = (

@@ -1,6 +1,6 @@
 [project]
 name = "agentic-session-store"
-version = "0.1.0"
+version = "0.2.0"
 description = "Session-store capability contract + env-var interface for agentic-primitives workspaces"
 readme = "README.md"
 license = { text = "MIT" }

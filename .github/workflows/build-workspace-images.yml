@@ -360,6 +360,46 @@ jobs:
             agentic.image.channel=${{ steps.version.outputs.channel }}
 
       # -------------------------------------------------------------------
+      # Verify what we are about to COPY INTO our image
+      # -------------------------------------------------------------------
+      # Pinning a digest guarantees repeatable BYTES. It says nothing about WHO
+      # published them. Those are different properties, and only the second one
+      # answers "should this binary be in an image that runs with a store
+      # credential".
+      #
+      # So the exporter's signature is verified BEFORE the build, and the build
+      # cannot start if it fails. Verifying afterwards, or signing only our own
+      # output, would attest to bytes we never checked the provenance of.
+      #
+      # Extracts the digest straight from the Dockerfile so the thing verified
+      # is the thing copied. A separately maintained constant here would drift
+      # from the COPY line and verify the wrong image while reporting success.
+      # Installed BEFORE the verify step below, not after the build. The
+      # existing install lower down exists to sign our own output; verification
+      # of an input has to happen earlier than that or it cannot gate the build.
+      - name: Install cosign
+        if: matrix.provider == 'omni-agent'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Verify the session-store exporter image signature
+        if: matrix.provider == 'omni-agent'
+        run: |
+          set -euo pipefail
+          ref="$(grep -oE 'ghcr\.io/agentparadise/agentic-session-exporter@sha256:[0-9a-f]{64}' \
+                 build/${{ matrix.provider }}/Dockerfile | head -1)"
+          if [ -z "$ref" ]; then
+            echo "::error::no pinned exporter digest found in the Dockerfile"
+            exit 1
+          fi
+          echo "verifying $ref"
+          cosign verify \
+            --certificate-identity-regexp \
+              '^https://github\.com/AgentParadise/agentic-session-exporter/\.github/workflows/.+@refs/(tags|heads)/.+$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$ref" > /dev/null
+          echo "OK: exporter image signature verified"
+
+      # -------------------------------------------------------------------
       # Build + Push
       # -------------------------------------------------------------------
       - name: Build and push image

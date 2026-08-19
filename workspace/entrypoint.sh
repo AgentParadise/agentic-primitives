@@ -427,13 +427,48 @@ for __cap in ${AGENTIC_CAPABILITIES:-}; do
     [ -n "${__provider}" ] && [ "${__provider}" != "none" ] || continue
 
     __audit_dir="${AGENTIC_CAPABILITY_AUDIT_DIR:-/var/agentic/${__cap}-doctor}"
-    mkdir -p "${__audit_dir}" 2>/dev/null || true
     __audit_file="${__audit_dir}/$(date -u +%Y-%m-%d).jsonl"
 
-    if /opt/agentic/capabilities/"${__cap}"/doctor --json >> "${__audit_file}"; then
-        echo "[entrypoint] ${__cap} doctor: pass (audit: ${__audit_file})" >&2
+    # The audit file is a RECORD of the doctor run, not a precondition for it.
+    # Redirecting the doctor's output straight into it conflated the two: on a
+    # read-only rootfs the mkdir was swallowed by `|| true`, the redirect then
+    # failed, the `if` took the else branch, and the entrypoint reported
+    # "doctor: FAIL" and killed the workspace for a doctor that never executed.
+    # The cause reported was never the cause.
+    #
+    # So: run the doctor first, capture its verdict, and treat an unwritable
+    # audit path as a warning. A capability must not be judged by whether its
+    # logging destination happens to be writable.
+    if mkdir -p "${__audit_dir}" 2>/dev/null && : >> "${__audit_file}" 2>/dev/null; then
+        __audit_ok=1
     else
-        echo "[entrypoint] ${__cap} doctor: FAIL (audit: ${__audit_file})" >&2
+        __audit_ok=0
+        echo "[entrypoint] ${__cap} doctor: audit path ${__audit_file} is not writable; running the doctor anyway and reporting to stderr only." >&2
+    fi
+
+    # `|| __doctor_rc=$?` is load-bearing, not style. This script runs under
+    # `set -e` (line 30). A bare command whose exit status is then read into a
+    # variable never gets read: errexit fires at the command and the entrypoint
+    # dies before it can report WHY. That is how the previous version of this
+    # block lost the FAIL message and the bypass hint - the workspace still
+    # failed, correctly, but silently, which is the defect this block exists to
+    # prevent. `if` conditions are exempt from errexit; bare statements are not.
+    __doctor_rc=0
+    if [ "${__audit_ok}" -eq 1 ]; then
+        /opt/agentic/capabilities/"${__cap}"/doctor --json >> "${__audit_file}" \
+            || __doctor_rc=$?
+    else
+        /opt/agentic/capabilities/"${__cap}"/doctor --json >&2 || __doctor_rc=$?
+    fi
+
+    if [ "${__doctor_rc}" -eq 0 ]; then
+        if [ "${__audit_ok}" -eq 1 ]; then
+            echo "[entrypoint] ${__cap} doctor: pass (audit: ${__audit_file})" >&2
+        else
+            echo "[entrypoint] ${__cap} doctor: pass (audit unavailable)" >&2
+        fi
+    else
+        echo "[entrypoint] ${__cap} doctor: FAIL (exit ${__doctor_rc})" >&2
         echo "[entrypoint] Unset ${__prefix}_PROVIDER to bypass the ${__cap} capability." >&2
         exit 1
     fi
