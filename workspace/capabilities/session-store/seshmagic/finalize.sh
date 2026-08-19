@@ -436,7 +436,7 @@ if [ "${__exporter_rc}" -ne 0 ]; then
          "here: it is an operator-supplied binary, this stream is durable, and" \
          "a build that prints its environment or an auth header would leak the" \
          "store write credential into the logs. To see it, re-run" \
-         "the exporter by hand with the same environment; the spool" \
+         "${__exporter_bin} by hand with the same environment; the spool" \
          "is retained and the store dedups on content_hash, so a repeat sweep" \
          "uploads nothing twice." >&2
     exit 0
