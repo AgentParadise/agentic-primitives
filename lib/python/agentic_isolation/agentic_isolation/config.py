@@ -74,6 +74,13 @@ class SecurityConfig:
     read_only_root: bool = True  # --read-only
     tmpfs_tmp: bool = True  # --tmpfs=/tmp:rw,noexec,nosuid,size=256m
     tmpfs_home: bool = True  # --tmpfs=/home/agent:rw,exec,nosuid,size=128m
+    # Capability working directories. Under --read-only these are image
+    # directories on a read-only rootfs, so a capability that writes to them
+    # fails at preflight and hard-fails the whole workspace. /spool is the
+    # session-store capability's transcript partition (ADR-040); /var/agentic
+    # is where the entrypoint writes capability doctor audit files.
+    tmpfs_spool: bool = True  # --tmpfs=/spool:rw,noexec,nosuid,size=512m
+    tmpfs_var_agentic: bool = True  # --tmpfs=/var/agentic:rw,noexec,nosuid,size=32m
 
     # Process limits
     pids_limit: int = 256  # --pids-limit=256
@@ -152,6 +159,14 @@ class SecurityConfig:
 
         if self.tmpfs_home:
             args.append("--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000")
+
+        # Owned by the agent user: capabilities run as the non-root agent and
+        # must be able to create their partition and audit directories.
+        if self.tmpfs_spool:
+            args.append("--tmpfs=/spool:rw,noexec,nosuid,size=512m,uid=1000,gid=1000")
+
+        if self.tmpfs_var_agentic:
+            args.append("--tmpfs=/var/agentic:rw,noexec,nosuid,size=32m,uid=1000,gid=1000")
 
         if self.pids_limit > 0:
             args.append(f"--pids-limit={self.pids_limit}")
