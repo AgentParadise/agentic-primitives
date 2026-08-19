@@ -158,13 +158,89 @@ COPY plugins/ /opt/agentic/plugins/
 # The Python packages themselves are installed into /opt/venv in stage 3.
 COPY workspace/capabilities/ /opt/agentic/capabilities/
 
-# Exporter provisioning contract (session-store capability):
-# Same as claude-cli: this image deliberately does NOT ship
-# SeshMagicSessionExporter. The exporter is a reference client of the public
-# APS-V1-0004 standard, not part of the private store server. Deployment
-# supplies the binary via bind-mount, a derived image, or a custom variant.
-RUN mkdir -p /var/agentic \
-    && chown -R agent:agent /var/agentic
+# Session-store exporter (session-store capability).
+#
+# The image now SHIPS the exporter, which it previously refused to do. The
+# refusal was right at the time and is no longer: the only client available then
+# was named for one vendor's store, and baking it would have made a
+# general-purpose multi-agent workspace image depend on that company's product.
+#
+# What changed is that the client was extracted, genericised, and published as
+# the reference implementation of the APS-V1-0004 Exporter profile. So this
+# depends on a public client of a public contract, which is the arrangement the
+# standard exists to make possible. A deployment that wants a different
+# conformant client still overrides it with
+# AGENTIC_SESSION_STORE_EXPORTER_BIN.
+#
+# Copied FROM an OCI image by DIGEST rather than curled at build time. A digest
+# is immutable, so the bytes cannot silently change under a rebuild.
+#
+# A digest guarantees WHICH bytes, not WHO published them. Those are different
+# properties, and only the second answers "should this run alongside a store
+# credential". Provenance is therefore established in CI, before the build:
+# build-workspace-images.yml verifies this exact digest's cosign signature
+# against the exporter repository's release-workflow identity, and the build
+# cannot start if that fails. Reading the digest out of THIS line is what keeps
+# the verified image and the copied image the same image.
+#
+# The source image is FROM scratch and exists only to be copied out of.
+#
+# PRECEDENCE CHANGE FOR EXISTING DEPLOYMENTS. The capability resolves the
+# exporter as: AGENTIC_SESSION_STORE_EXPORTER_BIN, then apss-session-exporter,
+# then the legacy SeshMagicSessionExporter. Before this commit the image shipped
+# neither of the first two, so an operator bind-mounting the legacy name was the
+# only binary present and always won. Now the baked apss-session-exporter is
+# found first and their mount is ignored.
+#
+# That is a real behaviour change for anyone doing this, which is why the
+# manifest bump is a MINOR rather than a patch: same interface, new capability,
+# and an existing setup that silently starts using a different binary. An
+# operator who genuinely needs their own build sets
+# AGENTIC_SESSION_STORE_EXPORTER_BIN, which still wins over everything.
+#
+# GLIBC FLOOR, and the reason this only copies one binary. The exporter release
+# builds on ubuntu-latest (glibc 2.39); this base is Debian 12 (glibc 2.36).
+# apss-session-reconstitute already fails here with
+#
+#   libc.so.6: version `GLIBC_2.39' not found
+#
+# and apss-session-exporter runs only because it happens not to reference a 2.39
+# symbol. That is luck, not compatibility: an unrelated upstream change could
+# introduce one and break provisioning everywhere at once.
+#
+# The durable fix belongs upstream - build the release against an older glibc
+# baseline, or ship musl static binaries - and is filed there. Until then, the
+# RUN below is what turns that from a silent production failure into a build
+# failure in this file.
+#
+# Bump procedure: pick a digest from
+# https://github.com/AgentParadise/agentic-session-exporter/releases, verify its
+# signature with cosign, and change it here in its own commit so a reviewer sees
+# exactly what moved.
+#
+# agentic-session-exporter v0.1.1, verified 2026-08-19: this digest was pulled
+# and the binary run out of it (COPY into debian:12-slim, reports
+# "apss-session-exporter 0.1.1"). v0.1.2 changes only the release workflow's own
+# verification step and produces identical binaries, so there is no reason to
+# chase it here.
+# The EXPORTER only. apss-session-reconstitute writes a stored session back to
+# disk so a harness can resume it, which is something a developer does on their
+# own machine, not something a short-lived workspace container ever needs. It
+# also currently requires GLIBC_2.39 while this base is Debian 12 (2.36), so
+# copying it would put a binary here that cannot run - see the note below.
+COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:a403764b8c102edd872a292d95dab1a68fb60ee981688c3b4f888c79712e6a95 \
+     /apss-session-exporter /usr/local/bin/
+
+RUN chmod 755 /usr/local/bin/apss-session-exporter \
+    && mkdir -p /var/agentic \
+    && chown -R agent:agent /var/agentic \
+    `# Execute what was just copied. Buildx runs this once PER TARGET` \
+    `# PLATFORM, so it is the only check that proves the arm64 binary is` \
+    `# genuinely arm64 rather than an amd64 copy from a single-platform` \
+    `# index. It also catches a missing exec bit, a wrong libc, and a` \
+    `# truncated copy - at BUILD time, in the layer that caused it, instead` \
+    `# of at workspace provision in another repository.` \
+    && /usr/local/bin/apss-session-exporter --version
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
 # The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;
