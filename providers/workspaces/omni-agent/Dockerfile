@@ -185,6 +185,19 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 #
 # The source image is FROM scratch and exists only to be copied out of.
 #
+# PRECEDENCE CHANGE FOR EXISTING DEPLOYMENTS. The capability resolves the
+# exporter as: AGENTIC_SESSION_STORE_EXPORTER_BIN, then apss-session-exporter,
+# then the legacy SeshMagicSessionExporter. Before this commit the image shipped
+# neither of the first two, so an operator bind-mounting the legacy name was the
+# only binary present and always won. Now the baked apss-session-exporter is
+# found first and their mount is ignored.
+#
+# That is a real behaviour change for anyone doing this, which is why the
+# manifest bump is a MINOR rather than a patch: same interface, new capability,
+# and an existing setup that silently starts using a different binary. An
+# operator who genuinely needs their own build sets
+# AGENTIC_SESSION_STORE_EXPORTER_BIN, which still wins over everything.
+#
 # GLIBC FLOOR, and the reason this only copies one binary. The exporter release
 # builds on ubuntu-latest (glibc 2.39); this base is Debian 12 (glibc 2.36).
 # apss-session-reconstitute already fails here with
