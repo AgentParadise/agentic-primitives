@@ -6,7 +6,7 @@
 # See ADR-040 section 12: The workspace image contract
 
 name: omni-agent
-version: "1.0.2"
+version: "1.0.3"
 description: >-
   Multi-harness workspace hosting both the Claude CLI and the Codex CLI on the
   shared ADR-040 capability runtime (memory, session-store). Second
