@@ -9,6 +9,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ The omni workspace image now ships the session-store exporter
+
+`omni-agent` 1.1.0.
+
+Until now the image shipped no exporter binary at all, so the session-store
+capability's `exporter_present` check could never pass. Session capture was
+impossible rather than merely unconfigured, and enabling it hard-failed the
+workspace.
+
+The image previously refused to bake one on purpose: the only client available
+was named for a single vendor's store, and embedding it would have coupled a
+general-purpose multi-agent workspace image to that company's product. That
+client has since been extracted and published as the public reference
+implementation of the APS-V1-0004 Exporter profile, so the image now depends on
+a public client of a public contract instead.
+
+**What consumers receive**
+
+- `apss-session-exporter` at `/usr/local/bin`, copied `FROM` a signed OCI image
+  by digest. CI verifies that digest's cosign signature **before** the build, so
+  a build cannot start against an unverified artifact. A digest establishes
+  which bytes; the signature establishes who published them.
+- `AGENTIC_SESSION_STORE_DEPLOYMENT` in the capability contract, translated to
+  `SESSION_STORE_ORIGIN_DEPLOYMENT`. This is what makes APS-V1-0004 2.0.0's
+  `origin.deployment` reachable from a workspace. Without it every containerised
+  session reports the same runtime class and a multi-tier install is
+  unattributable.
+- `/spool` and `/var/agentic` are writable under `--read-only`, so a capability
+  that writes can actually run in the production security configuration.
+- The capability doctor reports its real failure cause. It previously printed
+  `doctor: FAIL` for a doctor that never executed, because a swallowed `mkdir`
+  under `errexit` killed the entrypoint before the check ran.
+
+**Behaviour change for existing deployments**
+
+An operator bind-mounting `SeshMagicSessionExporter` will find the baked
+`apss-session-exporter` now takes precedence, because the capability resolves
+the standard-anchored name first. Capture keeps working - it is the same
+reference client - but the mounted build is no longer the one that runs. Set
+`AGENTIC_SESSION_STORE_EXPORTER_BIN` to keep using a specific binary. This is
+why the provider bump is a minor rather than a patch.
+
+**Known limit**
+
+The exporter's release binaries are built against glibc 2.39 while this image is
+Debian 12 (2.36). `apss-session-exporter` runs because it happens not to
+reference a 2.39 symbol; `apss-session-reconstitute` does, so only the exporter
+is copied. The build now executes the copied binary per target platform, which is
+what surfaced this, so the failure mode is a failed build rather than a broken
+workspace. Upstream fix tracked as agentic-session-exporter#7.
+
+`claude-cli` is unchanged and deliberately still ships no exporter.
+
+
 ### 🔒 Security: pytest and pygments advisories
 
 `agentic-events` 0.1.1, `agentic-isolation` 0.5.1, `agentic-logging` 0.1.2.
