@@ -593,3 +593,33 @@ def test_init_complete_does_not_raise_on_an_unreadable_marker(tmp_path, monkeypa
 
     assert result.passed is False
     assert "absent or unreadable" in result.detail
+
+
+class TestExporterBinaryNamesMatchWhatIsBuilt:
+    """The names this capability probes must be names something actually ships.
+
+    This exists because a previous version of this file probed for
+    `agentic-session-exporter`, a name chosen here and built by nobody. The
+    reference client builds `apss-session-exporter` (standard-anchored) plus
+    `SeshMagicSessionExporter` (compatibility alias). A consumer that invents a
+    third name fails at finalize, in a container, long after the choice.
+
+    Kept as a pinned assertion rather than a cross-repo read: the exporter is a
+    separate repository, so there is nothing local to verify against. If the
+    reference client renames, this test is where the rename is noticed.
+    """
+
+    def test_primary_is_the_standard_anchored_name(self) -> None:
+        assert doctor_module.EXPORTER_BINARY == "apss-session-exporter"
+
+    def test_legacy_alias_is_the_pre_rename_vendor_name(self) -> None:
+        assert doctor_module.EXPORTER_BINARY_LEGACY == "SeshMagicSessionExporter"
+
+    def test_primary_and_legacy_are_distinct(self) -> None:
+        assert doctor_module.EXPORTER_BINARY != doctor_module.EXPORTER_BINARY_LEGACY
+
+    def test_override_env_var_comes_from_the_contract_enum(self) -> None:
+        # Not a literal: every env name this package reads is spelled once, in
+        # the contract enum, and test_no_env_name_literals_outside_the_enum
+        # enforces that.
+        assert doctor_module.EXPORTER_BINARY_ENV is Env.EXPORTER_BIN

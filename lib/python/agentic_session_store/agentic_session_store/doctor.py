@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import sys
@@ -37,8 +38,37 @@ from agentic_session_store.contract import (
     init_marker_path,
 )
 
-EXPORTER_BINARY = "SeshMagicSessionExporter"
-"""Name of the exporter binary this capability expects on PATH."""
+EXPORTER_BINARY = "apss-session-exporter"
+"""Preferred exporter binary name: the APS-V1-0004 reference client.
+
+This is the name the reference client actually BUILDS, verified against its
+Cargo.toml `[[bin]]` targets rather than chosen here. Picking a name this side
+finds pleasing is how a consumer ends up probing for a binary nobody ships.
+
+The capability depends on the Exporter PROFILE of a public standard, not on any
+one vendor's client, so the binary it looks for must not carry a vendor's name.
+An image that baked ``SeshMagicSessionExporter`` would make a general-purpose
+multi-agent workspace image depend on one company's product.
+"""
+
+EXPORTER_BINARY_LEGACY = "SeshMagicSessionExporter"
+"""Compatibility fallback, accepted with a warning.
+
+Deployments that already supply the pre-rename binary keep working. Remove this
+in a declared major release, not silently: an operator whose capture stops
+working with no message is worse off than one told to rename a file.
+
+The reference client currently builds BOTH names from the same source for
+exactly this reason, so this fallback is real rather than theoretical.
+"""
+
+EXPORTER_BINARY_ENV = Env.EXPORTER_BIN
+"""Explicit override, for a conformant client under any name.
+
+Aliased from the contract enum rather than restated: every env var name this
+package reads has exactly one spelling, enforced by
+test_no_env_name_literals_outside_the_enum.
+"""
 
 STORE_HEALTH_TIMEOUT_SECONDS = 5
 """How long to wait for GET $URL/healthz before giving up."""
@@ -197,7 +227,33 @@ def _symlinks_correct(contract: SessionStoreContract) -> CheckResult:
 
 
 def _exporter_present(contract: SessionStoreContract) -> CheckResult:
+    # Resolution order: explicit override, then the standard name, then the
+    # vendor-branded legacy name for backward compatibility.
+    override = os.environ.get(EXPORTER_BINARY_ENV, "").strip()
+    if override:
+        path = shutil.which(override) or (
+            override if os.access(override, os.X_OK) else None
+        )
+        if path is None:
+            return CheckResult(
+                name="exporter_present",
+                passed=False,
+                detail=f"{EXPORTER_BINARY_ENV}={override} is not executable",
+            )
+        return CheckResult(name="exporter_present", passed=True, detail=path)
+
     path = shutil.which(EXPORTER_BINARY)
+    if path is None:
+        legacy = shutil.which(EXPORTER_BINARY_LEGACY)
+        if legacy is not None:
+            logging.getLogger(__name__).warning(
+                "Using legacy exporter binary %s. Rename to %s; the legacy name "
+                "is accepted for compatibility and will be removed in a future "
+                "major release.",
+                EXPORTER_BINARY_LEGACY,
+                EXPORTER_BINARY,
+            )
+            path = legacy
     if not path:
         return CheckResult(
             name="exporter_present",

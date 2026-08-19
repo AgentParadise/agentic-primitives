@@ -446,12 +446,19 @@ for __cap in ${AGENTIC_CAPABILITIES:-}; do
         echo "[entrypoint] ${__cap} doctor: audit path ${__audit_file} is not writable; running the doctor anyway and reporting to stderr only." >&2
     fi
 
+    # `|| __doctor_rc=$?` is load-bearing, not style. This script runs under
+    # `set -e` (line 30). A bare command whose exit status is then read into a
+    # variable never gets read: errexit fires at the command and the entrypoint
+    # dies before it can report WHY. That is how the previous version of this
+    # block lost the FAIL message and the bypass hint - the workspace still
+    # failed, correctly, but silently, which is the defect this block exists to
+    # prevent. `if` conditions are exempt from errexit; bare statements are not.
+    __doctor_rc=0
     if [ "${__audit_ok}" -eq 1 ]; then
-        /opt/agentic/capabilities/"${__cap}"/doctor --json >> "${__audit_file}"
-        __doctor_rc=$?
+        /opt/agentic/capabilities/"${__cap}"/doctor --json >> "${__audit_file}" \
+            || __doctor_rc=$?
     else
-        /opt/agentic/capabilities/"${__cap}"/doctor --json >&2
-        __doctor_rc=$?
+        /opt/agentic/capabilities/"${__cap}"/doctor --json >&2 || __doctor_rc=$?
     fi
 
     if [ "${__doctor_rc}" -eq 0 ]; then

@@ -86,10 +86,14 @@ class Env(StrEnum):
     # does anything else, so the doctor never compares against a value the
     # adapter did not just mint.
     INIT_TOKEN = "AGENTIC_SESSION_STORE_INIT_TOKEN"
+    # Optional operator override naming the exporter executable. The capability
+    # depends on the APS-V1-0004 Exporter PROFILE, not on one client, so any
+    # conformant binary under any name can be pointed at with this.
+    EXPORTER_BIN = "AGENTIC_SESSION_STORE_EXPORTER_BIN"
 
 
 class ExporterEnv(StrEnum):
-    """Env vars this adapter EXPORTS for SeshMagicSessionExporter to read.
+    """Env vars this adapter EXPORTS for the exporter to read.
 
     Named here so the doctor can assert on them without restating literals.
     ORIGIN_HOST is deliberately absent: see the adapter's init.sh.

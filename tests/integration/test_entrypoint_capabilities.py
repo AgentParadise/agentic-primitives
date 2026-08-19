@@ -379,7 +379,12 @@ def test_exporter_absent_is_a_specific_doctor_failure():
     checks = {c["name"]: c for c in payload["checks"]}
     assert len(checks) == 6, "every check must run even when the binary is absent"
     assert checks["exporter_present"]["passed"] is False
-    assert "SeshMagicSessionExporter" in checks["exporter_present"]["detail"]
+    # Names the binary it looked for, so the operator knows what to install.
+    # This is the standard-anchored primary name; the vendor-branded legacy name
+    # is still ACCEPTED (the mount tests below prove it) but is no longer what a
+    # not-found message advertises, because telling someone to install a
+    # deprecated name is how the deprecation never completes.
+    assert "apss-session-exporter" in checks["exporter_present"]["detail"]
 
 
 @pytest.mark.integration
