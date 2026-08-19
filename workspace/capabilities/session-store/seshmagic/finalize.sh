@@ -395,8 +395,20 @@ readonly __UPLOAD_KILL_AFTER_S=1
 # out of the summary line below, each of them matched as `[0-9][0-9]*` and
 # therefore incapable of carrying anything but digits, printed next to counter
 # names this file spells out itself. The report is RECONSTRUCTED, never echoed.
+# Resolve the exporter the same way the doctor does: explicit override, then the
+# vendor-neutral standard name, then the legacy vendor-branded name. The doctor
+# has already established that ONE of these exists (exporter_present), so this
+# cannot be the first place a missing binary is discovered.
+if [ -n "${AGENTIC_SESSION_STORE_EXPORTER_BIN:-}" ]; then
+    __exporter_bin="${AGENTIC_SESSION_STORE_EXPORTER_BIN}"
+elif command -v agentic-session-exporter >/dev/null 2>&1; then
+    __exporter_bin="agentic-session-exporter"
+else
+    __exporter_bin="SeshMagicSessionExporter"
+fi
+
 __exporter_out="$(timeout -k "${__UPLOAD_KILL_AFTER_S}" "${__UPLOAD_TIMEOUT_S}" \
-    SeshMagicSessionExporter 2>&1)"
+    "${__exporter_bin}" 2>&1)"
 __exporter_rc=$?
 
 # 124 is timeout's own "deadline reached"; 137 is what surfaces when -k had to
@@ -424,7 +436,7 @@ if [ "${__exporter_rc}" -ne 0 ]; then
          "here: it is an operator-supplied binary, this stream is durable, and" \
          "a build that prints its environment or an auth header would leak the" \
          "store write credential into the logs. To see it, re-run" \
-         "SeshMagicSessionExporter by hand with the same environment; the spool" \
+         "the exporter by hand with the same environment; the spool" \
          "is retained and the store dedups on content_hash, so a repeat sweep" \
          "uploads nothing twice." >&2
     exit 0
