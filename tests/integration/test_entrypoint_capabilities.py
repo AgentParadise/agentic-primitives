@@ -48,7 +48,9 @@ STORE_URL_FROM_HOST = os.getenv("SESSION_STORE_URL_FROM_HOST", "http://127.0.0.1
 # capability whose provider adapter genuinely has no finalize.sh: memory's
 # hindsight adapter. Mirrors test_entrypoint_memory.py's own reachability
 # check.
-HINDSIGHT_BACKEND_URL = os.getenv("HINDSIGHT_BACKEND_URL_FROM_HOST", "http://127.0.0.1:9077")
+HINDSIGHT_BACKEND_URL = os.getenv(
+    "HINDSIGHT_BACKEND_URL_FROM_HOST", "http://127.0.0.1:9077"
+)
 
 
 def _capability_contract_module(package: str):
@@ -91,7 +93,9 @@ ExporterEnv = SessionStoreContract.ExporterEnv
 def _hindsight_reachable() -> bool:
     """True if the hindsight backend's /health responds 200 from the host."""
     try:
-        with urllib.request.urlopen(f"{HINDSIGHT_BACKEND_URL}/health", timeout=2) as resp:  # noqa: S310
+        with urllib.request.urlopen(
+            f"{HINDSIGHT_BACKEND_URL}/health", timeout=2
+        ) as resp:  # noqa: S310
             return resp.status == 200
     except (urllib.error.URLError, TimeoutError, OSError):
         return False
@@ -437,12 +441,14 @@ def test_adapter_translates_contract_and_creates_symlinks(tmp_path: Path):
     spool.mkdir()
     result = _run(
         [
-            "bash", "-c",
+            "bash",
+            "-c",
             "echo CLAUDE_PROJECTS_ROOT=$CLAUDE_PROJECTS_ROOT; "
             "echo CODEX_SESSIONS_ROOT=$CODEX_SESSIONS_ROOT; "
             "echo EXPORTER_STATE_FILE=$EXPORTER_STATE_FILE; "
             "echo SESSION_STORE_TAGS=$SESSION_STORE_TAGS; "
             "echo ORIGIN_HOST_SET=${SESSION_STORE_ORIGIN_HOST:-unset}; "
+            "echo ORIGIN_DEPLOYMENT=${SESSION_STORE_ORIGIN_DEPLOYMENT:-unset}; "
             "readlink -f ~/.claude/projects; "
             "readlink -f ~/.codex/sessions",
         ],
@@ -451,6 +457,7 @@ def test_adapter_translates_contract_and_creates_symlinks(tmp_path: Path):
             "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
             "AGENTIC_SESSION_STORE_URL": STORE_URL,
             "AGENTIC_SESSION_STORE_TAGS": "workflow:w1,phase:p2",
+            "AGENTIC_SESSION_STORE_DEPLOYMENT": "syntropic137__beta",
             "AGENTIC_SESSION_STORE_SPOOL": "/spool",
             "AGENTIC_SESSION_STORE_PARTITION": "w1/p2",
         },
@@ -470,7 +477,17 @@ def test_adapter_translates_contract_and_creates_symlinks(tmp_path: Path):
     assert "CODEX_SESSIONS_ROOT=/spool/w1/p2/codex" in out
     assert "EXPORTER_STATE_FILE=/spool/.agentic-session-store/w1/p2/state.json" in out
     assert "SESSION_STORE_TAGS=workflow:w1,phase:p2" in out
-    assert "ORIGIN_HOST_SET=unset" in out, "origin_host must never be set by the adapter"
+    assert "ORIGIN_HOST_SET=unset" in out, (
+        "origin_host must never be set by the adapter"
+    )
+    # The translation this capability exists to perform. Without an assertion
+    # here, deleting the three lines in init.sh or misspelling either variable
+    # loses deployment attribution silently: capture keeps working, and every
+    # session becomes unattributable to the deployment that produced it.
+    assert "ORIGIN_DEPLOYMENT=syntropic137__beta" in out, (
+        "AGENTIC_SESSION_STORE_DEPLOYMENT must reach the exporter as "
+        "SESSION_STORE_ORIGIN_DEPLOYMENT"
+    )
     assert "/spool/w1/p2/claude" in out
     assert "/spool/w1/p2/codex" in out
 
@@ -494,7 +511,9 @@ def test_symlink_replaces_preexisting_real_directory(tmp_path: Path):
     spool.mkdir()
     home = tmp_path / "home"
     (home / ".claude" / "projects").mkdir(parents=True)
-    (home / ".claude" / "projects" / "sentinel.txt").write_text("pre-existing real directory\n")
+    (home / ".claude" / "projects" / "sentinel.txt").write_text(
+        "pre-existing real directory\n"
+    )
     (home / ".codex" / "sessions").mkdir(parents=True)
     # Docker Desktop's bind-mount layer does not reliably preserve host
     # uid/gid semantics the way a native Linux bind mount would; open the
@@ -507,18 +526,30 @@ def test_symlink_replaces_preexisting_real_directory(tmp_path: Path):
 
     stub = _STUB_EXPORTER
     cmd = [
-        "docker", "run", "--rm",
+        "docker",
+        "run",
+        "--rm",
         "--add-host=host.docker.internal:host-gateway",
-        "-v", f"{home}:/home/agent",
-        "-v", f"{spool}:/spool",
-        "-v", f"{stub}:/usr/local/bin/SeshMagicSessionExporter:ro",
-        "-e", "AGENTIC_CAPABILITIES=session-store",
-        "-e", "AGENTIC_SESSION_STORE_PROVIDER=seshmagic",
-        "-e", f"AGENTIC_SESSION_STORE_URL={STORE_URL}",
-        "-e", "AGENTIC_SESSION_STORE_SPOOL=/spool",
-        "-e", "AGENTIC_SESSION_STORE_PARTITION=w1/p2",
+        "-v",
+        f"{home}:/home/agent",
+        "-v",
+        f"{spool}:/spool",
+        "-v",
+        f"{stub}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        "-e",
+        "AGENTIC_CAPABILITIES=session-store",
+        "-e",
+        "AGENTIC_SESSION_STORE_PROVIDER=seshmagic",
+        "-e",
+        f"AGENTIC_SESSION_STORE_URL={STORE_URL}",
+        "-e",
+        "AGENTIC_SESSION_STORE_SPOOL=/spool",
+        "-e",
+        "AGENTIC_SESSION_STORE_PARTITION=w1/p2",
         IMAGE,
-        "bash", "-c", "readlink -f ~/.claude/projects; readlink -f ~/.codex/sessions",
+        "bash",
+        "-c",
+        "readlink -f ~/.claude/projects; readlink -f ~/.codex/sessions",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, f"container failed: {result.stderr}"
@@ -562,9 +593,12 @@ def test_preexisting_transcripts_are_migrated_not_deleted(tmp_path: Path):
     os.chmod(spool, 0o777)
 
     result = _run(
-        ["bash", "-c",
-         "find /spool -name '*.jsonl' | sed 's|/spool|SPOOL|'; "
-         "echo LINK=$(readlink -f ~/.claude/projects)"],
+        [
+            "bash",
+            "-c",
+            "find /spool -name '*.jsonl' | sed 's|/spool|SPOOL|'; "
+            "echo LINK=$(readlink -f ~/.claude/projects)",
+        ],
         env={
             "AGENTIC_CAPABILITIES": "session-store",
             "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
@@ -713,14 +747,15 @@ def test_capture_env_persisted_with_correct_mode(tmp_path: Path):
     spool.mkdir()
     result = _run(
         [
-            "bash", "-c",
+            "bash",
+            "-c",
             "stat -c '%a' /spool/.agentic-session-store/w1/p2/.capture-env; "
             "cat /spool/.agentic-session-store/w1/p2/.capture-env; "
             # Decode separately so a failure distinguishes "wrong record
             # name" from "right record, wrong bytes".
             "printf 'DECODED=%s\\n' "
             "\"$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' /spool/.agentic-session-store/w1/p2/.capture-env "
-            "| head -1 | base64 -d)\"",
+            '| head -1 | base64 -d)"',
         ],
         env={
             "AGENTIC_CAPABILITIES": "session-store",
@@ -784,13 +819,14 @@ def test_capture_env_round_trips_tags_safely(tmp_path: Path, tags: str):
     spool.mkdir()
     result = _run(
         [
-            "bash", "-c",
+            "bash",
+            "-c",
             # The documented parse contract: sed the record, base64 -d,
             # export. Never source.
             "export SESSION_STORE_TAGS=\"$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "
-            "/spool/.agentic-session-store/w1/p2/.capture-env | head -1 | base64 -d)\"; "
+            '/spool/.agentic-session-store/w1/p2/.capture-env | head -1 | base64 -d)"; '
             # Assert a CHILD process sees it (C2) — not just this shell.
-            "sh -c 'printf \"CHILD_SAW=%s\\n\" \"$SESSION_STORE_TAGS\"'; "
+            'sh -c \'printf "CHILD_SAW=%s\\n" "$SESSION_STORE_TAGS"\'; '
             "env | grep -q '^SESSION_STORE_TAGS=' && echo IN_CHILD_ENV=yes; "
             "test -e /tmp/PWNED && echo INJECTION_OCCURRED || echo NO_INJECTION",
         ],
@@ -821,7 +857,9 @@ def test_capture_env_round_trips_tags_safely(tmp_path: Path, tags: str):
     not EXPORTER_BINARY_FROM_HOST or not os.path.isfile(EXPORTER_BINARY_FROM_HOST),
     reason="SESSION_STORE_EXPORTER_BINARY_FROM_HOST not set to a real exporter binary",
 )
-@pytest.mark.skipif(not STORE_AUTH_TOKEN, reason="SESSION_STORE_AUTH_TOKEN_FROM_HOST not set")
+@pytest.mark.skipif(
+    not STORE_AUTH_TOKEN, reason="SESSION_STORE_AUTH_TOKEN_FROM_HOST not set"
+)
 def test_full_doctor_passes_with_real_exporter_and_live_store(tmp_path: Path):
     """End-to-end: real exporter binary + real reachable store + seshmagic
     adapter -> every doctor check passes. No stub, no mock.
@@ -950,7 +988,9 @@ def test_missing_finalize_is_silent_skip():
         ),
     ],
 )
-def test_finalize_parses_capture_env_never_sources_it(tmp_path: Path, malicious_tag: str):
+def test_finalize_parses_capture_env_never_sources_it(
+    tmp_path: Path, malicious_tag: str
+):
     """Regression test for the Task 5/6 review finding, now that a real
     consumer of `.capture-env` (finalize.sh) exists to regress.
 
@@ -1495,7 +1535,9 @@ def test_finalize_leaves_a_pre_existing_partition_directory_intact(tmp_path: Pat
         add_host_gateway=True,
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
-    assert (spool / "repos" / "precious.txt").exists(), "finalize destroyed a mounted directory"
+    assert (spool / "repos" / "precious.txt").exists(), (
+        "finalize destroyed a mounted directory"
+    )
 
 
 # --- Adapter metadata lives in a reserved, marked namespace -----------------
@@ -1558,7 +1600,9 @@ def test_init_never_writes_or_deletes_inside_the_transcript_partition(tmp_path: 
     )
     assert (spool / "repos" / "state.json").read_text() == '{"operator": "own file"}\n'
     # And the adapter's own metadata went to the reserved namespace instead.
-    assert f"STATE=/workspace/{_RESERVED}/repos/state.json" in result.stdout, result.stdout
+    assert f"STATE=/workspace/{_RESERVED}/repos/state.json" in result.stdout, (
+        result.stdout
+    )
     assert (spool / _RESERVED / "repos" / ".capture-env").exists()
     assert (spool / _RESERVED / ".owner").exists(), "the namespace must be marked"
 
@@ -1877,7 +1921,9 @@ echo "FINALIZE_RC=$?"
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
-    assert (part_dir / "state.json").exists(), "spool must be retained on upload failure"
+    assert (part_dir / "state.json").exists(), (
+        "spool must be retained on upload failure"
+    )
 
 
 # --- A clean EXIT is not a clean SWEEP, and the spool is append-only ------
@@ -2127,9 +2173,7 @@ def test_finalize_never_replays_the_exporters_own_output(
     the failure class, the status, the retained spool, and the procedure that
     recovers the missing diagnostic -- without reproducing the stream.
     """
-    result, transcript, _ = _finalize_with_stub_exporter(
-        tmp_path, stub_body, part_name
-    )
+    result, transcript, _ = _finalize_with_stub_exporter(tmp_path, stub_body, part_name)
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
     assert transcript.exists(), "the spool is retained on every path"
@@ -2306,7 +2350,11 @@ def _finalize_in_its_own_container(
     legacy_layout: bool = False,
 ) -> subprocess.CompletedProcess:
     """One finalize.sh run, in a container of its own, over a shared spool."""
-    meta = f"/spool/{part_name}" if legacy_layout else f"/spool/{_META_SEGMENT}/{part_name}"
+    meta = (
+        f"/spool/{part_name}"
+        if legacy_layout
+        else f"/spool/{_META_SEGMENT}/{part_name}"
+    )
     script = f"""
 set -e
 {stage}
@@ -2436,12 +2484,16 @@ def test_finalize_refuses_to_record_a_rejection_in_a_legacy_partition(tmp_path: 
         spool,
         part,
         _REJECTED_SWEEP,
-        stage=_stage_partition_sh(part, {"state.json": "{}\n", "claude/s.jsonl": "{}\n"}),
+        stage=_stage_partition_sh(
+            part, {"state.json": "{}\n", "claude/s.jsonl": "{}\n"}
+        ),
         legacy_layout=True,
     )
     assert result.returncode == 0, f"container failed: {result.stderr}"
     assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
-    assert "INCOMPLETE" in result.stderr and "rejected=1" in result.stderr, result.stderr
+    assert "INCOMPLETE" in result.stderr and "rejected=1" in result.stderr, (
+        result.stderr
+    )
     assert "WARNING" in result.stderr and "skipped_unchanged" in result.stderr, (
         "a rejection that cannot be recorded must be reported as such"
     )
@@ -2554,7 +2606,11 @@ def _docker_stop_scenario(
     """
     subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
     run_cmd = [
-        "docker", "run", "-d", "--name", container_name,
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        container_name,
         "--tmpfs=/home/agent:rw,exec,nosuid,size=128m,uid=1000,gid=1000",
     ]
     if add_host_gateway:
@@ -2575,17 +2631,23 @@ def _docker_stop_scenario(
         start = time.monotonic()
         subprocess.run(
             ["docker", "stop", "-t", str(grace_s), container_name],
-            capture_output=True, text=True, timeout=_DOCKER_STOP_TIMEOUT_S,
+            capture_output=True,
+            text=True,
+            timeout=_DOCKER_STOP_TIMEOUT_S,
         )
         elapsed = time.monotonic() - start
 
         inspect = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.ExitCode}}", container_name],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         exit_code = int(inspect.stdout.strip())
         logs = subprocess.run(
-            ["docker", "logs", container_name], capture_output=True, text=True,
+            ["docker", "logs", container_name],
+            capture_output=True,
+            text=True,
         )
         combined = logs.stdout + logs.stderr
         return exit_code, elapsed, combined
@@ -2713,7 +2775,9 @@ def test_no_capability_keeps_the_substrates_full_stop_grace():
     assert "FLUSH_COMPLETE" in logs, (
         f"the command was killed mid-flush inside the grace; logs=\n{logs}"
     )
-    assert exit_code == 0, f"expected the command's own exit code, not 137; logs=\n{logs}"
+    assert exit_code == 0, (
+        f"expected the command's own exit code, not 137; logs=\n{logs}"
+    )
     # It really used the grace rather than exiting early for some other
     # reason: the flush alone is 3s, well past the 1.5s wrapper window.
     assert elapsed >= 3, f"the 3s flush cannot have run in {elapsed:.2f}s"
@@ -2953,11 +3017,13 @@ def test_escalation_survives_the_two_non_race_outcomes(
         pytest.param(
             200, 0, 0, 200, "an ordinary exit with a status above 128", id="exit-200"
         ),
+        pytest.param(143, 1, 1, 137, "a real SIGTERM teardown", id="signalled"),
         pytest.param(
-            143, 1, 1, 137, "a real SIGTERM teardown", id="signalled"
-        ),
-        pytest.param(
-            137, 0, 0, 137, "a child killed by something outside this wrapper",
+            137,
+            0,
+            0,
+            137,
+            "a child killed by something outside this wrapper",
             id="external-kill",
         ),
     ],
@@ -3073,7 +3139,8 @@ _TRAP_LINE = re.compile(r"^trap '.*\$\{__child\}.*' (?P<sig>TERM|INT)$", re.MULT
 
 def _trap_lines() -> dict[str, str]:
     lines = {
-        m.group("sig"): m.group(0) for m in _TRAP_LINE.finditer(_ENTRYPOINT_SH.read_text())
+        m.group("sig"): m.group(0)
+        for m in _TRAP_LINE.finditer(_ENTRYPOINT_SH.read_text())
     }
     assert set(lines) == {"TERM", "INT"}, f"trap lines not found in {_ENTRYPOINT_SH}"
     return lines
@@ -3224,7 +3291,9 @@ def test_store_credential_is_withheld_from_the_agent_but_reaches_finalize(
 
     # Finalize still uploads: the stub reports that the credential was in its
     # environment, and the sweep completed.
-    assert (spool / _TOKEN_REPORT).read_text().strip() == "STUB_EXPORTER_TOKEN=present", (
+    assert (
+        spool / _TOKEN_REPORT
+    ).read_text().strip() == "STUB_EXPORTER_TOKEN=present", (
         "withholding broke the upload: the exporter ran without the credential"
     )
     assert "[finalize] session-store upload complete" in result.stderr, result.stderr
@@ -3287,10 +3356,14 @@ def test_withheld_values_reach_only_the_declaring_capabilitys_finalizer(
     assert "PROBE_FINALIZE AGENTIC_SESSION_STORE_AUTH=<unset>" in result.stderr, (
         result.stderr
     )
-    assert secret not in result.stderr, "the credential's value reached another finalizer"
+    assert secret not in result.stderr, (
+        "the credential's value reached another finalizer"
+    )
     # The declaring capability's own finalizer is unaffected: it still gets
     # the credential and still completes the upload.
-    assert (spool / _TOKEN_REPORT).read_text().strip() == "STUB_EXPORTER_TOKEN=present", (
+    assert (
+        spool / _TOKEN_REPORT
+    ).read_text().strip() == "STUB_EXPORTER_TOKEN=present", (
         "the declaring capability's own finalizer lost its credential"
     )
     assert "[finalize] session-store upload complete" in result.stderr, result.stderr
@@ -3648,7 +3721,9 @@ def _doctor_record(audit: Path, capability: str) -> dict:
     assert lines, f"the 5.7 doctor wrote no audit record into {audit}"
     records = [json.loads(line) for line in lines]
     mine = [r for r in records if r.get("capability") == capability]
-    assert mine, f"no {capability} record among {[r.get('capability') for r in records]}"
+    assert mine, (
+        f"no {capability} record among {[r.get('capability') for r in records]}"
+    )
     return mine[-1]
 
 
@@ -3908,3 +3983,38 @@ def test_a_disabled_capability_writes_no_init_marker(tmp_path: Path, provider):
     # names must not exist under either of them at all.
     assert not (spool / _RESERVED).exists()
     assert not (home / _MEM_MARKER_NAME).exists()
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
+def test_deployment_is_absent_when_the_contract_does_not_set_it(tmp_path: Path):
+    """Absent must stay absent, not become an empty string.
+
+    A single-deployment host genuinely has no deployment identity. Exporting an
+    empty SESSION_STORE_ORIGIN_DEPLOYMENT would hand the store an identity of
+    nothing to group on as its own source, which is worse than sending none.
+    """
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    result = _run(
+        [
+            "bash",
+            "-c",
+            "echo ORIGIN_DEPLOYMENT=${SESSION_STORE_ORIGIN_DEPLOYMENT:-unset}",
+        ],
+        env={
+            "AGENTIC_CAPABILITIES": "session-store",
+            "AGENTIC_SESSION_STORE_PROVIDER": "seshmagic",
+            "AGENTIC_SESSION_STORE_URL": STORE_URL,
+            "AGENTIC_SESSION_STORE_SPOOL": "/spool",
+            "AGENTIC_SESSION_STORE_PARTITION": "w1/p2",
+            "AGENTIC_SESSION_STORE_TAGS": "workflow:w1,phase:p2",
+            # AGENTIC_SESSION_STORE_DEPLOYMENT deliberately not set.
+        },
+        extra_mounts=[
+            f"{spool}:/spool",
+            f"{_STUB_EXPORTER}:/usr/local/bin/SeshMagicSessionExporter:ro",
+        ],
+        add_host_gateway=True,
+    )
+    assert "ORIGIN_DEPLOYMENT=unset" in result.stdout

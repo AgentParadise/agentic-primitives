@@ -88,6 +88,18 @@ fi
 
 # --- Correlation tags ---------------------------------------------------------
 # Opaque. This layer assigns no meaning; the orchestrator supplies workflow/phase.
+# OPTIONAL deployment identity (APS-V1-0004 2.0.0 origin.deployment): WHICH
+# deployment produced this session, as distinct from origin.environment, which
+# is the CLASS of runtime. Every containerised run reports the same class, so
+# without this a multi-tier install is unattributable in a shared corpus.
+#
+# Exported only when set. There is deliberately no default: absent is a real
+# answer for a single-deployment host, and inventing one would stamp a
+# fabricated identity on every session.
+if [ -n "${AGENTIC_SESSION_STORE_DEPLOYMENT:-}" ]; then
+    export SESSION_STORE_ORIGIN_DEPLOYMENT="${AGENTIC_SESSION_STORE_DEPLOYMENT}"
+fi
+
 if [ -n "${AGENTIC_SESSION_STORE_TAGS:-}" ]; then
     export SESSION_STORE_TAGS="${AGENTIC_SESSION_STORE_TAGS}"
 fi
