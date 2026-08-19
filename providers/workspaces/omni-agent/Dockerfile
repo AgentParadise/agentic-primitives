@@ -182,7 +182,11 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # signature with cosign, and change it here in its own commit so a reviewer sees
 # exactly what moved.
 #
-# agentic-session-exporter v0.1.2, verified 2026-08-19.
+# agentic-session-exporter v0.1.1, verified 2026-08-19: this digest was pulled
+# and the binary run out of it (COPY into debian:12-slim, reports
+# "apss-session-exporter 0.1.1"). v0.1.2 changes only the release workflow's own
+# verification step and produces identical binaries, so there is no reason to
+# chase it here.
 COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:a403764b8c102edd872a292d95dab1a68fb60ee981688c3b4f888c79712e6a95 \
      /apss-session-exporter /apss-session-reconstitute /usr/local/bin/
 
