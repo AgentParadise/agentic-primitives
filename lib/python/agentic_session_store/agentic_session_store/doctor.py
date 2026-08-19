@@ -38,8 +38,12 @@ from agentic_session_store.contract import (
     init_marker_path,
 )
 
-EXPORTER_BINARY = "agentic-session-exporter"
+EXPORTER_BINARY = "apss-session-exporter"
 """Preferred exporter binary name: the APS-V1-0004 reference client.
+
+This is the name the reference client actually BUILDS, verified against its
+Cargo.toml `[[bin]]` targets rather than chosen here. Picking a name this side
+finds pleasing is how a consumer ends up probing for a binary nobody ships.
 
 The capability depends on the Exporter PROFILE of a public standard, not on any
 one vendor's client, so the binary it looks for must not carry a vendor's name.
@@ -53,6 +57,9 @@ EXPORTER_BINARY_LEGACY = "SeshMagicSessionExporter"
 Deployments that already supply the pre-rename binary keep working. Remove this
 in a declared major release, not silently: an operator whose capture stops
 working with no message is worse off than one told to rename a file.
+
+The reference client currently builds BOTH names from the same source for
+exactly this reason, so this fallback is real rather than theoretical.
 """
 
 EXPORTER_BINARY_ENV = Env.EXPORTER_BIN

@@ -401,8 +401,8 @@ readonly __UPLOAD_KILL_AFTER_S=1
 # cannot be the first place a missing binary is discovered.
 if [ -n "${AGENTIC_SESSION_STORE_EXPORTER_BIN:-}" ]; then
     __exporter_bin="${AGENTIC_SESSION_STORE_EXPORTER_BIN}"
-elif command -v agentic-session-exporter >/dev/null 2>&1; then
-    __exporter_bin="agentic-session-exporter"
+elif command -v apss-session-exporter >/dev/null 2>&1; then
+    __exporter_bin="apss-session-exporter"
 else
     __exporter_bin="SeshMagicSessionExporter"
 fi
