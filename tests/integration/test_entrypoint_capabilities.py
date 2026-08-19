@@ -3986,6 +3986,7 @@ def test_a_disabled_capability_writes_no_init_marker(tmp_path: Path, provider):
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(not _store_reachable(), reason="session-store backend unreachable")
 def test_deployment_is_absent_when_the_contract_does_not_set_it(tmp_path: Path):
     """Absent must stay absent, not become an empty string.
 
@@ -4007,10 +4008,6 @@ def test_deployment_is_absent_when_the_contract_does_not_set_it(tmp_path: Path):
             "AGENTIC_SESSION_STORE_URL": STORE_URL,
             "AGENTIC_SESSION_STORE_SPOOL": "/spool",
             "AGENTIC_SESSION_STORE_PARTITION": "w1/p2",
-            # Tags are set for the same reason the sibling test sets them: init
-            # writes .capture-env from them, and the 5.7 doctor preflight must
-            # fully pass or the entrypoint hard-exits before CMD and this test
-            # sees empty stdout rather than its assertion.
             "AGENTIC_SESSION_STORE_TAGS": "workflow:w1,phase:p2",
             # AGENTIC_SESSION_STORE_DEPLOYMENT deliberately not set.
         },
