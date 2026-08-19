@@ -158,12 +158,37 @@ COPY plugins/ /opt/agentic/plugins/
 # The Python packages themselves are installed into /opt/venv in stage 3.
 COPY workspace/capabilities/ /opt/agentic/capabilities/
 
-# Exporter provisioning contract (session-store capability):
-# Same as claude-cli: this image deliberately does NOT ship
-# SeshMagicSessionExporter. The exporter is a reference client of the public
-# APS-V1-0004 standard, not part of the private store server. Deployment
-# supplies the binary via bind-mount, a derived image, or a custom variant.
-RUN mkdir -p /var/agentic \
+# Session-store exporter (session-store capability).
+#
+# The image now SHIPS the exporter, which it previously refused to do. The
+# refusal was right at the time and is no longer: the only client available then
+# was named for one vendor's store, and baking it would have made a
+# general-purpose multi-agent workspace image depend on that company's product.
+#
+# What changed is that the client was extracted, genericised, and published as
+# the reference implementation of the APS-V1-0004 Exporter profile. So this
+# depends on a public client of a public contract, which is the arrangement the
+# standard exists to make possible. A deployment that wants a different
+# conformant client still overrides it with
+# AGENTIC_SESSION_STORE_EXPORTER_BIN.
+#
+# Copied FROM an OCI image by DIGEST rather than curled at build time: a digest
+# is immutable, so this cannot silently change under a rebuild, and there is no
+# unverified download in the build. The source image is FROM scratch and exists
+# only to be copied out of.
+#
+# Bump procedure: pick a digest from
+# https://github.com/AgentParadise/agentic-session-exporter/releases, verify its
+# signature with cosign, and change it here in its own commit so a reviewer sees
+# exactly what moved.
+#
+# agentic-session-exporter v0.1.2, verified 2026-08-19.
+COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:a403764b8c102edd872a292d95dab1a68fb60ee981688c3b4f888c79712e6a95 \
+     /apss-session-exporter /apss-session-reconstitute /usr/local/bin/
+
+RUN chmod 755 /usr/local/bin/apss-session-exporter \
+              /usr/local/bin/apss-session-reconstitute \
+    && mkdir -p /var/agentic \
     && chown -R agent:agent /var/agentic
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
