@@ -2461,15 +2461,14 @@ def test_finalize_keeps_a_rejected_transcript_across_the_next_sweep(tmp_path: Pa
     and a re-send would be wasted". But rejected means the store REFUSED it:
     processed, not stored. So the divergence is invisible one sweep later:
 
+      Sweep 1: rejected=1        -> reported INCOMPLETE, naming the counter.
+      Sweep 2: skipped_unchanged=1, all three counters zero -> reads clean,
+               even though that transcript is still not in the store.
+
     v0.3.0 fixed that at the source by marking only what the store confirmed.
     This test still stands, because the stub exporter it drives reproduces the
     older behaviour on purpose: the binary is operator-supplied, and this hook
     has to hold up against a build that predates the fix.
-
-
-      Sweep 1: rejected=1        -> reported INCOMPLETE, naming the counter.
-      Sweep 2: skipped_unchanged=1, all three counters zero -> reads clean,
-               even though that transcript is still not in the store.
 
     Sweep 2 needs no recovery scenario: it happens on any run where the
     orchestrator passes a stable AGENTIC_SESSION_STORE_PARTITION, since only
