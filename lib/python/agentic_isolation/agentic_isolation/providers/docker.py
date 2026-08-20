@@ -344,7 +344,15 @@ class WorkspaceDockerProvider(BaseProvider):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+            # Drain incrementally into a bounded buffer rather than calling
+            # communicate(), which would materialise the WHOLE response first.
+            # --tail bounds lines, and one agent-controlled line can be
+            # arbitrarily long, so buffering everything and truncating
+            # afterwards bounds the RESULT while leaving memory unbounded -
+            # which during destroy() means an agent could kill the
+            # orchestrator on its way out.
+            out = await asyncio.wait_for(self._drain_tail(proc.stdout), timeout=10)
+            await asyncio.wait_for(proc.wait(), timeout=5)
         except asyncio.CancelledError:
             # Shutdown must not be blocked by a best-effort log read.
             if proc is not None:
@@ -367,7 +375,32 @@ class WorkspaceDockerProvider(BaseProvider):
             logger.debug("docker logs exited %s for %s", proc.returncode, container_name)
             return ""
 
-        return (out or b"")[-self._MAX_LOG_BYTES :].decode(errors="replace")
+        # NOTE: _MAX_LOG_BYTES bounds the SOURCE bytes retained. Decoding with
+        # errors="replace" turns each invalid byte into U+FFFD, so the decoded
+        # string can re-encode larger than the cap. That is acceptable: the
+        # point is bounding what is read and held, not the exact size of the
+        # returned str.
+        return out.decode(errors="replace")
+
+    @classmethod
+    async def _drain_tail(cls, stream: asyncio.StreamReader | None) -> bytes:
+        """Read to EOF keeping only the last `_MAX_LOG_BYTES` bytes.
+
+        The finalizer verdict is printed last, during shutdown, so the tail is
+        the part worth keeping.
+        """
+        if stream is None:
+            return b""
+        buf = bytearray()
+        while True:
+            chunk = await stream.read(64 * 1024)
+            if not chunk:
+                break
+            buf += chunk
+            excess = len(buf) - cls._MAX_LOG_BYTES
+            if excess > 0:
+                del buf[:excess]
+        return bytes(buf)
 
     @staticmethod
     async def _terminate(proc: asyncio.subprocess.Process) -> None:

@@ -46,6 +46,25 @@ class _Workspace:
         self._handle = handle
 
 
+class _ChunkReader:
+    """Minimal asyncio.StreamReader stand-in."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    async def read(self, n: int) -> bytes:
+        chunk, self._data = self._data[:n], self._data[n:]
+        return chunk
+
+
+class _RaisingReader:
+    def __init__(self, exc: BaseException) -> None:
+        self._exc = exc
+
+    async def read(self, _n: int) -> bytes:
+        raise self._exc
+
+
 class _FakeProc:
     """Stands in for asyncio.subprocess.Process."""
 
@@ -67,6 +86,12 @@ class _FakeProc:
         if self._communicate_exc is not None:
             raise self._communicate_exc
         return self._out, b""
+
+    @property
+    def stdout(self) -> Any:
+        if self._communicate_exc is not None:
+            return _RaisingReader(self._communicate_exc)
+        return _ChunkReader(self._out)
 
     def kill(self) -> None:
         self.killed = True
@@ -199,3 +224,70 @@ class TestVerdictSurvivesTeardown:
         provider = _provider()
         provider._remember_logs("c", "")
         assert provider._log_snapshots == {}
+
+
+class TestTeardownOrdering:
+    """The snapshot is only useful if destroy() really takes it, in order.
+
+    The earlier version of this test called _remember_logs() by hand, so it
+    would have passed even if _cleanup_container stopped snapshotting entirely
+    or moved the read after `docker rm`. That is the failure it exists to
+    catch, so it has to observe the real call sequence.
+    """
+
+    @staticmethod
+    def _run_cleanup(monkeypatch: pytest.MonkeyPatch, *, log_out: bytes) -> list[str]:
+        provider = _provider()
+        calls: list[str] = []
+
+        async def _spawn(*argv: str, **_k: object) -> Any:
+            calls.append(" ".join(argv[:2]))
+            if argv[:2] == ("docker", "logs"):
+                return _FakeProc(out=log_out)
+            return _FakeProc()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        asyncio.run(provider._cleanup_container("container-abc"))
+        TestTeardownOrdering._provider = provider  # type: ignore[attr-defined]
+        return calls
+
+    def test_logs_are_read_between_stop_and_rm(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        verdict = b"upload complete (uploaded=1); spool retained at /spool"
+        calls = self._run_cleanup(monkeypatch, log_out=verdict)
+
+        assert calls == ["docker stop", "docker logs", "docker rm"], calls
+
+        provider = TestTeardownOrdering._provider  # type: ignore[attr-defined]
+        assert provider._log_snapshots["container-abc"] == verdict.decode()
+
+    def test_removal_still_happens_when_the_log_read_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        provider = _provider()
+        calls: list[str] = []
+
+        async def _spawn(*argv: str, **_k: object) -> Any:
+            calls.append(" ".join(argv[:2]))
+            if argv[:2] == ("docker", "logs"):
+                return _FakeProc(communicate_exc=TimeoutError())
+            return _FakeProc()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        asyncio.run(provider._cleanup_container("container-abc"))
+
+        # A best-effort verdict read must never strand a container.
+        assert "docker rm" in calls
+        assert provider._log_snapshots == {}
+
+
+class TestDrainIsBoundedDuringRead:
+    def test_buffer_never_exceeds_the_cap_mid_stream(self) -> None:
+        # The point of draining incrementally: memory is bounded WHILE reading,
+        # not merely afterwards. communicate() would materialise all of this.
+        cap = WorkspaceDockerProvider._MAX_LOG_BYTES
+        reader = _ChunkReader(b"z" * (cap * 3))
+        out = asyncio.run(WorkspaceDockerProvider._drain_tail(reader))
+        assert len(out) == cap
+
+    def test_none_stream_is_empty(self) -> None:
+        assert asyncio.run(WorkspaceDockerProvider._drain_tail(None)) == b""
