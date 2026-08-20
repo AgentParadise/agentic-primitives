@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔁 omni-agent: exporter pinned to v0.3.0
+
+The pinned `agentic-session-exporter` digest moves from v0.2.1 to v0.3.0.
+
+**v0.2.1 recorded a refused transcript as sent.** Its uploader marked every
+item in a successful batch as done, rejections included, so the next sweep
+skipped the refused transcript as `skipped_unchanged` and reported success. One
+transient rejection became permanent silent absence from the store. The solo
+retry path had the same bug, and is the likelier route since it is the fallback
+for a batch that already failed.
+
+v0.3.0 marks only what the store confirmed, counts what it did not
+(`unconfirmed`), and scopes its state to the store so repointing at a new one
+re-sends rather than skipping everything.
+
+**Exit 3 is new and is a behaviour change**: a sweep that ran without capturing
+everything it found no longer exits 0. `finalize.sh` was taught about it first
+(see the entry above), so a partial capture is reported as INCOMPLETE rather
+than as a total upload failure.
+
+
 ### 🔁 omni-agent: exporter pinned to v0.2.1
 
 The pinned `agentic-session-exporter` digest moves from v0.1.1 to v0.2.1.

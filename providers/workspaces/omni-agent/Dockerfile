@@ -226,6 +226,32 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # signature with cosign, and change it here in its own commit so a reviewer sees
 # exactly what moved.
 #
+# agentic-session-exporter v0.3.0, verified 2026-08-20:
+#   - cosign verified; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.3.0
+#   - pulled and run out of this exact digest on BOTH linux/amd64 and
+#     linux/arm64; each reports "apss-session-exporter 0.3.0"
+#   - readelf shows neither PT_INTERP nor DT_NEEDED
+#
+# WHY THIS BUMP MATTERS, and why finalize.sh had to change first. v0.2.1's
+# uploader marked every item in a successful batch as done, REJECTIONS
+# INCLUDED. So a transcript the store refused was recorded as sent, the next
+# sweep skipped it as skipped_unchanged, and that sweep reported success. One
+# transient rejection became permanent silent absence from the store. The solo
+# retry path had the same bug, and is the likelier route since it is the
+# fallback for a batch that already failed.
+#
+# v0.3.0 marks only what the store confirmed, counts what it did not
+# (`unconfirmed`), scopes its state to the store so repointing at a new one
+# does not skip everything, and exits 3 for a sweep that ran without capturing
+# everything it found.
+#
+# EXIT 3 IS A BEHAVIOUR CHANGE for anything treating non-zero as fatal.
+# workspace/capabilities/session-store/seshmagic/finalize.sh was taught about
+# it in #359, which is already merged. Do not move this pin ahead of a consumer
+# that has not been.
+#
+# Previous pin, for the record:
 # agentic-session-exporter v0.2.1, verified 2026-08-19:
 #   - cosign verified; certificate subject is
 #     .github/workflows/release.yml@refs/tags/v0.2.1
@@ -249,7 +275,7 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # disk so a harness can resume it, which is something a developer does on their
 # own machine, not something a short-lived workspace container ever needs.
 # Copying it would add weight for a path no workspace takes.
-COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:63efd7dd800c401fc9cb36b2be8208daf7bc4e315f8e87ae5bb451db8eed4e2d \
+COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:35a074338a71fd0efb1564c7df27310be7ee17527fb57b52aa512a6e1c4f7ad6 \
      /apss-session-exporter /usr/local/bin/
 
 RUN chmod 755 /usr/local/bin/apss-session-exporter \
