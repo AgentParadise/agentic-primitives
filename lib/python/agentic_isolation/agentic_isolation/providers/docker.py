@@ -687,9 +687,27 @@ class WorkspaceDockerProvider(BaseProvider):
 
         raise RuntimeError(f"Container {container_name} did not start within {timeout}s")
 
-    async def _cleanup_container(self, container_name: str) -> None:
-        """Stop and remove a container."""
-        # Stop
+    async def stop_container(self, workspace: Workspace) -> None:
+        """Stop the container, leaving it and the workspace directory present.
+
+        Implements `SupportsStagedTeardown`. Also snapshots the container's
+        output, because this is the moment the finalizer writes its verdict and
+        `remove_container` destroys the stream carrying it.
+        """
+        await self._stop(workspace._handle)
+
+    async def remove_container(self, workspace: Workspace) -> None:
+        """Remove the container, leaving the workspace directory present."""
+        await self._remove(workspace._handle)
+
+    async def delete_workspace_dir(self, workspace: Workspace) -> None:
+        """Delete the host workspace directory. Irreversible."""
+        workspace_dir = workspace.metadata.get("workspace_dir")
+        if workspace_dir:
+            shutil.rmtree(workspace_dir, ignore_errors=True)
+
+    async def _stop(self, container_name: str) -> None:
+        """`docker stop`, then snapshot the logs it caused to be written."""
         # This "-t 5" grace is coupled to __TERM_GRACE_TICKS in
         # workspace/entrypoint.sh's section 6
         # wrapper (ADR-040): that constant must stay strictly below this
@@ -711,14 +729,15 @@ class WorkspaceDockerProvider(BaseProvider):
         # Between stop and rm is the ONLY window in which the finalizer's
         # output can still be read: `docker stop` is what triggers finalizers,
         # and `docker rm` destroys the log stream they wrote to. A caller
-        # asking for logs after destroy() would otherwise always get nothing,
+        # asking for logs after removal would otherwise always get nothing,
         # which would make the session-capture verdict unreachable rather than
         # merely unread.
         self._remember_logs(
             container_name, await self._read_container_logs(container_name, tail=200)
         )
 
-        # Remove
+    async def _remove(self, container_name: str) -> None:
+        """`docker rm -f`."""
         proc = await asyncio.create_subprocess_exec(
             "docker",
             "rm",
@@ -728,3 +747,13 @@ class WorkspaceDockerProvider(BaseProvider):
             stderr=asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
+
+    async def _cleanup_container(self, container_name: str) -> None:
+        """Stop and remove a container.
+
+        Composed from the same steps the staged protocol exposes, so the
+        combined path and the staged path cannot drift into behaving
+        differently.
+        """
+        await self._stop(container_name)
+        await self._remove(container_name)

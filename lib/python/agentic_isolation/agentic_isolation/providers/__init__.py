@@ -25,6 +25,7 @@ from agentic_isolation.providers.base import (
     AwaitResult,
     ExecuteResult,
     InteractiveSession,
+    SupportsStagedTeardown,
     SupportsWorkspaceLogs,
     Workspace,
     WorkspaceProvider,
@@ -57,6 +58,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     # Base types
     "WorkspaceProvider",
+    "SupportsStagedTeardown",
     "SupportsWorkspaceLogs",
     "Workspace",
     "ExecuteResult",

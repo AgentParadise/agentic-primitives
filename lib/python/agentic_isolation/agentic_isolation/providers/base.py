@@ -282,6 +282,67 @@ class SupportsWorkspaceLogs(Protocol):
 
 
 @runtime_checkable
+class SupportsStagedTeardown(Protocol):
+    """Optional capability: tear a workspace down in separately callable steps.
+
+    `destroy()` collapses three distinct operations into one: stopping the
+    container, removing it, and deleting the host workspace directory. That is
+    the right default for a caller with nothing to do in between, and it is
+    what every caller should keep using unless it does.
+
+    Session capture has something to do in between, and the ordering is not
+    negotiable:
+
+        agent execution ends            (container still RUNNING)
+          -> the HOST invokes the exporter and reads its exit status
+          -> archive the spool from the host workspace directory
+          -> confirm the archive is durable
+          -> stop, remove, delete
+
+    Each boundary matters. The exporter must be invoked while the container is
+    still running, because there is nothing to exec into afterwards. The
+    archive must happen before the workspace directory is deleted, because
+    that directory IS the spool. And the archive must be confirmed durable
+    before anything is deleted, because otherwise a failed upload silently
+    becomes permanent loss.
+
+    A caller that cannot reach these steps has only one option: destroy and
+    hope the in-container finalizer managed it. That is the current behaviour,
+    and it is why capture today fails open and fails silent.
+
+    Deliberately a separate protocol rather than three more methods on
+    `WorkspaceProvider`: a provider whose teardown genuinely is atomic should
+    not have to pretend otherwise, and `destroy()` stays the supported path for
+    everyone else.
+    """
+
+    async def stop_container(self, workspace: Workspace) -> None:
+        """Stop the container, leaving it and the workspace directory present.
+
+        Triggers in-container finalizers. Idempotent: stopping an already
+        stopped or absent container is not an error.
+        """
+        ...
+
+    async def remove_container(self, workspace: Workspace) -> None:
+        """Remove the container, leaving the workspace directory present.
+
+        Idempotent. After this the container's logs are gone, so any log-based
+        diagnostic must have been read before it.
+        """
+        ...
+
+    async def delete_workspace_dir(self, workspace: Workspace) -> None:
+        """Delete the host workspace directory.
+
+        THE LAST STEP AND THE IRREVERSIBLE ONE. Everything spooled inside the
+        workspace is gone afterwards, so a caller doing durable archival must
+        have confirmed the archive before calling this.
+        """
+        ...
+
+
+@runtime_checkable
 class InteractiveSession(Protocol):
     """Typed port for driving an interactive, prompt-based agent session
     (e.g. a tmux-driven claude/codex/gemini TUI running in a container).
