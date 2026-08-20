@@ -9,9 +9,17 @@ The entrypoint resolves a provider by PATH:
 
     /opt/agentic/capabilities/<capability>/<provider>/init.sh
 
-so the alias is load-bearing at the filesystem level, and a rename that lost it
-would break every running deployment silently - the entrypoint's `[ -f ]` test
-would simply not find the adapter and the capability would go quiet.
+so the alias is load-bearing at the filesystem level. A rename that lost it
+breaks every deployment still sending the old name.
+
+That break is LOUD, not silent: entrypoint.sh logs "no session-store adapter
+for provider: seshmagic" and exits 1 before the agent starts. An earlier
+version of this docstring claimed the capability would "go quiet", which was
+wrong - and wrong in the direction that matters, because it overstated the
+danger and understated how fast an operator would find out.
+
+What IS silent is losing the symlink's meaning while both names keep working:
+see TestStagingPreservesTheAlias below.
 """
 
 from __future__ import annotations
@@ -69,15 +77,23 @@ def _load_build_provider():
     Nothing here is allowed to skip. If the script stops being importable that
     is a hard failure, because the tests below cannot otherwise do their job.
     """
-    sys.modules.setdefault("yaml", types.ModuleType("yaml"))
-
     spec = importlib.util.spec_from_file_location("build_provider", BUILD_PROVIDER)
     assert spec is not None and spec.loader is not None, (
         f"{BUILD_PROVIDER} is not importable; the staging tests cannot run"
     )
     module = importlib.util.module_from_spec(spec)
     sys.modules["build_provider"] = module
-    spec.loader.exec_module(module)
+    # The stub is scoped to this import and removed afterwards. Leaving a fake
+    # "yaml" in sys.modules would leak into every later test in the session,
+    # and a test that quietly breaks an unrelated one is its own bug.
+    injected = "yaml" not in sys.modules
+    if injected:
+        sys.modules["yaml"] = types.ModuleType("yaml")
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if injected:
+            del sys.modules["yaml"]
     return module
 
 
