@@ -63,6 +63,7 @@ def _provider() -> Any:
     p._log_snapshots = {}
     p._workspaces = {}
     p._lock = asyncio.Lock()
+    p._teardown_locks = {}
     return p
 
 
@@ -213,18 +214,44 @@ class TestRegistryIsNotLeaked:
         asyncio.run(provider.teardown(ws))
         assert provider._workspaces == {}
 
-    def test_deregisters_even_when_a_hook_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_a_failed_while_running_hook_KEEPS_the_registration(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Deliberately the opposite of an earlier version of this test. If the
+        # hook fails the container is still LIVE, and deregistering would make
+        # a running container invisible to the provider that owns it. The
+        # registration is what lets a caller find it and retry.
         _record(monkeypatch, [])
         provider = _provider()
         ws = _Workspace()
         provider._workspaces[ws.id] = ws
 
         async def _fails() -> None:
-            raise RuntimeError("nope")
+            raise RuntimeError("exporter blew up")
 
         with pytest.raises(RuntimeError):
             asyncio.run(provider.teardown(ws, while_running=_fails))
+        assert provider._workspaces == {ws.id: ws}
+
+    def test_deregisters_when_a_before_delete_hook_fails(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        # By this point the container is genuinely gone, so keeping the
+        # registration would leak. Only the DIRECTORY is retained.
+        _record(monkeypatch, [])
+        provider = _provider()
+        d = tmp_path / "ws"
+        d.mkdir()
+        ws = _Workspace(workspace_dir=str(d))
+        provider._workspaces[ws.id] = ws
+
+        async def _fails() -> None:
+            raise RuntimeError("store unreachable")
+
+        with pytest.raises(RuntimeError):
+            asyncio.run(provider.teardown(ws, before_delete=_fails))
         assert provider._workspaces == {}
+        assert d.exists()
 
 
 class TestDestroyIsUnchanged:
@@ -244,3 +271,103 @@ class TestDestroyIsUnchanged:
         assert seq == ["docker stop", "docker logs", "docker rm"], seq
         assert not d.exists()
         assert provider._workspaces == {}
+
+
+class TestAsyncFailureModes:
+    """The cases plain happy-path tests cannot reach.
+
+    Review found both of these by reading, not by running: a cancel during the
+    log snapshot skipped removal entirely, leaving a stopped-but-present and
+    already-deregistered container; and two concurrent teardowns could both
+    proceed, letting one delete a directory the other was still archiving.
+    """
+
+    def test_real_task_cancellation_during_the_stop_still_removes(self) -> None:
+        """Cancel the TASK, not a hand-raised CancelledError.
+
+        An earlier version of this test raised CancelledError from inside the
+        subprocess factory. That proves the `finally` runs, but it does NOT
+        exercise the shield: the await in the finally only needs shielding when
+        the surrounding TASK is being cancelled. The weaker test passed with
+        the shield removed, so it was verifying nothing about the thing it was
+        written for.
+        """
+        seq: list[str] = []
+
+        async def _main() -> None:
+            provider = _provider()
+            reached_logs = asyncio.Event()
+
+            async def _spawn(*argv: str, **_k: object) -> Any:
+                head = " ".join(argv[:2])
+                seq.append(head)
+                if head == "docker logs":
+                    reached_logs.set()
+                    await asyncio.sleep(3600)  # park here until cancelled
+                return _Proc()
+
+            import agentic_isolation.providers.docker as mod
+
+            orig = asyncio.create_subprocess_exec
+            mod.asyncio.create_subprocess_exec = _spawn  # type: ignore[assignment]
+            try:
+                ws = _Workspace()
+                provider._workspaces[ws.id] = ws
+                task = asyncio.create_task(provider.teardown(ws))
+                await reached_logs.wait()
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                # The `finally` is what guarantees this. Removing the shield
+                # does NOT break it - checked by mutation - because asyncio
+                # delivers cancellation once. Removing the `finally` does.
+                assert "docker rm" in seq, seq
+                assert provider._workspaces == {}
+            finally:
+                mod.asyncio.create_subprocess_exec = orig  # type: ignore[assignment]
+
+        asyncio.run(_main())
+
+    def test_concurrent_teardown_cannot_delete_during_an_archive(self, tmp_path: Any) -> None:
+        """A second teardown must wait, not race the first one's archive."""
+
+        async def _main() -> None:
+            provider = _provider()
+            d = tmp_path / "ws"
+            d.mkdir()
+            (d / "spool.jsonl").write_text("transcript")
+            ws = _Workspace(workspace_dir=str(d))
+            provider._workspaces[ws.id] = ws
+
+            async def _spawn(*_a: str, **_k: object) -> Any:
+                return _Proc()
+
+            import agentic_isolation.providers.docker as mod
+
+            orig = asyncio.create_subprocess_exec
+            mod.asyncio.create_subprocess_exec = _spawn  # type: ignore[assignment]
+
+            observed: dict[str, bool] = {}
+            started = asyncio.Event()
+
+            async def _slow_archive() -> None:
+                started.set()
+                await asyncio.sleep(0.05)
+                # If the other teardown raced ahead, the spool is gone by now.
+                observed["spool_present"] = (d / "spool.jsonl").exists()
+                raise RuntimeError("store unreachable")
+
+            try:
+                first = asyncio.create_task(provider.teardown(ws, before_delete=_slow_archive))
+                await started.wait()
+                second = asyncio.create_task(provider.teardown(ws))
+                results = await asyncio.gather(first, second, return_exceptions=True)
+            finally:
+                mod.asyncio.create_subprocess_exec = orig  # type: ignore[assignment]
+
+            assert observed["spool_present"], (
+                "a concurrent teardown deleted the workspace mid-archive"
+            )
+            assert isinstance(results[0], RuntimeError)
+
+        asyncio.run(_main())

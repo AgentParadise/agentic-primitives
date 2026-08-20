@@ -97,6 +97,10 @@ class WorkspaceDockerProvider(BaseProvider):
         # Container output captured during teardown, keyed by container name.
         # Insertion-ordered so eviction is oldest-first. See _remember_logs.
         self._log_snapshots: dict[str, str] = {}
+        # One teardown at a time per workspace. Concurrent teardowns would
+        # otherwise race, and one could delete a directory another is still
+        # archiving from.
+        self._teardown_locks: dict[str, asyncio.Lock] = {}
         self._lock = asyncio.Lock()
 
     @property
@@ -691,28 +695,72 @@ class WorkspaceDockerProvider(BaseProvider):
         """Tear down with caller hooks at the two safe points.
 
         Implements `SupportsStagedTeardown`. The step order is enforced here
-        rather than left to the caller, because getting it wrong destroys data:
-        deleting the workspace directory early would remove the spool while the
-        container was still writing to it.
+        rather than left to the caller, because getting it wrong destroys data.
         """
-        # Deregister first, exactly as destroy() does. Doing it here rather
-        # than at the end means a hook that raises cannot leave the provider
-        # holding a workspace it has already begun tearing down.
-        async with self._lock:
-            self._workspaces.pop(workspace.id, None)
+        # Single-flight per workspace. Without it two concurrent callers both
+        # proceed, and one can delete the workspace directory while the other
+        # is still inside a slow `before_delete` - which would break the
+        # retention guarantee from the outside rather than from a bug in this
+        # function.
+        lock = self._teardown_lock_for(workspace.id)
+        async with lock:
+            await self._teardown_locked(
+                workspace, while_running=while_running, before_delete=before_delete
+            )
+        # Drop the lock entry only once nobody else holds or wants it. Removing
+        # it any earlier - in particular inside the teardown, which an earlier
+        # version did - lets the next caller build a FRESH lock and run
+        # concurrently, which defeats the whole point: it could delete the
+        # workspace directory while this call was still archiving from it.
+        if not lock.locked():
+            self._teardown_locks.pop(workspace.id, None)
 
+    def _teardown_lock_for(self, workspace_id: str) -> asyncio.Lock:
+        """One lock per workspace id, created on first use."""
+        lock = self._teardown_locks.get(workspace_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._teardown_locks[workspace_id] = lock
+        return lock
+
+    async def _teardown_locked(
+        self,
+        workspace: Workspace,
+        *,
+        while_running: Callable[[], Awaitable[None]] | None,
+        before_delete: Callable[[], Awaitable[None]] | None,
+    ) -> None:
+        container_name = workspace._handle
+
+        # Deliberately still REGISTERED here. A hook that raises, hangs, or is
+        # cancelled leaves a live container, and deregistering first would make
+        # that container invisible to the provider that owns it.
         if while_running is not None:
-            # Before the stop, so the caller can still exec into the container.
-            # Raising aborts with the container intact, which is recoverable.
             await while_running()
 
-        await self._stop(workspace._handle)
-        await self._remove(workspace._handle)
+        try:
+            await self._stop(container_name)
+        finally:
+            # The `finally` is what guarantees removal: a cancel or an error
+            # during the stop or the log snapshot must not leave a
+            # stopped-but-present container behind. Verified by mutation -
+            # dropping this block strands one.
+            #
+            # The shield is NOT what makes that work, and an earlier comment
+            # here wrongly said it was. asyncio delivers cancellation once, so
+            # this await completes on its own after a single cancel. The
+            # shield covers the narrower case of a SECOND cancellation
+            # arriving while removal is in flight, which is cheap to hold onto
+            # and would otherwise leak a container.
+            await asyncio.shield(self._remove(container_name))
+            async with self._lock:
+                self._workspaces.pop(workspace.id, None)
 
         if before_delete is not None:
-            # The container is gone but the spool is still on disk. A failure
-            # here must NOT delete it: that is what turns a failed upload into
-            # permanent loss rather than a retryable one.
+            # The container is gone but the spool is still on disk. Any
+            # exception here, CancelledError included, skips the delete below
+            # by plain control flow. That is what keeps a failed upload
+            # retryable instead of permanently lost.
             await before_delete()
 
         self._delete_workspace_dir(workspace)
