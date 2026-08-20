@@ -524,6 +524,21 @@ __counter() {
 __failed="$(__counter failed)"
 __oversize="$(__counter skipped_oversize)"
 __rejected="$(__counter rejected)"
+# OPTIONAL, deliberately, and absent from the guard below.
+#
+# `unconfirmed` counts envelopes the exporter SENT for which the store returned
+# no matching outcome: not accepted, not rejected, just unanswered. Newer
+# exporters emit it; older ones do not, and requiring it would make this hook
+# reject every summary line an older binary produces.
+#
+# It is parsed rather than left to the exit status because this file refuses to
+# assume it is talking to a new exporter at all: it reads counters even from a
+# build that exited 0, precisely so an old binary reporting loss is still
+# believed. An old-contract exporter that emits `unconfirmed=1` and exits 0
+# would otherwise be reported as a complete upload, which is the same false
+# claim this hook exists to prevent, arriving by a different door.
+__unconfirmed="$(__counter unconfirmed)"
+[ -z "${__unconfirmed}" ] && __unconfirmed=0
 
 if [ -z "${__summary}" ] || [ -z "${__failed}" ] || [ -z "${__oversize}" ] || [ -z "${__rejected}" ]; then
     echo "[finalize] session-store sweep produced no parseable summary line;" \
@@ -535,6 +550,7 @@ __incomplete=""
 [ "${__failed}" -ne 0 ] && __incomplete="${__incomplete} failed=${__failed}"
 [ "${__oversize}" -ne 0 ] && __incomplete="${__incomplete} skipped_oversize=${__oversize}"
 [ "${__rejected}" -ne 0 ] && __incomplete="${__incomplete} rejected=${__rejected}"
+[ "${__unconfirmed}" -ne 0 ] && __incomplete="${__incomplete} unconfirmed=${__unconfirmed}"
 # The exporter's own verdict, trusted over this file's arithmetic.
 #
 # These three counters are the ones this hook knows how to parse, and they are
@@ -543,10 +559,13 @@ __incomplete=""
 # matching outcome, which are neither accepted nor rejected. A sweep whose only
 # loss is unconfirmed has failed=0 oversize=0 rejected=0 and still exits 3.
 #
-# Deciding completeness from counters this file happens to know about, while
-# ignoring a status that says "not everything got there", is how a false
-# completion claim gets made by a hook written to prevent them. If the exporter
-# says the sweep was incomplete, it was incomplete.
+# `unconfirmed` is parsed above, so it is already covered when present. The
+# status remains the backstop for loss classes this file does not know about,
+# including ones added after it was written: deciding completeness only from
+# counter names hardcoded here, while ignoring a status that says "not
+# everything got there", is how a false completion claim gets made by a hook
+# written to prevent them. If the exporter says the sweep was incomplete, it
+# was incomplete.
 [ "${__exporter_rc}" -eq 3 ] && [ -z "${__incomplete}" ] && \
     __incomplete="${__incomplete} exporter reported an incomplete sweep (rc=3)"
 

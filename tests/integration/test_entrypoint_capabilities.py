@@ -2132,6 +2132,63 @@ def test_finalize_treats_exit_3_as_a_completed_sweep_not_a_failure(tmp_path: Pat
 
 
 @pytest.mark.integration
+def test_finalize_believes_an_unconfirmed_counter_even_on_exit_zero(tmp_path: Path):
+    """The older-exporter door into the same false completion claim.
+
+    This hook reads counters even from an exporter that exited 0, precisely so
+    an old binary reporting loss is still believed. An old-contract exporter
+    that emits `unconfirmed=1` and exits 0 would, without parsing that counter,
+    be reported as a complete upload. Trusting only the new exit status would
+    have left that door open.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0 unconfirmed=1"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 0\n',
+        "unconfirmed-rc0",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "upload complete" not in result.stderr, (
+        f"unconfirmed=1 is not a complete upload. stderr={result.stderr}"
+    )
+    assert "unconfirmed=1" in result.stderr, (
+        f"the report must name what was unconfirmed. stderr={result.stderr}"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_still_accepts_a_summary_without_the_unconfirmed_counter(
+    tmp_path: Path,
+):
+    """`unconfirmed` is optional, and must stay optional.
+
+    The exporter binary is operator-supplied and older builds do not emit this
+    counter. Requiring it would make this hook reject every summary line they
+    produce, turning a compatibility feature into a hard failure.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 0\n',
+        "no-unconfirmed-field",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "upload complete" in result.stderr, (
+        "a clean sweep from an older exporter must still report complete; "
+        f"stderr={result.stderr}"
+    )
+    assert "no parseable summary" not in result.stderr, (
+        "a missing optional counter must not invalidate the summary line"
+    )
+
+
+@pytest.mark.integration
 def test_finalize_trusts_exit_3_when_every_counter_it_parses_reads_zero(
     tmp_path: Path,
 ):
