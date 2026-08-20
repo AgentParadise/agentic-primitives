@@ -1,18 +1,19 @@
 //! Workspace lifecycle: `docker run`, tmux bootstrap, per-agent launch +
 //! readiness gating, public primitives (send/await/capture/exec/stop).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Error, ErrorKind, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::adapter::{self, Agent};
-use crate::auth::{self, AuthContext, PreparedAuth};
+use crate::auth::{self, AuthContext, PreparedAuth, StagedPath};
 use crate::registry::{self, WorkspaceRecord};
 use crate::result::AwaitResult;
+use crate::run::secret_env;
 use crate::tmux;
 
 pub const DEFAULT_IMAGE: &str = "agentic-workspace-interactive-tmux:latest";
@@ -53,6 +54,18 @@ pub struct StartOptions {
     /// to best-effort reap an orphan on hard-cancel, #248) set this to a
     /// pre-computed unique name. It MUST be unique per workspace.
     pub container_name: Option<String>,
+    /// Per-agent secret environment variables (R1/R2). For each agent with a
+    /// non-empty map, `start` stages a `0600` env file into the container over
+    /// the base64-over-stdin transfer and launches that agent's pane through a
+    /// wrapper that `source`s it (see `adapter::launch_command_with_env`). The
+    /// values NEVER reach argv. An agent with only `secret_env` (no `host_auth`)
+    /// still counts as enabled. Empty by default.
+    pub secret_env: HashMap<Agent, BTreeMap<String, String>>,
+    /// When `true`, the claude auth staging omits `.credentials.json` and stages
+    /// ONLY the seeded `.claude.json` (trust/onboarding). Used by the OAuth env
+    /// var path (R1/R8): the token is injected via `secret_env`
+    /// (`CLAUDE_CODE_OAUTH_TOKEN`), never synthesized into a `.credentials.json`.
+    pub claude_omit_credentials: bool,
 }
 
 impl StartOptions {
@@ -68,6 +81,8 @@ impl StartOptions {
             host_claude_dotjson: None,
             claude_plugin_dirs: Vec::new(),
             container_name: None,
+            secret_env: HashMap::new(),
+            claude_omit_credentials: false,
         }
     }
 }
@@ -87,6 +102,11 @@ pub struct Workspace {
     /// `Workspace::start` from `StartOptions::claude_plugin_dirs`;
     /// consumed by `bootstrap_tmux_and_launch`.
     pub claude_plugin_dirs: Vec<PathBuf>,
+    /// Per-agent container-side path of the staged `0600` secret env file
+    /// (R1/R6). Populated by `Workspace::start` after the file is transferred;
+    /// consumed by `bootstrap_tmux_and_launch` to launch the pane through the
+    /// source-and-exec wrapper. NEVER contains a secret value - only the path.
+    pub secret_env_files: HashMap<Agent, String>,
 }
 
 fn random_suffix() -> String {
@@ -101,6 +121,53 @@ fn random_suffix() -> String {
     #[allow(clippy::cast_possible_truncation)]
     let low = (mix & 0xFFFF_FFFF) as u64;
     format!("{low:08x}")
+}
+
+/// Create `path` as a fresh directory with mode `0700` set ATOMICALLY at
+/// creation (via `mkdir(mode)`), so it is never briefly world-traversable
+/// (`0755`) before a follow-up `chmod`. This matters because the dir holds
+/// staged secret material (the `0600` secret env files). Fails if `path`
+/// already exists (callers pass a freshly-minted unique path).
+pub(crate) fn create_private_dir(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().mode(0o700).create(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(path)
+    }
+}
+
+/// Create `path` as a fresh file with mode `0600` set ATOMICALLY at creation
+/// (via `open(O_CREAT | O_EXCL, 0600)`) and write `contents`, so the file is
+/// never briefly world-readable (`0644`) before a follow-up `chmod` - closing
+/// the local-read window on secret material (PR #254 review). `create_new`
+/// guarantees this process is the creator; callers pass a path inside a fresh
+/// `0700` dir, so there is no pre-existing file to clobber.
+pub(crate) fn write_private_file(path: &Path, contents: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut file = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(path)?
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)?
+        }
+    };
+    file.write_all(contents)?;
+    Ok(())
 }
 
 /// Build the `docker run` argv for a bare, credential-free container:
@@ -227,10 +294,11 @@ fn run_capture(cmd: Command, what: &str) -> Result<Output> {
 impl Workspace {
     #[allow(clippy::needless_pass_by_value)]
     pub fn start(opts: StartOptions) -> Result<Self> {
-        if opts.host_auth.values().all(Option::is_none) {
+        let has_any_secret_env = opts.secret_env.values().any(|m| !m.is_empty());
+        if opts.host_auth.values().all(Option::is_none) && !has_any_secret_env {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                "start_workspace called with no enabled agents (host_auth empty)",
+                "start_workspace called with no enabled agents (no host_auth and no secret_env)",
             ));
         }
 
@@ -254,7 +322,9 @@ impl Workspace {
                     random_suffix()
                 ));
             }
-            fs::create_dir_all(&path)?;
+            // Create the throwaway dir 0700 at creation (it holds the staged
+            // 0600 secret env files) - no brief world-traversable window.
+            create_private_dir(&path)?;
             path
         };
 
@@ -262,6 +332,7 @@ impl Workspace {
             workdir: opts.workdir.clone(),
             throwaway_dir: throwaway.clone(),
             host_claude_dotjson: opts.host_claude_dotjson.clone(),
+            claude_omit_credentials: opts.claude_omit_credentials,
         };
 
         // Everything between creating `throwaway` and the Workspace taking
@@ -269,25 +340,31 @@ impl Workspace {
         // must clean up the staged credential copies on failure; otherwise
         // a failed `docker run` (or a bad host auth dir) leaks auth
         // material under the temp dir.
-        let provision = (|| -> Result<Vec<Agent>> {
+        let provision = (|| -> Result<(Vec<Agent>, HashMap<Agent, String>)> {
             let mut enabled: Vec<Agent> = Vec::new();
             let mut prepared_by_agent: Vec<PreparedAuth> = Vec::new();
             for agent in adapter::AGENTS {
-                let Some(Some(src)) = opts.host_auth.get(&agent) else {
-                    continue;
+                let host_src = opts.host_auth.get(&agent).cloned().flatten();
+                let has_secret_env = opts.secret_env.get(&agent).is_some_and(|m| !m.is_empty());
+                let prepared = match host_src.as_ref() {
+                    Some(src) => auth::prepare(agent, src, &auth_ctx)?,
+                    None => PreparedAuth::default(),
                 };
-                let prepared = auth::prepare(agent, src, &auth_ctx)?;
-                if prepared.is_empty() {
+                // An agent is enabled if it has staged credential files OR a
+                // non-empty secret env (the OAuth/API-key env-var path, R1/R2).
+                if prepared.is_empty() && !has_secret_env {
                     continue;
                 }
                 enabled.push(agent);
-                prepared_by_agent.push(prepared);
+                if !prepared.is_empty() {
+                    prepared_by_agent.push(prepared);
+                }
             }
 
             if enabled.is_empty() {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
-                    "start_workspace called with no enabled agents (host_auth empty)",
+                    "start_workspace called with no enabled agents (no host_auth and no secret_env)",
                 ));
             }
 
@@ -305,10 +382,38 @@ impl Workspace {
             for prepared in &prepared_by_agent {
                 auth::stage_into_container(&container, prepared)?;
             }
-            Ok(enabled)
+
+            // Stage per-agent secret env files (R1). Each is created 0600 at
+            // creation (atomic, no brief 0644 window) and transferred via the
+            // SAME base64-over-stdin path as credentials - the values never
+            // touch argv. The in-container file is re-secured to 0600 by
+            // `secure_path_plan`. Record the container path so the launch step
+            // sources it.
+            let mut secret_env_files: HashMap<Agent, String> = HashMap::new();
+            for &agent in &enabled {
+                let Some(env) = opts.secret_env.get(&agent).filter(|m| !m.is_empty()) else {
+                    continue;
+                };
+                let container_path = format!("/home/agent/.itmux-secret-env-{}", agent.as_str());
+                let host_file = throwaway.join(format!("secret-env-{}", agent.as_str()));
+                write_private_file(&host_file, secret_env::render_env_file(env).as_bytes())?;
+                let staged = PreparedAuth(vec![StagedPath {
+                    host: host_file.clone(),
+                    container: container_path.clone(),
+                }]);
+                auth::stage_into_container(&container, &staged)?;
+                // Secret hygiene: the container now holds its own 0600 copy, so
+                // remove the host copy immediately rather than waiting for
+                // teardown - the plaintext secret should linger on the host for
+                // the shortest possible time. Best-effort; teardown's
+                // `remove_dir_all(throwaway)` is the fallback.
+                let _ = fs::remove_file(&host_file);
+                secret_env_files.insert(agent, container_path);
+            }
+            Ok((enabled, secret_env_files))
         })();
-        let enabled = match provision {
-            Ok(enabled) => enabled,
+        let (enabled, secret_env_files) = match provision {
+            Ok(result) => result,
             Err(e) => {
                 // Best-effort: `docker run -d` (or the credential transfer
                 // that follows it) can fail after the container is
@@ -333,6 +438,7 @@ impl Workspace {
             enabled_agents: enabled,
             startup_status: HashMap::new(),
             claude_plugin_dirs: opts.claude_plugin_dirs.clone(),
+            secret_env_files,
         };
         if let Err(e) = ws.bootstrap_tmux_and_launch(opts.startup_timeout_s, opts.strict_startup) {
             let _ = ws.stop();
@@ -355,7 +461,8 @@ impl Workspace {
 
         let plugin_dirs = self.claude_plugin_dirs.clone();
         for &agent in &self.enabled_agents.clone() {
-            adapter::launch_in_window(&self.container, agent, &plugin_dirs)?;
+            let secret_env_file = self.secret_env_files.get(&agent).map(String::as_str);
+            adapter::launch_in_window(&self.container, agent, &plugin_dirs, secret_env_file)?;
             let result = self.wait_for_started(agent, startup_timeout_s);
             self.startup_status.insert(agent, result);
         }
@@ -581,6 +688,9 @@ impl Workspace {
             // re-launches via load_from_registry don't accidentally drop
             // or duplicate plugin flags.
             claude_plugin_dirs: Vec::new(),
+            // Secret env files are staged at start time and not persisted in
+            // the registry (the launch already happened by the time we save).
+            secret_env_files: HashMap::new(),
         })
     }
 
@@ -591,5 +701,61 @@ impl Workspace {
     pub fn load_from_registry(name: &str) -> Result<Self> {
         let rec = registry::load(name)?;
         Self::from_record(&rec)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod secret_mode_tests {
+    //! PR #254 review: the mode guarantee on host-side secret files/dirs must
+    //! be load-bearing. These drive the REAL creation helpers used by
+    //! `Workspace::start` (factored out so they are testable without docker)
+    //! and assert the mode is restrictive AT creation.
+
+    use super::{create_private_dir, write_private_file};
+    use std::os::unix::fs::PermissionsExt;
+
+    fn unique_base(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "itmux-secret-mode-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn private_dir_is_0700_and_private_file_is_0600() {
+        let dir = unique_base("dir");
+        create_private_dir(&dir).expect("create 0700 dir");
+        let dir_mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o700, "throwaway dir must be 0700 at creation");
+
+        // A staged secret env file inside it - the exact path shape
+        // `Workspace::start` uses.
+        let file = dir.join("secret-env-claude");
+        write_private_file(&file, b"CLAUDE_CODE_OAUTH_TOKEN='tok'\n").expect("write 0600 file");
+        let file_mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(file_mode, 0o600, "secret env file must be 0600 at creation");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "CLAUDE_CODE_OAUTH_TOKEN='tok'\n"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_private_file_refuses_to_clobber_existing() {
+        let dir = unique_base("clobber");
+        create_private_dir(&dir).unwrap();
+        let file = dir.join("secret");
+        write_private_file(&file, b"first").unwrap();
+        // create_new(true): a second create must fail rather than truncate a
+        // file whose mode we did not set.
+        let err = write_private_file(&file, b"second").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
