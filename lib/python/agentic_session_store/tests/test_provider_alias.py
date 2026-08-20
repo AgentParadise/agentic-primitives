@@ -19,9 +19,8 @@ from __future__ import annotations
 import importlib.util
 import shutil
 import sys
+import types
 from pathlib import Path
-
-import pytest
 
 CAPABILITY = (
     Path(__file__).resolve().parents[4] / "workspace" / "capabilities" / "session-store"
@@ -57,16 +56,28 @@ BUILD_PROVIDER = REPO_ROOT / "scripts" / "build-provider.py"
 
 
 def _load_build_provider():
-    """Import the build script by path: it is a script, not a package."""
+    """Import the build script by path: it is a script, not a package.
+
+    build-provider.py imports PyYAML at module scope, but only load_manifest()
+    uses it - staging does not. A stub is injected rather than adding a test
+    dependency, because the alternative was pytest.skip on ModuleNotFoundError,
+    and that made the two tests which actually catch a staging regression SKIP
+    silently wherever PyYAML was absent. The suite then went green while the
+    property under test was unverified: a vacuous pass, which is the exact
+    failure class this whole test file exists to prevent.
+
+    Nothing here is allowed to skip. If the script stops being importable that
+    is a hard failure, because the tests below cannot otherwise do their job.
+    """
+    sys.modules.setdefault("yaml", types.ModuleType("yaml"))
+
     spec = importlib.util.spec_from_file_location("build_provider", BUILD_PROVIDER)
-    if spec is None or spec.loader is None:  # pragma: no cover - defensive
-        pytest.skip("build-provider.py not importable")
+    assert spec is not None and spec.loader is not None, (
+        f"{BUILD_PROVIDER} is not importable; the staging tests cannot run"
+    )
     module = importlib.util.module_from_spec(spec)
     sys.modules["build_provider"] = module
-    try:
-        spec.loader.exec_module(module)
-    except ModuleNotFoundError as exc:  # pragma: no cover - env dependent
-        pytest.skip(f"build-provider.py dependency missing: {exc.name}")
+    spec.loader.exec_module(module)
     return module
 
 
