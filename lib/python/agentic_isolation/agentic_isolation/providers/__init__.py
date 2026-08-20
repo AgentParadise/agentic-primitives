@@ -25,8 +25,8 @@ from agentic_isolation.providers.base import (
     AwaitResult,
     ExecuteResult,
     InteractiveSession,
-    Workspace,
     SupportsWorkspaceLogs,
+    Workspace,
     WorkspaceProvider,
 )
 from agentic_isolation.providers.docker import WorkspaceDockerProvider
