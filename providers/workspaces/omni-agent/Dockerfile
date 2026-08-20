@@ -228,15 +228,18 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 #     .github/workflows/release.yml@refs/tags/v0.2.1
 #   - pulled and run out of this exact digest (COPY into debian:12-slim),
 #     reports "apss-session-exporter 0.2.1"
-#   - readelf shows no PT_INTERP, so it is genuinely static
+#   - readelf shows neither PT_INTERP nor DT_NEEDED, so it is genuinely
+#     static (absence of an interpreter alone would not prove that)
 #   - SESSION_STORE_ORIGIN_ENV=laptop is now REFUSED
 #     (Error: InvalidEnvironment("laptop")) rather than written into every
 #     envelope, which is the defect this bump exists to fix
 #
-# Why the bump matters beyond housekeeping: v0.1.1 defaulted origin.environment
-# to "laptop", which is not one of the four classes APS-V1-0004 4.2.1 defines
-# (local, vps, container, workflow). Every session this image captured was
-# therefore out of spec on a REQUIRED field, and unattributable per deployment.
+# Why the bump matters beyond housekeeping: v0.1.1 DEFAULTED
+# origin.environment to "laptop", which is not one of the four classes
+# APS-V1-0004 4.2.1 defines (local, vps, container, workflow). Any session
+# captured without an explicit SESSION_STORE_ORIGIN_ENV was therefore out of
+# spec on a REQUIRED field. (Attribution per deployment is a separate field,
+# origin.deployment, which Syntropic137 sets independently.)
 # Do not pin v0.2.0: its Linux binaries require glibc 2.39 and cannot run here.
 #
 # The EXPORTER only. apss-session-reconstitute writes a stored session back to

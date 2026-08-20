@@ -51,14 +51,21 @@ reference client - but the mounted build is no longer the one that runs. Set
 `AGENTIC_SESSION_STORE_EXPORTER_BIN` to keep using a specific binary. This is
 why the provider bump is a minor rather than a patch.
 
-**Known limit**
+**Known limit (RESOLVED in exporter v0.2.1)**
 
-The exporter's release binaries are built against glibc 2.39 while this image is
-Debian 12 (2.36). `apss-session-exporter` runs because it happens not to
-reference a 2.39 symbol; `apss-session-reconstitute` does, so only the exporter
-is copied. The build now executes the copied binary per target platform, which is
-what surfaced this, so the failure mode is a failed build rather than a broken
-workspace. Upstream fix tracked as agentic-session-exporter#7.
+The exporter's release binaries were built against glibc 2.39 while this image
+is Debian 12 (2.36). `apss-session-exporter` ran only because it happened not to
+reference a 2.39 symbol; `apss-session-reconstitute` did, so only the exporter
+was copied. The build executing the copied binary per target platform is what
+surfaced it, so the failure mode was a failed build rather than a broken
+workspace. Tracked as agentic-session-exporter#7 and fixed there: the Linux
+binaries are now statically linked against musl and carry no libc floor.
+
+Only the exporter is still copied, but for a different reason now that
+feasibility is no longer the constraint. `apss-session-reconstitute` writes a
+stored session back to disk so a harness can resume it, which is something a
+developer does on their own machine and not something a short-lived workspace
+container ever needs.
 
 `claude-cli` is unchanged and deliberately still ships no exporter.
 
