@@ -2132,6 +2132,43 @@ def test_finalize_treats_exit_3_as_a_completed_sweep_not_a_failure(tmp_path: Pat
 
 
 @pytest.mark.integration
+def test_finalize_trusts_exit_3_when_every_counter_it_parses_reads_zero(
+    tmp_path: Path,
+):
+    """The false-completion case, and the reason rc=3 is preserved.
+
+    This hook decides completeness from failed, skipped_oversize and rejected.
+    Those are not the only ways a sweep can come up short: the exporter also
+    counts `unconfirmed`, envelopes it SENT for which the store returned no
+    matching outcome. A sweep whose only loss is unconfirmed reports
+    failed=0 skipped_oversize=0 rejected=0 and still exits 3.
+
+    An earlier version of this fix normalised rc=3 to 0, so that sweep reached
+    the completion path and printed "upload complete" while its own exit status
+    said the opposite. A hook written to prevent false completion claims would
+    have been making one.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0 unconfirmed=1"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 3\n',
+        "exit-3-unconfirmed",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert "upload complete" not in result.stderr, (
+        "a sweep the exporter called incomplete must never be reported as "
+        f"complete, whatever the parsed counters say. stderr={result.stderr}"
+    )
+    assert "INCOMPLETE" in result.stderr, (
+        f"the report must say the sweep was incomplete. stderr={result.stderr}"
+    )
+
+
+@pytest.mark.integration
 def test_finalize_reports_a_sweep_with_only_duplicate_and_unchanged_as_complete(
     tmp_path: Path,
 ):
