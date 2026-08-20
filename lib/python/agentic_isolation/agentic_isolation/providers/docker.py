@@ -316,9 +316,7 @@ class WorkspaceDockerProvider(BaseProvider):
         if proc.returncode != 0:
             # Expected once the container has been removed. Debug, not warning:
             # a teardown race here is normal and not actionable.
-            logger.debug(
-                "docker logs exited %s for %s", proc.returncode, container_name
-            )
+            logger.debug("docker logs exited %s for %s", proc.returncode, container_name)
             return ""
 
         return (out or b"").decode(errors="replace")
