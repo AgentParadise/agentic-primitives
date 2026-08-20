@@ -322,7 +322,16 @@ RUN chmod 755 /usr/local/bin/apss-session-exporter \
     `# execute here - at BUILD time, in the layer that caused it, instead` \
     `# of at workspace provision in another repository. It does NOT catch a` \
     `# missing exec bit: the chmod above sets one unconditionally.` \
-    && /usr/local/bin/apss-session-exporter --version
+    `#` \
+    `# ASSERT THE VERSION, do not merely print it. Running --version proves` \
+    `# the binary executes; it does not prove WHICH binary was copied. A pin` \
+    `# edited to a digest that is signed but older still builds green, and` \
+    `# the consumer then gets a workspace whose exporter silently lacks the` \
+    `# flag the pin comment promises. Grepping the output is what turns the` \
+    `# comment above into something CI enforces.` \
+    && /usr/local/bin/apss-session-exporter --version \
+    && /usr/local/bin/apss-session-exporter --version \
+       | grep -q '^apss-session-exporter 0\.4\.0 '
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
 # The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;

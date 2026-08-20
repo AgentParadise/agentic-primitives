@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔁 omni-agent: exporter pinned to v0.4.0
+
+The pinned `agentic-session-exporter` digest moves from v0.3.0 to v0.4.0, and
+the omni provider version moves to 1.2.0.
+
+**v0.4.0 adds `--ignore-state`, which a consumer needs before an audit verdict
+can be trusted.** syntropic137 runs the exporter to check an agent's own
+workspace, with the state file somewhere that agent can write. A forged
+"already sent" entry could therefore make a transcript that never reached the
+store report as a clean sweep. The exporter runs as the same uid as the process
+it is auditing, so no path is writable by one and not the other: not READING
+the state file is the only available move, and that is what the flag does.
+
+Not a behaviour change for existing callers. The flag defaults off, and this
+repository's finalizer deliberately does NOT pass it - the finalizer is the
+capture path rather than an audit of one, and it benefits from state skipping
+transcripts that have not changed.
+
+**CONSUMER ORDERING.** An older exporter rejects `--ignore-state` with exit 2,
+which syntropic137's parser reads as UNKNOWN and turns into a backfill request
+on every phase. A consumer must not pass the flag until it pins an image built
+from this digest, so the config change and the digest bump belong in one
+commit. Rolling back only the image while keeping the new probe configuration
+produces backfill churn - not a false clean verdict, but noise that makes the
+indicator worth less.
+
+The build now ASSERTS the exporter version rather than only printing it. A pin
+edited to an older signed digest would otherwise build green while the image
+silently lacked the flag this entry promises.
+
 ### 🔁 omni-agent: exporter pinned to v0.3.0
 
 The pinned `agentic-session-exporter` digest moves from v0.2.1 to v0.3.0.
