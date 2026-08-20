@@ -251,7 +251,16 @@ class SupportsWorkspaceLogs(Protocol):
     The motivating consumer is session capture. A workspace's finalizer runs
     during shutdown and prints whether the transcript reached the store; that
     verdict exists only in the container's own output, so without a way to
-    read it back the capture outcome is unobservable to the orchestrator.
+    read it back the capture outcome is entirely unobservable.
+
+    DIAGNOSTIC, NOT AUTHORITATIVE. In a typical workspace image the agent and
+    the finalizer run as the same user, so anything the finalizer can print,
+    the agent can also print. A caller must therefore treat a success line read
+    from here as unverified: useful for surfacing "we saw no verdict at all",
+    never sufficient to assert that a transcript was stored. An authoritative
+    answer has to come from a channel the agent cannot write to, such as the
+    host invoking the exporter itself and reading its exit status, or asking
+    the store whether the session arrived.
     """
 
     async def logs(self, workspace: Workspace, *, tail: int = 200) -> str:

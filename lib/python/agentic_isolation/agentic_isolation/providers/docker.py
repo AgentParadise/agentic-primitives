@@ -310,7 +310,9 @@ class WorkspaceDockerProvider(BaseProvider):
 
         The returned text is UNTRUSTED - it is whatever the agent and its
         tooling printed - so callers must parse defensively and must not print
-        it to a terminal unsanitised.
+        it to a terminal unsanitised. It is also FORGEABLE: the agent usually
+        runs as the same user as the finalizer, so a success line read from
+        here is evidence, not proof. See SupportsWorkspaceLogs.
         """
         container_name = getattr(workspace, "_handle", None)
         if not container_name:
