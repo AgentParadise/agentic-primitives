@@ -1948,6 +1948,7 @@ def _finalize_with_stub_exporter(
     stub_body: str | list[str],
     part_name: str,
     budget_s: int = 2,
+    reserved_namespace: bool = False,
 ) -> tuple[subprocess.CompletedProcess, Path, float]:
     """Run finalize.sh against a partition with a stubbed exporter.
 
@@ -1965,6 +1966,13 @@ def _finalize_with_stub_exporter(
     entrypoint.sh passes per exit path. It is kept small here so a hung stub
     fails fast rather than sitting on finalize.sh's generous no-budget
     default.
+
+    reserved_namespace puts EXPORTER_STATE_FILE inside
+    ${SPOOL}/.agentic-session-store/${PARTITION}, which finalize.sh requires
+    before it will write its `.sweep-rejected` record. The default is the
+    legacy layout, where the hook can only warn that it has nowhere to record a
+    rejection, so a test meaning to exercise the RECORD must opt in or it
+    silently exercises the warning instead.
 
     Returns (result, transcript_path, elapsed_seconds). The transcript file
     still existing means the spool was retained.
@@ -1994,13 +2002,25 @@ echo "=== SWEEP {i} ===" >&2
 echo "FINALIZE_RC_{i}=$?"
 """
 
+    state_file = (
+        f"/spool/.agentic-session-store/{part_name}/state.json"
+        if reserved_namespace
+        else f"/spool/{part_name}/state.json"
+    )
+    reserved_mkdir = (
+        f"mkdir -p /spool/.agentic-session-store/{part_name}"
+        if reserved_namespace
+        else ""
+    )
+
     script = f"""
 set -e
 {stage}
+{reserved_mkdir}
 mkdir -p /tmp/fakebin
 export PATH=/tmp/fakebin:$PATH
 export SESSION_STORE_URL=http://unused.invalid
-export EXPORTER_STATE_FILE=/spool/{part_name}/state.json
+export EXPORTER_STATE_FILE={state_file}
 export AGENTIC_FINALIZE_BUDGET_S={budget_s}
 {sweeps}
 echo "FINALIZE_RC=$?"
@@ -2091,6 +2111,188 @@ def test_finalize_keeps_partition_and_transcripts_on_a_clean_sweep(tmp_path: Pat
     assert "upload complete" in result.stderr, "finalize must report the clean sweep"
     assert "spool retained" in result.stderr, (
         "the report must say the spool was retained, since nothing is ever deleted"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_treats_exit_3_as_a_completed_sweep_not_a_failure(tmp_path: Path):
+    """Exit 3 means "the sweep RAN but did not capture everything it found".
+
+    agentic-session-exporter reserves it for a partial capture: the summary
+    line is present and accurate, and something was rejected, oversize,
+    unconfirmed or failed. It is deliberately distinct from the hard-failure 1.
+
+    Before this was handled, any non-zero status took the "upload FAILED"
+    branch and returned early. That would be a regression twice over once a
+    consuming image picks up an exporter that emits 3: a partial capture is
+    reported as a TOTAL upload failure, and the early return skips the
+    rejection record, which is the only thing stopping a LATER sweep printing
+    a false completion claim about the same partition.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=1 skipped_oversize=0 failed=0"
+    )
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 3\n',
+        "exit-3-partial",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert "upload FAILED" not in result.stderr, (
+        "exit 3 is a completed sweep, not a failed one; reporting it as a "
+        f"total failure hides the counters. stderr={result.stderr}"
+    )
+    # The counter path ran, so the report names what was actually refused.
+    assert "rejected=1" in result.stderr or "REFUSED" in result.stderr, (
+        f"the counter report must survive exit 3. stderr={result.stderr}"
+    )
+    assert transcript.exists(), "nothing is ever deleted on any path"
+
+
+@pytest.mark.integration
+def test_exit_3_rejection_is_recorded_and_survives_into_the_next_sweep(
+    tmp_path: Path,
+):
+    """The reason preventing the early return mattered, asserted directly.
+
+    An earlier version of the exit-3 test only checked that the counters were
+    reported. A regression that parsed counters but returned before writing
+    `.sweep-rejected` would have passed it, and that file is the entire point:
+    the exporter forgets a rejection after the sweep that hit it, so without
+    the record a LATER sweep prints "upload complete" about a partition holding
+    a transcript the store refused.
+
+    Two sweeps, the second deliberately clean, which is what a later run looks
+    like once the rejected transcript is marked done in exporter state.
+    """
+    rejected = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=1 skipped_oversize=0 failed=0"
+    )
+    clean = (
+        "run: discovered=1 skipped_unchanged=1 uploaded=0 accepted=0 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        [f'echo "{rejected}"\nexit 3\n', f'echo "{clean}"\nexit 0\n'],
+        "exit-3-recorded",
+        reserved_namespace=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+
+    marker = (
+        _host_spool(tmp_path)
+        / ".agentic-session-store"
+        / "exit-3-recorded"
+        / ".sweep-rejected"
+    )
+    assert marker.exists(), (
+        "exit 3 must still reach the rejection record; without it a later "
+        f"sweep claims completeness. stderr={result.stderr}"
+    )
+    assert "agentic-session-store-rejection-v1" in marker.read_text(), (
+        "the record must carry its format id"
+    )
+    assert "upload complete" not in result.stderr, (
+        "the SECOND sweep looks clean to the counters, and must still not be "
+        f"reported as complete. stderr={result.stderr}"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_believes_an_unconfirmed_counter_even_on_exit_zero(tmp_path: Path):
+    """The older-exporter door into the same false completion claim.
+
+    This hook reads counters even from an exporter that exited 0, precisely so
+    an old binary reporting loss is still believed. An old-contract exporter
+    that emits `unconfirmed=1` and exits 0 would, without parsing that counter,
+    be reported as a complete upload. Trusting only the new exit status would
+    have left that door open.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0 unconfirmed=1"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 0\n',
+        "unconfirmed-rc0",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "upload complete" not in result.stderr, (
+        f"unconfirmed=1 is not a complete upload. stderr={result.stderr}"
+    )
+    assert "unconfirmed=1" in result.stderr, (
+        f"the report must name what was unconfirmed. stderr={result.stderr}"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_still_accepts_a_summary_without_the_unconfirmed_counter(
+    tmp_path: Path,
+):
+    """`unconfirmed` is optional, and must stay optional.
+
+    The exporter binary is operator-supplied and older builds do not emit this
+    counter. Requiring it would make this hook reject every summary line they
+    produce, turning a compatibility feature into a hard failure.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=1 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 0\n',
+        "no-unconfirmed-field",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "upload complete" in result.stderr, (
+        "a clean sweep from an older exporter must still report complete; "
+        f"stderr={result.stderr}"
+    )
+    assert "no parseable summary" not in result.stderr, (
+        "a missing optional counter must not invalidate the summary line"
+    )
+
+
+@pytest.mark.integration
+def test_finalize_trusts_exit_3_when_every_counter_it_parses_reads_zero(
+    tmp_path: Path,
+):
+    """The false-completion case, and the reason rc=3 is preserved.
+
+    This hook decides completeness from failed, skipped_oversize and rejected.
+    Those are not the only ways a sweep can come up short: the exporter also
+    counts `unconfirmed`, envelopes it SENT for which the store returned no
+    matching outcome. A sweep whose only loss is unconfirmed reports
+    failed=0 skipped_oversize=0 rejected=0 and still exits 3.
+
+    An earlier version of this fix normalised rc=3 to 0, so that sweep reached
+    the completion path and printed "upload complete" while its own exit status
+    said the opposite. A hook written to prevent false completion claims would
+    have been making one.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0 unconfirmed=1"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 3\n',
+        "exit-3-unconfirmed",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert "upload complete" not in result.stderr, (
+        "a sweep the exporter called incomplete must never be reported as "
+        f"complete, whatever the parsed counters say. stderr={result.stderr}"
+    )
+    assert "INCOMPLETE" in result.stderr, (
+        f"the report must say the sweep was incomplete. stderr={result.stderr}"
     )
 
 

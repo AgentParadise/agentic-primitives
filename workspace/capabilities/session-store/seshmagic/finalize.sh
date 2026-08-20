@@ -424,7 +424,24 @@ __exporter_rc=$?
 # recovers the missing half. Re-running the exporter is safe and is not a
 # workaround for a lost message: the spool is retained on every path and the
 # store dedups on content_hash, so a repeat sweep re-uploads nothing.
-if [ "${__exporter_rc}" -ne 0 ]; then
+# EXIT 3 IS NOT A FAILED SWEEP. agentic-session-exporter reserves it for "the
+# sweep RAN but did not capture everything it found": something was rejected,
+# oversize, unconfirmed or failed. The summary line is present and accurate, and
+# the counter reporting below is exactly what an operator needs to see for it.
+#
+# Treating it like rc=1 would be a regression twice over: a partial capture
+# would be reported as a total upload failure, and this function would exit
+# before the rejection record below, which is the only thing that stops a LATER
+# sweep printing a false completion claim. Older exporters documented only 0
+# and 1, so this is inert against them.
+#
+# The status is BYPASSED here, not rewritten to 0. An earlier version set it to
+# zero, which erased the one fact the exporter had just gone to the trouble of
+# telling us: completeness is decided further down from three counters, and a
+# sweep whose only loss is `unconfirmed` leaves all three at zero. That sweep
+# would have printed "upload complete" while its own exit status said the
+# opposite. rc is therefore preserved and consulted again below.
+if [ "${__exporter_rc}" -ne 0 ] && [ "${__exporter_rc}" -ne 3 ]; then
     if [ "${__exporter_rc}" -eq 124 ] || [ "${__exporter_rc}" -eq 137 ]; then
         echo "[finalize] session-store upload TIMED OUT after ${__UPLOAD_TIMEOUT_S}s;" \
              "spool retained at ${__part_dir}" >&2
@@ -443,14 +460,18 @@ if [ "${__exporter_rc}" -ne 0 ]; then
 fi
 
 # A CLEAN EXIT IS NOT A CLEAN SWEEP, so the exit code alone is not a report.
-# The exporter says so in its own source
-# (crates/seshmagic-session-store-exporter/src/bin/exporter.rs):
 #
-#   // A completed sweep exits 0 even with per-item skips/failures; only a
-#   // hard RunError (store unreachable, source scan failure) is non-zero.
+# This was once absolute: the exporter exited 0 for any completed sweep,
+# "even with per-item skips/failures", so rc=0 was consistent with
+# `failed=3 skipped_oversize=2`, i.e. five transcripts that never reached the
+# store.
 #
-# So rc=0 is consistent with `failed=3 skipped_oversize=2`, i.e. five
-# transcripts that never reached the store. Nothing is deleted on any path any
+# agentic-session-exporter now distinguishes them: 3 means the sweep ran and
+# did not capture everything, 1 means it could not run. rc=0 from such a build
+# genuinely does mean a clean sweep. But this hook still cannot ASSUME it is
+# talking to such a build, because the exporter binary is operator-supplied,
+# so the counters remain the primary report and rc=3 is treated as additional
+# evidence rather than the only evidence. Nothing is deleted on any path any
 # more, so this is no longer a data-loss question, but an operator still has to
 # be told: those five exist only in the spool, and only the store copy is
 # durable.
@@ -503,6 +524,21 @@ __counter() {
 __failed="$(__counter failed)"
 __oversize="$(__counter skipped_oversize)"
 __rejected="$(__counter rejected)"
+# OPTIONAL, deliberately, and absent from the guard below.
+#
+# `unconfirmed` counts envelopes the exporter SENT for which the store returned
+# no matching outcome: not accepted, not rejected, just unanswered. Newer
+# exporters emit it; older ones do not, and requiring it would make this hook
+# reject every summary line an older binary produces.
+#
+# It is parsed rather than left to the exit status because this file refuses to
+# assume it is talking to a new exporter at all: it reads counters even from a
+# build that exited 0, precisely so an old binary reporting loss is still
+# believed. An old-contract exporter that emits `unconfirmed=1` and exits 0
+# would otherwise be reported as a complete upload, which is the same false
+# claim this hook exists to prevent, arriving by a different door.
+__unconfirmed="$(__counter unconfirmed)"
+[ -z "${__unconfirmed}" ] && __unconfirmed=0
 
 if [ -z "${__summary}" ] || [ -z "${__failed}" ] || [ -z "${__oversize}" ] || [ -z "${__rejected}" ]; then
     echo "[finalize] session-store sweep produced no parseable summary line;" \
@@ -514,6 +550,24 @@ __incomplete=""
 [ "${__failed}" -ne 0 ] && __incomplete="${__incomplete} failed=${__failed}"
 [ "${__oversize}" -ne 0 ] && __incomplete="${__incomplete} skipped_oversize=${__oversize}"
 [ "${__rejected}" -ne 0 ] && __incomplete="${__incomplete} rejected=${__rejected}"
+[ "${__unconfirmed}" -ne 0 ] && __incomplete="${__incomplete} unconfirmed=${__unconfirmed}"
+# The exporter's own verdict, trusted over this file's arithmetic.
+#
+# These three counters are the ones this hook knows how to parse, and they are
+# not the only way a sweep can come up short. agentic-session-exporter also
+# counts `unconfirmed`: envelopes it SENT for which the store returned no
+# matching outcome, which are neither accepted nor rejected. A sweep whose only
+# loss is unconfirmed has failed=0 oversize=0 rejected=0 and still exits 3.
+#
+# `unconfirmed` is parsed above, so it is already covered when present. The
+# status remains the backstop for loss classes this file does not know about,
+# including ones added after it was written: deciding completeness only from
+# counter names hardcoded here, while ignoring a status that says "not
+# everything got there", is how a false completion claim gets made by a hook
+# written to prevent them. If the exporter says the sweep was incomplete, it
+# was incomplete.
+[ "${__exporter_rc}" -eq 3 ] && [ -z "${__incomplete}" ] && \
+    __incomplete="${__incomplete} exporter reported an incomplete sweep (rc=3)"
 
 # --- A REJECTION IS REMEMBERED, because the counters forget it ----------------
 #
