@@ -18,7 +18,7 @@ import shutil
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 from agentic_isolation.config import SecurityConfig, WorkspaceConfig
@@ -97,6 +97,10 @@ class WorkspaceDockerProvider(BaseProvider):
         # Container output captured during teardown, keyed by container name.
         # Insertion-ordered so eviction is oldest-first. See _remember_logs.
         self._log_snapshots: dict[str, str] = {}
+        # One teardown at a time per workspace. Concurrent teardowns would
+        # otherwise race, and one could delete a directory another is still
+        # archiving from.
+        self._teardown_locks: dict[str, asyncio.Lock] = {}
         self._lock = asyncio.Lock()
 
     @property
@@ -268,19 +272,13 @@ class WorkspaceDockerProvider(BaseProvider):
         return cmd
 
     async def destroy(self, workspace: Workspace) -> None:
-        """Stop and remove the Docker container."""
-        async with self._lock:
-            self._workspaces.pop(workspace.id, None)
+        """Stop and remove the container, then delete the host workspace.
 
-        container_name = workspace._handle
-        workspace_dir = workspace.metadata.get("workspace_dir")
-
+        The unhooked case of `teardown()`, so the two cannot drift into
+        different orderings or different cleanup.
+        """
         logger.info("Destroying workspace (id=%s)", workspace.id)
-
-        await self._cleanup_container(container_name)
-
-        if workspace_dir:
-            shutil.rmtree(workspace_dir, ignore_errors=True)
+        await self.teardown(workspace)
 
     #: Cap on returned log bytes. `docker logs --tail` bounds LINES, and a
     #: single agent-controlled line can be arbitrarily long, so lines are not a
@@ -687,9 +685,94 @@ class WorkspaceDockerProvider(BaseProvider):
 
         raise RuntimeError(f"Container {container_name} did not start within {timeout}s")
 
-    async def _cleanup_container(self, container_name: str) -> None:
-        """Stop and remove a container."""
-        # Stop
+    async def teardown(
+        self,
+        workspace: Workspace,
+        *,
+        while_running: Callable[[], Awaitable[None]] | None = None,
+        before_delete: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """Tear down with caller hooks at the two safe points.
+
+        Implements `SupportsStagedTeardown`. The step order is enforced here
+        rather than left to the caller, because getting it wrong destroys data.
+        """
+        # Single-flight per workspace. Without it two concurrent callers both
+        # proceed, and one can delete the workspace directory while the other
+        # is still inside a slow `before_delete` - which would break the
+        # retention guarantee from the outside rather than from a bug in this
+        # function.
+        lock = self._teardown_lock_for(workspace.id)
+        async with lock:
+            await self._teardown_locked(
+                workspace, while_running=while_running, before_delete=before_delete
+            )
+        # Drop the lock entry only once nobody else holds or wants it. Removing
+        # it any earlier - in particular inside the teardown, which an earlier
+        # version did - lets the next caller build a FRESH lock and run
+        # concurrently, which defeats the whole point: it could delete the
+        # workspace directory while this call was still archiving from it.
+        if not lock.locked():
+            self._teardown_locks.pop(workspace.id, None)
+
+    def _teardown_lock_for(self, workspace_id: str) -> asyncio.Lock:
+        """One lock per workspace id, created on first use."""
+        lock = self._teardown_locks.get(workspace_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._teardown_locks[workspace_id] = lock
+        return lock
+
+    async def _teardown_locked(
+        self,
+        workspace: Workspace,
+        *,
+        while_running: Callable[[], Awaitable[None]] | None,
+        before_delete: Callable[[], Awaitable[None]] | None,
+    ) -> None:
+        container_name = workspace._handle
+
+        # Deliberately still REGISTERED here. A hook that raises, hangs, or is
+        # cancelled leaves a live container, and deregistering first would make
+        # that container invisible to the provider that owns it.
+        if while_running is not None:
+            await while_running()
+
+        try:
+            await self._stop(container_name)
+        finally:
+            # The `finally` is what guarantees removal: a cancel or an error
+            # during the stop or the log snapshot must not leave a
+            # stopped-but-present container behind. Verified by mutation -
+            # dropping this block strands one.
+            #
+            # The shield is NOT what makes that work, and an earlier comment
+            # here wrongly said it was. asyncio delivers cancellation once, so
+            # this await completes on its own after a single cancel. The
+            # shield covers the narrower case of a SECOND cancellation
+            # arriving while removal is in flight, which is cheap to hold onto
+            # and would otherwise leak a container.
+            await asyncio.shield(self._remove(container_name))
+            async with self._lock:
+                self._workspaces.pop(workspace.id, None)
+
+        if before_delete is not None:
+            # The container is gone but the spool is still on disk. Any
+            # exception here, CancelledError included, skips the delete below
+            # by plain control flow. That is what keeps a failed upload
+            # retryable instead of permanently lost.
+            await before_delete()
+
+        self._delete_workspace_dir(workspace)
+
+    def _delete_workspace_dir(self, workspace: Workspace) -> None:
+        """Delete the host workspace directory. Irreversible."""
+        workspace_dir = workspace.metadata.get("workspace_dir")
+        if workspace_dir:
+            shutil.rmtree(workspace_dir, ignore_errors=True)
+
+    async def _stop(self, container_name: str) -> None:
+        """`docker stop`, then snapshot the logs it caused to be written."""
         # This "-t 5" grace is coupled to __TERM_GRACE_TICKS in
         # workspace/entrypoint.sh's section 6
         # wrapper (ADR-040): that constant must stay strictly below this
@@ -711,14 +794,15 @@ class WorkspaceDockerProvider(BaseProvider):
         # Between stop and rm is the ONLY window in which the finalizer's
         # output can still be read: `docker stop` is what triggers finalizers,
         # and `docker rm` destroys the log stream they wrote to. A caller
-        # asking for logs after destroy() would otherwise always get nothing,
+        # asking for logs after removal would otherwise always get nothing,
         # which would make the session-capture verdict unreachable rather than
         # merely unread.
         self._remember_logs(
             container_name, await self._read_container_logs(container_name, tail=200)
         )
 
-        # Remove
+    async def _remove(self, container_name: str) -> None:
+        """`docker rm -f`."""
         proc = await asyncio.create_subprocess_exec(
             "docker",
             "rm",
@@ -728,3 +812,13 @@ class WorkspaceDockerProvider(BaseProvider):
             stderr=asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
+
+    async def _cleanup_container(self, container_name: str) -> None:
+        """Stop and remove a container.
+
+        Composed from the same steps the staged protocol exposes, so the
+        combined path and the staged path cannot drift into behaving
+        differently.
+        """
+        await self._stop(container_name)
+        await self._remove(container_name)
