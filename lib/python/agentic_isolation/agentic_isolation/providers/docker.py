@@ -18,7 +18,7 @@ import shutil
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 from agentic_isolation.config import SecurityConfig, WorkspaceConfig
@@ -268,19 +268,13 @@ class WorkspaceDockerProvider(BaseProvider):
         return cmd
 
     async def destroy(self, workspace: Workspace) -> None:
-        """Stop and remove the Docker container."""
-        async with self._lock:
-            self._workspaces.pop(workspace.id, None)
+        """Stop and remove the container, then delete the host workspace.
 
-        container_name = workspace._handle
-        workspace_dir = workspace.metadata.get("workspace_dir")
-
+        The unhooked case of `teardown()`, so the two cannot drift into
+        different orderings or different cleanup.
+        """
         logger.info("Destroying workspace (id=%s)", workspace.id)
-
-        await self._cleanup_container(container_name)
-
-        if workspace_dir:
-            shutil.rmtree(workspace_dir, ignore_errors=True)
+        await self.teardown(workspace)
 
     #: Cap on returned log bytes. `docker logs --tail` bounds LINES, and a
     #: single agent-controlled line can be arbitrarily long, so lines are not a
@@ -687,20 +681,43 @@ class WorkspaceDockerProvider(BaseProvider):
 
         raise RuntimeError(f"Container {container_name} did not start within {timeout}s")
 
-    async def stop_container(self, workspace: Workspace) -> None:
-        """Stop the container, leaving it and the workspace directory present.
+    async def teardown(
+        self,
+        workspace: Workspace,
+        *,
+        while_running: Callable[[], Awaitable[None]] | None = None,
+        before_delete: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """Tear down with caller hooks at the two safe points.
 
-        Implements `SupportsStagedTeardown`. Also snapshots the container's
-        output, because this is the moment the finalizer writes its verdict and
-        `remove_container` destroys the stream carrying it.
+        Implements `SupportsStagedTeardown`. The step order is enforced here
+        rather than left to the caller, because getting it wrong destroys data:
+        deleting the workspace directory early would remove the spool while the
+        container was still writing to it.
         """
-        await self._stop(workspace._handle)
+        # Deregister first, exactly as destroy() does. Doing it here rather
+        # than at the end means a hook that raises cannot leave the provider
+        # holding a workspace it has already begun tearing down.
+        async with self._lock:
+            self._workspaces.pop(workspace.id, None)
 
-    async def remove_container(self, workspace: Workspace) -> None:
-        """Remove the container, leaving the workspace directory present."""
+        if while_running is not None:
+            # Before the stop, so the caller can still exec into the container.
+            # Raising aborts with the container intact, which is recoverable.
+            await while_running()
+
+        await self._stop(workspace._handle)
         await self._remove(workspace._handle)
 
-    async def delete_workspace_dir(self, workspace: Workspace) -> None:
+        if before_delete is not None:
+            # The container is gone but the spool is still on disk. A failure
+            # here must NOT delete it: that is what turns a failed upload into
+            # permanent loss rather than a retryable one.
+            await before_delete()
+
+        self._delete_workspace_dir(workspace)
+
+    def _delete_workspace_dir(self, workspace: Workspace) -> None:
         """Delete the host workspace directory. Irreversible."""
         workspace_dir = workspace.metadata.get("workspace_dir")
         if workspace_dir:
