@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 📦 Version bookkeeping: agentic-isolation 0.7.0, agentic-session-store 0.2.1, claude-cli 2.1.1, interactive-tmux 0.2.1
+
+Four artifacts were still equal to `release` while shared image inputs and
+package code had changed, so the next `main -> release` merge would have failed
+the version gate. Levels reflect what actually moved:
+
+- **agentic-isolation 0.6.0 -> 0.7.0** (minor). Two new public protocols,
+  `SupportsWorkspaceLogs` and `SupportsStagedTeardown`, plus the provider code
+  implementing them. New capability, backward compatible - a consumer that does
+  not use them is unaffected.
+- **agentic-session-store 0.2.0 -> 0.2.1** (patch). Documentation only: the
+  capability adapter is now named `apss` rather than after a vendor, and two
+  docstrings say so. No API change.
+- **claude-cli 2.1.0 -> 2.1.1** and **interactive-tmux 0.2.0 -> 0.2.1** (patch).
+  These record shared-input movement; neither image's own content changed.
+
+**A reported version was wrong, and is now correct.** `agentic-isolation`
+declared `0.6.0` in `pyproject.toml` while `agentic_isolation.__version__`
+returned `0.5.1` - an earlier release moved the manifest and missed the module,
+so anything asking the package its own version got the wrong answer. Both now
+read `0.7.0`. A consumer that pinned or logged `__version__` will see it jump
+from `0.5.1`, which reflects reality rather than a new change.
+
+
 ### 🔁 omni-agent: exporter pinned to v0.4.0
 
 The pinned `agentic-session-exporter` digest moves from v0.3.0 to v0.4.0, and
