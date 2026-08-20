@@ -2095,6 +2095,43 @@ def test_finalize_keeps_partition_and_transcripts_on_a_clean_sweep(tmp_path: Pat
 
 
 @pytest.mark.integration
+def test_finalize_treats_exit_3_as_a_completed_sweep_not_a_failure(tmp_path: Path):
+    """Exit 3 means "the sweep RAN but did not capture everything it found".
+
+    agentic-session-exporter reserves it for a partial capture: the summary
+    line is present and accurate, and something was rejected, oversize,
+    unconfirmed or failed. It is deliberately distinct from the hard-failure 1.
+
+    Before this was handled, any non-zero status took the "upload FAILED"
+    branch and returned early. That would be a regression twice over once a
+    consuming image picks up an exporter that emits 3: a partial capture is
+    reported as a TOTAL upload failure, and the early return skips the
+    rejection record, which is the only thing stopping a LATER sweep printing
+    a false completion claim about the same partition.
+    """
+    summary = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=1 skipped_oversize=0 failed=0"
+    )
+    result, transcript, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        f'echo "{summary}"\nexit 3\n',
+        "exit-3-partial",
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+    assert "FINALIZE_RC=0" in result.stdout, "finalize.sh must always exit 0"
+    assert "upload FAILED" not in result.stderr, (
+        "exit 3 is a completed sweep, not a failed one; reporting it as a "
+        f"total failure hides the counters. stderr={result.stderr}"
+    )
+    # The counter path ran, so the report names what was actually refused.
+    assert "rejected=1" in result.stderr or "REFUSED" in result.stderr, (
+        f"the counter report must survive exit 3. stderr={result.stderr}"
+    )
+    assert transcript.exists(), "nothing is ever deleted on any path"
+
+
+@pytest.mark.integration
 def test_finalize_reports_a_sweep_with_only_duplicate_and_unchanged_as_complete(
     tmp_path: Path,
 ):

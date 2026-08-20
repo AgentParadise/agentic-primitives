@@ -424,6 +424,20 @@ __exporter_rc=$?
 # recovers the missing half. Re-running the exporter is safe and is not a
 # workaround for a lost message: the spool is retained on every path and the
 # store dedups on content_hash, so a repeat sweep re-uploads nothing.
+# EXIT 3 IS NOT A FAILED SWEEP. agentic-session-exporter reserves it for "the
+# sweep RAN but did not capture everything it found": something was rejected,
+# oversize, unconfirmed or failed. The summary line is present and accurate, and
+# the counter reporting below is exactly what an operator needs to see for it.
+#
+# Treating it like rc=1 would be a regression twice over: a partial capture
+# would be reported as a total upload failure, and this function would exit
+# before the rejection record below, which is the only thing that stops a LATER
+# sweep printing a false completion claim. Older exporters never emit 3, so this
+# branch is inert against them.
+if [ "${__exporter_rc}" -eq 3 ]; then
+    __exporter_rc=0
+fi
+
 if [ "${__exporter_rc}" -ne 0 ]; then
     if [ "${__exporter_rc}" -eq 124 ] || [ "${__exporter_rc}" -eq 137 ]; then
         echo "[finalize] session-store upload TIMED OUT after ${__UPLOAD_TIMEOUT_S}s;" \
