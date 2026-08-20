@@ -226,6 +226,40 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # signature with cosign, and change it here in its own commit so a reviewer sees
 # exactly what moved.
 #
+# agentic-session-exporter v0.4.0, verified 2026-08-20:
+#   - cosign verified; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.4.0
+#   - pulled and run out of this exact digest on BOTH linux/amd64 and
+#     linux/arm64; each reports "apss-session-exporter 0.4.0"
+#   - readelf shows neither PT_INTERP nor DT_NEEDED. Checked with readelf's
+#     PRESENCE asserted first and its exit status checked, because a missing
+#     readelf produces the same empty output as a clean binary - that guard
+#     exists in the exporter's own release checks for exactly this reason.
+#     `file` agrees independently: static-pie on amd64, statically linked on
+#     arm64.
+#
+# WHY THIS BUMP. v0.4.0 adds --ignore-state, and the syntropic137 capture
+# probe cannot produce a trustworthy verdict without it. That probe runs the
+# exporter to AUDIT an agent's own workspace, with the state file somewhere
+# the agent can write - so a forged "already sent" entry could make a
+# transcript that never reached the store report as a clean sweep. The
+# exporter runs as the same uid as the audited process, so no location is
+# writable by one and not the other: not READING the file is the only
+# available move.
+#
+# NOT A BEHAVIOUR CHANGE for existing callers. The flag defaults off, and a
+# caller that does not pass it is unaffected. It is additive in the other
+# direction too: --ignore-state with --health or --dry-run is now a usage
+# error (exit 2) rather than false assurance from the forgeable health
+# sidecar, or a silent no-op.
+#
+# CONSUMER ORDERING. An older exporter REJECTS --ignore-state with exit 2,
+# which syntropic137's parser reads as UNKNOWN and turns into a backfill
+# request on every phase. So the consumer must not pass the flag until it
+# pins an image built from this line. Verified against the previous image:
+#   apss-session-exporter: unknown flag: --ignore-state / exit=2
+#
+# Previous pin, for the record:
 # agentic-session-exporter v0.3.0, verified 2026-08-20:
 #   - cosign verified; certificate subject is
 #     .github/workflows/release.yml@refs/tags/v0.3.0
@@ -275,7 +309,7 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # disk so a harness can resume it, which is something a developer does on their
 # own machine, not something a short-lived workspace container ever needs.
 # Copying it would add weight for a path no workspace takes.
-COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:35a074338a71fd0efb1564c7df27310be7ee17527fb57b52aa512a6e1c4f7ad6 \
+COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:ee1445cedd625605df0934786ed71fd619346aba9967c38b928f3bd26174bfce \
      /apss-session-exporter /usr/local/bin/
 
 RUN chmod 755 /usr/local/bin/apss-session-exporter \
@@ -288,7 +322,16 @@ RUN chmod 755 /usr/local/bin/apss-session-exporter \
     `# execute here - at BUILD time, in the layer that caused it, instead` \
     `# of at workspace provision in another repository. It does NOT catch a` \
     `# missing exec bit: the chmod above sets one unconditionally.` \
-    && /usr/local/bin/apss-session-exporter --version
+    `#` \
+    `# ASSERT THE VERSION, do not merely print it. Running --version proves` \
+    `# the binary executes; it does not prove WHICH binary was copied. A pin` \
+    `# edited to a digest that is signed but older still builds green, and` \
+    `# the consumer then gets a workspace whose exporter silently lacks the` \
+    `# flag the pin comment promises. Grepping the output is what turns the` \
+    `# comment above into something CI enforces.` \
+    && /usr/local/bin/apss-session-exporter --version \
+    && /usr/local/bin/apss-session-exporter --version \
+       | grep -q '^apss-session-exporter 0\.4\.0 '
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
 # The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;
