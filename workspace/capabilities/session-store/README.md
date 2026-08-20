@@ -70,16 +70,26 @@ shape, for tests that need the contract satisfied without a real binary
 or real uploads. It is not a substitute for end-to-end testing against
 the real exporter.
 
-## The `seshmagic` provider adapter
+## The `apss` provider adapter
 
-`seshmagic/init.sh` is the adapter for `AGENTIC_SESSION_STORE_PROVIDER=seshmagic`.
+`apss/init.sh` is the adapter for `AGENTIC_SESSION_STORE_PROVIDER=apss`.
+
+**Naming.** This adapter was called `seshmagic` until the exporter became a
+public, standard-conforming client under Agent Paradise. It implements
+APS-V1-0004, not a particular vendor's store, and naming it after one vendor
+implied a dependency the capability does not have - any conforming store works.
+
+`seshmagic` remains a symlink to `apss`, so existing images and any deployment
+still setting `AGENTIC_SESSION_STORE_PROVIDER=seshmagic` keep working. The
+alias is compatibility, not a second implementation: there is one adapter, and
+the old name resolves to it.
 It is sourced by `/opt/agentic/entrypoint.sh` section 5.6 (ADR-040) and
 translates the six `AGENTIC_SESSION_STORE_*` contract vars (`Env` in
 `contract.py`) into the env `SeshMagicSessionExporter` reads:
 
 | Contract var                       | Adapter behavior |
 |-------------------------------------|-------------------|
-| `AGENTIC_SESSION_STORE_PROVIDER`    | selects this adapter (`seshmagic`) |
+| `AGENTIC_SESSION_STORE_PROVIDER`    | selects this adapter (`apss`, or the `seshmagic` alias) |
 | `AGENTIC_SESSION_STORE_URL`         | exported as `SESSION_STORE_URL`. Must be an ORIGIN only: `scheme://host[:port]`, no userinfo, path, query or fragment (see below) |
 | `AGENTIC_SESSION_STORE_AUTH`        | exported as `SESSIONS_WRITE_TOKEN`, only if set |
 | `AGENTIC_SESSION_STORE_TAGS`        | exported as `SESSION_STORE_TAGS`, only if set, and persisted to `.capture-env` (see below) |
@@ -501,13 +511,13 @@ exporter falling back to a state file that is not this partition's.
 The generic entry point runs every check:
 
 ```bash
-AGENTIC_SESSION_STORE_PROVIDER=seshmagic \
+AGENTIC_SESSION_STORE_PROVIDER=apss \
 AGENTIC_SESSION_STORE_URL=http://host.docker.internal:18091 \
 AGENTIC_SESSION_STORE_PARTITION=manual-check \
 /opt/agentic/capabilities/session-store/doctor --json
 ```
 
-`seshmagic/doctor.sh` is a narrower, provider-specific check confirming
+`apss/doctor.sh` is a narrower, provider-specific check confirming
 the exporter's state file is readable/writable and, if present,
 well-formed JSON. It is not currently wired into the generic Python
 doctor's check list (unlike the memory capability's
@@ -515,6 +525,6 @@ doctor's check list (unlike the memory capability's
 env already in the shell, to exercise it:
 
 ```bash
-. /opt/agentic/capabilities/session-store/seshmagic/init.sh
-/opt/agentic/capabilities/session-store/seshmagic/doctor.sh
+. /opt/agentic/capabilities/session-store/apss/init.sh
+/opt/agentic/capabilities/session-store/apss/doctor.sh
 ```
