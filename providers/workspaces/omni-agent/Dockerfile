@@ -179,8 +179,11 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # properties, and only the second answers "should this run alongside a store
 # credential". Provenance is therefore established in CI, before the build:
 # build-workspace-images.yml verifies this exact digest's cosign signature
-# against the exporter repository's release-workflow identity, and the build
-# cannot start if that fails. Reading the digest out of THIS line is what keeps
+# against a GitHub Actions identity in the exporter REPOSITORY, and the build
+# cannot start if that fails. Note the scope honestly: the identity regexp
+# accepts any workflow in that repo, on tags or branches, so it proves the
+# image came from that repository's CI - not that it came from a tagged
+# release. Narrowing it to refs/tags is a worthwhile follow-up. Reading the digest out of THIS line is what keeps
 # the verified image and the copied image the same image.
 #
 # The source image is FROM scratch and exists only to be copied out of.
@@ -198,37 +201,55 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # operator who genuinely needs their own build sets
 # AGENTIC_SESSION_STORE_EXPORTER_BIN, which still wins over everything.
 #
-# GLIBC FLOOR, and the reason this only copies one binary. The exporter release
-# builds on ubuntu-latest (glibc 2.39); this base is Debian 12 (glibc 2.36).
-# apss-session-reconstitute already fails here with
+# GLIBC FLOOR: RESOLVED UPSTREAM as of exporter v0.2.1. The Linux binaries are
+# now statically linked against musl, so they carry no libc floor at all and
+# this base's glibc version is irrelevant to them.
+#
+# Kept as history because the failure was subtle and could recur if anyone
+# moves the release back to a gnu target. Previously the release built for
+# *-unknown-linux-gnu on a runner whose glibc had moved to 2.39, above Debian
+# 12's 2.36, so apss-session-reconstitute failed with
 #
 #   libc.so.6: version `GLIBC_2.39' not found
 #
-# and apss-session-exporter runs only because it happens not to reference a 2.39
-# symbol. That is luck, not compatibility: an unrelated upstream change could
-# introduce one and break provisioning everywhere at once.
+# while apss-session-exporter ran only because it happened not to reference a
+# 2.39 symbol. That was luck, not compatibility.
 #
-# The durable fix belongs upstream - build the release against an older glibc
-# baseline, or ship musl static binaries - and is filed there. Until then, the
-# RUN below is what turns that from a silent production failure into a build
-# failure in this file.
+# The exporter now asserts portability in CI, in its release gate, and in its
+# release, all through one script that checks for absence of PT_INTERP and
+# DT_NEEDED and then runs each binary inside debian:12-slim. The RUN below
+# stays regardless: it is what proves the binary in THIS image works, on both
+# target platforms, rather than trusting that upstream still does.
 #
 # Bump procedure: pick a digest from
 # https://github.com/AgentParadise/agentic-session-exporter/releases, verify its
 # signature with cosign, and change it here in its own commit so a reviewer sees
 # exactly what moved.
 #
-# agentic-session-exporter v0.1.1, verified 2026-08-19: this digest was pulled
-# and the binary run out of it (COPY into debian:12-slim, reports
-# "apss-session-exporter 0.1.1"). v0.1.2 changes only the release workflow's own
-# verification step and produces identical binaries, so there is no reason to
-# chase it here.
+# agentic-session-exporter v0.2.1, verified 2026-08-19:
+#   - cosign verified; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.2.1
+#   - pulled and run out of this exact digest (COPY into debian:12-slim),
+#     reports "apss-session-exporter 0.2.1"
+#   - readelf shows neither PT_INTERP nor DT_NEEDED, so it is genuinely
+#     static (absence of an interpreter alone would not prove that)
+#   - SESSION_STORE_ORIGIN_ENV=laptop is now REFUSED
+#     (Error: InvalidEnvironment("laptop")) rather than written into every
+#     envelope, which is the defect this bump exists to fix
+#
+# Why the bump matters beyond housekeeping: v0.1.1 DEFAULTED
+# origin.environment to "laptop", which is not one of the four classes
+# APS-V1-0004 4.2.1 defines (local, vps, container, workflow). Any session
+# captured without an explicit SESSION_STORE_ORIGIN_ENV was therefore out of
+# spec on a REQUIRED field. (Attribution per deployment is a separate field,
+# origin.deployment, which Syntropic137 sets independently.)
+# Do not pin v0.2.0: its Linux binaries require glibc 2.39 and cannot run here.
+#
 # The EXPORTER only. apss-session-reconstitute writes a stored session back to
 # disk so a harness can resume it, which is something a developer does on their
-# own machine, not something a short-lived workspace container ever needs. It
-# also currently requires GLIBC_2.39 while this base is Debian 12 (2.36), so
-# copying it would put a binary here that cannot run - see the note below.
-COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:a403764b8c102edd872a292d95dab1a68fb60ee981688c3b4f888c79712e6a95 \
+# own machine, not something a short-lived workspace container ever needs.
+# Copying it would add weight for a path no workspace takes.
+COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:63efd7dd800c401fc9cb36b2be8208daf7bc4e315f8e87ae5bb451db8eed4e2d \
      /apss-session-exporter /usr/local/bin/
 
 RUN chmod 755 /usr/local/bin/apss-session-exporter \
@@ -237,9 +258,10 @@ RUN chmod 755 /usr/local/bin/apss-session-exporter \
     `# Execute what was just copied. Buildx runs this once PER TARGET` \
     `# PLATFORM, so it is the only check that proves the arm64 binary is` \
     `# genuinely arm64 rather than an amd64 copy from a single-platform` \
-    `# index. It also catches a missing exec bit, a wrong libc, and a` \
-    `# truncated copy - at BUILD time, in the layer that caused it, instead` \
-    `# of at workspace provision in another repository.` \
+    `# index. It also catches a truncated copy and a binary that cannot` \
+    `# execute here - at BUILD time, in the layer that caused it, instead` \
+    `# of at workspace provision in another repository. It does NOT catch a` \
+    `# missing exec bit: the chmod above sets one unconditionally.` \
     && /usr/local/bin/apss-session-exporter --version
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
