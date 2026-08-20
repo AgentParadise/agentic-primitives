@@ -94,6 +94,9 @@ class WorkspaceDockerProvider(BaseProvider):
         # a container (DinD), resolve() would map to the container's CWD — wrong.
         self._workspace_host_dir = Path(workspace_host_dir) if workspace_host_dir else None
         self._workspaces: dict[str, Workspace] = {}
+        # Container output captured during teardown, keyed by container name.
+        # Insertion-ordered so eviction is oldest-first. See _remember_logs.
+        self._log_snapshots: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
     @property
@@ -278,6 +281,146 @@ class WorkspaceDockerProvider(BaseProvider):
 
         if workspace_dir:
             shutil.rmtree(workspace_dir, ignore_errors=True)
+
+    #: Cap on returned log bytes. `docker logs --tail` bounds LINES, and a
+    #: single agent-controlled line can be arbitrarily long, so lines are not a
+    #: resource bound. Keep the TAIL of the output: the finalizer verdict is
+    #: printed last, during shutdown.
+    _MAX_LOG_BYTES = 256 * 1024
+
+    #: How many teardown snapshots to retain. Bounded so a long-lived provider
+    #: cannot accumulate log text for every container it has ever destroyed.
+    _MAX_LOG_SNAPSHOTS = 64
+
+    async def logs(self, workspace: Workspace, *, tail: int = 200) -> str:
+        """Return the container's combined stdout and stderr (best effort).
+
+        Implements `SupportsWorkspaceLogs`. Does not raise for any operational
+        failure to retrieve logs: it is called during teardown, where the
+        container may already be gone, and a caller reading a capture verdict
+        must not be able to fail the teardown that produced it. Every such path
+        yields "". `asyncio.CancelledError` DOES propagate, because swallowing
+        cancellation would make shutdown hang.
+
+        If the container was destroyed through this provider, the snapshot
+        taken between `docker stop` and `docker rm` is returned instead of
+        querying a container that no longer exists. Without that, the finalizer
+        verdict would be unreachable by construction: it is printed during stop
+        and the container is removed immediately afterwards.
+
+        The returned text is UNTRUSTED - it is whatever the agent and its
+        tooling printed - so callers must parse defensively and must not print
+        it to a terminal unsanitised. It is also FORGEABLE: the agent usually
+        runs as the same user as the finalizer, so a success line read from
+        here is evidence, not proof. See SupportsWorkspaceLogs.
+        """
+        container_name = getattr(workspace, "_handle", None)
+        if not container_name:
+            return ""
+
+        snapshot = self._log_snapshots.get(container_name)
+        if snapshot is not None:
+            return snapshot
+
+        return await self._read_container_logs(container_name, tail=tail)
+
+    async def _read_container_logs(self, container_name: str, *, tail: int) -> str:
+        """`docker logs` with every operational failure collapsed to "".
+
+        Split out so teardown can reuse it while the container still exists.
+        """
+        # A negative or absurd tail asks docker for the entire history, which
+        # defeats the byte cap's purpose of bounding work as well as memory.
+        safe_tail = max(1, min(int(tail), 10_000))
+
+        proc: asyncio.subprocess.Process | None = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker",
+                "logs",
+                "--tail",
+                str(safe_tail),
+                container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            # Drain incrementally into a bounded buffer rather than calling
+            # communicate(), which would materialise the WHOLE response first.
+            # --tail bounds lines, and one agent-controlled line can be
+            # arbitrarily long, so buffering everything and truncating
+            # afterwards bounds the RESULT while leaving memory unbounded -
+            # which during destroy() means an agent could kill the
+            # orchestrator on its way out.
+            out = await asyncio.wait_for(self._drain_tail(proc.stdout), timeout=10)
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.CancelledError:
+            # Shutdown must not be blocked by a best-effort log read.
+            if proc is not None:
+                await self._terminate(proc)
+            raise
+        except (TimeoutError, OSError, ValueError) as exc:
+            logger.debug("docker logs failed for %s: %s", container_name, exc)
+            if proc is not None:
+                await self._terminate(proc)
+            return ""
+        except Exception as exc:  # noqa: BLE001 - contract is "never fail teardown"
+            logger.debug("docker logs raised unexpectedly for %s: %s", container_name, exc)
+            if proc is not None:
+                await self._terminate(proc)
+            return ""
+
+        if proc.returncode != 0:
+            # Expected once the container has been removed. Debug, not warning:
+            # a teardown race here is normal and not actionable.
+            logger.debug("docker logs exited %s for %s", proc.returncode, container_name)
+            return ""
+
+        # NOTE: _MAX_LOG_BYTES bounds the SOURCE bytes retained. Decoding with
+        # errors="replace" turns each invalid byte into U+FFFD, so the decoded
+        # string can re-encode larger than the cap. That is acceptable: the
+        # point is bounding what is read and held, not the exact size of the
+        # returned str.
+        return out.decode(errors="replace")
+
+    @classmethod
+    async def _drain_tail(cls, stream: asyncio.StreamReader | None) -> bytes:
+        """Read to EOF keeping only the last `_MAX_LOG_BYTES` bytes.
+
+        The finalizer verdict is printed last, during shutdown, so the tail is
+        the part worth keeping.
+        """
+        if stream is None:
+            return b""
+        buf = bytearray()
+        while True:
+            chunk = await stream.read(64 * 1024)
+            if not chunk:
+                break
+            buf += chunk
+            excess = len(buf) - cls._MAX_LOG_BYTES
+            if excess > 0:
+                del buf[:excess]
+        return bytes(buf)
+
+    @staticmethod
+    async def _terminate(proc: asyncio.subprocess.Process) -> None:
+        """Kill a subprocess without letting cleanup raise or hang."""
+        try:
+            proc.kill()
+        except (ProcessLookupError, OSError):
+            return  # already exited
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except (TimeoutError, OSError):
+            logger.debug("gave up waiting for a killed docker subprocess")
+
+    def _remember_logs(self, container_name: str, text: str) -> None:
+        """Retain a teardown snapshot, evicting oldest first."""
+        if not text:
+            return
+        self._log_snapshots[container_name] = text
+        while len(self._log_snapshots) > self._MAX_LOG_SNAPSHOTS:
+            self._log_snapshots.pop(next(iter(self._log_snapshots)))
 
     def _build_docker_exec_cmd(
         self,
@@ -564,6 +707,16 @@ class WorkspaceDockerProvider(BaseProvider):
             stderr=asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
+
+        # Between stop and rm is the ONLY window in which the finalizer's
+        # output can still be read: `docker stop` is what triggers finalizers,
+        # and `docker rm` destroys the log stream they wrote to. A caller
+        # asking for logs after destroy() would otherwise always get nothing,
+        # which would make the session-capture verdict unreachable rather than
+        # merely unread.
+        self._remember_logs(
+            container_name, await self._read_container_logs(container_name, tail=200)
+        )
 
         # Remove
         proc = await asyncio.create_subprocess_exec(

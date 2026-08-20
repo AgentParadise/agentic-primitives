@@ -57,6 +57,7 @@ from agentic_isolation.providers import (
     HarnessPlugin,
     HarnessTranscript,
     InteractiveSession,
+    SupportsWorkspaceLogs,
     TranscriptExtractionResult,
     TranscriptSource,
     Workspace,
@@ -101,6 +102,7 @@ __all__ = [
     "SecurityConfig",
     # Providers
     "WorkspaceProvider",
+    "SupportsWorkspaceLogs",
     "Workspace",
     "ExecuteResult",
     "InteractiveSession",
