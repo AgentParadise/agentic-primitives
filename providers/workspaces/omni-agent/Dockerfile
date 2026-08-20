@@ -247,7 +247,7 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # everything it found.
 #
 # EXIT 3 IS A BEHAVIOUR CHANGE for anything treating non-zero as fatal.
-# workspace/capabilities/session-store/seshmagic/finalize.sh was taught about
+# workspace/capabilities/session-store/apss/finalize.sh was taught about
 # it in #359, which is already merged. Do not move this pin ahead of a consumer
 # that has not been.
 #

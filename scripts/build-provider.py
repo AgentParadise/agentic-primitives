@@ -148,7 +148,15 @@ def stage_workspace_runtime(build_context: Path) -> None:
         return
 
     capabilities_dst = workspace_dst / "capabilities"
-    shutil.copytree(capabilities_src, capabilities_dst)
+    # symlinks=True is load-bearing, not a preference. The session-store
+    # capability ships `seshmagic` as a symlink to `apss` so an older config
+    # keeps resolving after the vendor-neutral rename. copytree defaults to
+    # symlinks=False, which DEREFERENCES it into a second real directory: both
+    # names would still work, so nothing fails, while the "one implementation
+    # that cannot drift" guarantee quietly becomes false in every published
+    # image. A staging step that silently changes what an alias MEANS is worse
+    # than one that breaks it.
+    shutil.copytree(capabilities_src, capabilities_dst, symlinks=True)
 
     for path in sorted(capabilities_dst.rglob("*")):
         if path.is_file():
