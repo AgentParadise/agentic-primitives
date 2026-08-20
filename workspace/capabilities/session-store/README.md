@@ -232,11 +232,23 @@ at zero.
 the store confirmed. A refused transcript is now re-sent by the next sweep and
 keeps reporting `rejected`, so the counters no longer forget it.
 
-The record below is kept anyway, for two reasons. The exporter binary is
-operator-supplied and may be older than v0.3.0 or a different build entirely;
-and a sentinel that survives the container is the only thing that can carry
-this fact across a partition whose exporter state was reset. Treat it as
-belt-and-braces now rather than the sole mechanism. Nothing is deleted any more, so this is not data loss; it is
+The record below is kept anyway, for one good reason and one deliberate
+tradeoff.
+
+The reason: the exporter binary is OPERATOR-SUPPLIED. An explicit
+`AGENTIC_SESSION_STORE_EXPORTER_BIN` may point at a build older than v0.3.0 or
+a different implementation entirely, and the doctor enforces no minimum
+version, so this hook cannot assume the fix is present.
+
+The tradeoff: it is a latch, cleared by an operator rather than by a sweep. An
+earlier version of this paragraph also claimed the record was needed to survive
+a reset of the exporter's state file. That was wrong, and worth correcting
+rather than quietly dropping: against v0.3.0 a reset makes the transcript
+eligible for retransmission, because the spool still holds it. The honest cost
+of the latch is the opposite one - the transcript may be re-sent and ACCEPTED
+on a later sweep while this hook still reports INCOMPLETE until the record is
+removed by hand. That is the trade chosen: a stale INCOMPLETE someone must
+clear, rather than a false completion nobody notices. Nothing is deleted any more, so this is not data loss; it is
 a false completion claim, which for a corpus feeding learning loops is the
 expensive failure, because an absent session is exactly what nothing
 downstream can notice.

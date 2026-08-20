@@ -492,10 +492,12 @@ fi
 # transcript is not in the store". A nonzero one is reported as INCOMPLETE and
 # named, so the operator knows what to chase.
 #
-# Note that a rejected item is counted only by the sweep that hit it. The
-# exporter marks state for every item the store returned a result for, rejected
-# included (lib.rs:202-204), so the NEXT sweep counts it as skipped_unchanged
-# and its counters read clean. failed and skipped_oversize are left unmarked
+# Note that a rejected item WAS counted only by the sweep that hit it. Exporters
+# before v0.3.0 marked state for every item the store returned a result for,
+# rejected included, so the NEXT sweep counted it as skipped_unchanged and its
+# counters read clean. v0.3.0 marks only what the store confirmed, so a refused
+# transcript is re-sent and keeps being counted. The binary is
+# operator-supplied, so this file cannot assume which behaviour it has. failed and skipped_oversize are left unmarked
 # and so recur until they resolve. That asymmetry is why a rejection, and only
 # a rejection, is written down: see the block below the counters.
 #
@@ -569,10 +571,25 @@ __incomplete=""
 [ "${__exporter_rc}" -eq 3 ] && [ -z "${__incomplete}" ] && \
     __incomplete="${__incomplete} exporter reported an incomplete sweep (rc=3)"
 
-# --- A REJECTION IS REMEMBERED, because the counters forget it ----------------
+# --- A REJECTION IS REMEMBERED, because the counters MAY forget it -----------
 #
-# A rejection is the one outcome that disappears from the counters after the
-# sweep that hit it, so it is the one outcome this file writes down.
+# With an exporter before v0.3.0 a rejection disappears from the counters after
+# the sweep that hit it, so it is the one outcome this file writes down. v0.3.0
+# fixed that at the source: it marks only what the store confirmed, so a
+# refused transcript is re-sent and keeps being counted.
+#
+# The record is kept because the exporter binary is OPERATOR-SUPPLIED and this
+# file cannot tell which behaviour it has: an explicit
+# AGENTIC_SESSION_STORE_EXPORTER_BIN may point at an older or entirely
+# different build, and the doctor enforces no minimum version. It is also a
+# deliberately conservative latch: once a rejection has been seen, an operator
+# acknowledges it by hand rather than a sweep quietly deciding it is resolved.
+#
+# That second reason is worth stating honestly, because it has a cost. Against
+# a v0.3.0 exporter the transcript may well be re-sent and ACCEPTED on a later
+# sweep, and this file will still report INCOMPLETE until the record is
+# removed. That is the trade chosen: a stale INCOMPLETE an operator must clear,
+# rather than a false completion nobody notices.
 #
 # The exporter marks state for every item the store returned a result for,
 # rejected included (crates/seshmagic-session-store-exporter/src/lib.rs:202-204,
@@ -636,8 +653,9 @@ if [ "${__rejected}" -ne 0 ]; then
         printf '%s\n' "${__REJECTION_RECORD_ID}" > "${__rejection_record}"
     ); then
         echo "[finalize] recorded ${__rejection_record}: the store REFUSED ${__rejected}" \
-             "transcript(s), which the exporter marks as done, so no later sweep can" \
-             "re-detect them from its counters" >&2
+             "transcript(s). An exporter before v0.3.0 marks a rejected item as done," \
+             "so no later sweep re-detects it from its counters; a v0.3.0 or newer" \
+             "exporter re-sends it. This record is cleared by hand either way" >&2
     else
         echo "[finalize] WARNING: could not write ${__rejection_record}, so the" \
              "${__rejected} transcript(s) the store REFUSED are recorded nowhere and a" \
@@ -667,12 +685,14 @@ if [ -n "${__rejection_record}" ] &&
    { [ -e "${__rejection_record}" ] || [ -L "${__rejection_record}" ]; }; then
     echo "[finalize] session-store sweep INCOMPLETE (unresolved rejection recorded at" \
          "${__rejection_record}): this sweep's counters are clean, but the store REFUSED" \
-         "at least one transcript on an earlier sweep and the exporter marks a rejected" \
-         "item as done, so it now counts as skipped_unchanged and no sweep can re-detect" \
-         "it. That transcript is in the spool at ${__part_dir} and is NOT in the store." \
-         "Find out why the store refused it, upload it by hand once that is fixed, then" \
-         "remove ${__rejection_record} to acknowledge; this hook never removes it and" \
-         "will keep reporting INCOMPLETE until you do." >&2
+         "at least one transcript on an earlier sweep. An exporter before v0.3.0 marks a" \
+         "rejected item as done, so it counts as skipped_unchanged and no sweep re-detects" \
+         "it. That transcript is in the spool at ${__part_dir} and this hook cannot" \
+         "confirm it ever reached the store: with an older exporter it certainly did" \
+         "not, and with v0.3.0 or newer it may have been re-sent and accepted since." \
+         "Find out why the store refused it, check whether it is there now, upload it" \
+         "by hand if not, then remove ${__rejection_record} to acknowledge; this hook" \
+         "never removes it and will keep reporting INCOMPLETE until you do." >&2
     exit 0
 fi
 

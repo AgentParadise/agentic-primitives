@@ -679,10 +679,15 @@ partition holding a transcript the store refused and would never hold.
 
 **The root cause is fixed in agentic-session-exporter v0.3.0**, which marks
 only what the store confirmed and counts what it did not. The sentinel
-described below is retained for a build older than that, or a different
-operator-supplied binary, and because it carries the fact across a reset
-exporter state file. It is no longer the only thing standing between a refused
-transcript and a false completion claim. Nothing
+described below is retained because the exporter binary is operator-supplied:
+an explicit override may be older than v0.3.0 or a different implementation,
+and the doctor enforces no minimum version. It is no longer the only thing
+standing between a refused transcript and a false completion claim.
+
+It is a latch, not a detector, and that has a cost worth naming: against a
+v0.3.0 exporter the transcript may be re-sent and accepted on a later sweep
+while the record still forces INCOMPLETE. A stale INCOMPLETE an operator
+clears is the deliberate choice over a false completion nobody notices. Nothing
 is lost from disk any more, so this is a **false completion claim** rather
 than data loss: an operator, or a later automated check reading that log, is
 told the corpus is whole while a session is silently absent from it. For a
