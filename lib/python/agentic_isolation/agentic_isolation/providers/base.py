@@ -235,7 +235,6 @@ class WorkspaceProvider(Protocol):
 
 
 @runtime_checkable
-@runtime_checkable
 class SupportsWorkspaceLogs(Protocol):
     """Optional capability: read back what a workspace wrote to its own output.
 
@@ -273,6 +272,7 @@ class SupportsWorkspaceLogs(Protocol):
         ...
 
 
+@runtime_checkable
 class InteractiveSession(Protocol):
     """Typed port for driving an interactive, prompt-based agent session
     (e.g. a tmux-driven claude/codex/gemini TUI running in a container).
