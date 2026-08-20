@@ -10,12 +10,22 @@ for every `AGENTIC_SESSION_STORE_*` variable this capability reads).
 
 ## Exporter provisioning contract
 
-The workspace image does **not** ship the `SeshMagicSessionExporter`
-binary. The exporter is a reference client of the public APS-V1-0004
-standard, not part of the private store server — vendoring one vendor's
-binary into the image would break the store being dependency-injected,
-and would require build credentials a turnkey user of this image does
-not have.
+**This changed.** The omni-agent image now ships
+`apss-session-exporter`, pinned by digest and cosign-verified before the build
+(see `providers/workspaces/omni-agent/Dockerfile`).
+
+What made that legitimate was the exporter becoming a PUBLIC reference client
+of APS-V1-0004 in its own repository, rather than a binary extracted from a
+private vendor's store. The original objection was never "no binary in the
+image"; it was that vendoring one vendor's build would break the store being
+dependency-injected and would need credentials a turnkey user does not have.
+Neither is true of a public, signed, standard-anchored client.
+
+Images that do not bake it, and any operator overriding the baked one, still
+follow the provisioning contract below. `AGENTIC_SESSION_STORE_EXPORTER_BIN`
+selects a specific binary; the capability resolves the standard-anchored name
+`apss-session-exporter` first and the legacy `SeshMagicSessionExporter`
+second.
 
 The image defines the contract (`exporter_present` looks for
 `SeshMagicSessionExporter` on `PATH` and runs `--version`); deployment
@@ -210,13 +220,23 @@ with `O_CREAT|O_EXCL` and never removed by this adapter. Every later sweep of
 that partition reports `INCOMPLETE` and names the record, instead of
 `session-store upload complete`.
 
-It exists because a rejection vanishes from the counters after the sweep that
-hit it. The exporter marks state for every item the store returned a result
-for, rejected included, on the reasoning that the store processed it and a
-re-send would be wasted. But rejected means the store **refused** it:
-processed, not stored. So sweep 1 reports `rejected=1`, and every sweep after
-that counts the same transcript as `skipped_unchanged` with all three loss
-counters at zero. Nothing is deleted any more, so this is not data loss; it is
+It exists because a rejection USED TO vanish from the counters after the sweep
+that hit it. The exporter marked state for every item the store returned a
+result for, rejected included, on the reasoning that the store processed it and
+a re-send would be wasted. But rejected means the store **refused** it:
+processed, not stored. So sweep 1 reported `rejected=1`, and every sweep after
+counted the same transcript as `skipped_unchanged` with all three loss counters
+at zero.
+
+**Fixed upstream in agentic-session-exporter v0.3.0**, which marks only what
+the store confirmed. A refused transcript is now re-sent by the next sweep and
+keeps reporting `rejected`, so the counters no longer forget it.
+
+The record below is kept anyway, for two reasons. The exporter binary is
+operator-supplied and may be older than v0.3.0 or a different build entirely;
+and a sentinel that survives the container is the only thing that can carry
+this fact across a partition whose exporter state was reset. Treat it as
+belt-and-braces now rather than the sole mechanism. Nothing is deleted any more, so this is not data loss; it is
 a false completion claim, which for a corpus feeding learning loops is the
 expensive failure, because an absent session is exactly what nothing
 downstream can notice.

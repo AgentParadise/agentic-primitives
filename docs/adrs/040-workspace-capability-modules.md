@@ -672,10 +672,17 @@ but "did every transcript reach the store", so the sweep reporting stayed.
 **One sweep's counters do not answer that question, and this section used to
 say they did.** The rejected-transcript defect above is not only a prune
 defect; it is a defect in the signal, and removing the prune left the signal
-half of it in place. The exporter marks a rejected item as done, so every
-later sweep counts it as `skipped_unchanged`, all three loss counters read
-zero, and `finalize.sh` prints `session-store upload complete` about a
-partition holding a transcript the store refused and will never hold. Nothing
+half of it in place. The exporter marked a rejected item as done, so every
+later sweep counted it as `skipped_unchanged`, all three loss counters read
+zero, and `finalize.sh` printed `session-store upload complete` about a
+partition holding a transcript the store refused and would never hold.
+
+**The root cause is fixed in agentic-session-exporter v0.3.0**, which marks
+only what the store confirmed and counts what it did not. The sentinel
+described below is retained for a build older than that, or a different
+operator-supplied binary, and because it carries the fact across a reset
+exporter state file. It is no longer the only thing standing between a refused
+transcript and a false completion claim. Nothing
 is lost from disk any more, so this is a **false completion claim** rather
 than data loss: an operator, or a later automated check reading that log, is
 told the corpus is whole while a session is silently absent from it. For a

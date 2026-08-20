@@ -25,9 +25,11 @@ v0.3.0 marks only what the store confirmed, counts what it did not
 re-sends rather than skipping everything.
 
 **Exit 3 is new and is a behaviour change**: a sweep that ran without capturing
-everything it found no longer exits 0. `finalize.sh` was taught about it first
-(see the entry above), so a partial capture is reported as INCOMPLETE rather
-than as a total upload failure.
+everything it found no longer exits 0. `finalize.sh` was taught about it first,
+in the same release cycle, so a partial capture is reported as INCOMPLETE
+rather than as a total upload failure. It also parses the exporter's new
+`unconfirmed` counter, and treats rc=3 as incompleteness even when every
+counter it knows how to read is zero.
 
 
 ### 🔁 omni-agent: exporter pinned to v0.2.1
