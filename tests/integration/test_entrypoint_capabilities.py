@@ -1948,6 +1948,7 @@ def _finalize_with_stub_exporter(
     stub_body: str | list[str],
     part_name: str,
     budget_s: int = 2,
+    reserved_namespace: bool = False,
 ) -> tuple[subprocess.CompletedProcess, Path, float]:
     """Run finalize.sh against a partition with a stubbed exporter.
 
@@ -1965,6 +1966,13 @@ def _finalize_with_stub_exporter(
     entrypoint.sh passes per exit path. It is kept small here so a hung stub
     fails fast rather than sitting on finalize.sh's generous no-budget
     default.
+
+    reserved_namespace puts EXPORTER_STATE_FILE inside
+    ${SPOOL}/.agentic-session-store/${PARTITION}, which finalize.sh requires
+    before it will write its `.sweep-rejected` record. The default is the
+    legacy layout, where the hook can only warn that it has nowhere to record a
+    rejection, so a test meaning to exercise the RECORD must opt in or it
+    silently exercises the warning instead.
 
     Returns (result, transcript_path, elapsed_seconds). The transcript file
     still existing means the spool was retained.
@@ -1994,13 +2002,25 @@ echo "=== SWEEP {i} ===" >&2
 echo "FINALIZE_RC_{i}=$?"
 """
 
+    state_file = (
+        f"/spool/.agentic-session-store/{part_name}/state.json"
+        if reserved_namespace
+        else f"/spool/{part_name}/state.json"
+    )
+    reserved_mkdir = (
+        f"mkdir -p /spool/.agentic-session-store/{part_name}"
+        if reserved_namespace
+        else ""
+    )
+
     script = f"""
 set -e
 {stage}
+{reserved_mkdir}
 mkdir -p /tmp/fakebin
 export PATH=/tmp/fakebin:$PATH
 export SESSION_STORE_URL=http://unused.invalid
-export EXPORTER_STATE_FILE=/spool/{part_name}/state.json
+export EXPORTER_STATE_FILE={state_file}
 export AGENTIC_FINALIZE_BUDGET_S={budget_s}
 {sweeps}
 echo "FINALIZE_RC=$?"
@@ -2129,6 +2149,57 @@ def test_finalize_treats_exit_3_as_a_completed_sweep_not_a_failure(tmp_path: Pat
         f"the counter report must survive exit 3. stderr={result.stderr}"
     )
     assert transcript.exists(), "nothing is ever deleted on any path"
+
+
+@pytest.mark.integration
+def test_exit_3_rejection_is_recorded_and_survives_into_the_next_sweep(
+    tmp_path: Path,
+):
+    """The reason preventing the early return mattered, asserted directly.
+
+    An earlier version of the exit-3 test only checked that the counters were
+    reported. A regression that parsed counters but returned before writing
+    `.sweep-rejected` would have passed it, and that file is the entire point:
+    the exporter forgets a rejection after the sweep that hit it, so without
+    the record a LATER sweep prints "upload complete" about a partition holding
+    a transcript the store refused.
+
+    Two sweeps, the second deliberately clean, which is what a later run looks
+    like once the rejected transcript is marked done in exporter state.
+    """
+    rejected = (
+        "run: discovered=1 skipped_unchanged=0 uploaded=1 accepted=0 "
+        "duplicate=0 rejected=1 skipped_oversize=0 failed=0"
+    )
+    clean = (
+        "run: discovered=1 skipped_unchanged=1 uploaded=0 accepted=0 "
+        "duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+    )
+    result, _, _ = _finalize_with_stub_exporter(
+        tmp_path,
+        [f'echo "{rejected}"\nexit 3\n', f'echo "{clean}"\nexit 0\n'],
+        "exit-3-recorded",
+        reserved_namespace=True,
+    )
+    assert result.returncode == 0, f"container failed: {result.stderr}"
+
+    marker = (
+        _host_spool(tmp_path)
+        / ".agentic-session-store"
+        / "exit-3-recorded"
+        / ".sweep-rejected"
+    )
+    assert marker.exists(), (
+        "exit 3 must still reach the rejection record; without it a later "
+        f"sweep claims completeness. stderr={result.stderr}"
+    )
+    assert "agentic-session-store-rejection-v1" in marker.read_text(), (
+        "the record must carry its format id"
+    )
+    assert "upload complete" not in result.stderr, (
+        "the SECOND sweep looks clean to the counters, and must still not be "
+        f"reported as complete. stderr={result.stderr}"
+    )
 
 
 @pytest.mark.integration
