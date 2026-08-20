@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Unreleased
+
+### 🔁 omni-agent: exporter pinned to v0.2.1
+
+The pinned `agentic-session-exporter` digest moves from v0.1.1 to v0.2.1.
+
+**The glibc floor recorded under omni-agent 1.1.0's "Known limit" is resolved
+upstream.** The exporter's Linux binaries are statically linked against musl
+now, so they carry no libc floor rather than one that happened to sit above
+Debian 12. That entry is left as-is: it describes what 1.1.0 actually shipped,
+and rewriting it would make a released version look like it contained a fix it
+did not.
+
+Only `apss-session-exporter` is still copied, but the reason has changed. It
+was infeasible to copy `apss-session-reconstitute` before, because it could not
+run on this base. Now it simply is not needed: resuming a stored session is
+something a developer does on their own machine, not something a short-lived
+workspace container ever does.
+
+**Sessions captured with the default origin were out of spec.** v0.1.1
+defaulted `origin.environment` to `laptop`, which is not one of the four
+classes APS-V1-0004 s4.2.1 defines (`local`, `vps`, `container`, `workflow`).
+v0.2.1 detects the class and refuses an out-of-enum value at startup instead of
+writing it.
+
+Do not pin v0.2.0: its Linux binaries require glibc 2.39 and cannot run here.
+
 ## [Unreleased]
 
 ### ✨ The omni workspace image now ships the session-store exporter
@@ -51,21 +78,14 @@ reference client - but the mounted build is no longer the one that runs. Set
 `AGENTIC_SESSION_STORE_EXPORTER_BIN` to keep using a specific binary. This is
 why the provider bump is a minor rather than a patch.
 
-**Known limit (RESOLVED in exporter v0.2.1)**
+**Known limit**
 
-The exporter's release binaries were built against glibc 2.39 while this image
-is Debian 12 (2.36). `apss-session-exporter` ran only because it happened not to
-reference a 2.39 symbol; `apss-session-reconstitute` did, so only the exporter
-was copied. The build executing the copied binary per target platform is what
-surfaced it, so the failure mode was a failed build rather than a broken
-workspace. Tracked as agentic-session-exporter#7 and fixed there: the Linux
-binaries are now statically linked against musl and carry no libc floor.
-
-Only the exporter is still copied, but for a different reason now that
-feasibility is no longer the constraint. `apss-session-reconstitute` writes a
-stored session back to disk so a harness can resume it, which is something a
-developer does on their own machine and not something a short-lived workspace
-container ever needs.
+The exporter's release binaries are built against glibc 2.39 while this image is
+Debian 12 (2.36). `apss-session-exporter` runs because it happens not to
+reference a 2.39 symbol; `apss-session-reconstitute` does, so only the exporter
+is copied. The build now executes the copied binary per target platform, which is
+what surfaced this, so the failure mode is a failed build rather than a broken
+workspace. Upstream fix tracked as agentic-session-exporter#7.
 
 `claude-cli` is unchanged and deliberately still ships no exporter.
 

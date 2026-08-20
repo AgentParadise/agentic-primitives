@@ -179,8 +179,11 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # properties, and only the second answers "should this run alongside a store
 # credential". Provenance is therefore established in CI, before the build:
 # build-workspace-images.yml verifies this exact digest's cosign signature
-# against the exporter repository's release-workflow identity, and the build
-# cannot start if that fails. Reading the digest out of THIS line is what keeps
+# against a GitHub Actions identity in the exporter REPOSITORY, and the build
+# cannot start if that fails. Note the scope honestly: the identity regexp
+# accepts any workflow in that repo, on tags or branches, so it proves the
+# image came from that repository's CI - not that it came from a tagged
+# release. Narrowing it to refs/tags is a worthwhile follow-up. Reading the digest out of THIS line is what keeps
 # the verified image and the copied image the same image.
 #
 # The source image is FROM scratch and exists only to be copied out of.
@@ -255,9 +258,10 @@ RUN chmod 755 /usr/local/bin/apss-session-exporter \
     `# Execute what was just copied. Buildx runs this once PER TARGET` \
     `# PLATFORM, so it is the only check that proves the arm64 binary is` \
     `# genuinely arm64 rather than an amd64 copy from a single-platform` \
-    `# index. It also catches a missing exec bit, a wrong libc, and a` \
-    `# truncated copy - at BUILD time, in the layer that caused it, instead` \
-    `# of at workspace provision in another repository.` \
+    `# index. It also catches a truncated copy and a binary that cannot` \
+    `# execute here - at BUILD time, in the layer that caused it, instead` \
+    `# of at workspace provision in another repository. It does NOT catch a` \
+    `# missing exec bit: the chmod above sets one unconditionally.` \
     && /usr/local/bin/apss-session-exporter --version
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
