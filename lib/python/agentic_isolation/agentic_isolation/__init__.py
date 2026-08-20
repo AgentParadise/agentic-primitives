@@ -62,6 +62,7 @@ from agentic_isolation.providers import (
     Workspace,
     WorkspaceDockerProvider,
     WorkspaceLocalProvider,
+    SupportsWorkspaceLogs,
     WorkspaceProvider,
     exec_argv,
     get_harness,
@@ -101,6 +102,7 @@ __all__ = [
     "SecurityConfig",
     # Providers
     "WorkspaceProvider",
+    "SupportsWorkspaceLogs",
     "Workspace",
     "ExecuteResult",
     "InteractiveSession",

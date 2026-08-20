@@ -279,6 +279,50 @@ class WorkspaceDockerProvider(BaseProvider):
         if workspace_dir:
             shutil.rmtree(workspace_dir, ignore_errors=True)
 
+    async def logs(self, workspace: Workspace, *, tail: int = 200) -> str:
+        """Return the container's combined stdout and stderr (best effort).
+
+        Implements `SupportsWorkspaceLogs`. Never raises: this is called during
+        teardown, where the container may already be gone, and a caller reading
+        a capture verdict must not be able to fail the teardown that produced
+        it. Every failure path yields "".
+
+        The returned text is UNTRUSTED - it is whatever the agent and its
+        tooling printed - so callers must parse defensively.
+        """
+        container_name = workspace._handle
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker",
+                "logs",
+                "--tail",
+                str(tail),
+                container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+        except OSError as exc:
+            logger.debug("docker logs could not start for %s: %s", container_name, exc)
+            return ""
+
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.debug("docker logs timed out for %s", container_name)
+            return ""
+
+        if proc.returncode != 0:
+            # Expected once the container has been removed. Debug, not warning:
+            # a teardown race here is normal and not actionable.
+            logger.debug(
+                "docker logs exited %s for %s", proc.returncode, container_name
+            )
+            return ""
+
+        return (out or b"").decode(errors="replace")
+
     def _build_docker_exec_cmd(
         self,
         container_name: str,

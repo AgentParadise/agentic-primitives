@@ -26,6 +26,7 @@ from agentic_isolation.providers.base import (
     ExecuteResult,
     InteractiveSession,
     Workspace,
+    SupportsWorkspaceLogs,
     WorkspaceProvider,
 )
 from agentic_isolation.providers.docker import WorkspaceDockerProvider
@@ -56,6 +57,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     # Base types
     "WorkspaceProvider",
+    "SupportsWorkspaceLogs",
     "Workspace",
     "ExecuteResult",
     "InteractiveSession",
