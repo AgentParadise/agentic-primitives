@@ -356,8 +356,15 @@ RUN chmod 755 /usr/local/bin/apss-session-exporter \
     `# the binary executes; it does not prove WHICH binary was copied. A pin` \
     `# edited to a digest that is signed but older still builds green, and` \
     `# the consumer then gets a workspace whose exporter silently lacks the` \
-    `# flag the pin comment promises. Grepping the output is what turns the` \
-    `# comment above into something CI enforces.` \
+    `# capability the pin comment promises - for 0.5.0 that is the` \
+    `# sessions array, where for 0.4.0 it was the --ignore-state flag.` \
+    `# Grepping the output is what turns the comment above into something` \
+    `# CI enforces.` \
+    `#` \
+    `# It proves the VERSION, not byte identity: a different digest whose` \
+    `# binary also reports 0.5.0 would pass. That is the intended strength -` \
+    `# the digest pin is what fixes the bytes, and this catches the pin` \
+    `# being moved to something older.` \
     && /usr/local/bin/apss-session-exporter --version \
     && /usr/local/bin/apss-session-exporter --version \
        | grep -q '^apss-session-exporter 0\.5\.0 '
