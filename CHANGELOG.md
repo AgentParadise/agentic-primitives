@@ -33,6 +33,32 @@ read `0.7.0`. A consumer that pinned or logged `__version__` will see it jump
 from `0.5.1`, which reflects reality rather than a new change.
 
 
+### 🔁 omni-agent: exporter pinned to v0.5.0
+
+The pinned `agentic-session-exporter` digest moves from v0.4.0 to v0.5.0, and
+the omni provider version moves to 1.3.0 (minor: the baked binary gains a new
+field in its machine-readable output, backward compatible for anyone who does
+not read it).
+
+**v0.5.0 names the sessions the store confirmed.** `RESULT_SCHEMA_VERSION` goes
+to 2 and the `--json` result gains a `sessions` array holding the ids the store
+acknowledged, not the ids the sweep attempted. Until now a consumer auditing a
+workspace learned only HOW MANY sessions landed, never WHICH, so a count that
+came up short named nothing and the caller could not say what was missing. The
+array is what turns "capture was incomplete" into "session X is absent".
+
+**CONSUMER ORDERING, and it runs the opposite way from the v0.4.0 bump.** There
+the image had to move first, because an older exporter rejected the new flag. A
+schema bump runs consumer-first instead: a consumer pinned to schema 1 alone
+would read a schema 2 result as UNKNOWN. syntropic137's parser already accepts
+both 1 and 2 and that change is merged, so pinning this image cannot regress the
+capture probe. The field is purely additive - nothing removed, nothing renamed -
+so a caller that never reads `sessions` sees exactly the result v0.4.0 gave it.
+
+The build's version assertion moves to `0.5.0` alongside the digest, so a pin
+edited back to an older signed digest fails the build rather than shipping an
+image whose exporter silently lacks what this entry promises.
+
 ### 🔁 omni-agent: exporter pinned to v0.4.0
 
 The pinned `agentic-session-exporter` digest moves from v0.3.0 to v0.4.0, and
