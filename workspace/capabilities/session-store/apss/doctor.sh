@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# SeshMagic provider-specific health check (ADR-040).
+# APS-V1-0004 provider-specific health check (ADR-040).
+#
+# NOTE: the JSON key below is still 'seshmagic_provider_check'. That is a
+# COMPATIBILITY SURFACE - anything parsing this output keys off it - so it is
+# retained deliberately rather than renamed alongside the directory. Migrating
+# it needs a consumer sweep, not a sed.
 #
 # NOT wired into the automatic preflight. Unlike the memory capability's
 # ProviderSpecificCheck, agentic_session_store.doctor's check list (Task 3)

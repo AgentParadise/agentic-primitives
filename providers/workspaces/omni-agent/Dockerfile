@@ -179,8 +179,11 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # properties, and only the second answers "should this run alongside a store
 # credential". Provenance is therefore established in CI, before the build:
 # build-workspace-images.yml verifies this exact digest's cosign signature
-# against the exporter repository's release-workflow identity, and the build
-# cannot start if that fails. Reading the digest out of THIS line is what keeps
+# against a GitHub Actions identity in the exporter REPOSITORY, and the build
+# cannot start if that fails. Note the scope honestly: the identity regexp
+# accepts any workflow in that repo, on tags or branches, so it proves the
+# image came from that repository's CI - not that it came from a tagged
+# release. Narrowing it to refs/tags is a worthwhile follow-up. Reading the digest out of THIS line is what keeps
 # the verified image and the copied image the same image.
 #
 # The source image is FROM scratch and exists only to be copied out of.
@@ -198,37 +201,144 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # operator who genuinely needs their own build sets
 # AGENTIC_SESSION_STORE_EXPORTER_BIN, which still wins over everything.
 #
-# GLIBC FLOOR, and the reason this only copies one binary. The exporter release
-# builds on ubuntu-latest (glibc 2.39); this base is Debian 12 (glibc 2.36).
-# apss-session-reconstitute already fails here with
+# GLIBC FLOOR: RESOLVED UPSTREAM as of exporter v0.2.1. The Linux binaries are
+# now statically linked against musl, so they carry no libc floor at all and
+# this base's glibc version is irrelevant to them.
+#
+# Kept as history because the failure was subtle and could recur if anyone
+# moves the release back to a gnu target. Previously the release built for
+# *-unknown-linux-gnu on a runner whose glibc had moved to 2.39, above Debian
+# 12's 2.36, so apss-session-reconstitute failed with
 #
 #   libc.so.6: version `GLIBC_2.39' not found
 #
-# and apss-session-exporter runs only because it happens not to reference a 2.39
-# symbol. That is luck, not compatibility: an unrelated upstream change could
-# introduce one and break provisioning everywhere at once.
+# while apss-session-exporter ran only because it happened not to reference a
+# 2.39 symbol. That was luck, not compatibility.
 #
-# The durable fix belongs upstream - build the release against an older glibc
-# baseline, or ship musl static binaries - and is filed there. Until then, the
-# RUN below is what turns that from a silent production failure into a build
-# failure in this file.
+# The exporter now asserts portability in CI, in its release gate, and in its
+# release, all through one script that checks for absence of PT_INTERP and
+# DT_NEEDED and then runs each binary inside debian:12-slim. The RUN below
+# stays regardless: it is what proves the binary in THIS image works, on both
+# target platforms, rather than trusting that upstream still does.
 #
 # Bump procedure: pick a digest from
 # https://github.com/AgentParadise/agentic-session-exporter/releases, verify its
 # signature with cosign, and change it here in its own commit so a reviewer sees
 # exactly what moved.
 #
-# agentic-session-exporter v0.1.1, verified 2026-08-19: this digest was pulled
-# and the binary run out of it (COPY into debian:12-slim, reports
-# "apss-session-exporter 0.1.1"). v0.1.2 changes only the release workflow's own
-# verification step and produces identical binaries, so there is no reason to
-# chase it here.
+# agentic-session-exporter v0.5.0, verified 2026-08-21:
+#   - cosign verified keyless; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.5.0, source commit 35584f3
+#   - pulled and run out of this exact index digest on BOTH linux/amd64 and
+#     linux/arm64; each reports
+#     "apss-session-exporter 0.5.0 (APS-V1-0004 SCS 1.0)"
+#   - the two binaries differ in size (9708320 on amd64, 9313192 on arm64),
+#     which is the cheap proof that the index carries two genuine builds rather
+#     than one platform published twice under two names
+#   - /apss-session-exporter and /apss-session-reconstitute are both present at
+#     mode 0755. Only the exporter is copied out; see the closing note below.
+#
+# WHY THIS BUMP. v0.5.0 raises RESULT_SCHEMA_VERSION to 2 and adds a `sessions`
+# array to the --json result: the session ids the STORE confirmed, not the ones
+# the sweep merely attempted. Until now a consumer auditing a workspace learned
+# only HOW MANY sessions landed, never WHICH, so a count that came up short
+# named nothing and the caller had no way to say what was missing. The array is
+# what turns "capture was incomplete" into "session X is absent".
+#
+# CONSUMER ORDERING IS ALREADY SATISFIED, and it runs the opposite way from the
+# v0.4.0 bump. There the image had to move first, because an older exporter
+# REJECTED the new flag. A schema bump runs consumer-first instead: a consumer
+# pinned to schema 1 alone would read a schema 2 result as UNKNOWN. The
+# syntropic137 parser accepts BOTH 1 and 2 and that change is already merged, so
+# pinning this image cannot regress the capture probe. The field is purely
+# additive - nothing removed, nothing renamed - so a caller that never reads
+# `sessions` sees exactly the result v0.4.0 gave it.
+#
+# Previous pin, for the record:
+# agentic-session-exporter v0.4.0, verified 2026-08-20:
+#   - cosign verified; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.4.0
+#   - pulled and run out of this exact digest on BOTH linux/amd64 and
+#     linux/arm64; each reports "apss-session-exporter 0.4.0"
+#   - readelf shows neither PT_INTERP nor DT_NEEDED. Checked with readelf's
+#     PRESENCE asserted first and its exit status checked, because a missing
+#     readelf produces the same empty output as a clean binary - that guard
+#     exists in the exporter's own release checks for exactly this reason.
+#     `file` agrees independently: static-pie on amd64, statically linked on
+#     arm64.
+#
+# WHY THIS BUMP. v0.4.0 adds --ignore-state, and the syntropic137 capture
+# probe cannot produce a trustworthy verdict without it. That probe runs the
+# exporter to AUDIT an agent's own workspace, with the state file somewhere
+# the agent can write - so a forged "already sent" entry could make a
+# transcript that never reached the store report as a clean sweep. The
+# exporter runs as the same uid as the audited process, so no location is
+# writable by one and not the other: not READING the file is the only
+# available move.
+#
+# NOT A BEHAVIOUR CHANGE for existing callers. The flag defaults off, and a
+# caller that does not pass it is unaffected. It is additive in the other
+# direction too: --ignore-state with --health or --dry-run is now a usage
+# error (exit 2) rather than false assurance from the forgeable health
+# sidecar, or a silent no-op.
+#
+# CONSUMER ORDERING. An older exporter REJECTS --ignore-state with exit 2,
+# which syntropic137's parser reads as UNKNOWN and turns into a backfill
+# request on every phase. So the consumer must not pass the flag until it
+# pins an image built from this line. Verified against the previous image:
+#   apss-session-exporter: unknown flag: --ignore-state / exit=2
+#
+# Previous pin, for the record:
+# agentic-session-exporter v0.3.0, verified 2026-08-20:
+#   - cosign verified; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.3.0
+#   - pulled and run out of this exact digest on BOTH linux/amd64 and
+#     linux/arm64; each reports "apss-session-exporter 0.3.0"
+#   - readelf shows neither PT_INTERP nor DT_NEEDED
+#
+# WHY THIS BUMP MATTERS, and why finalize.sh had to change first. v0.2.1's
+# uploader marked every item in a successful batch as done, REJECTIONS
+# INCLUDED. So a transcript the store refused was recorded as sent, the next
+# sweep skipped it as skipped_unchanged, and that sweep reported success. One
+# transient rejection became permanent silent absence from the store. The solo
+# retry path had the same bug, and is the likelier route since it is the
+# fallback for a batch that already failed.
+#
+# v0.3.0 marks only what the store confirmed, counts what it did not
+# (`unconfirmed`), scopes its state to the store so repointing at a new one
+# does not skip everything, and exits 3 for a sweep that ran without capturing
+# everything it found.
+#
+# EXIT 3 IS A BEHAVIOUR CHANGE for anything treating non-zero as fatal.
+# workspace/capabilities/session-store/apss/finalize.sh was taught about
+# it in #359, which is already merged. Do not move this pin ahead of a consumer
+# that has not been.
+#
+# Previous pin, for the record:
+# agentic-session-exporter v0.2.1, verified 2026-08-19:
+#   - cosign verified; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.2.1
+#   - pulled and run out of this exact digest (COPY into debian:12-slim),
+#     reports "apss-session-exporter 0.2.1"
+#   - readelf shows neither PT_INTERP nor DT_NEEDED, so it is genuinely
+#     static (absence of an interpreter alone would not prove that)
+#   - SESSION_STORE_ORIGIN_ENV=laptop is now REFUSED
+#     (Error: InvalidEnvironment("laptop")) rather than written into every
+#     envelope, which is the defect this bump exists to fix
+#
+# Why the bump matters beyond housekeeping: v0.1.1 DEFAULTED
+# origin.environment to "laptop", which is not one of the four classes
+# APS-V1-0004 4.2.1 defines (local, vps, container, workflow). Any session
+# captured without an explicit SESSION_STORE_ORIGIN_ENV was therefore out of
+# spec on a REQUIRED field. (Attribution per deployment is a separate field,
+# origin.deployment, which Syntropic137 sets independently.)
+# Do not pin v0.2.0: its Linux binaries require glibc 2.39 and cannot run here.
+#
 # The EXPORTER only. apss-session-reconstitute writes a stored session back to
 # disk so a harness can resume it, which is something a developer does on their
-# own machine, not something a short-lived workspace container ever needs. It
-# also currently requires GLIBC_2.39 while this base is Debian 12 (2.36), so
-# copying it would put a binary here that cannot run - see the note below.
-COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:a403764b8c102edd872a292d95dab1a68fb60ee981688c3b4f888c79712e6a95 \
+# own machine, not something a short-lived workspace container ever needs.
+# Copying it would add weight for a path no workspace takes.
+COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:6d40917af5ccfb50de9022af4864333577919948c30d00fd53e860ed777cf98b \
      /apss-session-exporter /usr/local/bin/
 
 RUN chmod 755 /usr/local/bin/apss-session-exporter \
@@ -237,10 +347,27 @@ RUN chmod 755 /usr/local/bin/apss-session-exporter \
     `# Execute what was just copied. Buildx runs this once PER TARGET` \
     `# PLATFORM, so it is the only check that proves the arm64 binary is` \
     `# genuinely arm64 rather than an amd64 copy from a single-platform` \
-    `# index. It also catches a missing exec bit, a wrong libc, and a` \
-    `# truncated copy - at BUILD time, in the layer that caused it, instead` \
-    `# of at workspace provision in another repository.` \
-    && /usr/local/bin/apss-session-exporter --version
+    `# index. It also catches a truncated copy and a binary that cannot` \
+    `# execute here - at BUILD time, in the layer that caused it, instead` \
+    `# of at workspace provision in another repository. It does NOT catch a` \
+    `# missing exec bit: the chmod above sets one unconditionally.` \
+    `#` \
+    `# ASSERT THE VERSION, do not merely print it. Running --version proves` \
+    `# the binary executes; it does not prove WHICH binary was copied. A pin` \
+    `# edited to a digest that is signed but older still builds green, and` \
+    `# the consumer then gets a workspace whose exporter silently lacks the` \
+    `# capability the pin comment promises - for 0.5.0 that is the` \
+    `# sessions array, where for 0.4.0 it was the --ignore-state flag.` \
+    `# Grepping the output is what turns the comment above into something` \
+    `# CI enforces.` \
+    `#` \
+    `# It proves the VERSION, not byte identity: a different digest whose` \
+    `# binary also reports 0.5.0 would pass. That is the intended strength -` \
+    `# the digest pin is what fixes the bytes, and this catches the pin` \
+    `# being moved to something older.` \
+    && /usr/local/bin/apss-session-exporter --version \
+    && /usr/local/bin/apss-session-exporter --version \
+       | grep -q '^apss-session-exporter 0\.5\.0 '
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
 # The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;

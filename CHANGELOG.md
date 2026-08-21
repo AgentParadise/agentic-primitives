@@ -7,6 +7,136 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Unreleased
+
+### 📦 Version bookkeeping: agentic-isolation 0.7.0, agentic-session-store 0.2.1, claude-cli 2.1.1, interactive-tmux 0.2.1
+
+Four artifacts were still equal to `release` while shared image inputs and
+package code had changed, so the next `main -> release` merge would have failed
+the version gate. Levels reflect what actually moved:
+
+- **agentic-isolation 0.6.0 -> 0.7.0** (minor). Two new public protocols,
+  `SupportsWorkspaceLogs` and `SupportsStagedTeardown`, plus the provider code
+  implementing them. New capability, backward compatible - a consumer that does
+  not use them is unaffected.
+- **agentic-session-store 0.2.0 -> 0.2.1** (patch). Documentation only: the
+  capability adapter is now named `apss` rather than after a vendor, and two
+  docstrings say so. No API change.
+- **claude-cli 2.1.0 -> 2.1.1** and **interactive-tmux 0.2.0 -> 0.2.1** (patch).
+  These record shared-input movement; neither image's own content changed.
+
+**A reported version was wrong, and is now correct.** `agentic-isolation`
+declared `0.6.0` in `pyproject.toml` while `agentic_isolation.__version__`
+returned `0.5.1` - an earlier release moved the manifest and missed the module,
+so anything asking the package its own version got the wrong answer. Both now
+read `0.7.0`. A consumer that pinned or logged `__version__` will see it jump
+from `0.5.1`, which reflects reality rather than a new change.
+
+
+### 🔁 omni-agent: exporter pinned to v0.5.0
+
+The pinned `agentic-session-exporter` digest moves from v0.4.0 to v0.5.0, and
+the omni provider version moves to 1.3.0 (minor: the baked binary gains a new
+field in its machine-readable output, backward compatible for anyone who does
+not read it).
+
+**v0.5.0 names the sessions the store confirmed.** `RESULT_SCHEMA_VERSION` goes
+to 2 and the `--json` result gains a `sessions` array holding the ids the store
+acknowledged, not the ids the sweep attempted. Until now a consumer auditing a
+workspace learned only HOW MANY sessions landed, never WHICH, so a count that
+came up short named nothing and the caller could not say what was missing. The
+array is what turns "capture was incomplete" into "session X is absent".
+
+**CONSUMER ORDERING, and it runs the opposite way from the v0.4.0 bump.** There
+the image had to move first, because an older exporter rejected the new flag. A
+schema bump runs consumer-first instead: a consumer pinned to schema 1 alone
+would read a schema 2 result as UNKNOWN. syntropic137's parser already accepts
+both 1 and 2 and that change is merged, so pinning this image cannot regress the
+capture probe. The field is purely additive - nothing removed, nothing renamed -
+so a caller that never reads `sessions` sees exactly the result v0.4.0 gave it.
+
+The build's version assertion moves to `0.5.0` alongside the digest, so a pin
+edited back to an older signed digest fails the build rather than shipping an
+image whose exporter silently lacks what this entry promises.
+
+### 🔁 omni-agent: exporter pinned to v0.4.0
+
+The pinned `agentic-session-exporter` digest moves from v0.3.0 to v0.4.0, and
+the omni provider version moves to 1.2.0.
+
+**v0.4.0 adds `--ignore-state`, which a consumer needs before an audit verdict
+can be trusted.** syntropic137 runs the exporter to check an agent's own
+workspace, with the state file somewhere that agent can write. A forged
+"already sent" entry could therefore make a transcript that never reached the
+store report as a clean sweep. The exporter runs as the same uid as the process
+it is auditing, so no path is writable by one and not the other: not READING
+the state file is the only available move, and that is what the flag does.
+
+Not a behaviour change for existing callers. The flag defaults off, and this
+repository's finalizer deliberately does NOT pass it - the finalizer is the
+capture path rather than an audit of one, and it benefits from state skipping
+transcripts that have not changed.
+
+**CONSUMER ORDERING.** An older exporter rejects `--ignore-state` with exit 2,
+which syntropic137's parser reads as UNKNOWN and turns into a backfill request
+on every phase. A consumer must not pass the flag until it pins an image built
+from this digest, so the config change and the digest bump belong in one
+commit. Rolling back only the image while keeping the new probe configuration
+produces backfill churn - not a false clean verdict, but noise that makes the
+indicator worth less.
+
+The build now ASSERTS the exporter version rather than only printing it. A pin
+edited to an older signed digest would otherwise build green while the image
+silently lacked the flag this entry promises.
+
+### 🔁 omni-agent: exporter pinned to v0.3.0
+
+The pinned `agentic-session-exporter` digest moves from v0.2.1 to v0.3.0.
+
+**v0.2.1 recorded a refused transcript as sent.** Its uploader marked every
+item in a successful batch as done, rejections included, so the next sweep
+skipped the refused transcript as `skipped_unchanged` and reported success. One
+transient rejection became permanent silent absence from the store. The solo
+retry path had the same bug, and is the likelier route since it is the fallback
+for a batch that already failed.
+
+v0.3.0 marks only what the store confirmed, counts what it did not
+(`unconfirmed`), and scopes its state to the store so repointing at a new one
+re-sends rather than skipping everything.
+
+**Exit 3 is new and is a behaviour change**: a sweep that ran without capturing
+everything it found no longer exits 0. `finalize.sh` was taught about it first,
+in the same release cycle, so a partial capture is reported as INCOMPLETE
+rather than as a total upload failure. It also parses the exporter's new
+`unconfirmed` counter, and treats rc=3 as incompleteness even when every
+counter it knows how to read is zero.
+
+
+### 🔁 omni-agent: exporter pinned to v0.2.1
+
+The pinned `agentic-session-exporter` digest moves from v0.1.1 to v0.2.1.
+
+**The glibc floor recorded under omni-agent 1.1.0's "Known limit" is resolved
+upstream.** The exporter's Linux binaries are statically linked against musl
+now, so they carry no libc floor rather than one that happened to sit above
+Debian 12. That entry is left as-is: it describes what 1.1.0 actually shipped,
+and rewriting it would make a released version look like it contained a fix it
+did not.
+
+Only `apss-session-exporter` is still copied, but the reason has changed. It
+was infeasible to copy `apss-session-reconstitute` before, because it could not
+run on this base. Now it simply is not needed: resuming a stored session is
+something a developer does on their own machine, not something a short-lived
+workspace container ever does.
+
+**Sessions captured with the default origin were out of spec.** v0.1.1
+defaulted `origin.environment` to `laptop`, which is not one of the four
+classes APS-V1-0004 s4.2.1 defines (`local`, `vps`, `container`, `workflow`).
+v0.2.1 detects the class and refuses an out-of-enum value at startup instead of
+writing it.
+
+Do not pin v0.2.0: its Linux binaries require glibc 2.39 and cannot run here.
+
 ## [Unreleased]
 
 ### ✨ The omni workspace image now ships the session-store exporter

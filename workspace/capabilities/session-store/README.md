@@ -10,12 +10,22 @@ for every `AGENTIC_SESSION_STORE_*` variable this capability reads).
 
 ## Exporter provisioning contract
 
-The workspace image does **not** ship the `SeshMagicSessionExporter`
-binary. The exporter is a reference client of the public APS-V1-0004
-standard, not part of the private store server — vendoring one vendor's
-binary into the image would break the store being dependency-injected,
-and would require build credentials a turnkey user of this image does
-not have.
+**This changed.** The omni-agent image now ships
+`apss-session-exporter`, pinned by digest and cosign-verified before the build
+(see `providers/workspaces/omni-agent/Dockerfile`).
+
+What made that legitimate was the exporter becoming a PUBLIC reference client
+of APS-V1-0004 in its own repository, rather than a binary extracted from a
+private vendor's store. The original objection was never "no binary in the
+image"; it was that vendoring one vendor's build would break the store being
+dependency-injected and would need credentials a turnkey user does not have.
+Neither is true of a public, signed, standard-anchored client.
+
+Images that do not bake it, and any operator overriding the baked one, still
+follow the provisioning contract below. `AGENTIC_SESSION_STORE_EXPORTER_BIN`
+selects a specific binary; the capability resolves the standard-anchored name
+`apss-session-exporter` first and the legacy `SeshMagicSessionExporter`
+second.
 
 The image defines the contract (`exporter_present` looks for
 `SeshMagicSessionExporter` on `PATH` and runs `--version`); deployment
@@ -60,16 +70,26 @@ shape, for tests that need the contract satisfied without a real binary
 or real uploads. It is not a substitute for end-to-end testing against
 the real exporter.
 
-## The `seshmagic` provider adapter
+## The `apss` provider adapter
 
-`seshmagic/init.sh` is the adapter for `AGENTIC_SESSION_STORE_PROVIDER=seshmagic`.
+`apss/init.sh` is the adapter for `AGENTIC_SESSION_STORE_PROVIDER=apss`.
+
+**Naming.** This adapter was called `seshmagic` until the exporter became a
+public, standard-conforming client under Agent Paradise. It implements
+APS-V1-0004, not a particular vendor's store, and naming it after one vendor
+implied a dependency the capability does not have - any conforming store works.
+
+`seshmagic` remains a symlink to `apss`, so existing images and any deployment
+still setting `AGENTIC_SESSION_STORE_PROVIDER=seshmagic` keep working. The
+alias is compatibility, not a second implementation: there is one adapter, and
+the old name resolves to it.
 It is sourced by `/opt/agentic/entrypoint.sh` section 5.6 (ADR-040) and
 translates the six `AGENTIC_SESSION_STORE_*` contract vars (`Env` in
 `contract.py`) into the env `SeshMagicSessionExporter` reads:
 
 | Contract var                       | Adapter behavior |
 |-------------------------------------|-------------------|
-| `AGENTIC_SESSION_STORE_PROVIDER`    | selects this adapter (`seshmagic`) |
+| `AGENTIC_SESSION_STORE_PROVIDER`    | selects this adapter (`apss`, or the `seshmagic` alias) |
 | `AGENTIC_SESSION_STORE_URL`         | exported as `SESSION_STORE_URL`. Must be an ORIGIN only: `scheme://host[:port]`, no userinfo, path, query or fragment (see below) |
 | `AGENTIC_SESSION_STORE_AUTH`        | exported as `SESSIONS_WRITE_TOKEN`, only if set |
 | `AGENTIC_SESSION_STORE_TAGS`        | exported as `SESSION_STORE_TAGS`, only if set, and persisted to `.capture-env` (see below) |
@@ -210,13 +230,35 @@ with `O_CREAT|O_EXCL` and never removed by this adapter. Every later sweep of
 that partition reports `INCOMPLETE` and names the record, instead of
 `session-store upload complete`.
 
-It exists because a rejection vanishes from the counters after the sweep that
-hit it. The exporter marks state for every item the store returned a result
-for, rejected included, on the reasoning that the store processed it and a
-re-send would be wasted. But rejected means the store **refused** it:
-processed, not stored. So sweep 1 reports `rejected=1`, and every sweep after
-that counts the same transcript as `skipped_unchanged` with all three loss
-counters at zero. Nothing is deleted any more, so this is not data loss; it is
+It exists because a rejection USED TO vanish from the counters after the sweep
+that hit it. The exporter marked state for every item the store returned a
+result for, rejected included, on the reasoning that the store processed it and
+a re-send would be wasted. But rejected means the store **refused** it:
+processed, not stored. So sweep 1 reported `rejected=1`, and every sweep after
+counted the same transcript as `skipped_unchanged` with all three loss counters
+at zero.
+
+**Fixed upstream in agentic-session-exporter v0.3.0**, which marks only what
+the store confirmed. A refused transcript is now re-sent by the next sweep and
+keeps reporting `rejected`, so the counters no longer forget it.
+
+The record below is kept anyway, for one good reason and one deliberate
+tradeoff.
+
+The reason: the exporter binary is OPERATOR-SUPPLIED. An explicit
+`AGENTIC_SESSION_STORE_EXPORTER_BIN` may point at a build older than v0.3.0 or
+a different implementation entirely, and the doctor enforces no minimum
+version, so this hook cannot assume the fix is present.
+
+The tradeoff: it is a latch, cleared by an operator rather than by a sweep. An
+earlier version of this paragraph also claimed the record was needed to survive
+a reset of the exporter's state file. That was wrong, and worth correcting
+rather than quietly dropping: against v0.3.0 a reset makes the transcript
+eligible for retransmission, because the spool still holds it. The honest cost
+of the latch is the opposite one - the transcript may be re-sent and ACCEPTED
+on a later sweep while this hook still reports INCOMPLETE until the record is
+removed by hand. That is the trade chosen: a stale INCOMPLETE someone must
+clear, rather than a false completion nobody notices. Nothing is deleted any more, so this is not data loss; it is
 a false completion claim, which for a corpus feeding learning loops is the
 expensive failure, because an absent session is exactly what nothing
 downstream can notice.
@@ -469,13 +511,13 @@ exporter falling back to a state file that is not this partition's.
 The generic entry point runs every check:
 
 ```bash
-AGENTIC_SESSION_STORE_PROVIDER=seshmagic \
+AGENTIC_SESSION_STORE_PROVIDER=apss \
 AGENTIC_SESSION_STORE_URL=http://host.docker.internal:18091 \
 AGENTIC_SESSION_STORE_PARTITION=manual-check \
 /opt/agentic/capabilities/session-store/doctor --json
 ```
 
-`seshmagic/doctor.sh` is a narrower, provider-specific check confirming
+`apss/doctor.sh` is a narrower, provider-specific check confirming
 the exporter's state file is readable/writable and, if present,
 well-formed JSON. It is not currently wired into the generic Python
 doctor's check list (unlike the memory capability's
@@ -483,6 +525,6 @@ doctor's check list (unlike the memory capability's
 env already in the shell, to exercise it:
 
 ```bash
-. /opt/agentic/capabilities/session-store/seshmagic/init.sh
-/opt/agentic/capabilities/session-store/seshmagic/doctor.sh
+. /opt/agentic/capabilities/session-store/apss/init.sh
+/opt/agentic/capabilities/session-store/apss/doctor.sh
 ```

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# SeshMagic session-store capability adapter.
+# APS-V1-0004 session-store capability adapter.
+#
+# Vendor-neutral: this drives apss-session-exporter, the standard's public
+# reference client, and works against any conforming store. Reachable as
+# both 'apss' (canonical) and 'seshmagic' (legacy symlink).
 #
 # Translates the AGENTIC_SESSION_STORE_* contract (ADR-040) into the env
 # SeshMagicSessionExporter reads. Sourced by /opt/agentic/entrypoint.sh

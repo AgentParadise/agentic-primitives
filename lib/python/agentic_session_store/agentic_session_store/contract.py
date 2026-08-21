@@ -23,7 +23,7 @@ DEFAULT_SPOOL = "/spool"
 METADATA_NAMESPACE = ".agentic-session-store"
 """The reserved directory the adapter writes its own metadata under.
 
-Restated from the seshmagic adapter's init.sh (`__META_ROOT`) and its
+Restated from the apss adapter's init.sh (`__META_ROOT`) and its
 finalize.sh (`__RESERVED_SEGMENT`), which are shell and cannot import this.
 The three spellings must agree; `init_marker_path` below is the only reason
 this package needs the name at all.

@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -230,6 +230,115 @@ class WorkspaceProvider(Protocol):
 
         Returns:
             True if file exists
+        """
+        ...
+
+
+@runtime_checkable
+class SupportsWorkspaceLogs(Protocol):
+    """Optional capability: read back what a workspace wrote to its own output.
+
+    Deliberately NOT part of `WorkspaceProvider`. Not every isolation backend
+    has a log stream that outlives the process - a local provider runs in the
+    caller's own stdio, and a future remote backend may expose logs only
+    through its vendor API. Widening the base protocol would force every
+    implementation to grow a method most of them can only raise from, so this
+    is a separate protocol a caller tests for:
+
+        if isinstance(provider, SupportsWorkspaceLogs):
+            tail = await provider.logs(workspace, tail=200)
+
+    The motivating consumer is session capture. A workspace's finalizer runs
+    during shutdown and prints whether the transcript reached the store; that
+    verdict exists only in the container's own output, so without a way to
+    read it back the capture outcome is entirely unobservable.
+
+    DIAGNOSTIC, NOT AUTHORITATIVE. In a typical workspace image the agent and
+    the finalizer run as the same user, so anything the finalizer can print,
+    the agent can also print. A caller must therefore treat a success line read
+    from here as unverified: useful for surfacing "we saw no verdict at all",
+    never sufficient to assert that a transcript was stored. An authoritative
+    answer has to come from a channel the agent cannot write to, such as the
+    host invoking the exporter itself and reading its exit status, or asking
+    the store whether the session arrived.
+    """
+
+    async def logs(self, workspace: Workspace, *, tail: int = 200) -> str:
+        """Return the workspace's combined stdout and stderr.
+
+        Implementations MUST NOT raise when the workspace is already gone; a
+        caller reading logs during teardown is the expected case, and a
+        best-effort empty string is more useful there than an exception. The
+        result is UNTRUSTED: it contains agent-controlled output.
+
+        Args:
+            workspace: Workspace to read from
+            tail: Maximum number of trailing lines to return
+
+        Returns:
+            Combined output, or an empty string if it cannot be read
+        """
+        ...
+
+
+@runtime_checkable
+class SupportsStagedTeardown(Protocol):
+    """Optional capability: run caller work at the safe points inside teardown.
+
+    `destroy()` collapses stopping the container, removing it, and deleting the
+    host workspace directory into one call. For a caller with nothing to do in
+    between that is right, and it stays the default.
+
+    Session capture has work to do in between, and the ordering is forced
+    rather than preferred:
+
+        while the container is still RUNNING
+          -> the HOST invokes the exporter and reads its exit status
+        stop, remove
+        before the workspace directory is deleted
+          -> archive the spool and confirm the archive is durable
+        delete the workspace directory
+
+    The exporter must run while the container is up, because there is nothing
+    to exec into afterwards. The archive must precede deletion, because the
+    workspace directory IS the spool. And it must be confirmed durable before
+    deletion, or a failed upload silently becomes permanent loss.
+
+    WHY HOOKS AND NOT THREE PUBLIC METHODS. An earlier draft exposed
+    `stop_container`, `remove_container` and `delete_workspace_dir` for the
+    caller to sequence itself. Each was individually idempotent, and the order
+    was documented. But the motivating failure here IS permanent loss, and an
+    API whose misuse costs data should not rely on the caller reading a
+    docstring: calling `delete_workspace_dir` first would destroy the spool
+    while the container was still writing to it, and nothing would have
+    stopped it. The order is enforced here instead, so it cannot be got wrong.
+    """
+
+    async def teardown(
+        self,
+        workspace: Workspace,
+        *,
+        while_running: Callable[[], Awaitable[None]] | None = None,
+        before_delete: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """Tear the workspace down, running the hooks at their safe points.
+
+        Args:
+            workspace: Workspace to tear down
+            while_running: Awaited BEFORE the container is stopped, so it may
+                still exec into it. Raising aborts teardown with the container
+                intact, which is recoverable; a caller that would rather
+                proceed should catch its own errors.
+            before_delete: Awaited after the container is gone but BEFORE the
+                workspace directory is deleted. This is where a durable
+                archive belongs. **If it raises, the workspace directory is
+                NOT deleted**, so the data it failed to archive is still there
+                for a retry. That retention is the point: deleting anyway
+                would convert a failed upload into permanent loss.
+
+        Implementations MUST NOT delete the workspace directory when
+        `before_delete` raises, and MUST leave the container stopped and
+        removed regardless, so a failure cannot strand a running container.
         """
         ...
 

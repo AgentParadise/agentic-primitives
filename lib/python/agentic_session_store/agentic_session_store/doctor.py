@@ -214,7 +214,7 @@ def _resolves_to(link_path: str, expected_dir: str) -> tuple[bool, str]:
 def _symlinks_correct(contract: SessionStoreContract) -> CheckResult:
     # The adapter's spool layout (ADR-040) is $SPOOL/$PARTITION/{claude,codex}
     # — two distinct subdirectories, not a single shared partition root. See
-    # the seshmagic adapter's init.sh, which symlinks each harness's
+    # the apss adapter's init.sh, which symlinks each harness's
     # transcript root to its own subdirectory.
     partition_dir = os.path.join(contract.spool, contract.partition)
     claude_dir = os.path.join(partition_dir, "claude")
