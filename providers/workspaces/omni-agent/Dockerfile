@@ -226,6 +226,35 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # signature with cosign, and change it here in its own commit so a reviewer sees
 # exactly what moved.
 #
+# agentic-session-exporter v0.5.0, verified 2026-08-21:
+#   - cosign verified keyless; certificate subject is
+#     .github/workflows/release.yml@refs/tags/v0.5.0, source commit 35584f3
+#   - pulled and run out of this exact index digest on BOTH linux/amd64 and
+#     linux/arm64; each reports
+#     "apss-session-exporter 0.5.0 (APS-V1-0004 SCS 1.0)"
+#   - the two binaries differ in size (9708320 on amd64, 9313192 on arm64),
+#     which is the cheap proof that the index carries two genuine builds rather
+#     than one platform published twice under two names
+#   - /apss-session-exporter and /apss-session-reconstitute are both present at
+#     mode 0755. Only the exporter is copied out; see the closing note below.
+#
+# WHY THIS BUMP. v0.5.0 raises RESULT_SCHEMA_VERSION to 2 and adds a `sessions`
+# array to the --json result: the session ids the STORE confirmed, not the ones
+# the sweep merely attempted. Until now a consumer auditing a workspace learned
+# only HOW MANY sessions landed, never WHICH, so a count that came up short
+# named nothing and the caller had no way to say what was missing. The array is
+# what turns "capture was incomplete" into "session X is absent".
+#
+# CONSUMER ORDERING IS ALREADY SATISFIED, and it runs the opposite way from the
+# v0.4.0 bump. There the image had to move first, because an older exporter
+# REJECTED the new flag. A schema bump runs consumer-first instead: a consumer
+# pinned to schema 1 alone would read a schema 2 result as UNKNOWN. The
+# syntropic137 parser accepts BOTH 1 and 2 and that change is already merged, so
+# pinning this image cannot regress the capture probe. The field is purely
+# additive - nothing removed, nothing renamed - so a caller that never reads
+# `sessions` sees exactly the result v0.4.0 gave it.
+#
+# Previous pin, for the record:
 # agentic-session-exporter v0.4.0, verified 2026-08-20:
 #   - cosign verified; certificate subject is
 #     .github/workflows/release.yml@refs/tags/v0.4.0
@@ -309,7 +338,7 @@ COPY workspace/capabilities/ /opt/agentic/capabilities/
 # disk so a harness can resume it, which is something a developer does on their
 # own machine, not something a short-lived workspace container ever needs.
 # Copying it would add weight for a path no workspace takes.
-COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:ee1445cedd625605df0934786ed71fd619346aba9967c38b928f3bd26174bfce \
+COPY --from=ghcr.io/agentparadise/agentic-session-exporter@sha256:6d40917af5ccfb50de9022af4864333577919948c30d00fd53e860ed777cf98b \
      /apss-session-exporter /usr/local/bin/
 
 RUN chmod 755 /usr/local/bin/apss-session-exporter \
@@ -327,11 +356,18 @@ RUN chmod 755 /usr/local/bin/apss-session-exporter \
     `# the binary executes; it does not prove WHICH binary was copied. A pin` \
     `# edited to a digest that is signed but older still builds green, and` \
     `# the consumer then gets a workspace whose exporter silently lacks the` \
-    `# flag the pin comment promises. Grepping the output is what turns the` \
-    `# comment above into something CI enforces.` \
+    `# capability the pin comment promises - for 0.5.0 that is the` \
+    `# sessions array, where for 0.4.0 it was the --ignore-state flag.` \
+    `# Grepping the output is what turns the comment above into something` \
+    `# CI enforces.` \
+    `#` \
+    `# It proves the VERSION, not byte identity: a different digest whose` \
+    `# binary also reports 0.5.0 would pass. That is the intended strength -` \
+    `# the digest pin is what fixes the bytes, and this catches the pin` \
+    `# being moved to something older.` \
     && /usr/local/bin/apss-session-exporter --version \
     && /usr/local/bin/apss-session-exporter --version \
-       | grep -q '^apss-session-exporter 0\.4\.0 '
+       | grep -q '^apss-session-exporter 0\.5\.0 '
 
 # session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
 # The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;
