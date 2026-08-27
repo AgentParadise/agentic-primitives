@@ -1,5 +1,34 @@
 # Changelog - delegation plugin
 
+## 1.2.3 - 2026-08-27
+
+Removes `--no-session-persistence` from the canonical `claude -p` invocation in
+`delegating-to-claude-p`, and explains when the flag is right and when it
+destroys the only record that a delegated run happened.
+
+The flag suppresses the child's transcript entirely. Its documented rationale -
+"clean one-shot trials do not pollute interactive history" - was written for a
+developer's laptop, where there is an interactive history to pollute. Inside a
+disposable orchestration workspace there is none, and the flag is the single
+reason a delegated child can be invisible to everything downstream.
+
+The consequence was measured on Syntropic137, in both directions:
+
+- A **codex leader delegating to Claude** recorded one session and priced only
+  the leader. The Claude child wrote no transcript, so its tokens exist
+  nowhere, because the canonical recipe here carried the flag while the
+  codex-side recipe did not.
+- A **claude leader delegating to Codex**, run against an image carrying the
+  old recipe, produced the mirror image: the Codex child DID persist, its
+  transcript reached the session store already tagged with `execution_id`,
+  `workflow_id` and `phase_id`, and it was the flag alone that made the
+  reverse case invisible.
+
+Harness session directories are swept into the session-store export partition,
+so a child that persists a transcript is captured automatically and one invoked
+with `--no-session-persistence` is unrecoverable by any mechanism afterwards.
+That asymmetry is now stated in the skill rather than left to be rediscovered.
+
 ## 1.2.2 - 2026-08-18
 
 Makes `< /dev/null` part of the canonical `codex exec` invocation in
