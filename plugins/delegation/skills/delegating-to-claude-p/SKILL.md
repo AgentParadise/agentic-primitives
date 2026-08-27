@@ -20,7 +20,6 @@ claude -p --verbose \
   --append-system-prompt-file ./CLAUDE.md \
   --output-format stream-json --include-hook-events --include-partial-messages \
   --max-budget-usd <N> \
-  --no-session-persistence \
   "$TASK_PROMPT"
 ```
 
@@ -32,7 +31,33 @@ claude -p --verbose \
 - **`--include-hook-events`** - lefthook firings become parseable events in the JSONL stream. Without this, gate-bounce-and-retry behavior (S7) is invisible.
 - **`--include-partial-messages`** - richer tool-call detail; useful when scoring or debugging a transcript.
 - **`--max-budget-usd <N>`** - the hard cap. macOS lacks `timeout` (G-19); this is the only enforced bound. Pick the value from the cost reference below.
-- **`--no-session-persistence`** - clean one-shot trials do not pollute interactive history.
+- **`--no-session-persistence`** - **omitted deliberately.** It suppresses the
+  child's transcript entirely, and the transcript is the only record that a
+  delegated run happened at all. Use it for throwaway trials on a laptop, where
+  the rationale was "clean one-shot trials do not pollute interactive history".
+  Do NOT use it when delegating inside a disposable container: there is no
+  interactive history to pollute there, and the flag is the single reason a
+  delegated child can be invisible to everything downstream. See the note below.
+
+### Why the transcript matters when you are the delegate
+
+A delegated run's transcript is not a convenience, it is the only evidence the
+run occurred. The parent's tool output holds a truncated preview; the child's
+own JSONL holds what it was asked, what it read, what it decided, and its token
+usage.
+
+In an orchestrated workspace this has a concrete consequence. Harness session
+directories are swept into the session-store export partition, so a child that
+persists a transcript is captured automatically, and one invoked with
+`--no-session-persistence` writes nothing and is unrecoverable by any mechanism.
+
+That asymmetry has already been measured: a codex leader delegating to Claude
+was priced and recorded, while its Claude child left no trace, because the
+canonical recipe here carried the flag and the codex-side recipe did not. The
+cost of the delegated leg was simply absent from the execution total.
+
+The flag was correct for the laptop trials this skill was written from. It is
+wrong wherever the delegate's work needs to be attributable.
 
 ## The validated prompt template
 
@@ -84,7 +109,6 @@ claude -p --verbose \
   --append-system-prompt-file ./CLAUDE.md \
   --output-format stream-json --include-hook-events --include-partial-messages \
   --max-budget-usd 1.00 \
-  --no-session-persistence \
   "Add a /version endpoint to the example-rust axum server. Return JSON {\"version\": CARGO_PKG_VERSION}. Add tests. Use conventional commits."
 ```
 
