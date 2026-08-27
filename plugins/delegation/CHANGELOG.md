@@ -6,7 +6,10 @@ Removes `--no-session-persistence` from the canonical `claude -p` invocation in
 `delegating-to-claude-p`, and explains when the flag is right and when it
 destroys the only record that a delegated run happened.
 
-The flag suppresses the child's transcript entirely. Its documented rationale -
+The flag suppresses the child's PERSISTED session on disk. It does not silence
+the `stream-json` on stdout, so a caller that keeps that stream still has
+telemetry; what is lost is the resumable session, and with it anything that
+finds delegated runs by sweeping session directories. Its documented rationale -
 "clean one-shot trials do not pollute interactive history" - was written for a
 developer's laptop, where there is an interactive history to pollute. Inside a
 disposable orchestration workspace there is none, and the flag is the single
@@ -24,10 +27,16 @@ The consequence was measured on Syntropic137, in both directions:
   `workflow_id` and `phase_id`, and it was the flag alone that made the
   reverse case invisible.
 
-Harness session directories are swept into the session-store export partition,
-so a child that persists a transcript is captured automatically and one invoked
-with `--no-session-persistence` is unrecoverable by any mechanism afterwards.
-That asymmetry is now stated in the skill rather than left to be rediscovered.
+Where the session-store capability is enabled and initialised, it links the
+harness session roots into an export partition, so a child that persists a
+session is collected automatically and one invoked with
+`--no-session-persistence` leaves nothing there to collect. That is a property
+of the capability rather than of every orchestrated workspace, and the skill now
+says so rather than leaving it to be rediscovered.
+
+`--ephemeral` is given the same treatment in `delegating-to-codex`. Persistence
+is a property of delegation, not of one CLI, and correcting only the Claude side
+would have left the identical failure reachable from the other direction.
 
 ## 1.2.2 - 2026-08-18
 

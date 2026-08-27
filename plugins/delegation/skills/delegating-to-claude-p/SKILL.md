@@ -27,29 +27,47 @@ claude -p --verbose \
 
 - **`--verbose` + `--output-format stream-json`** - required *together*. Text mode hides tool calls and is unscoreable (S7 footgun: stream-json with `--print` errors without `--verbose`). If you only set one, the transcript is useless for triage.
 - **`--permission-mode bypassPermissions`** - the realistic-autonomy mode. The default mode is read-only (S4 returned no-go because Claude could not write files). `acceptEdits` auto-approves Edit/Write but denies Bash (S5 no-go). Only `bypassPermissions` opens both, which you need for fmt/test/commit loops.
-- **`--append-system-prompt-file ./CLAUDE.md`** - injects project context. CWD auto-discovery also works (verified S11), but explicit is safer when invoking from a wrapper that may not cd into the project root.
+- **`--append-system-prompt-file ./CLAUDE.md`** - injects project context. CWD
+  auto-discovery also works (verified S11). Note what this does NOT do: the
+  path is relative, so it resolves from wherever the caller happens to be, and
+  Claude works relative to that directory too. It is not a way to point a run
+  at a project from outside it. `cd` into the project root first, or pass an
+  absolute path AND cd, if the wrapper's working directory is not guaranteed.
 - **`--include-hook-events`** - lefthook firings become parseable events in the JSONL stream. Without this, gate-bounce-and-retry behavior (S7) is invisible.
 - **`--include-partial-messages`** - richer tool-call detail; useful when scoring or debugging a transcript.
-- **`--max-budget-usd <N>`** - the hard cap. macOS lacks `timeout` (G-19); this is the only enforced bound. Pick the value from the cost reference below.
+- **`--max-budget-usd <N>`** - the built-in SPEND cap, and the only bound the
+  CLI enforces itself. It does not bound wall-clock time: a hung local tool
+  burns no budget and stops nothing. macOS lacks `timeout` (G-19), so for an
+  unattended run pair this with an external bound (`gtimeout`, a CI step
+  limit). Pick the value from the cost reference below.
 - **`--no-session-persistence`** - **omitted deliberately.** It suppresses the
-  child's transcript entirely, and the transcript is the only record that a
-  delegated run happened at all. Use it for throwaway trials on a laptop, where
-  the rationale was "clean one-shot trials do not pollute interactive history".
-  Do NOT use it when delegating inside a disposable container: there is no
-  interactive history to pollute there, and the flag is the single reason a
-  delegated child can be invisible to everything downstream. See the note below.
+  child's on-disk session, which is what a session-store sweep collects. Use it
+  for throwaway trials on a laptop, where the rationale was "clean one-shot
+  trials do not pollute interactive history". Do NOT use it when delegating
+  inside a disposable container: there is no interactive history to pollute
+  there, and it is the difference between a delegated child that downstream
+  tooling can find and one it cannot. See the note below.
 
 ### Why the transcript matters when you are the delegate
 
-A delegated run's transcript is not a convenience, it is the only evidence the
-run occurred. The parent's tool output holds a truncated preview; the child's
-own JSONL holds what it was asked, what it read, what it decided, and its token
-usage.
+A delegated run's transcript is the durable record that the run occurred. The
+parent's tool output holds a truncated preview; the child's own JSONL holds what
+it was asked, what it read, what it decided, and its token usage.
 
-In an orchestrated workspace this has a concrete consequence. Harness session
-directories are swept into the session-store export partition, so a child that
-persists a transcript is captured automatically, and one invoked with
-`--no-session-persistence` writes nothing and is unrecoverable by any mechanism.
+Be precise about what the flag does and does not destroy. It suppresses the
+PERSISTED session on disk. It does not silence the `stream-json` on stdout, so a
+caller that pipes or redirects that stream still has telemetry. What it removes
+is the resumable harness session, and with it anything that finds runs by
+sweeping session directories rather than by capturing stdout.
+
+That distinction matters because of how capture usually works. WHEN THE
+SESSION-STORE CAPABILITY IS ENABLED AND INITIALISED, it links the harness
+session roots into an export partition, so a child that persists a session is
+collected automatically with no extra wiring. A child invoked with
+`--no-session-persistence` writes nothing there, and nothing collects it
+afterwards - the stdout stream is the only remaining copy, and only if somebody
+chose to keep it. This is a property of that capability, not of every
+orchestrated workspace.
 
 That asymmetry has already been measured: a codex leader delegating to Claude
 was priced and recorded, while its Claude child left no trace, because the
