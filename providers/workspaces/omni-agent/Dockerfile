@@ -36,6 +36,10 @@
 # Both harnesses are pinned; bump deliberately.
 ARG CLAUDE_CLI_VERSION=2.1.250
 ARG CODEX_CLI_VERSION=0.150.1
+# The `just` command runner. Pinned like the harnesses above; `latest` would
+# silently change between builds. Bump deliberately, and update the two
+# SHA256 pins in the install layer at the same time - they are per-version.
+ARG JUST_VERSION=1.58.0
 
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
@@ -96,6 +100,67 @@ RUN claude --version && codex --version
 
 # Install the skills CLI globally via npm. Pin exact version deliberately.
 RUN npm install -g skills@1.5.14
+
+# =============================================================================
+# The `just` command runner
+# =============================================================================
+# WHY THIS IS HERE. This image is where agents run against real repositories,
+# and in those repositories `just` is not a convenience - it is the front door
+# to every static check and QA gate they are expected to pass before proposing
+# a change. syntropic137 is the measured case: `just fitness-check`,
+# `just docs-sync`, `just check-workflows`, `just preflight`, `just test` and
+# `just qa` are the documented entry points, and none of them are reachable
+# from a workspace that lacks the binary. A capability probe run inside a real
+# workspace found `just: command not found` at rung 2 and every gate below it
+# unreachable as a consequence (syntropic137/syntropic137#949).
+#
+# THIS GRANTS NO ACCESS. `just` reads a justfile from the repository the agent
+# already has checked out and runs commands the agent could already run by
+# hand through Bash. It is a missing binary, not a widened permission - the
+# recipes it fronts are exactly the ones the repo's own contributors run.
+#
+# WHY A RELEASE TARBALL RATHER THAN apt. Debian 12's `just` is old enough that
+# recipes written against modern syntax fail on it, and its version moves with
+# the base image rather than with this pin. The upstream release is a
+# statically linked musl binary with no libc floor, which is the same property
+# that makes the session-store exporter safe to bake here.
+#
+# WHY THE CHECKSUM. The digest pin on the exporter COPY above fixes bytes
+# because a registry digest is content-addressed; a `releases/download` URL is
+# not, so the SHA256 is what plays that role. Both values come from the
+# SHA256SUMS asset published with just v1.58.0. Verifying BEFORE unpacking is
+# deliberate: a checksum checked after extraction has already run the risk it
+# exists to prevent.
+#
+# ASSERT THE VERSION, do not merely print it - the same reasoning the exporter
+# check below is built on. Running `just --version` proves the binary executes;
+# it does not prove WHICH binary landed. The grep is what makes an edit that
+# moves ARG JUST_VERSION without moving the two checksums fail loudly instead
+# of shipping a mismatch.
+#
+# ARCHITECTURE. `dpkg --print-architecture` rather than buildx's TARGETARCH,
+# matching the gh install in stage 1. TARGETARCH is only populated under
+# buildx; dpkg is correct under both buildx and a plain `docker build`, which
+# is what a maintainer reproducing this locally will use.
+ARG JUST_VERSION
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "${arch}" in \
+      amd64) just_target="x86_64-unknown-linux-musl"; \
+             just_sha256="4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d" ;; \
+      arm64) just_target="aarch64-unknown-linux-musl"; \
+             just_sha256="748237128c4c40cbdabc65e841d05ceba13cc23a91eaba395495894c1d9764df" ;; \
+      *) echo "unsupported architecture for just: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    tarball="just-${JUST_VERSION}-${just_target}.tar.gz"; \
+    curl -fsSL -o "/tmp/${tarball}" \
+      "https://github.com/casey/just/releases/download/${JUST_VERSION}/${tarball}"; \
+    echo "${just_sha256}  /tmp/${tarball}" | sha256sum -c -; \
+    tar -xzf "/tmp/${tarball}" -C /tmp just; \
+    install -m 755 /tmp/just /usr/local/bin/just; \
+    rm -f "/tmp/${tarball}" /tmp/just; \
+    just --version; \
+    just --version | grep -q "^just ${JUST_VERSION}$"
 
 # =============================================================================
 # Stage 3: Install Python packages from staged wheels
@@ -396,7 +461,7 @@ RUN chmod -R 755 /opt/agentic/plugins \
 # Verify core installations (before security hardening).
 # Both harnesses are verified: an omni image with one working harness is a
 # broken omni image, not a degraded one.
-RUN claude --version && codex --version && python3 --version && node --version && uv --version && gh --version
+RUN claude --version && codex --version && python3 --version && node --version && uv --version && gh --version && just --version
 
 # Verify the capability runtime the image claims to host: both doctors must
 # be importable from the venv this image ships.
