@@ -1,5 +1,43 @@
 # Changelog - delegation plugin
 
+## 1.2.3 - 2026-08-27
+
+Removes `--no-session-persistence` from the canonical `claude -p` invocation in
+`delegating-to-claude-p`, and explains when the flag is right and when it
+destroys the only record that a delegated run happened.
+
+The flag suppresses the child's PERSISTED session on disk. It does not silence
+the `stream-json` on stdout, so a caller that keeps that stream still has
+telemetry; what is lost is the resumable session, and with it anything that
+finds delegated runs by sweeping session directories. Its documented rationale -
+"clean one-shot trials do not pollute interactive history" - was written for a
+developer's laptop, where there is an interactive history to pollute. Inside a
+disposable orchestration workspace there is none, and the flag is the single
+reason a delegated child can be invisible to everything downstream.
+
+The consequence was measured on Syntropic137, in both directions:
+
+- A **codex leader delegating to Claude** recorded one session and priced only
+  the leader. The Claude child wrote no transcript, so its tokens exist
+  nowhere, because the canonical recipe here carried the flag while the
+  codex-side recipe did not.
+- A **claude leader delegating to Codex**, run against an image carrying the
+  old recipe, produced the mirror image: the Codex child DID persist, its
+  transcript reached the session store already tagged with `execution_id`,
+  `workflow_id` and `phase_id`, and it was the flag alone that made the
+  reverse case invisible.
+
+Where the session-store capability is enabled and initialised, it links the
+harness session roots into an export partition, so a child that persists a
+session is collected automatically and one invoked with
+`--no-session-persistence` leaves nothing there to collect. That is a property
+of the capability rather than of every orchestrated workspace, and the skill now
+says so rather than leaving it to be rediscovered.
+
+`--ephemeral` is given the same treatment in `delegating-to-codex`. Persistence
+is a property of delegation, not of one CLI, and correcting only the Claude side
+would have left the identical failure reachable from the other direction.
+
 ## 1.2.2 - 2026-08-18
 
 Makes `< /dev/null` part of the canonical `codex exec` invocation in

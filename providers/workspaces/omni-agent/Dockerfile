@@ -34,8 +34,8 @@
 # Global build args (declared before any FROM so all stages can inherit).
 # Stages that need these must re-declare `ARG <name>` without a default.
 # Both harnesses are pinned; bump deliberately.
-ARG CLAUDE_CLI_VERSION=2.1.126
-ARG CODEX_CLI_VERSION=0.144.6
+ARG CLAUDE_CLI_VERSION=2.1.250
+ARG CODEX_CLI_VERSION=0.150.1
 
 # =============================================================================
 # Stage 1: Node.js base with system dependencies

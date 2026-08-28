@@ -67,9 +67,16 @@ Omitting it is the single most common way these invocations fail.
   failure mode in practice.
 - Useful additions: **`-m <model>`** to pin the model (otherwise the config
   default is used), **`--output-schema <file>`** to force a structured final
-  response, **`--ephemeral`** for a clean one-shot that persists no session
-  (the analog of `claude -p --no-session-persistence`),
-  **`--skip-git-repo-check`** to run outside a git repo.
+  response, **`--skip-git-repo-check`** to run outside a git repo.
+- **`--ephemeral`** - **omitted deliberately**, for the same reason
+  `--no-session-persistence` is omitted from the `claude -p` recipe. It
+  persists no session, so the delegated run leaves no on-disk rollout for a
+  session-store sweep to collect. Persistence is a property of DELEGATION, not
+  of one CLI: suppressing it on either side loses the same thing.
+  The narrow case where it is right is explicitly throwaway local work, where
+  you intend not to keep a resumable transcript. If a run persists something
+  you did not want kept, fix that in the session-store or `$HOME`
+  configuration; do not reach for this flag to work around it.
 
 ## The sandbox / approval ladder
 
@@ -138,7 +145,7 @@ consume tokens until it finishes or is killed by hand.
 needing you to describe one:
 
 ```sh
-codex exec review --base main --json -o ./review.md --ephemeral < /dev/null
+codex exec review --base main --json -o ./review.md < /dev/null
 codex exec review --uncommitted --json -o ./review.md < /dev/null
 codex exec review --commit <SHA> --json -o ./review.md < /dev/null
 ```
