@@ -1,5 +1,26 @@
 # Changelog - delegation plugin
 
+## 1.2.4 - 2026-08-28
+
+Names the workspace container as a case where
+`--dangerously-bypass-approvals-and-sandbox` is the correct flag for
+`delegating-to-codex`.
+
+The sandbox ladder scoped that flag to "when the host is already externally
+sandboxed" without saying a workspace container **is** that case, so readers
+reasonably avoided the alarming-sounding flag, chose `-s workspace-write`, and
+hit a wall.
+
+Inside Docker, `-s workspace-write` makes Codex sandbox itself with bubblewrap,
+which needs an unprivileged user namespace Docker does not grant. The first
+line of the resulting output is misleading - it reports that bubblewrap was not
+found on PATH and that a bundled copy will be used, sending readers off to
+install bubblewrap, which does not help. The actual fault is the denied
+namespace two lines later, and the symptom is that every file write fails.
+
+Verified in Syntropic137 workspace containers running claude -> codex
+delegation. Laptop guidance is unchanged.
+
 ## 1.2.3 - 2026-08-27
 
 Removes `--no-session-persistence` from the canonical `claude -p` invocation in
