@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔧 omni-agent 1.5.0: `just` is installed in the workspace image
+
+The image now ships the `just` command runner, pinned to v1.58.0 and verified
+by SHA256 against the checksums published with that release.
+
+**Why.** A capability probe run inside a real agent workspace, against a repo
+that was already checked out, found `just: command not found`. In the
+repositories these workspaces target, `just` is not a convenience: it is the
+front door to every static check and QA gate a contributor is expected to pass
+before proposing a change (`just fitness-check`, `just docs-sync`,
+`just check-workflows`, `just preflight`, `just test`, `just qa`). Without the
+binary, an agent can write a change but cannot run a single one of the gates
+that would tell it whether the change is correct. Tracked as
+syntropic137/syntropic137#949.
+
+**This grants no additional access.** `just` runs recipes out of a justfile in
+a repository the agent already has, invoking commands the agent could already
+run by hand through Bash. It is a missing binary, not a widened permission.
+
+**MINOR, not patch.** New capability, backward compatible: nothing is removed
+or renamed, and an image consumer that never invokes `just` sees the behaviour
+1.4.0 gave it. `/usr/local/bin/just` was previously absent, so nothing can be
+shadowed by it.
+
+**Pinned, not fetched latest**, consistent with how this image pins
+claude-code, codex, the skills CLI, uv, and the session-store exporter. The
+upstream release is a statically linked musl binary, so it carries no libc
+floor against this base. Bumping `ARG JUST_VERSION` requires moving the two
+per-architecture SHA256 pins in the same layer; the `--version` grep at the end
+of that layer fails the build if the two ever disagree.
+
 ### 📦 omni-agent 1.4.0: claude-code 2.1.250, codex 0.150.1
 
 MINOR rather than PATCH because the image's *behaviour* changes, not only its
