@@ -14,6 +14,11 @@ use serde_json::{json, Value};
 
 use itmux::adapter::{Agent, AGENTS};
 use itmux::registry;
+use itmux::run::contract::{AgentRunEvent, AgentRunLimits, AgentRunSpec};
+use itmux::run::orchestrator::CancelToken;
+#[cfg(unix)]
+use itmux::run::orchestrator::{CancelEscalator, SignalKind};
+use itmux::run::workspace_executor::{generate_run_id, now_rfc3339, run as run_orchestrated};
 use itmux::workspace::{
     StartOptions, Workspace, DEFAULT_IMAGE, DEFAULT_STARTUP_TIMEOUT_S, DEFAULT_TMUX_COLS,
     DEFAULT_TMUX_ROWS, DEFAULT_WORKDIR,
@@ -99,6 +104,71 @@ enum Cmd {
         #[arg(long)]
         name: String,
     },
+    /// Run a recipe end-to-end: provision -> submit -> await -> capture ->
+    /// stop, streaming R6 event JSONL on stdout and emitting a final result.
+    Run {
+        /// Path to a recipe directory (EXP-0005 shape).
+        #[arg(long)]
+        recipe: PathBuf,
+        /// The task text handed to the recipe's default agent.
+        #[arg(long)]
+        task: String,
+        /// Container image. Defaults to the interactive-tmux workspace image.
+        #[arg(long, default_value = DEFAULT_IMAGE)]
+        image: String,
+        /// Emit event JSONL on stdout (on by default). `--json false`
+        /// suppresses the event stream and prints only a human result summary.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        json: bool,
+        /// Write the final `AgentRunResult` JSON to this file instead of a
+        /// `type:"result"` line on stdout.
+        #[arg(long)]
+        result_file: Option<PathBuf>,
+        /// Wall-clock timeout, in seconds, for the whole run. Maps to
+        /// `AgentRunSpec.limits.timeout_s`. When omitted, the orchestrator's
+        /// default await bound applies (behaviour unchanged from before this
+        /// flag existed). Must be a finite, strictly-positive number - a
+        /// non-finite or non-positive value is rejected with a clean CLI error
+        /// (never a downstream `Duration::from_secs_f64` panic).
+        #[arg(long, value_parser = parse_positive_timeout)]
+        timeout: Option<f64>,
+    },
+}
+
+/// Clap value parser for `--timeout`: accept only a finite, strictly-positive
+/// number of seconds. Rejects `<= 0.0` (an instant/zero timeout is meaningless)
+/// and non-finite values (`NaN`, `inf`) with a message clap renders as a clean
+/// CLI error - this is what keeps `Duration::from_secs_f64` from ever seeing a
+/// value that would panic.
+fn parse_positive_timeout(raw: &str) -> Result<f64, String> {
+    let value: f64 = raw
+        .parse()
+        .map_err(|_| format!("'{raw}' is not a number"))?;
+    if !value.is_finite() {
+        return Err(format!("timeout must be a finite number, got '{raw}'"));
+    }
+    if value <= 0.0 {
+        return Err(format!("timeout must be greater than 0, got '{raw}'"));
+    }
+    Ok(value)
+}
+
+/// Build the `AgentRunSpec` for `itmux run` from the CLI inputs. Pure so the
+/// `--timeout -> limits.timeout_s` mapping is unit-testable without spawning a
+/// run. When `timeout` is `None`, `limits` stays `None` so the default await
+/// bound is unchanged (R6: additive, no behaviour change when omitted).
+fn build_run_spec(recipe: PathBuf, task: String, timeout: Option<f64>) -> AgentRunSpec {
+    AgentRunSpec {
+        recipe,
+        task,
+        input_artifacts: Vec::new(),
+        credentials: Default::default(),
+        observability: Vec::new(),
+        limits: timeout.map(|timeout_s| AgentRunLimits {
+            timeout_s: Some(timeout_s),
+            token_budget: None,
+        }),
+    }
 }
 
 fn parse_agent(s: &str) -> Result<Agent, String> {
@@ -400,6 +470,141 @@ fn handle_stop(name: String) -> ExitCode {
     }
 }
 
+/// Install a SIGINT/SIGTERM watcher that folds signals into `cancel` via the
+/// two-tier [`CancelEscalator`]. Returns the signal handle + the watcher thread
+/// so the caller can stop and join it after the run.
+///
+/// Signal safety: `signal_hook::iterator::Signals` registers an
+/// async-signal-safe handler (a self-pipe write) inside the crate; the closure
+/// below runs on an ORDINARY thread draining that pipe, so it may safely call
+/// into the `CancelToken`. No `unsafe` and no work in handler context.
+#[cfg(unix)]
+fn install_signal_watcher(
+    cancel: CancelToken,
+) -> Option<(signal_hook::iterator::Handle, std::thread::JoinHandle<()>)> {
+    use signal_hook::consts::{SIGINT, SIGTERM};
+    use signal_hook::iterator::Signals;
+
+    let mut signals = match Signals::new([SIGINT, SIGTERM]) {
+        Ok(signals) => signals,
+        Err(err) => {
+            eprintln!("[itmux run] could not install signal handler (run is uncancellable): {err}");
+            return None;
+        }
+    };
+    let handle = signals.handle();
+    let join = std::thread::spawn(move || {
+        let mut escalator = CancelEscalator::new();
+        for signal in signals.forever() {
+            let kind = if signal == SIGTERM {
+                SignalKind::Terminate
+            } else {
+                SignalKind::Interrupt
+            };
+            escalator.on_signal(kind, &cancel);
+        }
+    });
+    Some((handle, join))
+}
+
+fn handle_run(
+    recipe: PathBuf,
+    task: String,
+    image: String,
+    json: bool,
+    result_file: Option<PathBuf>,
+    timeout: Option<f64>,
+) -> ExitCode {
+    let spec = build_run_spec(recipe, task, timeout);
+    let run_id = generate_run_id();
+    let cancel = CancelToken::new();
+
+    // Wire OS signals to the two-tier cancellation (Task 6): first Ctrl-C ->
+    // graceful, second Ctrl-C or SIGTERM -> hard. On any signal path the
+    // orchestrator's single terminalization still tears the workspace down
+    // exactly once, so there is no orphaned container even on Ctrl-C. The
+    // watcher runs on a normal thread (unix only); non-unix builds skip it.
+    #[cfg(unix)]
+    let signal_watcher = install_signal_watcher(cancel.clone());
+
+    // Emit each event as one JSON line on stdout (R6: stdout is PURE
+    // AgentRunEvent JSONL; stderr stays human-only). Count events so the final
+    // result event (below) continues the monotonic `seq`.
+    let event_seq = std::cell::Cell::new(0u64);
+    let mut emit = |event: &AgentRunEvent| {
+        event_seq.set(event_seq.get().max(event.seq + 1));
+        if json {
+            match serde_json::to_string(event) {
+                Ok(line) => println!("{line}"),
+                Err(err) => eprintln!("[itmux run] failed to serialize event: {err}"),
+            }
+        }
+    };
+
+    let run_result = run_orchestrated(&spec, &image, &run_id, &cancel, &mut emit);
+
+    // Stop the signal watcher before handling the result (best-effort).
+    #[cfg(unix)]
+    if let Some((handle, join)) = signal_watcher {
+        handle.close();
+        let _ = join.join();
+    }
+
+    let result = match run_result {
+        Ok(result) => result,
+        Err(err) => {
+            // Precondition failure (e.g. the recipe failed to load) before any
+            // workspace was provisioned - nothing to tear down.
+            eprintln!("[itmux run] {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let success = result.result.success;
+
+    // Deliver the final result. When a result file is given, write it THERE and
+    // keep stdout as pure event JSONL. Otherwise, in JSON mode, emit the result
+    // as a real AgentRunEvent (`type:"result"`) so EVERY stdout line still
+    // parses as an AgentRunEvent (Fix 4 / R6 stdout purity).
+    match result_file {
+        Some(path) => match serde_json::to_vec_pretty(&result) {
+            Ok(bytes) => {
+                if let Err(err) = std::fs::write(&path, bytes) {
+                    eprintln!(
+                        "[itmux run] failed to write result file {}: {err}",
+                        path.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("[itmux run] failed to serialize result: {err}");
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            if json {
+                let event = AgentRunEvent::result(&run_id, event_seq.get(), now_rfc3339(), result);
+                match serde_json::to_string(&event) {
+                    Ok(line) => println!("{line}"),
+                    Err(err) => eprintln!("[itmux run] failed to serialize result: {err}"),
+                }
+            } else {
+                println!(
+                    "run {}: success={} - {}",
+                    run_id, result.result.success, result.result.summary
+                );
+            }
+        }
+    }
+
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(3)
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.cmd {
@@ -434,5 +639,60 @@ fn main() -> ExitCode {
         Cmd::Capture { name, agent } => handle_capture(name, agent),
         Cmd::Exec { name, argv } => handle_exec(name, argv),
         Cmd::Stop { name } => handle_stop(name),
+        Cmd::Run {
+            recipe,
+            task,
+            image,
+            json,
+            result_file,
+            timeout,
+        } => handle_run(recipe, task, image, json, result_file, timeout),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_run_spec_maps_timeout_to_limits_timeout_s() {
+        let spec = build_run_spec(
+            PathBuf::from("/recipes/hello"),
+            "do the thing".to_string(),
+            Some(12.5),
+        );
+        let limits = spec.limits.expect("timeout should populate limits");
+        assert_eq!(limits.timeout_s, Some(12.5));
+        // Only the timeout is set; the token budget stays unset.
+        assert_eq!(limits.token_budget, None);
+    }
+
+    #[test]
+    fn parse_positive_timeout_accepts_a_finite_positive_value() {
+        assert_eq!(parse_positive_timeout("2.5"), Ok(2.5));
+    }
+
+    #[test]
+    fn parse_positive_timeout_rejects_non_positive_and_non_finite() {
+        // Each of these would reach Duration::from_secs_f64 and panic if it
+        // slipped through - the parser must reject them cleanly instead.
+        for bad in ["-1", "0", "NaN", "inf", "-inf", "not-a-number"] {
+            assert!(
+                parse_positive_timeout(bad).is_err(),
+                "expected {bad:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn build_run_spec_without_timeout_leaves_limits_none() {
+        // Omitting --timeout must not change existing behaviour: no limits, so
+        // the orchestrator's default await bound applies.
+        let spec = build_run_spec(
+            PathBuf::from("/recipes/hello"),
+            "do the thing".to_string(),
+            None,
+        );
+        assert!(spec.limits.is_none());
     }
 }

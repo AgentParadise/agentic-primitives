@@ -14,7 +14,7 @@ The agentic-primitives hook system supports **two distinct execution patterns** 
 Claude Code CLI
     │ triggers
     ▼
-File-based hooks (.claude/hooks/)
+File-based hooks (plugins/<plugin>/hooks/)
     │ write to
     ▼
 .agentic/analytics/events.jsonl
@@ -163,19 +163,24 @@ sequenceDiagram
 ## File Structure
 
 ```
-primitives/v1/hooks/
-├── handlers/                    # Entry points (3 files)
+plugins/sdlc/hooks/
+├── hooks.json                   # Event registration
+├── handlers/                    # Entry points
 │   ├── pre-tool-use.py         # Routes PreToolUse events
-│   ├── post-tool-use.py        # Logs PostToolUse events
 │   └── user-prompt.py          # Validates user prompts
 │
 └── validators/                  # Pure functions
     ├── security/
     │   ├── bash.py             # Shell command validation
-    │   └── file.py             # File operation validation
+    │   ├── file.py             # File operation validation
+    │   └── python.py           # Python source validation
     └── prompt/
         └── pii.py              # PII detection
 ```
+
+`plugins/workspace/hooks/handlers/` and
+`plugins/observability/hooks/handlers/` carry the lifecycle and telemetry
+handlers, including `post-tool-use.py`.
 
 ## Key Design Principles
 
@@ -269,37 +274,37 @@ graph LR
     style D fill:#9f9,stroke:#333,color:#000
 ```
 
-## Settings.json Configuration
+## hooks.json Configuration
+
+Hooks are declared per plugin, in `plugins/<plugin>/hooks/hooks.json`, and
+resolve their handler paths through `${CLAUDE_PLUGIN_ROOT}`. This is
+`plugins/sdlc/hooks/hooks.json`, verbatim:
 
 ```json
 {
   "hooks": {
     "PreToolUse": [{
-      "matcher": "*",
+      "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/pre-tool-use.py",
-        "timeout": 10
-      }]
-    }],
-    "PostToolUse": [{
-      "matcher": "*",
-      "hooks": [{
-        "type": "command",
-        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/post-tool-use.py",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/handlers/pre-tool-use.py",
         "timeout": 10
       }]
     }],
     "UserPromptSubmit": [{
+      "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/handlers/user-prompt.py",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/handlers/user-prompt.py",
         "timeout": 5
       }]
     }]
   }
 }
 ```
+
+`PostToolUse` is not registered by `sdlc`; the `workspace` and
+`observability` plugins carry the telemetry handlers.
 
 ## Performance
 
@@ -312,7 +317,7 @@ graph LR
 
 ## Adding New Validators
 
-1. Create validator in `primitives/v1/hooks/validators/{category}/{name}.py`
+1. Create validator in `plugins/<plugin>/hooks/validators/{category}/{name}.py`
 2. Implement `validate(tool_input, context) -> dict`
 3. Add to `TOOL_VALIDATORS` map in relevant handler
 4. Rebuild and test
@@ -363,5 +368,5 @@ cat ~/.claude/projects/.../session.jsonl | jq '.'
 
 ## Related Documentation
 
-- [ADR-014: Atomic Hook Architecture](../adrs/014-wrapper-impl-pattern.md)
+- [ADR-014: Centralized Agentic Logging](../adrs/014-centralized-agentic-logging.md)
 - [ADR-016: Hook Event Correlation](../adrs/016-hook-event-correlation.md)

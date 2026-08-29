@@ -30,13 +30,13 @@ Environment Variables:
 from __future__ import annotations
 
 import os
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from .player import SessionPlayer
 
 
-class Recording(str, Enum):
+class Recording(StrEnum):
     """Available test recordings.
 
     Each value corresponds to a recording in fixtures/recordings/.

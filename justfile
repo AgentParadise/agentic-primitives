@@ -73,6 +73,20 @@ python-sync:
     uv run python scripts/python_qa.py sync
     @echo '{{ GREEN }}✓ Python dependencies synced{{ NORMAL }}'
 
+# Check every uv.lock is current with its pyproject.toml (what CI enforces)
+[group('python')]
+python-lock-check:
+    @echo '{{ YELLOW }}Checking uv lockfiles...{{ NORMAL }}'
+    uv run python scripts/python_qa.py lock
+    @echo '{{ GREEN }}✓ All uv lockfiles current{{ NORMAL }}'
+
+# Regenerate stale uv.lock files (commit the result)
+[group('python')]
+python-lock-update:
+    @echo '{{ YELLOW }}Regenerating uv lockfiles...{{ NORMAL }}'
+    uv run python scripts/python_qa.py lock --update
+    @echo '{{ GREEN }}✓ uv lockfiles regenerated{{ NORMAL }}'
+
 # Format Python code
 [group('python')]
 python-fmt:
@@ -115,20 +129,60 @@ python-test-integration:
     @echo '{{ GREEN }}✓ Python integration tests passed{{ NORMAL }}'
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RUST (itmux driver)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Run itmux Rust tests
+[group('rust')]
+rust-test:
+    @echo '{{ YELLOW }}Running itmux Rust tests...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo test
+    @echo '{{ GREEN }}✓ itmux Rust tests passed{{ NORMAL }}'
+
+# Lint itmux Rust code
+[group('rust')]
+rust-lint:
+    @echo '{{ YELLOW }}Linting itmux Rust code...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo clippy --all-targets -- -D warnings
+    @echo '{{ GREEN }}✓ itmux Rust linting complete{{ NORMAL }}'
+
+# Check itmux Rust formatting
+[group('rust')]
+rust-fmt-check:
+    @echo '{{ YELLOW }}Checking itmux Rust formatting...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo fmt -- --check
+
+# Format itmux Rust code
+[group('rust')]
+rust-fmt:
+    @echo '{{ YELLOW }}Formatting itmux Rust code...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && cargo fmt
+    @echo '{{ GREEN }}✓ itmux Rust formatting complete{{ NORMAL }}'
+
+# Run the LIVE itmux run acceptance battery (E1-E7). Needs docker + valid host
+# credentials (~/.claude/.credentials.json, ~/.codex/auth.json). These cases
+# are gated out of `cargo test`; this is the only entry point that runs them.
+[group('rust')]
+eval-live:
+    @echo '{{ YELLOW }}Running LIVE itmux run acceptance battery (docker + token required)...{{ NORMAL }}'
+    cd providers/workspaces/interactive-tmux/driver-rs && AGENTIC_LIVE_EVAL=1 cargo test --test live_eval -- --ignored --test-threads=1 --nocapture
+    @echo '{{ GREEN }}✓ itmux live acceptance battery complete{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # COMBINED OPERATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Format all code
 [group('all')]
-fmt: python-fmt
+fmt: python-fmt rust-fmt
 
 # Check all formatting
 [group('all')]
-fmt-check: python-fmt-check
+fmt-check: python-fmt-check rust-fmt-check
 
 # Lint all code
 [group('all')]
-lint: python-lint
+lint: python-lint rust-lint
 
 # Auto-fix linting issues
 [group('all')]
@@ -136,7 +190,26 @@ lint-fix: python-lint-fix
 
 # Run all tests
 [group('all')]
-test: python-test
+test: python-test rust-test
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VERSIONING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# List every versioned artifact and the files that declare its version
+[group('qa')]
+list-versions:
+    uv run scripts/bump_version.py --list
+
+# Check that every file declaring an artifact's version agrees
+[group('qa')]
+check-versions *artifacts:
+    uv run scripts/bump_version.py --check {{ artifacts }}
+
+# Bump one artifact: just bump-version patch agentic_logging
+[group('qa')]
+bump-version part artifact:
+    uv run scripts/bump_version.py bump {{ part }} {{ artifact }}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUALITY ASSURANCE
@@ -148,6 +221,8 @@ qa:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}Running Full QA Suite{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just python-lock-check
+    @echo ''
     just fmt-check
     @echo ''
     just lint
@@ -180,12 +255,62 @@ ci:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}Running CI Pipeline{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just python-lock-check
     just fmt-check
     just lint
     just test
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}✓ CI pipeline passed!{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OBSERVABILITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Clone LangFuse's official Docker Compose setup into .agentic/langfuse/
+[group('observability')]
+langfuse-init:
+    scripts/langfuse-local.sh init
+
+# Start local LangFuse via the official Docker Compose setup
+[group('observability')]
+langfuse-start:
+    scripts/langfuse-local.sh start
+
+# Show local LangFuse compose status
+[group('observability')]
+langfuse-status:
+    scripts/langfuse-local.sh status
+
+# Stop local LangFuse
+[group('observability')]
+langfuse-stop:
+    scripts/langfuse-local.sh stop
+
+# Run the LangFuse exporter smoke against LANGFUSE_BASE_URL
+[group('observability')]
+langfuse-smoke:
+    scripts/langfuse-local.sh smoke
+
+# Initialize the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-self-hosted-init:
+    infra/langfuse/self-hosted/deploy.sh init
+
+# Start the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-self-hosted-up:
+    infra/langfuse/self-hosted/deploy.sh up
+
+# Configure Tailscale Serve for the private self-hosted LangFuse deployment
+[group('observability')]
+langfuse-self-hosted-serve:
+    infra/langfuse/self-hosted/deploy.sh serve
+
+# Check the private self-hosted LangFuse deployment (requires LANGFUSE_TAILSCALE_HOST)
+[group('observability')]
+langfuse-self-hosted-health:
+    infra/langfuse/self-hosted/deploy.sh health
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOCKER / WORKSPACE IMAGES

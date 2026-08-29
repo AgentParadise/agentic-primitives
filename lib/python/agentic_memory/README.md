@@ -23,7 +23,7 @@ opting into hard-fail on misconfiguration. There is no soft-fail mode.
 
 ## Doctor
 
-CLI at `/opt/agentic/memory/doctor` (also available as `agentic-memory-doctor`
+CLI at `/opt/agentic/capabilities/memory/doctor` (also available as `agentic-memory-doctor`
 on the Python path).
 
 ```sh
@@ -43,7 +43,7 @@ Exit codes:
 
 1. `env_contract` — required env vars set
 2. `namespace_well_formed` — namespace matches `[a-zA-Z0-9._:-]+`
-3. `provider_known` — provider exists under `/opt/agentic/memory/`
+3. `provider_known` — provider exists under `/opt/agentic/capabilities/memory/`
 4. `adapter_exists` — `<provider>/init.sh` is an executable file
 5. `config_json_valid` — `AGENTIC_MEMORY_CONFIG_JSON` parses (when set)
 6. `backend_dns` — `AGENTIC_MEMORY_URL` hostname resolves

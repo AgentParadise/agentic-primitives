@@ -7,7 +7,454 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Unreleased
+
+### 🔧 omni-agent 1.5.0: `just` is installed in the workspace image
+
+The image now ships the `just` command runner, pinned to v1.58.0 and verified
+by SHA256 against the checksums published with that release.
+
+**Why.** A capability probe run inside a real agent workspace, against a repo
+that was already checked out, found `just: command not found`. In the
+repositories these workspaces target, `just` is not a convenience: it is the
+front door to every static check and QA gate a contributor is expected to pass
+before proposing a change (`just fitness-check`, `just docs-sync`,
+`just check-workflows`, `just preflight`, `just test`, `just qa`). Without the
+binary, an agent can write a change but cannot run a single one of the gates
+that would tell it whether the change is correct. Tracked as
+syntropic137/syntropic137#949.
+
+**This grants no additional access.** `just` runs recipes out of a justfile in
+a repository the agent already has, invoking commands the agent could already
+run by hand through Bash. It is a missing binary, not a widened permission.
+
+**MINOR, not patch.** New capability, backward compatible: nothing is removed
+or renamed, and an image consumer that never invokes `just` sees the behaviour
+1.4.0 gave it. `/usr/local/bin/just` was previously absent, so nothing can be
+shadowed by it.
+
+**Pinned, not fetched latest**, consistent with how this image pins
+claude-code, codex, the skills CLI, uv, and the session-store exporter. The
+upstream release is a statically linked musl binary, so it carries no libc
+floor against this base. Bumping `ARG JUST_VERSION` requires moving the two
+per-architecture SHA256 pins in the same layer; the `--version` grep at the end
+of that layer fails the build if the two ever disagree.
+
+### 📦 omni-agent 1.4.0: claude-code 2.1.250, codex 0.150.1
+
+MINOR rather than PATCH because the image's *behaviour* changes, not only its
+contents:
+
+- **The default delegate model moves.** An unpinned `claude -p` resolved to
+  `claude-sonnet-4-6` at 2.1.126; upstream moved the default to Sonnet 5 at
+  2.1.197 and Opus 5 at 2.1.219, and which one a run gets is ACCOUNT-TIER
+  dependent (Pro/Team-Standard -> Sonnet 5; Max/Team-Premium/API -> Opus 5).
+  Probed on the built image: `claude-opus-5[1m]`, with no settings.json and no
+  model env var.
+- **Cache-creation numbers legitimately rise.** 2.1.152 fixed
+  `cache_creation_input_tokens` reporting 0 when the API reported cache writes
+  only via a nested breakdown. Post-bump figures are not comparable with
+  pre-bump baselines.
+- **`codex exec --full-auto` is rejected** as of 0.147.0 (`unexpected argument`,
+  exit 2). No script, hook or executable recipe in this repo invokes it; the
+  delegation skill already documents the removal and uses `-s workspace-write`.
+
+Schemas verified UNCHANGED against the new CLIs, which is what makes the bump
+safe for downstream cost attribution: the codex `--json` stdout vocabulary, the
+codex on-disk rollout record types and `total_token_usage` fields, and Claude's
+`message.usage` field names and per-message-delta semantics. `turn.completed`
+gains an additive `cache_write_input_tokens`.
+
+`claude-cli` and `interactive-tmux` deliberately keep their existing pins;
+interactive-tmux pins to protocol experiments and must not be bumped blindly.
+Consumers should pin the omni-agent digest rather than assume providers are
+interchangeable.
+
+
+### 📦 Version bookkeeping: agentic-isolation 0.7.0, agentic-session-store 0.2.1, claude-cli 2.1.1, interactive-tmux 0.2.1
+
+Four artifacts were still equal to `release` while shared image inputs and
+package code had changed, so the next `main -> release` merge would have failed
+the version gate. Levels reflect what actually moved:
+
+- **agentic-isolation 0.6.0 -> 0.7.0** (minor). Two new public protocols,
+  `SupportsWorkspaceLogs` and `SupportsStagedTeardown`, plus the provider code
+  implementing them. New capability, backward compatible - a consumer that does
+  not use them is unaffected.
+- **agentic-session-store 0.2.0 -> 0.2.1** (patch). Documentation only: the
+  capability adapter is now named `apss` rather than after a vendor, and two
+  docstrings say so. No API change.
+- **claude-cli 2.1.0 -> 2.1.1** and **interactive-tmux 0.2.0 -> 0.2.1** (patch).
+  These record shared-input movement; neither image's own content changed.
+
+**A reported version was wrong, and is now correct.** `agentic-isolation`
+declared `0.6.0` in `pyproject.toml` while `agentic_isolation.__version__`
+returned `0.5.1` - an earlier release moved the manifest and missed the module,
+so anything asking the package its own version got the wrong answer. Both now
+read `0.7.0`. A consumer that pinned or logged `__version__` will see it jump
+from `0.5.1`, which reflects reality rather than a new change.
+
+
+### 🔁 omni-agent: exporter pinned to v0.5.0
+
+The pinned `agentic-session-exporter` digest moves from v0.4.0 to v0.5.0, and
+the omni provider version moves to 1.3.0 (minor: the baked binary gains a new
+field in its machine-readable output, backward compatible for anyone who does
+not read it).
+
+**v0.5.0 names the sessions the store confirmed.** `RESULT_SCHEMA_VERSION` goes
+to 2 and the `--json` result gains a `sessions` array holding the ids the store
+acknowledged, not the ids the sweep attempted. Until now a consumer auditing a
+workspace learned only HOW MANY sessions landed, never WHICH, so a count that
+came up short named nothing and the caller could not say what was missing. The
+array is what turns "capture was incomplete" into "session X is absent".
+
+**CONSUMER ORDERING, and it runs the opposite way from the v0.4.0 bump.** There
+the image had to move first, because an older exporter rejected the new flag. A
+schema bump runs consumer-first instead: a consumer pinned to schema 1 alone
+would read a schema 2 result as UNKNOWN. syntropic137's parser already accepts
+both 1 and 2 and that change is merged, so pinning this image cannot regress the
+capture probe. The field is purely additive - nothing removed, nothing renamed -
+so a caller that never reads `sessions` sees exactly the result v0.4.0 gave it.
+
+The build's version assertion moves to `0.5.0` alongside the digest, so a pin
+edited back to an older signed digest fails the build rather than shipping an
+image whose exporter silently lacks what this entry promises.
+
+### 🔁 omni-agent: exporter pinned to v0.4.0
+
+The pinned `agentic-session-exporter` digest moves from v0.3.0 to v0.4.0, and
+the omni provider version moves to 1.2.0.
+
+**v0.4.0 adds `--ignore-state`, which a consumer needs before an audit verdict
+can be trusted.** syntropic137 runs the exporter to check an agent's own
+workspace, with the state file somewhere that agent can write. A forged
+"already sent" entry could therefore make a transcript that never reached the
+store report as a clean sweep. The exporter runs as the same uid as the process
+it is auditing, so no path is writable by one and not the other: not READING
+the state file is the only available move, and that is what the flag does.
+
+Not a behaviour change for existing callers. The flag defaults off, and this
+repository's finalizer deliberately does NOT pass it - the finalizer is the
+capture path rather than an audit of one, and it benefits from state skipping
+transcripts that have not changed.
+
+**CONSUMER ORDERING.** An older exporter rejects `--ignore-state` with exit 2,
+which syntropic137's parser reads as UNKNOWN and turns into a backfill request
+on every phase. A consumer must not pass the flag until it pins an image built
+from this digest, so the config change and the digest bump belong in one
+commit. Rolling back only the image while keeping the new probe configuration
+produces backfill churn - not a false clean verdict, but noise that makes the
+indicator worth less.
+
+The build now ASSERTS the exporter version rather than only printing it. A pin
+edited to an older signed digest would otherwise build green while the image
+silently lacked the flag this entry promises.
+
+### 🔁 omni-agent: exporter pinned to v0.3.0
+
+The pinned `agentic-session-exporter` digest moves from v0.2.1 to v0.3.0.
+
+**v0.2.1 recorded a refused transcript as sent.** Its uploader marked every
+item in a successful batch as done, rejections included, so the next sweep
+skipped the refused transcript as `skipped_unchanged` and reported success. One
+transient rejection became permanent silent absence from the store. The solo
+retry path had the same bug, and is the likelier route since it is the fallback
+for a batch that already failed.
+
+v0.3.0 marks only what the store confirmed, counts what it did not
+(`unconfirmed`), and scopes its state to the store so repointing at a new one
+re-sends rather than skipping everything.
+
+**Exit 3 is new and is a behaviour change**: a sweep that ran without capturing
+everything it found no longer exits 0. `finalize.sh` was taught about it first,
+in the same release cycle, so a partial capture is reported as INCOMPLETE
+rather than as a total upload failure. It also parses the exporter's new
+`unconfirmed` counter, and treats rc=3 as incompleteness even when every
+counter it knows how to read is zero.
+
+
+### 🔁 omni-agent: exporter pinned to v0.2.1
+
+The pinned `agentic-session-exporter` digest moves from v0.1.1 to v0.2.1.
+
+**The glibc floor recorded under omni-agent 1.1.0's "Known limit" is resolved
+upstream.** The exporter's Linux binaries are statically linked against musl
+now, so they carry no libc floor rather than one that happened to sit above
+Debian 12. That entry is left as-is: it describes what 1.1.0 actually shipped,
+and rewriting it would make a released version look like it contained a fix it
+did not.
+
+Only `apss-session-exporter` is still copied, but the reason has changed. It
+was infeasible to copy `apss-session-reconstitute` before, because it could not
+run on this base. Now it simply is not needed: resuming a stored session is
+something a developer does on their own machine, not something a short-lived
+workspace container ever does.
+
+**Sessions captured with the default origin were out of spec.** v0.1.1
+defaulted `origin.environment` to `laptop`, which is not one of the four
+classes APS-V1-0004 s4.2.1 defines (`local`, `vps`, `container`, `workflow`).
+v0.2.1 detects the class and refuses an out-of-enum value at startup instead of
+writing it.
+
+Do not pin v0.2.0: its Linux binaries require glibc 2.39 and cannot run here.
+
 ## [Unreleased]
+
+### ✨ The omni workspace image now ships the session-store exporter
+
+`omni-agent` 1.1.0.
+
+Until now the image shipped no exporter binary at all, so the session-store
+capability's `exporter_present` check could never pass. Session capture was
+impossible rather than merely unconfigured, and enabling it hard-failed the
+workspace.
+
+The image previously refused to bake one on purpose: the only client available
+was named for a single vendor's store, and embedding it would have coupled a
+general-purpose multi-agent workspace image to that company's product. That
+client has since been extracted and published as the public reference
+implementation of the APS-V1-0004 Exporter profile, so the image now depends on
+a public client of a public contract instead.
+
+**What consumers receive**
+
+- `apss-session-exporter` at `/usr/local/bin`, copied `FROM` a signed OCI image
+  by digest. CI verifies that digest's cosign signature **before** the build, so
+  a build cannot start against an unverified artifact. A digest establishes
+  which bytes; the signature establishes who published them.
+- `AGENTIC_SESSION_STORE_DEPLOYMENT` in the capability contract, translated to
+  `SESSION_STORE_ORIGIN_DEPLOYMENT`. This is what makes APS-V1-0004 2.0.0's
+  `origin.deployment` reachable from a workspace. Without it every containerised
+  session reports the same runtime class and a multi-tier install is
+  unattributable.
+- `/spool` and `/var/agentic` are writable under `--read-only`, so a capability
+  that writes can actually run in the production security configuration.
+- The capability doctor reports its real failure cause. It previously printed
+  `doctor: FAIL` for a doctor that never executed, because a swallowed `mkdir`
+  under `errexit` killed the entrypoint before the check ran.
+
+**Behaviour change for existing deployments**
+
+An operator bind-mounting `SeshMagicSessionExporter` will find the baked
+`apss-session-exporter` now takes precedence, because the capability resolves
+the standard-anchored name first. Capture keeps working - it is the same
+reference client - but the mounted build is no longer the one that runs. Set
+`AGENTIC_SESSION_STORE_EXPORTER_BIN` to keep using a specific binary. This is
+why the provider bump is a minor rather than a patch.
+
+**Known limit**
+
+The exporter's release binaries are built against glibc 2.39 while this image is
+Debian 12 (2.36). `apss-session-exporter` runs because it happens not to
+reference a 2.39 symbol; `apss-session-reconstitute` does, so only the exporter
+is copied. The build now executes the copied binary per target platform, which is
+what surfaced this, so the failure mode is a failed build rather than a broken
+workspace. Upstream fix tracked as agentic-session-exporter#7.
+
+`claude-cli` is unchanged and deliberately still ships no exporter.
+
+
+### 🔒 Security: pytest and pygments advisories
+
+`agentic-events` 0.1.1, `agentic-isolation` 0.5.1, `agentic-logging` 0.1.2.
+
+Two advisories surfaced by the release gate's dependency audit on its first
+run, both in development dependencies rather than in shipped runtime code:
+
+| Package | Was | Advisory | Now |
+|---|---|---|---|
+| pytest | 9.0.2 | PYSEC-2026-1845 | 9.1.1 |
+| pygments | 2.19.2 | PYSEC-2026-2987 | 2.21.0 |
+
+`agentic-memory` and `agentic-session-store` already carried fixed versions
+and are unchanged.
+
+### 🐳 omni-agent is published
+
+`omni-agent` enters the image build matrix and is published as
+`omni-agent-workspace` for the first time. It has existed as source since the
+capability work but was never built by CI, so the image did not exist in the
+registry.
+
+This also makes `test_omni_hosts_the_shared_capability_runtime` run. That test
+was guarded on the omni image being available and had therefore silently
+skipped in CI since it was written, despite being the only test that checks
+whether the ADR-040 section 12 image contract holds for a second image.
+
+`omni-agent` is added to the release gate's published-provider list and to the
+docker dry-run matrix, without which a release could ship changed omni content
+under an unchanged image tag.
+
+### 📚 Documentation
+
+Documentation synced with the capability system and the two-channel release
+process, net -697 lines. New `docs/release-process.md`. Two corrections worth
+naming: the `.capture-env` parse was documented as a raw line when the file
+holds `SESSION_STORE_TAGS_B64=<base64>`, so the documented parse silently
+produced no tags, and the session-store doctor has six checks rather than the
+five documented.
+
+### 📦 agentic-isolation 0.5.0 (BREAKING)
+
+`agentic-isolation` is bumped `0.4.0` to `0.5.0`. This is the release note for
+everything that reached a consumer between commit `944e4b5` and `d31c88a`.
+
+Read this first if you consume this repo as a git submodule pinned to a raw
+commit. The package version did **not** change across that range while the
+package's Python floor, its dependency list, and the workspace image's PID 1
+behaviour all did, so "0.4.0" names two materially different packages depending
+on when you pulled. The bump exists to make that distinguishable. The project is
+pre-1.0, so a minor bump is the SemVer-sanctioned way to carry breaking changes,
+but they are breaking and are listed as such below.
+
+#### Breaking Changes
+
+**1. `requires-python` moved `>=3.10` to `>=3.11`.**
+
+Committed in `bcef534`. The classifier list dropped
+`Programming Language :: Python :: 3.10` in the same change, and `[tool.mypy]`
+`python_version` moved to `3.11`.
+
+Read the change as a metadata correction rather than a withdrawal of working
+support. At `944e4b5` the package advertised `>=3.10` and installed on 3.10, but
+the package root already failed to import there: `agentic_isolation.providers.base`
+imports `datetime.UTC` (3.11+) and `agentic_isolation.providers.claude_cli.types`
+declares `EventType(enum.StrEnum)` (3.11+), both on the unconditional root import
+path. Verified: `import agentic_isolation` on CPython 3.10.20 against a wheel
+built from `944e4b5` raises
+`ImportError: cannot import name 'UTC' from 'datetime'`.
+
+What changes for you: on 3.10 the failure moves from import time to install
+time. `0.5.0` refuses to resolve on 3.10 instead of installing and then failing
+on first import. If you are on 3.10, upgrade to 3.11 or later. There is no
+version of this package on either side of this range that works on 3.10.
+
+**2. A previously dependency-free package now has a hard, exactly pinned
+dependency.**
+
+`dependencies` moved from `[]` to exactly one entry, `pydantic==2.13.4`. The pin
+is exact, not a range, so it will conflict with any environment holding a
+different pydantic 2.x. The `docker` extra (`docker>=7.0.0`) is unchanged and
+still optional.
+
+The dependency is not needed by the isolation API this package exports. Nothing
+reachable from `import agentic_isolation` imports pydantic; only the run-contract
+modules do (`agent_run_spec`, `agent_run_result`, `agent_run_events`,
+`run_client`, `workspace_run`, `recipe`, `itmux_client`), and none of those are
+re-exported from the package root. Verified: installing the `0.5.0` wheel with
+`--no-deps` into a pydantic-free 3.12 environment leaves `import agentic_isolation`
+working, while `import agentic_isolation.agent_run_spec` raises
+`ModuleNotFoundError: No module named 'pydantic'`.
+
+If the exact pin is a problem for you and you do not use the run contract, you
+can install with `--no-deps` today. That is an observation about the current
+import graph, not a supported contract.
+
+**3. The workspace entrypoint changed PID 1 semantics, then changed back.**
+
+Affected range: exactly one commit, `c56b9eb`. Introduced there, fixed in
+`5744b86`, which is its immediate successor. If your pin is `c56b9eb`, you are
+affected. If your pin is `5744b86` or later, or `944e4b5` or earlier, you are
+not.
+
+At `c56b9eb` the capability runtime wrapped `CMD` unconditionally so that
+`finalize.sh` hooks could run after the agent exits. It wrapped even when no
+capability was enabled and no finalizer existed, which cost a consumer who opted
+into nothing two things:
+
+- **PID 1.** With `AGENTIC_CAPABILITIES=""` the command ran as a child of the
+  entrypoint shell rather than as PID 1.
+- **Docker's stop grace.** The wrapper's own bounded wait is
+  `__TERM_GRACE_TICKS=15` iterations of `sleep 0.1`, so it escalated to SIGKILL
+  1.5 seconds after being signalled regardless of `docker stop -t`. A command
+  that trapped SIGTERM to flush for longer than that was killed mid-flush and
+  the container exited 137 instead of the command's own status.
+
+`5744b86` restores `exec "$@"` when no finalizer would run, and wraps only when
+there is post-agent work. Both answers come from one discovery function so the
+two notions of "active capability" cannot drift. The wrapper path itself is
+unchanged.
+
+#### Added
+
+- **Workspace capability modules** (`c56b9eb`, ADR-040). A named capability
+  registry driven by `AGENTIC_CAPABILITIES` (space separated, image default
+  `"memory session-store"`), with a three-hook lifecycle per capability
+  adapter: `init.sh` is sourced before the agent starts (entrypoint 5.6),
+  `doctor` runs as preflight (5.7), and `finalize.sh` runs after the agent
+  exits (section 6). Adding a capability is a directory plus a registry entry,
+  with no entrypoint edit. Memory is the migrated first instance and
+  session-store is the second. The breaking path and env-var renames that came
+  with this are documented in the ADR-040 section below, which is part of the
+  same unreleased range.
+- **Harness-neutral `workspace/` runtime** (`c56b9eb`). The entrypoint and the
+  capability adapters moved out of the Claude-specific provider tree to
+  `workspace/entrypoint.sh` and `workspace/capabilities/<capability>/<provider>/`,
+  and are staged into every image at `/opt/agentic/`. The ADR-040 section
+  below still cites the old
+  `providers/workspaces/claude-cli/capabilities/session-store/` path; the
+  runtime is now shared rather than per-harness.
+- **`omni-agent-workspace` image** (`c56b9eb`,
+  `providers/workspaces/omni-agent/`). A single workspace image hosting both
+  the Claude CLI and the Codex CLI on the shared capability runtime, manifest
+  `omni-agent` 1.0.0, image tag `omni-agent-workspace`. It contributes no
+  capability code of its own. Its `otel_native: true` describes the default
+  harness (claude) only; Codex's OTel support is not exercised here.
+- **`agentic_session_store` Python package** (`c56b9eb`,
+  `lib/python/agentic_session_store/`): the `AGENTIC_SESSION_STORE_*` contract,
+  a five-check doctor, and env-name conformance tests.
+
+#### Fixed
+
+- **`WorkspaceConfig` no longer prints credentials when rendered** (`d31c88a`).
+  `secrets` and `environment` are now `field(..., repr=False)`, so neither
+  appears in `repr()`, `str()`, an f-string, or `"{}".format(...)`, and by
+  extension not in the repr of anything that embeds a `WorkspaceConfig`. Both
+  fields are covered, not just `secrets`: `environment` is the field a
+  capability credential such as `AGENTIC_SESSION_STORE_AUTH` actually travels
+  in, and before this change moving a secret into `secrets` was a mitigation
+  that did nothing because that field had the identical exposure.
+
+  Stated limit, with a test recording it: `repr=False` does not affect
+  `dataclasses.asdict`, which still returns the values, and the same is true of
+  `astuple`. Anything serialising a config for output must still redact for
+  itself. Field access is unchanged, so no caller behaviour changes.
+
+#### Notes
+
+- `agentic_isolation.__version__` is bumped alongside `pyproject.toml`, and both
+  `uv.lock` files that pin the package are regenerated so the repo's
+  `uv sync --locked` gate stays green. No other file changes.
+- No tag is cut by this change. Preparing the release is separate from cutting
+  it.
+
+---
+
+### 🧩 Workspace Capability Modules (ADR-040, BREAKING)
+
+Generalizes ADR-036's memory-only adapter mechanism into a named capability
+registry, and adds session capture as its second instance. Workspace image
+manifest moves **1.3.0 to 2.0.0**.
+
+#### Breaking Changes
+
+| # | Was | Is | What the operator must do |
+|---|---|---|---|
+| 1 | `/opt/agentic/memory/doctor` | `/opt/agentic/capabilities/memory/doctor` | Update any script, healthcheck, or runbook that invokes the memory doctor by path. Adapter paths move too: `/opt/agentic/memory/<provider>/init.sh` becomes `/opt/agentic/capabilities/memory/<provider>/init.sh`. |
+| 2 | `AGENTIC_MEMORY_AUDIT_DIR` | `AGENTIC_CAPABILITY_AUDIT_DIR` | Rename the variable wherever it is set. It is now capability-generic: it overrides the audit directory for every capability, not just memory. The per-capability default is still `/var/agentic/<capability>-doctor`, so hosts relying on the default path need no change. |
+| 3 | `AGENTIC_MEMORY_PROVIDER` alone activated memory | Memory must also be listed in `AGENTIC_CAPABILITIES` (default `"memory session-store"`) | No action if the image default is accepted. If `AGENTIC_CAPABILITIES` is set explicitly, it must include `memory` or memory silently stops running. **This failure is silent**: the workspace starts cleanly with memory quietly inactive. The entrypoint warns on stderr at startup when it detects a `*_PROVIDER` var with no matching registry entry, but nothing hard-fails. |
+
+See [ADR-040](docs/adrs/040-workspace-capability-modules.md) for the full
+migration table and rationale.
+
+#### Added
+
+- **Capability registry**: `AGENTIC_CAPABILITIES` (space-separated) drives entrypoint sections 5.6/5.7 generically; a new capability is a directory plus a registry entry, no entrypoint edit required.
+- **Session capture as a capability**: `providers/workspaces/claude-cli/capabilities/session-store/` uploads agent transcripts to a session store speaking APS-V1-0004, with the SeshMagic exporter as the shipped adapter.
+- **`agentic_session_store`** Python package (`lib/python/agentic_session_store/`): contract, doctor, and env-name conformance following the same shape `agentic_memory` established.
+
+---
 
 ### 🏗 Workspace Injection Contract (ADR-035)
 

@@ -2,7 +2,7 @@
 
 This directory contains recorded agent sessions for testing.
 
-See [ADR-030: Session Recording for Testing](../../../../docs/adrs/030-session-recording-testing.md).
+See [ADR-030: Session Recording for Testing](../../../../../docs/adrs/030-session-recording-testing.md).
 
 ## Quick Start
 

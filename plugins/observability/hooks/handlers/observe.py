@@ -12,10 +12,53 @@ hook events (have "event_type") from Claude's native stream-json (have "type").
 
 import json
 import os
+from pathlib import Path
 import sys
 
 # === EVENT EMITTER (lazy initialized) ===
 _emitter = None
+
+
+class _Tee:
+    """Best-effort text writer that mirrors hook JSONL to multiple outputs."""
+
+    def __init__(self, *outputs):
+        self._outputs = outputs
+
+    def write(self, data: str) -> int:
+        for output in self._outputs:
+            try:
+                output.write(data)
+            except Exception:
+                pass
+        return len(data)
+
+    def flush(self) -> None:
+        for output in self._outputs:
+            try:
+                output.flush()
+            except Exception:
+                pass
+
+
+def _output_stream():
+    """Return stderr, optionally tee'd to AGENTIC_EVENTS_JSONL."""
+    sink = os.getenv("AGENTIC_EVENTS_JSONL")
+    if not sink:
+        return sys.stderr
+    try:
+        path = Path(sink)
+        # The sink holds prompt previews, tool inputs, tool results, paths and
+        # errors. Left to the default umask it lands as 0644, readable by every
+        # local account on a shared workstation or VPS. Create it 0600 via an
+        # explicit descriptor so the mode is set atomically at creation rather
+        # than chmod'd after the fact.
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_CLOEXEC, 0o600)
+        file_output = os.fdopen(fd, "a", encoding="utf-8")
+        return _Tee(sys.stderr, file_output)
+    except Exception:
+        return sys.stderr
 
 
 def _get_emitter(session_id: str | None = None):
@@ -30,7 +73,7 @@ def _get_emitter(session_id: str | None = None):
         _emitter = EventEmitter(
             session_id=session_id or os.getenv("CLAUDE_SESSION_ID", "unknown"),
             provider="claude",
-            output=sys.stderr,
+            output=_output_stream(),
         )
         return _emitter
     except ImportError:

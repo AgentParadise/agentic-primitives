@@ -174,7 +174,7 @@ def test_unknown_provider_hard_fails():
 
 @pytest.mark.integration
 def test_provider_path_traversal_does_not_source_adapter(tmp_path: Path):
-    """AGENTIC_MEMORY_PROVIDER must not escape /opt/agentic/memory."""
+    """AGENTIC_MEMORY_PROVIDER must not escape /opt/agentic/capabilities/memory."""
     escaped = tmp_path / "evil"
     escaped.mkdir()
     (escaped / "init.sh").write_text("#!/usr/bin/env bash\necho PWNED\n")
@@ -282,8 +282,8 @@ def test_config_json_writes_claude_code_config(tmp_path: Path):
 
 @pytest.mark.integration
 def test_doctor_binary_runs_without_provider():
-    """`/opt/agentic/memory/doctor` invoked with no provider is a no-op (exit 0)."""
-    result = _run(["/opt/agentic/memory/doctor"])
+    """`/opt/agentic/capabilities/memory/doctor` invoked with no provider is a no-op (exit 0)."""
+    result = _run(["/opt/agentic/capabilities/memory/doctor"])
     assert result.returncode == 0
     assert "not opted in" in result.stderr.lower() or "no checks run" in result.stderr.lower()
 
@@ -293,7 +293,7 @@ def test_doctor_binary_json_output():
     """--json emits machine-readable output on stdout."""
     result = _run(
         [
-            "/opt/agentic/memory/doctor",
+            "/opt/agentic/capabilities/memory/doctor",
             "--json",
             "--provider", "nonexistent-provider",
             "--namespace", "test",

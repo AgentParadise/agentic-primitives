@@ -14,7 +14,7 @@ Atomic building blocks for AI agent systems: a Rust workspace-execution substrat
 > image takes inbound context (CLAUDE.md, plugins, subagents) via a
 > bind-mount at `/etc/agentic/workspace/` and three `AGENTIC_WORKSPACE_*`
 > env vars, then composes them into `/workspace/`. The entrypoint script
-> at [`providers/workspaces/claude-cli/scripts/entrypoint.sh`](providers/workspaces/claude-cli/scripts/entrypoint.sh)
+> at [`workspace/entrypoint.sh`](workspace/entrypoint.sh)
 > (section 5.5) is the source of truth for behavior;
 > [ADR-035](docs/adrs/035-workspace-injection-contract.md) is the decision
 > record. The reference consumer is the

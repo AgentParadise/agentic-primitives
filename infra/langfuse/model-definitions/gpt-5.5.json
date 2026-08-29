@@ -1,0 +1,25 @@
+{
+  "modelName": "gpt-5.5",
+  "matchPattern": "(?i)^(openai/)?(gpt-5\\.5)$",
+  "unit": "TOKENS",
+  "pricingTiers": [
+    {
+      "name": "Standard API-equivalent",
+      "isDefault": true,
+      "priority": 0,
+      "conditions": [],
+      "prices": {
+        "input": 0.000005,
+        "cache_read_input_tokens": 0.0000005,
+        "output": 0.00003,
+        "output_reasoning_tokens": 0.00003
+      }
+    }
+  ],
+  "tokenizerId": "openai",
+  "tokenizerConfig": {
+    "tokenizerModel": "gpt-4",
+    "tokensPerName": 1,
+    "tokensPerMessage": 3
+  }
+}
