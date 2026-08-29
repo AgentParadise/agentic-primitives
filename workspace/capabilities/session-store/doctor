@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# /opt/agentic/capabilities/session-store/doctor — workspace-image entry.
+#
+# Thin wrapper that exec's the Python module. Pass any flags through.
+# See lib/python/agentic_session_store/ for the implementation.
+#
+# Exit codes:
+#   0  all checks pass (or the capability is not opted into)
+#   1  one or more checks failed
+
+set -euo pipefail
+
+if [ -x "/opt/venv/bin/python" ]; then
+  exec /opt/venv/bin/python -m agentic_session_store.doctor "$@"
+fi
+
+exec python3 -m agentic_session_store.doctor "$@"

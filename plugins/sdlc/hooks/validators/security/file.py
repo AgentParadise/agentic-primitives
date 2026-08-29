@@ -45,7 +45,10 @@ SENSITIVE_PATHS: list[str] = [
 SENSITIVE_FILE_PATTERNS: list[tuple[str, str]] = [
     (r"\.env(?:\.(?!example|template|test|sample|defaults)\w+)?$", "environment file"),
     (r"\.pem$", "PEM certificate/key"),
-    (r"(?:private|server|signing|tls|ssl|ca|root|intermediate|client|apikey)\.key$", "private key"),
+    (
+        r"(?:private|server|signing|tls|ssl|ca|root|intermediate|client|apikey)\.key$",
+        "private key",
+    ),
     (r"id_(?:rsa|dsa|ecdsa|ed25519)\.key$", "SSH private key"),
     (r"id_rsa(?:\.pub)?$", "SSH key"),
     (r"id_ed25519(?:\.pub)?$", "SSH key"),

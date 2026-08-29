@@ -18,10 +18,11 @@ import shutil
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 from agentic_isolation.config import SecurityConfig, WorkspaceConfig
+from agentic_isolation.harnesses import ExecFn, TranscriptSource, get_harness
 from agentic_isolation.providers.base import (
     BaseProvider,
     ExecuteResult,
@@ -93,6 +94,13 @@ class WorkspaceDockerProvider(BaseProvider):
         # a container (DinD), resolve() would map to the container's CWD — wrong.
         self._workspace_host_dir = Path(workspace_host_dir) if workspace_host_dir else None
         self._workspaces: dict[str, Workspace] = {}
+        # Container output captured during teardown, keyed by container name.
+        # Insertion-ordered so eviction is oldest-first. See _remember_logs.
+        self._log_snapshots: dict[str, str] = {}
+        # One teardown at a time per workspace. Concurrent teardowns would
+        # otherwise race, and one could delete a directory another is still
+        # archiving from.
+        self._teardown_locks: dict[str, asyncio.Lock] = {}
         self._lock = asyncio.Lock()
 
     @property
@@ -264,19 +272,153 @@ class WorkspaceDockerProvider(BaseProvider):
         return cmd
 
     async def destroy(self, workspace: Workspace) -> None:
-        """Stop and remove the Docker container."""
-        async with self._lock:
-            self._workspaces.pop(workspace.id, None)
+        """Stop and remove the container, then delete the host workspace.
 
-        container_name = workspace._handle
-        workspace_dir = workspace.metadata.get("workspace_dir")
-
+        The unhooked case of `teardown()`, so the two cannot drift into
+        different orderings or different cleanup.
+        """
         logger.info("Destroying workspace (id=%s)", workspace.id)
+        await self.teardown(workspace)
 
-        await self._cleanup_container(container_name)
+    #: Cap on returned log bytes. `docker logs --tail` bounds LINES, and a
+    #: single agent-controlled line can be arbitrarily long, so lines are not a
+    #: resource bound. Keep the TAIL of the output: the finalizer verdict is
+    #: printed last, during shutdown.
+    _MAX_LOG_BYTES = 256 * 1024
 
-        if workspace_dir:
-            shutil.rmtree(workspace_dir, ignore_errors=True)
+    #: How many teardown snapshots to retain. Bounded so a long-lived provider
+    #: cannot accumulate log text for every container it has ever destroyed.
+    _MAX_LOG_SNAPSHOTS = 64
+
+    async def logs(self, workspace: Workspace, *, tail: int = 200) -> str:
+        """Return the container's combined stdout and stderr (best effort).
+
+        Implements `SupportsWorkspaceLogs`. Does not raise for any operational
+        failure to retrieve logs: it is called during teardown, where the
+        container may already be gone, and a caller reading a capture verdict
+        must not be able to fail the teardown that produced it. Every such path
+        yields "". `asyncio.CancelledError` DOES propagate, because swallowing
+        cancellation would make shutdown hang.
+
+        If the container was destroyed through this provider, the snapshot
+        taken between `docker stop` and `docker rm` is returned instead of
+        querying a container that no longer exists. Without that, the finalizer
+        verdict would be unreachable by construction: it is printed during stop
+        and the container is removed immediately afterwards.
+
+        The returned text is UNTRUSTED - it is whatever the agent and its
+        tooling printed - so callers must parse defensively and must not print
+        it to a terminal unsanitised. It is also FORGEABLE: the agent usually
+        runs as the same user as the finalizer, so a success line read from
+        here is evidence, not proof. See SupportsWorkspaceLogs.
+        """
+        container_name = getattr(workspace, "_handle", None)
+        if not container_name:
+            return ""
+
+        snapshot = self._log_snapshots.get(container_name)
+        if snapshot is not None:
+            return snapshot
+
+        return await self._read_container_logs(container_name, tail=tail)
+
+    async def _read_container_logs(self, container_name: str, *, tail: int) -> str:
+        """`docker logs` with every operational failure collapsed to "".
+
+        Split out so teardown can reuse it while the container still exists.
+        """
+        # A negative or absurd tail asks docker for the entire history, which
+        # defeats the byte cap's purpose of bounding work as well as memory.
+        safe_tail = max(1, min(int(tail), 10_000))
+
+        proc: asyncio.subprocess.Process | None = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker",
+                "logs",
+                "--tail",
+                str(safe_tail),
+                container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            # Drain incrementally into a bounded buffer rather than calling
+            # communicate(), which would materialise the WHOLE response first.
+            # --tail bounds lines, and one agent-controlled line can be
+            # arbitrarily long, so buffering everything and truncating
+            # afterwards bounds the RESULT while leaving memory unbounded -
+            # which during destroy() means an agent could kill the
+            # orchestrator on its way out.
+            out = await asyncio.wait_for(self._drain_tail(proc.stdout), timeout=10)
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.CancelledError:
+            # Shutdown must not be blocked by a best-effort log read.
+            if proc is not None:
+                await self._terminate(proc)
+            raise
+        except (TimeoutError, OSError, ValueError) as exc:
+            logger.debug("docker logs failed for %s: %s", container_name, exc)
+            if proc is not None:
+                await self._terminate(proc)
+            return ""
+        except Exception as exc:  # noqa: BLE001 - contract is "never fail teardown"
+            logger.debug("docker logs raised unexpectedly for %s: %s", container_name, exc)
+            if proc is not None:
+                await self._terminate(proc)
+            return ""
+
+        if proc.returncode != 0:
+            # Expected once the container has been removed. Debug, not warning:
+            # a teardown race here is normal and not actionable.
+            logger.debug("docker logs exited %s for %s", proc.returncode, container_name)
+            return ""
+
+        # NOTE: _MAX_LOG_BYTES bounds the SOURCE bytes retained. Decoding with
+        # errors="replace" turns each invalid byte into U+FFFD, so the decoded
+        # string can re-encode larger than the cap. That is acceptable: the
+        # point is bounding what is read and held, not the exact size of the
+        # returned str.
+        return out.decode(errors="replace")
+
+    @classmethod
+    async def _drain_tail(cls, stream: asyncio.StreamReader | None) -> bytes:
+        """Read to EOF keeping only the last `_MAX_LOG_BYTES` bytes.
+
+        The finalizer verdict is printed last, during shutdown, so the tail is
+        the part worth keeping.
+        """
+        if stream is None:
+            return b""
+        buf = bytearray()
+        while True:
+            chunk = await stream.read(64 * 1024)
+            if not chunk:
+                break
+            buf += chunk
+            excess = len(buf) - cls._MAX_LOG_BYTES
+            if excess > 0:
+                del buf[:excess]
+        return bytes(buf)
+
+    @staticmethod
+    async def _terminate(proc: asyncio.subprocess.Process) -> None:
+        """Kill a subprocess without letting cleanup raise or hang."""
+        try:
+            proc.kill()
+        except (ProcessLookupError, OSError):
+            return  # already exited
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except (TimeoutError, OSError):
+            logger.debug("gave up waiting for a killed docker subprocess")
+
+    def _remember_logs(self, container_name: str, text: str) -> None:
+        """Retain a teardown snapshot, evicting oldest first."""
+        if not text:
+            return
+        self._log_snapshots[container_name] = text
+        while len(self._log_snapshots) > self._MAX_LOG_SNAPSHOTS:
+            self._log_snapshots.pop(next(iter(self._log_snapshots)))
 
     def _build_docker_exec_cmd(
         self,
@@ -475,6 +617,31 @@ class WorkspaceDockerProvider(BaseProvider):
 
         return (Path(workspace_dir) / path).exists()
 
+    def transcript_source(self, workspace: Workspace, agent: str) -> TranscriptSource | None:
+        """Return a `TranscriptSource` for `agent` in `workspace`.
+
+        `None` if `agent` names a harness this build does not know (see
+        `AgentName.parse` - lenient by design, never raises). The bound
+        `exec_fn` below satisfies the `ExecFn` protocol by calling this
+        provider's own `execute()` against `workspace`, exactly like any
+        other consumer of `WorkspaceProvider.execute`.
+        """
+        plugin = get_harness(agent)
+        if plugin is None:
+            return None
+
+        async def exec_fn(
+            command: str,
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: dict[str, str] | None = None,
+        ) -> ExecuteResult:
+            return await self.execute(workspace, command, timeout=timeout, cwd=cwd, env=env)
+
+        exec_fn_typed: ExecFn = exec_fn
+        return plugin.transcript_source(exec_fn_typed)
+
     async def _ensure_network(self, network_name: str) -> None:
         """Ensure Docker network exists."""
         proc = await asyncio.create_subprocess_exec(
@@ -518,9 +685,101 @@ class WorkspaceDockerProvider(BaseProvider):
 
         raise RuntimeError(f"Container {container_name} did not start within {timeout}s")
 
-    async def _cleanup_container(self, container_name: str) -> None:
-        """Stop and remove a container."""
-        # Stop
+    async def teardown(
+        self,
+        workspace: Workspace,
+        *,
+        while_running: Callable[[], Awaitable[None]] | None = None,
+        before_delete: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """Tear down with caller hooks at the two safe points.
+
+        Implements `SupportsStagedTeardown`. The step order is enforced here
+        rather than left to the caller, because getting it wrong destroys data.
+        """
+        # Single-flight per workspace. Without it two concurrent callers both
+        # proceed, and one can delete the workspace directory while the other
+        # is still inside a slow `before_delete` - which would break the
+        # retention guarantee from the outside rather than from a bug in this
+        # function.
+        lock = self._teardown_lock_for(workspace.id)
+        async with lock:
+            await self._teardown_locked(
+                workspace, while_running=while_running, before_delete=before_delete
+            )
+        # Drop the lock entry only once nobody else holds or wants it. Removing
+        # it any earlier - in particular inside the teardown, which an earlier
+        # version did - lets the next caller build a FRESH lock and run
+        # concurrently, which defeats the whole point: it could delete the
+        # workspace directory while this call was still archiving from it.
+        if not lock.locked():
+            self._teardown_locks.pop(workspace.id, None)
+
+    def _teardown_lock_for(self, workspace_id: str) -> asyncio.Lock:
+        """One lock per workspace id, created on first use."""
+        lock = self._teardown_locks.get(workspace_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._teardown_locks[workspace_id] = lock
+        return lock
+
+    async def _teardown_locked(
+        self,
+        workspace: Workspace,
+        *,
+        while_running: Callable[[], Awaitable[None]] | None,
+        before_delete: Callable[[], Awaitable[None]] | None,
+    ) -> None:
+        container_name = workspace._handle
+
+        # Deliberately still REGISTERED here. A hook that raises, hangs, or is
+        # cancelled leaves a live container, and deregistering first would make
+        # that container invisible to the provider that owns it.
+        if while_running is not None:
+            await while_running()
+
+        try:
+            await self._stop(container_name)
+        finally:
+            # The `finally` is what guarantees removal: a cancel or an error
+            # during the stop or the log snapshot must not leave a
+            # stopped-but-present container behind. Verified by mutation -
+            # dropping this block strands one.
+            #
+            # The shield is NOT what makes that work, and an earlier comment
+            # here wrongly said it was. asyncio delivers cancellation once, so
+            # this await completes on its own after a single cancel. The
+            # shield covers the narrower case of a SECOND cancellation
+            # arriving while removal is in flight, which is cheap to hold onto
+            # and would otherwise leak a container.
+            await asyncio.shield(self._remove(container_name))
+            async with self._lock:
+                self._workspaces.pop(workspace.id, None)
+
+        if before_delete is not None:
+            # The container is gone but the spool is still on disk. Any
+            # exception here, CancelledError included, skips the delete below
+            # by plain control flow. That is what keeps a failed upload
+            # retryable instead of permanently lost.
+            await before_delete()
+
+        self._delete_workspace_dir(workspace)
+
+    def _delete_workspace_dir(self, workspace: Workspace) -> None:
+        """Delete the host workspace directory. Irreversible."""
+        workspace_dir = workspace.metadata.get("workspace_dir")
+        if workspace_dir:
+            shutil.rmtree(workspace_dir, ignore_errors=True)
+
+    async def _stop(self, container_name: str) -> None:
+        """`docker stop`, then snapshot the logs it caused to be written."""
+        # This "-t 5" grace is coupled to __TERM_GRACE_TICKS in
+        # workspace/entrypoint.sh's section 6
+        # wrapper (ADR-040): that constant must stay strictly below this
+        # value, with headroom left over for the post-agent finalize hooks
+        # (e.g. a session-store upload) to actually run before docker's own
+        # SIGKILL lands. Changing this value without adjusting that one can
+        # silently make finalize stop running on every SIGTERM shutdown.
         proc = await asyncio.create_subprocess_exec(
             "docker",
             "stop",
@@ -532,7 +791,18 @@ class WorkspaceDockerProvider(BaseProvider):
         )
         await proc.wait()
 
-        # Remove
+        # Between stop and rm is the ONLY window in which the finalizer's
+        # output can still be read: `docker stop` is what triggers finalizers,
+        # and `docker rm` destroys the log stream they wrote to. A caller
+        # asking for logs after removal would otherwise always get nothing,
+        # which would make the session-capture verdict unreachable rather than
+        # merely unread.
+        self._remember_logs(
+            container_name, await self._read_container_logs(container_name, tail=200)
+        )
+
+    async def _remove(self, container_name: str) -> None:
+        """`docker rm -f`."""
         proc = await asyncio.create_subprocess_exec(
             "docker",
             "rm",
@@ -542,3 +812,13 @@ class WorkspaceDockerProvider(BaseProvider):
             stderr=asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
+
+    async def _cleanup_container(self, container_name: str) -> None:
+        """Stop and remove a container.
+
+        Composed from the same steps the staged protocol exposes, so the
+        combined path and the staged path cannot drift into behaving
+        differently.
+        """
+        await self._stop(container_name)
+        await self._remove(container_name)

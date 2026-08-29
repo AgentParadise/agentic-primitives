@@ -9,9 +9,24 @@ tags: [ci, release, workspace, claude-cli, integration-tests, supply-chain]
 
 # ADR-037: Release Integration Gate
 
+> **Update, 2026-08-17.** The integration gate described here shipped and
+> still blocks publishing. Its surrounding release model did not survive.
+>
+> This ADR was written when, in its own words, "there is no separate release
+> branch" and "the container publishes off `main`". Both statements are now
+> false. `main` is the development branch and publishes `:edge` and
+> `:<sha>`; a protected `release` branch is the only thing that moves
+> `:latest` or publishes a version tag, and a separate release gate
+> (`.github/workflows/release-gate.yml`) runs on PRs into it.
+>
+> Read the decision and the rejected alternatives below as written. For what
+> the pipeline does today, see
+> [`docs/release-process.md`](../release-process.md). Nothing in the
+> original reasoning has been deleted.
+
 ## Status
 
-**Draft**
+**Draft. Superseded in context by the `release`-branch model; the gate itself is live.**
 
 - Created: 2026-06-15
 - Updated: 2026-06-15

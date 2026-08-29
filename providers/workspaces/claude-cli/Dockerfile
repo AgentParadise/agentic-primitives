@@ -39,6 +39,9 @@
 # tool names (Agent vs Task), stream-json event schema, hook event names.
 # See ClaudeToolName in agentic_events.types.
 ARG CLAUDE_CLI_VERSION=2.1.126
+# Codex CLI is installed alongside claude so a phase's primary agent can
+# delegate one-shot to the other harness (opt-in via agent.allow_delegation).
+ARG CODEX_CLI_VERSION=0.144.6
 
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
@@ -96,6 +99,10 @@ RUN uv python install 3.12.13 \
 # Install Claude CLI globally via npm. Version pinned via global ARG above.
 ARG CLAUDE_CLI_VERSION
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}
+# Install Codex CLI globally (delegation target). Pinned via global ARG above.
+ARG CODEX_CLI_VERSION
+RUN npm install -g @openai/codex@${CODEX_CLI_VERSION}
+RUN claude --version && codex --version
 
 # Install the skills CLI globally via npm. Pin exact version deliberately.
 RUN npm install -g skills@1.5.14
@@ -179,7 +186,7 @@ RUN mkdir -p /workspace/artifacts/input \
 # (e.g. prepare-commit-msg for operator Co-authored-by attribution). These
 # are NOT Claude Code plugins — the entrypoint installs them into the
 # runtime git hooks directory alongside hooks contributed by plugins.
-COPY scripts/entrypoint.sh /opt/agentic/entrypoint.sh
+COPY workspace/entrypoint.sh /opt/agentic/entrypoint.sh
 COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 
 # Copy pre-staged plugins from build context (ADR-033)
@@ -187,26 +194,53 @@ COPY scripts/git-hooks/ /opt/agentic/git-hooks/
 # and hooks/hooks.json using ${CLAUDE_PLUGIN_ROOT} for path resolution.
 COPY plugins/ /opt/agentic/plugins/
 
-# Copy memory primitive adapters (ADR-036)
-# The /opt/agentic/memory/ tree holds:
-#   - doctor       — bash entry that exec's `python -m agentic_memory.doctor`
+# Copy capability adapters (ADR-040)
+# The /opt/agentic/capabilities/ tree holds one directory per registered
+# capability (memory, session-store, ...), each with:
+#   - doctor               — bash entry that exec's `python -m <pkg>.doctor`
 #   - <provider>/init.sh   — env-var translation for each supported provider
 #   - <provider>/doctor.sh — provider-specific health checks (optional)
-# The Python agentic_memory package itself is installed into /opt/venv via
-# the wheel staging in stage 3. The audit directory /var/agentic/memory-doctor/
-# is created by the entrypoint at first use; orchestrators bind-mount it for
-# durable audit logs.
-COPY memory/ /opt/agentic/memory/
-RUN mkdir -p /var/agentic/memory-doctor \
+# The Python packages themselves (agentic_memory, agentic_session_store) are
+# installed into /opt/venv via the wheel staging in stage 3. Audit
+# directories under /var/agentic/<capability>-doctor/ are created by the
+# entrypoint at first use; orchestrators bind-mount them for durable audit
+# logs.
+COPY workspace/capabilities/ /opt/agentic/capabilities/
+
+# Exporter provisioning contract (session-store capability):
+# This image deliberately does NOT ship SeshMagicSessionExporter. The
+# exporter is a reference client of the public APS-V1-0004 standard, not
+# part of the private store server — vendoring one vendor's binary into
+# this image would break the store being dependency-injected, and would
+# require build credentials a turnkey user of this image does not have.
+# The image defines the contract (see the session-store capability's
+# `doctor`, whose `exporter_present` check looks for the binary on PATH);
+# deployment supplies the binary via one of:
+#   1. Bind-mount at container start: -v <host-path>:/usr/local/bin/SeshMagicSessionExporter:ro
+#   2. A derived image that COPYs the binary in on top of this one.
+#   3. A base-layer install baked into a custom variant of this image.
+# When the exporter becomes public under AgentParadise, this block is
+# replaced by a `curl` fetch and nothing else about the contract changes.
+RUN mkdir -p /var/agentic \
     && chown -R agent:agent /var/agentic
 
-# Set permissions on plugins, entrypoint, memory adapters, and workspace-shipped hooks
+# session-store spool root (ADR-040 / agentic_session_store's DEFAULT_SPOOL).
+# The contract defaults AGENTIC_SESSION_STORE_SPOOL to /spool when unset;
+# that default must exist and be writable by the non-root agent user for
+# the capability to work without an operator explicitly bind-mounting
+# something at /spool. Same rationale as /workspace, /opt/agentic,
+# /var/agentic above.
+RUN mkdir -p /spool \
+    && chown -R agent:agent /spool
+
+# Set permissions on plugins, entrypoint, capability adapters, and workspace-shipped hooks.
+# Globbed rather than named individually so future entry scripts (e.g.
+# finalize.sh) pick up the same permissions with no Dockerfile change.
 RUN chmod -R 755 /opt/agentic/plugins /opt/agentic/git-hooks \
     && find /opt/agentic/plugins -name "*.py" -exec chmod 755 {} \; \
-    && chmod 755 /opt/agentic/entrypoint.sh \
-    && chmod 755 /opt/agentic/memory/doctor \
-    && find /opt/agentic/memory -name "init.sh" -exec chmod 755 {} \; \
-    && find /opt/agentic/memory -name "doctor.sh" -exec chmod 755 {} \; \
+    && find /opt/agentic -maxdepth 1 -name "*.sh" -exec chmod 755 {} \; \
+    && find /opt/agentic/capabilities -mindepth 2 -maxdepth 2 -name "doctor" -exec chmod 755 {} \; \
+    && find /opt/agentic/capabilities -name "*.sh" -exec chmod 755 {} \; \
     && chown -R agent:agent /opt/agentic
 
 # Verify core installations (before security hardening)
@@ -233,6 +267,10 @@ ENV HOME=/home/agent \
     WORKSPACE_DIR=/workspace \
     # Plugins location (ADR-033)
     AGENTIC_PLUGINS_DIR=/opt/agentic/plugins \
+    # Capability registry (ADR-040): space-separated list of capability
+    # names the entrypoint's 5.6/5.7 loops iterate. A listed capability
+    # with no AGENTIC_<CAP>_PROVIDER set is a silent no-op.
+    AGENTIC_CAPABILITIES="memory session-store" \
     # Disable Claude Code attribution in commits/PRs
     ANTHROPIC_NO_ATTRIBUTION=1 \
     # Python lives in /opt/venv — installed and managed by uv (not apt).
@@ -251,6 +289,8 @@ ENV HOME=/home/agent \
 # before any FROM — build args are stage-scoped and don't carry across.
 ARG CLAUDE_CLI_VERSION
 LABEL agentic.claude_cli_version=${CLAUDE_CLI_VERSION}
+ARG CODEX_CLI_VERSION
+LABEL agentic.codex_cli_version=${CODEX_CLI_VERSION}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=2 \

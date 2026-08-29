@@ -1,6 +1,6 @@
 [project]
 name = "agentic-logging"
-version = "0.1.1"
+version = "0.1.2"
 description = "Centralized logging system optimized for AI agents and human developers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,8 +12,8 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=7.1.0",
-    "mypy>=1.20.1",
-    "ruff>=0.15.10",
+    "mypy==2.3.0",
+    "ruff==0.16.1",
 ]
 
 [build-system]

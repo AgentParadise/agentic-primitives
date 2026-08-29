@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Preflight for the probe test capability. Always passes: this fixture exists
+# to exercise the entrypoint's generic capability lifecycle (ADR-040), not to
+# check anything of its own.
+set -eu
+if [ "${1:-}" = "--json" ]; then
+    printf '{"capability":"probe","passed":true,"checks":[]}\n'
+fi
+exit 0

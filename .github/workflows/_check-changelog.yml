@@ -1,0 +1,82 @@
+# =============================================================================
+# Check: Changelog Entry
+# =============================================================================
+# A PR into `release` ships whatever it contains to consumers, so it must carry
+# release notes. This fails when the PR touches no CHANGELOG.md anywhere in the
+# tree (the repo keeps a root CHANGELOG.md plus one per plugin).
+#
+# Called by: release-gate.yml
+#
+# NOTE: reusable workflows must live at the top level of .github/workflows/.
+# The `_check-` prefix is the convention for workflow_call-only workflows.
+# =============================================================================
+
+name: Check - Changelog
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-check:
+    name: Changelog Entry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      # This check only ever runs from release-gate.yml, whose sole trigger is
+      # `pull_request: branches: [release]`. A pull request cannot target a
+      # branch that does not exist, so `release` always exists here and there
+      # is no legitimate missing-baseline case.
+      #
+      # An auth failure, a network blip, a ref update conflict or a GitHub
+      # outage is an operational failure, not an absent baseline. Passing those
+      # off as "inert" would silently disable the gate, so they fail closed.
+      - name: Resolve release baseline
+        run: |
+          # ls-remote separates the two cases the old code conflated:
+          #   exit 0  the connection worked and the ref exists
+          #   exit 2  the connection worked and there is no such ref
+          #   other   the connection itself failed
+          set +e
+          git ls-remote --exit-code --heads origin refs/heads/release >/dev/null 2>&1
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 2 ]]; then
+            echo "::error::No 'release' branch exists on origin, yet this gate runs only on pull requests targeting 'release'. A PR cannot target a branch that does not exist, so this is a broken configuration and not a bootstrap case. Failing closed."
+            exit 1
+          fi
+
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::Could not reach origin to resolve the 'release' branch (git ls-remote exit ${status}). This is an operational failure, not a missing baseline. Failing closed."
+            exit 1
+          fi
+
+          # The leading + forces the update, so a diverged local remote-tracking
+          # ref is not mistaken for an unreachable baseline.
+          if ! git fetch --no-tags --quiet origin +release:refs/remotes/origin/release; then
+            echo "::error::'release' exists on origin but fetching it failed. Failing closed rather than treating an unreachable baseline as no baseline."
+            exit 1
+          fi
+
+          git rev-parse --verify origin/release >/dev/null
+
+      - name: Require a changelog entry
+        run: |
+          CHANGED=$(git diff --name-only origin/release...HEAD)
+          echo "Files changed versus release:"
+          echo "${CHANGED}"
+
+          if echo "${CHANGED}" | grep -qE '(^|/)CHANGELOG\.md$'; then
+            echo "Changelog entry present."
+            exit 0
+          fi
+
+          echo "::error::This PR targets 'release' but changes no CHANGELOG.md. Add release notes describing what consumers will receive."
+          exit 1

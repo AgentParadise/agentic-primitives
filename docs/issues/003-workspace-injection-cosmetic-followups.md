@@ -11,7 +11,7 @@ Two non-blocking cosmetic notes from the final reviewer on the merged
 
 ### 3.1 — Empty `/workspace/.agentic-plugins/` directory when plugins/ mount is empty
 
-In `providers/workspaces/claude-cli/scripts/entrypoint.sh` section 5.5,
+In `workspace/entrypoint.sh` section 5.5,
 the entrypoint does `mkdir -p "${INJECT_TARGET_PLUGINS}"` before the
 plugin-discovery loop. When `/etc/agentic/workspace/plugins/` is mounted
 but contains no valid plugin directories (or `AGENTIC_WORKSPACE_PLUGINS`

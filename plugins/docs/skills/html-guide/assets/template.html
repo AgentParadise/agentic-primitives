@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TITLE: the claim, not the topic</title>
+
+<style>
+  /* ==========================================================================
+     TOKENS
+     Two themes plus explicit data-theme overrides so the toggle wins in both
+     directions. Change the accent hues per guide; keep the roles identical.
+       --amber : the spine. The anchoring constraint, section markers, links.
+       --cool  : secondary signal. Notes, comparisons, the "good" state.
+       --warn  : the cliff. Failure, overrun, caveats.
+     ========================================================================== */
+
+  :root {
+    color-scheme: light dark;
+
+    --ground: #F0F2F4;
+    --ground-2: #E4E8EB;
+    --panel: #FFFFFF;
+    --ink: #161B21;
+    --ink-soft: #4A555F;
+    --ink-faint: #7A858F;
+    --line: #CBD3D9;
+    --line-soft: #DDE3E8;
+    --amber: #B4661A;
+    --amber-bright: #D9822B;
+    --amber-wash: #F6E7D4;
+    --cool: #1F6E75;
+    --cool-wash: #DDEDEE;
+    --warn: #A93B31;
+
+    --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, "Palatino Linotype", Palatino, Georgia, serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+    --col: 40rem;
+    --wide: 62rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0B1016;
+      --ground-2: #121A22;
+      --panel: #141C25;
+      --ink: #E4EBF1;
+      --ink-soft: #A3B1BE;
+      --ink-faint: #6E7E8C;
+      --line: #2A3641;
+      --line-soft: #1F2A34;
+      --amber: #F5B15C;
+      --amber-bright: #FFC178;
+      --amber-wash: #2A2113;
+      --cool: #5BD3CC;
+      --cool-wash: #10262A;
+      --warn: #E8746A;
+    }
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ground: #F0F2F4;
+    --ground-2: #E4E8EB;
+    --panel: #FFFFFF;
+    --ink: #161B21;
+    --ink-soft: #4A555F;
+    --ink-faint: #7A858F;
+    --line: #CBD3D9;
+    --line-soft: #DDE3E8;
+    --amber: #B4661A;
+    --amber-bright: #D9822B;
+    --amber-wash: #F6E7D4;
+    --cool: #1F6E75;
+    --cool-wash: #DDEDEE;
+    --warn: #A93B31;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0B1016;
+    --ground-2: #121A22;
+    --panel: #141C25;
+    --ink: #E4EBF1;
+    --ink-soft: #A3B1BE;
+    --ink-faint: #6E7E8C;
+    --line: #2A3641;
+    --line-soft: #1F2A34;
+    --amber: #F5B15C;
+    --amber-bright: #FFC178;
+    --amber-wash: #2A2113;
+    --cool: #5BD3CC;
+    --cool-wash: #10262A;
+    --warn: #E8746A;
+  }
+
+  /* ---------- base ---------- */
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 1.0625rem;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 1.25rem 6rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--wide); margin: 0 auto; }
+
+  /* The reading column is narrow and left-aligned inside a wider wrap, so
+     figures can break out to full width while prose stays at 40rem. */
+  .col { max-width: var(--col); margin-left: 0; }
+  .col-wide { max-width: 54rem; margin-left: 0; }
+
+  @media (min-width: 62rem) {
+    .col,
+    .col-wide { margin-left: 7rem; }
+  }
+
+  p, ul, ol, dl { margin: 0 0 1.15em; }
+  .col > :last-child { margin-bottom: 0; }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+    line-height: 1.18;
+    margin: 0;
+    font-weight: 700;
+  }
+
+  img { max-width: 100%; }
+
+  /* ---------- masthead ---------- */
+
+  .mast {
+    padding: 4.5rem 0 3rem;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3.5rem;
+  }
+
+  .mast h1 {
+    font-size: clamp(2.4rem, 6.5vw, 4rem);
+    letter-spacing: -0.022em;
+    max-width: 18ch;
+  }
+
+  .mast h1 em { font-style: italic; color: var(--amber); }
+
+  .deck {
+    max-width: 46ch;
+    margin-top: 1.5rem;
+    font-size: 1.15rem;
+    color: var(--ink-soft);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 1.6rem;
+    display: block;
+  }
+
+  /* ---------- sections ---------- */
+
+  section { margin-bottom: 4rem; position: relative; scroll-margin-top: 1.5rem; }
+
+  h2 {
+    font-size: clamp(1.5rem, 3.4vw, 2rem);
+    letter-spacing: -0.014em;
+    margin-bottom: 1.1rem;
+    max-width: 22ch;
+  }
+
+  h3 { font-size: 1.1rem; letter-spacing: -0.005em; margin: 2rem 0 0.65rem; }
+
+  /* Section number pulls into the left gutter on wide screens and sits
+     inline on narrow ones, so the reading column never shifts. */
+  .marker {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    color: var(--amber);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.55rem;
+  }
+
+  @media (min-width: 62rem) {
+    .marker {
+      position: absolute;
+      left: 0;
+      width: 6rem;
+      text-align: right;
+      margin: 0;
+      padding-top: 0.55rem;
+      line-height: 1.4;
+    }
+  }
+
+  /* ---------- inline ---------- */
+
+  a { color: var(--amber); }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--amber-bright);
+    outline-offset: 3px;
+  }
+
+  /* First appearance of a glossary term in prose. Highlight once, not every time. */
+  .term {
+    font-weight: 700;
+    color: var(--ink);
+    box-shadow: inset 0 -0.4em 0 var(--amber-wash);
+  }
+
+  code, .k {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--ground-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: 0.08em 0.32em;
+  }
+
+  /* Any figure in the anchoring unit: wrap it so numbers align in a column. */
+  .num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+  /* Cross-reference chip pointing at a section number. */
+  .ref {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+    color: var(--amber);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 0.05em 0.3em;
+    white-space: nowrap;
+    vertical-align: 0.08em;
+  }
+
+  .ref::before { content: "\00a7"; opacity: 0.65; margin-right: 0.15em; }
+
+  .lede { color: var(--ink-soft); }
+
+  /* ---------- callouts ---------- */
+
+  .note {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--cool);
+    padding: 1.05rem 1.25rem;
+    margin: 1.6rem 0;
+    font-size: 0.97rem;
+  }
+
+  .note .lbl {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cool);
+    display: block;
+    margin-bottom: 0.4rem;
+  }
+
+  /* .caveat  = "this is simplified" or "this is the risk". Never omit these.
+     .analogy = the bridge from something the reader already knows. */
+  .note.caveat { border-left-color: var(--warn); }
+  .note.caveat .lbl { color: var(--warn); }
+  .note.analogy { border-left-color: var(--amber); }
+  .note.analogy .lbl { color: var(--amber); }
+  .note p:last-child { margin-bottom: 0; }
+
+  /* ---------- figures ---------- */
+
+  figure { margin: 2.5rem 0; max-width: var(--wide); }
+
+  figure svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+  }
+
+  /* Wrap a wide diagram in .scroller so narrow screens pan instead of squashing. */
+  .scroller { overflow-x: auto; }
+  .scroller svg { min-width: 44rem; }
+
+  figcaption {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.6;
+    color: var(--ink-faint);
+    margin-top: 0.7rem;
+    max-width: 62ch;
+    letter-spacing: 0.01em;
+  }
+
+  figcaption b {
+    color: var(--ink-soft);
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+  }
+
+  /* SVG token classes. Diagrams reference these instead of literal hex, which
+     is what makes one diagram correct in both themes. */
+  .s-line { stroke: var(--line); }
+  .s-ink { stroke: var(--ink-soft); }
+  .s-amber { stroke: var(--amber-bright); }
+  .s-cool { stroke: var(--cool); }
+  .f-panel { fill: var(--panel); }
+  .f-ground { fill: var(--ground-2); }
+  .f-ink { fill: var(--ink); }
+  .f-soft { fill: var(--ink-soft); }
+  .f-faint { fill: var(--ink-faint); }
+  .f-amber { fill: var(--amber-bright); }
+  .f-cool { fill: var(--cool); }
+  .f-warn { fill: var(--warn); }
+
+  .t { font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; }
+  .t-sm { font-size: 8.5px; }
+  .t-lg { font-size: 12px; font-weight: 600; }
+  .t-cap { text-transform: uppercase; letter-spacing: 0.12em; font-size: 8px; }
+
+  /* ---------- table ---------- */
+
+  .tbl-wrap { overflow-x: auto; margin: 1.8rem 0; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 34rem;
+    font-size: 0.93rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 0.7rem 0.9rem 0.7rem 0;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 400;
+    border-bottom-color: var(--line);
+  }
+
+  td:first-child { font-weight: 700; width: 30%; }
+
+  /* ---------- vocabulary ---------- */
+
+  .gloss { display: grid; gap: 0; margin: 1.8rem 0 0; }
+
+  .gloss div {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  @media (min-width: 40rem) {
+    .gloss div { grid-template-columns: 13rem 1fr; gap: 1.5rem; }
+  }
+
+  .gloss dt {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--amber);
+    font-weight: 500;
+  }
+
+  .gloss dd { margin: 0; font-size: 0.95rem; color: var(--ink-soft); }
+
+  /* ---------- lists, rules, footer ---------- */
+
+  ul, ol { padding-left: 1.25rem; }
+  li { margin-bottom: 0.5rem; }
+  li::marker { color: var(--ink-faint); }
+
+  .rule { border: 0; border-top: 1px solid var(--line); margin: 4rem 0; }
+
+  footer {
+    max-width: var(--col);
+    margin: 5rem 0 0;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.8;
+    color: var(--ink-faint);
+  }
+
+  @media (min-width: 62rem) { footer { margin-left: 7rem; } }
+
+  /* ---------- floating table of contents ---------- */
+
+  /* Hidden below 84rem rather than squeezed, because the reading column
+     matters more than the navigation. */
+  .toc { display: none; }
+
+  @media (min-width: 84rem) {
+    .toc {
+      display: block;
+      position: fixed;
+      top: 50%;
+      right: 1rem;
+      transform: translateY(-50%);
+      width: 10rem;
+      max-height: 88vh;
+      overflow-y: auto;
+      z-index: 20;
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      line-height: 1.35;
+      letter-spacing: 0.04em;
+      border-left: 1px solid var(--line);
+      padding: 0.2rem 0 0.2rem 0.75rem;
+    }
+  }
+
+  .toc-hd {
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.6rem;
+    color: var(--ink-faint);
+    margin-bottom: 0.7rem;
+  }
+
+  .toc ol { list-style: none; margin: 0; padding: 0; }
+  .toc li { margin: 0 0 0.42rem; }
+
+  .toc a {
+    display: block;
+    color: var(--ink-faint);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    padding: 0.06rem 0 0.06rem 0.5rem;
+    margin-left: -0.75rem;
+  }
+
+  .toc a:hover { color: var(--ink-soft); }
+
+  .toc a.on {
+    color: var(--amber);
+    border-left-color: var(--amber);
+    font-weight: 500;
+  }
+
+  .toc a .n { color: var(--ink-faint); margin-right: 0.35em; }
+  .toc a.on .n { color: var(--amber); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+
+  /* ---------- theme toggle ---------- */
+
+  /* A standalone file has no host to stamp data-theme on it, so it ships its
+     own control. Defaults to the OS preference until the reader overrides. */
+  .theme {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 30;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 0.4rem 0.6rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .theme:hover { color: var(--amber); border-color: var(--amber); }
+
+  /* ---------- print ---------- */
+
+  /* Listed against every theme selector so an explicit dark override does not
+     survive into a printed page. */
+  @media print {
+    :root,
+    :root[data-theme="light"],
+    :root[data-theme="dark"] {
+      color-scheme: light;
+      --ground: #FFFFFF;
+      --ground-2: #F4F5F6;
+      --panel: #FFFFFF;
+      --ink: #000000;
+      --ink-soft: #333333;
+      --ink-faint: #555555;
+      --line: #BBBBBB;
+      --line-soft: #DDDDDD;
+      --amber: #8A4D10;
+      --amber-bright: #8A4D10;
+      --amber-wash: #F2E6D6;
+      --cool: #12545A;
+      --cool-wash: #E8F1F2;
+      --warn: #8A2B22;
+    }
+
+    body { padding: 0; font-size: 10.5pt; line-height: 1.5; }
+    .toc, .theme { display: none !important; }
+    .wrap { max-width: none; }
+    .col, .col-wide, footer { margin-left: 0 !important; max-width: none; }
+    .marker { position: static !important; width: auto; text-align: left; margin-bottom: 0.4rem; }
+    .mast { padding-top: 0; }
+    section { margin-bottom: 2rem; }
+    figure, .note, .tbl-wrap { break-inside: avoid; }
+    h1, h2, h3 { break-after: avoid; }
+    .scroller { overflow: visible; }
+    .scroller svg { min-width: 0; }
+    .rule { margin: 2rem 0; }
+    a { color: #000; text-decoration: underline; }
+  }
+</style>
+</head>
+<body>
+
+<button class="theme" id="themeToggle" type="button" aria-label="Toggle colour theme">Theme</button>
+
+<!-- Numbers match the .marker in each section so a spoken reference lands. -->
+<nav class="toc" id="toc" aria-label="Table of contents">
+  <span class="toc-hd">Contents</span>
+  <ol>
+    <li><a href="#start">Start here</a></li>
+    <li><a href="#vocab">Vocabulary</a></li>
+    <li><a href="#one"><span class="n">01</span>FIRST</a></li>
+    <li><a href="#two"><span class="n">02</span>SECOND</a></li>
+    <li><a href="#point"><span class="n">03</span>The point</a></li>
+  </ol>
+</nav>
+
+<div class="wrap">
+
+<header class="mast">
+  <span class="eyebrow">WHO THIS IS FOR AND WHY IT EXISTS</span>
+  <h1>TITLE stating the claim, with one <em>italic accent</em> word</h1>
+  <p class="deck">
+    One paragraph naming the reader, the decision they are about to make, and the
+    assumption the document makes about what they already know. Say what is
+    explicitly out of scope here rather than later.
+  </p>
+</header>
+
+<!-- ==========================================================================
+     START HERE: the anchoring constraint.
+     One section, before any vocabulary, that states the single constraint every
+     later section is a consequence of, and the human cost of missing it. If a
+     reader stops after this section they should still hold the right frame.
+     ========================================================================== -->
+<section id="start">
+  <span class="marker">Start here</span>
+  <div class="col">
+    <h2>The one constraint that explains every other decision</h2>
+    <p>
+      Contrast the reader's existing mental model against the real one. The shape
+      that works: "X looks like a CORRECTNESS problem. It is actually a
+      CONSTRAINT problem wearing a correctness costume."
+    </p>
+    <p>
+      Then state the constraint as a number, and immediately state what a human
+      feels when it is missed. The number alone is inert; the consequence is what
+      the reader remembers and what stops the constraint being traded away.
+    </p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ==========================================================================
+     VOCABULARY: at the top, not the bottom.
+     Every term used anywhere in the document, one line each, with a chip
+     pointing at the section that explains it properly. Skimmable and skippable.
+     Where a term has two senses, give it two entries.
+     ========================================================================== -->
+<section id="vocab">
+  <span class="marker">Vocabulary</span>
+  <div class="col">
+    <h2>Every term in this document, in one place</h2>
+    <p class="lede">
+      This sits here rather than at the end so you never meet a word before its
+      definition. It is a lookup table, not an argument: skim it, or skip it and
+      come back when something bites. The tag on each entry points at the section
+      that explains it properly.
+    </p>
+  </div>
+
+  <dl class="gloss col-wide">
+    <div>
+      <dt>Term</dt>
+      <dd>One sentence that is true, then one clause on why it matters here. <span class="ref">01</span></dd>
+    </div>
+    <div>
+      <dt>Loaded term (the phenomenon)</dt>
+      <dd>The thing that happens in the world. <span class="ref">01</span></dd>
+    </div>
+    <div>
+      <dt>Loaded term (the machinery)</dt>
+      <dd>The system that approximates it. Splitting the two senses is usually why the reader was confused. <span class="ref">02</span></dd>
+    </div>
+  </dl>
+</section>
+
+<hr class="rule">
+
+<!-- ==========================================================================
+     BODY SECTIONS: ordered by when the reader needs each term, never
+     alphabetically and never by topic taxonomy.
+     ========================================================================== -->
+<section id="one">
+  <span class="marker">01 / First</span>
+  <div class="col">
+    <h2>A heading that states the finding, not the topic</h2>
+    <p>
+      Prose at the reading width. On first use of a vocabulary entry, mark it
+      once with <span class="term">the term class</span>, and never again.
+    </p>
+    <p>
+      Quantities get the number class so digits align down the page:
+      <span class="num">11.1ms</span>.
+    </p>
+
+    <div class="note analogy">
+      <span class="lbl">The analogy</span>
+      <p>
+        Bridge from something the reader already owns. One analogy per hard idea,
+        and say where it breaks, because an analogy the reader over-extends costs
+        more than none.
+      </p>
+    </div>
+
+    <div class="note caveat">
+      <span class="lbl">Simplification flag</span>
+      <p>
+        Where the explanation is lossy, say so in a clause here rather than
+        stating a tidy falsehood upstairs. The reader is going to act on this.
+      </p>
+    </div>
+  </div>
+
+  <!-- Diagrams break out of .col to the full wrap width. Every mark uses a
+       token class, so it is legible in both themes. Diagrams that carry no
+       real quantity are decoration; delete them. -->
+  <figure class="scroller">
+    <svg viewBox="0 0 900 260" role="img" aria-label="Describe what the diagram shows and what it lets the reader conclude, for a reader who cannot see it">
+      <g class="t t-cap f-faint">
+        <text x="40" y="30">WHAT IS BEING COMPARED, AND IN WHAT UNIT</text>
+      </g>
+
+      <!-- The ceiling: the anchoring constraint, drawn as a hard line. -->
+      <line x1="740" y1="45" x2="740" y2="215" class="s-amber" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text x="748" y="52" class="t f-amber">LIMIT</text>
+
+      <!-- Scale, so the bars mean something. -->
+      <line x1="60" y1="205" x2="740" y2="205" class="s-line" stroke-width="1"/>
+      <g class="t t-sm f-faint">
+        <text x="57" y="219">0</text>
+        <text x="301" y="219">4</text>
+        <text x="546" y="219">8</text>
+      </g>
+
+      <text x="60" y="80" class="t f-soft">A. One hot stage</text>
+      <g>
+        <rect x="60" y="88" width="86" height="26" class="f-cool" opacity="0.35"/>
+        <rect x="146" y="88" width="404" height="26" class="f-amber"/>
+        <rect x="550" y="88" width="55" height="26" class="f-cool" opacity="0.55"/>
+      </g>
+      <!-- Text sitting ON a filled bar takes a literal dark ink, because the
+           bar keeps its colour in both themes while --ink flips. -->
+      <text x="160" y="105" class="t t-sm" fill="#111">the expensive one</text>
+
+      <text x="60" y="160" class="t f-soft">B. Flat</text>
+      <g>
+        <rect x="60" y="168" width="64" height="26" class="f-cool" opacity="0.35"/>
+        <rect x="124" y="168" width="64" height="26" class="f-cool" opacity="0.5"/>
+        <rect x="188" y="168" width="64" height="26" class="f-cool" opacity="0.65"/>
+        <rect x="252" y="168" width="64" height="26" class="f-cool" opacity="0.8"/>
+      </g>
+
+      <text x="60" y="248" class="t t-sm f-faint">The sentence the reader should be able to say after looking at this.</text>
+    </svg>
+    <figcaption>
+      <b>Fig 1.</b> Caption states the conclusion the diagram supports, and flags
+      whether the figures are measured or illustrative. A caption that only
+      renames the diagram is wasted.
+    </figcaption>
+  </figure>
+</section>
+
+<hr class="rule">
+
+<section id="two">
+  <span class="marker">02 / Second</span>
+  <div class="col">
+    <h2>Comparisons go in a table, not in prose</h2>
+    <p>Three or more things varying along two or more axes is a table.</p>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Thing</th><th>Cost</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Option</td><td>Figure</td><td>The mechanism, in one sentence.</td></tr>
+        <tr><td>Option</td><td>Figure</td><td>The mechanism, in one sentence.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ==========================================================================
+     THE POINT: name the reader's actual fear and answer it with arithmetic.
+     This is usually the reason they asked. Common shapes: "is this a band-aid
+     we will rip out", "are we about to be locked in", "will this survive
+     scale". Find the real one and give it its own section.
+     ========================================================================== -->
+<section id="point">
+  <span class="marker">03 / The point</span>
+  <div class="col">
+    <h2>Why this is not THE THING THEY FEAR</h2>
+    <p>
+      State the fear in the reader's own words, then run the numbers that settle
+      it. Close on what survives if the decision is revisited later, because that
+      is the part that makes a decision safe to make now.
+    </p>
+    <ul>
+      <li><strong>The consequence,</strong> then the reason.</li>
+      <li><strong>The consequence,</strong> then the reason.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  What this document assumes, and against what target.<br>
+  Where the figures came from, and which are illustrative rather than measured.<br>
+  What it is deliberately not: written for a decision, not as implementation reference.
+</footer>
+
+</div>
+
+<script>
+/* Scroll-spy. Marks the section the reader is in, so a long page still answers
+   "where am I". IntersectionObserver drives updates; the scroll listener is the
+   fallback and handles the top and bottom of the document. */
+(function () {
+  var nav = document.getElementById('toc');
+  if (!nav) { return; }
+
+  var links = Array.prototype.slice.call(nav.getElementsByTagName('a'));
+  var targets = links.map(function (a) {
+    var href = a.getAttribute('href') || '';
+    return href.charAt(0) === '#' ? document.getElementById(href.slice(1)) : null;
+  });
+
+  var active = -1;
+
+  function update() {
+    var best = 0;
+    for (var i = 0; i < targets.length; i++) {
+      var el = targets[i];
+      if (!el) { continue; }
+      if (el.getBoundingClientRect().top <= 140) { best = i; }
+    }
+    if (best === active) { return; }
+    active = best;
+    for (var j = 0; j < links.length; j++) {
+      if (j === best) {
+        links[j].className = 'on';
+        links[j].setAttribute('aria-current', 'true');
+      } else {
+        links[j].className = '';
+        links[j].removeAttribute('aria-current');
+      }
+    }
+  }
+
+  if (typeof IntersectionObserver === 'function') {
+    var io = new IntersectionObserver(update, {
+      rootMargin: '-120px 0px -55% 0px',
+      threshold: [0, 0.02, 0.25, 0.6, 1]
+    });
+    for (var k = 0; k < targets.length; k++) {
+      if (targets[k]) { io.observe(targets[k]); }
+    }
+  }
+
+  var queued = false;
+  function schedule() {
+    if (queued) { return; }
+    queued = true;
+    requestAnimationFrame(function () { queued = false; update(); });
+  }
+
+  addEventListener('scroll', schedule, { passive: true });
+  addEventListener('resize', schedule, { passive: true });
+  update();
+})();
+
+/* Theme toggle. Persists an explicit choice; absent one, the OS preference
+   governs through the prefers-color-scheme block above. */
+(function () {
+  var KEY = 'guide-theme';
+  var btn = document.getElementById('themeToggle');
+  var root = document.documentElement;
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  if (saved === 'light' || saved === 'dark') { root.setAttribute('data-theme', saved); }
+
+  if (!btn) { return; }
+
+  function current() {
+    var set = root.getAttribute('data-theme');
+    if (set === 'light' || set === 'dark') { return set; }
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  btn.addEventListener('click', function () {
+    var next = current() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+  });
+})();
+</script>
+
+</body>
+</html>

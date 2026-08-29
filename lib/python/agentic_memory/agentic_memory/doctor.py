@@ -1,8 +1,8 @@
 """Memory doctor — preflight validation for the memory contract.
 
 The doctor runs at container start (entrypoint section 5.7) and is also
-invocable on demand. It performs eight standard checks plus optional
-provider-specific checks delegated to the adapter's `doctor.sh`.
+invocable on demand. It performs the standard checks in DEFAULT_CHECKS plus
+optional provider-specific checks delegated to the adapter's `doctor.sh`.
 
 Hard-fail on any failure. Setting `AGENTIC_MEMORY_PROVIDER` is opting into
 hard-fail; there is no soft-fail mode.
@@ -19,6 +19,9 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -26,18 +29,102 @@ from typing import Any
 from urllib.parse import urlparse
 
 from agentic_memory.contract import (
+    CAPABILITY,
+    Env,
     MemoryContract,
+    init_marker_path,
     is_namespace_well_formed,
     is_provider_well_formed,
     sanitize_namespace,
 )
 
-
-PROVIDER_REGISTRY_ROOT = "/opt/agentic/memory"
+PROVIDER_REGISTRY_ROOT = "/opt/agentic/capabilities/memory"
 """Where per-provider adapter directories live in the workspace image."""
 
 BACKEND_HEALTH_TIMEOUT_SECONDS = 5
 """How long to wait for backend /health before giving up."""
+
+
+# --- Credential-safe HTTP -----------------------------------------------------
+#
+# DUPLICATED, DELIBERATELY. The same three definitions exist in
+# agentic_session_store/doctor.py, as `_origin`, `_SameOriginRedirect` and
+# `_SAME_ORIGIN_OPENER`. The two packages ship as separate wheels with
+# `dependencies = []` and neither imports the other, so there is no module
+# either one can import today; the only shared home would be a fourth
+# distribution, which means a new wheel in scripts/build-provider.py, a new
+# entry in scripts/python_qa.py and the CI matrix, and a dependency edge in
+# two images, for one class and one function. That cost was judged not worth
+# paying for this fix.
+#
+# The cost of NOT paying it is drift, which is exactly how this defect
+# reached this file: the guard was written once, in the session-store doctor,
+# and scoped to that one doctor rather than to every credential-bearing
+# health check. So each copy names the other. If you change one, change both.
+
+
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """The (scheme, host, port) triple two URLs must share to be same-origin.
+
+    Scheme and host are lowercased by urlsplit already; the port is taken
+    from `port`, which returns None when the URL relies on the scheme
+    default, so `https://h` and `https://h:443` compare equal only after the
+    default is filled in below.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    default_ports = {"http": 80, "https": 443}
+    port = parsed.port if parsed.port is not None else default_ports.get(parsed.scheme)
+    return (parsed.scheme, parsed.hostname or "", port)
+
+
+class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect handler that follows same-origin hops and nothing else.
+
+    `urllib.request.urlopen` follows redirects by default, and the stock
+    HTTPRedirectHandler copies the ORIGINAL request's headers onto the
+    redirected one, `Authorization` included, WITHOUT checking that the new
+    URL is even the same host. Verified directly:
+
+        HTTPRedirectHandler().redirect_request(
+            req_to_a.example, None, 302, "Found", {}, "http://evil.example/y")
+        -> redirected headers: {'Authorization': 'Bearer SECRET'}
+
+    So a backend that is compromised, misconfigured, or merely sitting behind
+    a redirecting proxy harvests AGENTIC_MEMORY_AUTH from a health check.
+
+    REFUSING EVERY REDIRECT OVER-CORRECTS. A backend that canonicalises
+    `/health` to `/health/` is an ordinary deployment, and refusing that
+    fails preflight and blocks the workspace from starting for a backend that
+    is perfectly healthy. The property that actually matters is narrower: the
+    credential must never reach a DIFFERENT origin.
+
+    So a hop to the same (scheme, host, port) is followed, and any other hop
+    is declined. The comparison is made PER HOP, against `req.full_url`,
+    which is the URL of the request being answered rather than the one the
+    operator configured: on `A -> A -> evil`, the second hop compares evil
+    against A and stops there. Declining returns None, which leaves the 3xx to
+    HTTPDefaultErrorHandler and surfaces as an HTTPError carrying the real
+    status code, so a cross-origin redirect is a FAILED check rather than
+    something silently passed. urllib resolves a relative Location against the
+    current request before calling this, so a relative hop is same-origin by
+    construction.
+
+    urllib's own redirect limits (max_repeats, max_redirections) still apply,
+    so a same-origin redirect loop terminates rather than spinning.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if _origin(req.full_url) != _origin(newurl):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+SAME_ORIGIN_OPENER = urllib.request.build_opener(SameOriginRedirect)
+"""Opener used for every credential-bearing request this doctor makes.
+
+`build_opener` skips its default HTTPRedirectHandler when handed a subclass
+of it, so this opener has exactly one redirect handler and it is this one.
+"""
 
 
 class CheckStatus(str, Enum):
@@ -72,7 +159,9 @@ class Check:
 
     name: str
 
-    def run(self, contract: MemoryContract) -> CheckResult:  # pragma: no cover - abstract
+    def run(
+        self, contract: MemoryContract
+    ) -> CheckResult:  # pragma: no cover - abstract
         raise NotImplementedError
 
 
@@ -88,11 +177,11 @@ class EnvContractCheck(Check):
     def run(self, contract: MemoryContract) -> CheckResult:
         missing = []
         if not contract.provider:
-            missing.append("AGENTIC_MEMORY_PROVIDER")
+            missing.append(Env.PROVIDER)
         if not contract.namespace:
-            missing.append("AGENTIC_MEMORY_NAMESPACE")
+            missing.append(Env.NAMESPACE)
         if not contract.url:
-            missing.append("AGENTIC_MEMORY_URL")
+            missing.append(Env.URL)
 
         if missing:
             return CheckResult(
@@ -119,7 +208,7 @@ class NamespaceWellFormedCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_NAMESPACE is unset (covered by env_contract).",
+                message=f"{Env.NAMESPACE} is unset (covered by env_contract).",
             )
 
         if is_namespace_well_formed(contract.namespace):
@@ -142,7 +231,7 @@ class NamespaceWellFormedCheck(Check):
 
 
 class ProviderKnownCheck(Check):
-    """Verify the provider directory exists under /opt/agentic/memory/."""
+    """Verify the provider directory exists under /opt/agentic/capabilities/memory/."""
 
     def __init__(self, registry_root: str = PROVIDER_REGISTRY_ROOT) -> None:
         super().__init__(name="provider_known")
@@ -153,14 +242,14 @@ class ProviderKnownCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_PROVIDER unset.",
+                message=f"{Env.PROVIDER} unset.",
             )
 
         if not is_provider_well_formed(contract.provider):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                message=f"{Env.PROVIDER} must be a provider name, not a path.",
                 details={"provider": contract.provider},
             )
 
@@ -168,7 +257,8 @@ class ProviderKnownCheck(Check):
         if not os.path.isdir(provider_dir):
             try:
                 known = sorted(
-                    name for name in os.listdir(self.registry_root)
+                    name
+                    for name in os.listdir(self.registry_root)
                     if os.path.isdir(os.path.join(self.registry_root, name))
                 )
             except OSError:
@@ -198,14 +288,14 @@ class AdapterExistsCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_PROVIDER unset.",
+                message=f"{Env.PROVIDER} unset.",
             )
 
         if not is_provider_well_formed(contract.provider):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                message=f"{Env.PROVIDER} must be a provider name, not a path.",
                 details={"provider": contract.provider},
             )
 
@@ -231,6 +321,92 @@ class AdapterExistsCheck(Check):
         )
 
 
+INIT_MARKER_READ_BYTES = 4096
+"""How much of the marker to read. It holds one short token and a newline."""
+
+
+class InitCompleteCheck(Check):
+    """Fail unless THIS run's adapter init.sh reached its last line.
+
+    WHY THE OTHER CHECKS ARE NOT ENOUGH. entrypoint.sh 5.6 sources each
+    adapter's init.sh as the condition of an `if`, and on failure it warns
+    and carries on, on the assumption that this doctor will name the cause.
+    The assumption was never verified and is false: with a read-only
+    ~/.hindsight, the hindsight adapter's config write fails and it returns
+    1, but `config_json_valid` only validates the REQUESTED json,
+    `backend_health` only talks to the backend, and the provider's own
+    doctor.sh reads whatever config file is already on disk. A stale but
+    well-formed file passes all three, so the workspace ran against memory
+    configuration nobody asked for and nothing said so.
+
+    WHY A TOKEN AND NOT JUST A FILE. $HOME can be persisted (it is a
+    supported configuration), so a marker that only had to EXIST would be
+    satisfied by the one a previous container left behind: a failed init
+    would pass on its predecessor's word, which is the same stale-state
+    failure one layer up. The marker instead holds the value of
+    Env.INIT_TOKEN, which init.sh mints fresh and exports at its first line,
+    and this check compares the two.
+
+    WHAT THIS DOES NOT PROVE: that the adapter wrote the marker. Anything
+    running as this uid can write in $HOME, and would have to know this run's
+    token to write a passing one. This check reports on completion, not on
+    who wrote the file.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(name="init_complete")
+
+    def run(self, contract: MemoryContract) -> CheckResult:
+        marker = init_marker_path()
+        token = os.environ.get(Env.INIT_TOKEN, "").strip()
+        if not token:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message=(
+                    f"{Env.INIT_TOKEN} is unset, so the '{contract.provider}' "
+                    "adapter's init.sh never ran or died before its first line. "
+                    "Look for [memory] messages earlier in the container's stderr."
+                ),
+                details={"marker": marker},
+            )
+        try:
+            with open(marker, encoding="utf-8", errors="replace") as handle:
+                recorded = handle.read(INIT_MARKER_READ_BYTES).strip()
+        except OSError as e:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message=(
+                    f"{marker} is absent or unreadable ({e}), so the "
+                    f"'{contract.provider}' adapter's init.sh did not finish: it "
+                    "writes that file as its last act. The workspace would run "
+                    "against whatever memory configuration was already on disk. "
+                    "Look for [memory] messages earlier in the container's stderr."
+                ),
+                details={"marker": marker, "error": str(e)},
+            )
+        if recorded != token:
+            return CheckResult(
+                name=self.name,
+                status=CheckStatus.FAIL,
+                message=(
+                    f"{marker} records a DIFFERENT run's token, so it was left by "
+                    f"an earlier container and the '{contract.provider}' adapter's "
+                    "init.sh did not finish this time. A persisted $HOME keeps the "
+                    "marker across runs, so finding an old one is expected; this "
+                    "run failing to replace it is not. Look for [memory] messages "
+                    "earlier in the container's stderr."
+                ),
+                details={"marker": marker},
+            )
+        return CheckResult(
+            name=self.name,
+            status=CheckStatus.OK,
+            details={"marker": marker},
+        )
+
+
 class ConfigJsonValidCheck(Check):
     """Verify AGENTIC_MEMORY_CONFIG_JSON parses as JSON (when set)."""
 
@@ -242,7 +418,7 @@ class ConfigJsonValidCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_CONFIG_JSON not set.",
+                message=f"{Env.CONFIG_JSON} not set.",
             )
         try:
             parsed = json.loads(contract.config_json)
@@ -250,14 +426,14 @@ class ConfigJsonValidCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message=f"AGENTIC_MEMORY_CONFIG_JSON does not parse: {e}",
+                message=f"{Env.CONFIG_JSON} does not parse: {e}",
                 details={"error": str(e)},
             )
         if not isinstance(parsed, dict):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_CONFIG_JSON must be a JSON object.",
+                message=f"{Env.CONFIG_JSON} must be a JSON object.",
                 details={"type": type(parsed).__name__},
             )
         return CheckResult(
@@ -278,7 +454,7 @@ class BackendDnsCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_URL unset (covered by env_contract).",
+                message=f"{Env.URL} unset (covered by env_contract).",
             )
         host = urlparse(contract.url).hostname
         if not host:
@@ -316,14 +492,14 @@ class BackendHealthCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_URL unset (covered by env_contract).",
+                message=f"{Env.URL} unset (covered by env_contract).",
             )
         parsed = urlparse(contract.url)
         if parsed.scheme not in {"http", "https"}:
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_URL must use http or https.",
+                message=f"{Env.URL} must use http or https.",
                 details={"url": contract.url, "scheme": parsed.scheme},
             )
         if not parsed.hostname:
@@ -334,20 +510,36 @@ class BackendHealthCheck(Check):
                 details={"url": contract.url},
             )
         health_url = contract.url.rstrip("/") + "/health"
-        # Use stdlib only — urllib avoids adding a requests dependency.
-        import urllib.error  # noqa: PLC0415
-        import urllib.request  # noqa: PLC0415
 
-        req = urllib.request.Request(health_url, method="GET")  # noqa: S310 - controlled URL
+        req = urllib.request.Request(health_url, method="GET")
         if contract.auth:
             req.add_header("Authorization", f"Bearer {contract.auth}")
 
         start = time.monotonic()
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
+            with SAME_ORIGIN_OPENER.open(req, timeout=self.timeout) as resp:
                 status_code = resp.status
                 body_preview = resp.read(200).decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
+            if 300 <= e.code < 400:
+                # The redirect target is deliberately NOT echoed, in the
+                # message or in the details. It is attacker-controllable
+                # input on exactly the path this check exists to refuse, and
+                # both fields land in the durable doctor audit file.
+                return CheckResult(
+                    name=self.name,
+                    status=CheckStatus.FAIL,
+                    message=(
+                        f"Backend /health returned HTTP {e.code} (a redirect to "
+                        "a DIFFERENT origin, which is NOT followed: the memory "
+                        "credential may only ever be sent to the configured "
+                        "scheme, host and port. A same-origin redirect is "
+                        f"followed and is not reported here). Point {Env.URL} "
+                        "at the backend directly."
+                    ),
+                    details={"url": health_url, "status_code": e.code},
+                    duration_ms=(time.monotonic() - start) * 1000,
+                )
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
@@ -370,13 +562,21 @@ class BackendHealthCheck(Check):
                 name=self.name,
                 status=CheckStatus.FAIL,
                 message=f"Backend /health returned status {status_code}",
-                details={"url": health_url, "status_code": status_code, "body_preview": body_preview},
+                details={
+                    "url": health_url,
+                    "status_code": status_code,
+                    "body_preview": body_preview,
+                },
                 duration_ms=duration_ms,
             )
         return CheckResult(
             name=self.name,
             status=CheckStatus.OK,
-            details={"url": health_url, "status_code": status_code, "response_time_ms": round(duration_ms, 1)},
+            details={
+                "url": health_url,
+                "status_code": status_code,
+                "response_time_ms": round(duration_ms, 1),
+            },
             duration_ms=duration_ms,
         )
 
@@ -388,7 +588,9 @@ class ProviderSpecificCheck(Check):
     It must emit JSON to stdout describing its findings and exit 0/1.
     """
 
-    def __init__(self, registry_root: str = PROVIDER_REGISTRY_ROOT, timeout: int = 10) -> None:
+    def __init__(
+        self, registry_root: str = PROVIDER_REGISTRY_ROOT, timeout: int = 10
+    ) -> None:
         super().__init__(name="provider_specific")
         self.registry_root = registry_root
         self.timeout = timeout
@@ -398,13 +600,13 @@ class ProviderSpecificCheck(Check):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.SKIPPED,
-                message="AGENTIC_MEMORY_PROVIDER unset.",
+                message=f"{Env.PROVIDER} unset.",
             )
         if not is_provider_well_formed(contract.provider):
             return CheckResult(
                 name=self.name,
                 status=CheckStatus.FAIL,
-                message="AGENTIC_MEMORY_PROVIDER must be a provider name, not a path.",
+                message=f"{Env.PROVIDER} must be a provider name, not a path.",
                 details={"provider": contract.provider},
             )
         script = os.path.join(self.registry_root, contract.provider, "doctor.sh")
@@ -443,7 +645,10 @@ class ProviderSpecificCheck(Check):
         duration_ms = (time.monotonic() - start) * 1000
 
         # Parse JSON details from stdout if present; otherwise carry the raw output.
-        details: dict[str, Any] = {"stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
+        details: dict[str, Any] = {
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+        }
         try:
             parsed = json.loads(result.stdout)
             if isinstance(parsed, dict):
@@ -475,6 +680,7 @@ DEFAULT_CHECKS: list[Check] = [
     NamespaceWellFormedCheck(),
     ProviderKnownCheck(),
     AdapterExistsCheck(),
+    InitCompleteCheck(),
     ConfigJsonValidCheck(),
     BackendDnsCheck(),
     BackendHealthCheck(),
@@ -532,10 +738,12 @@ def _redact(s: str) -> str:
     return s[:4] + "..." + s[-3:]
 
 
-def _format_pretty(contract: MemoryContract | None, results: list[CheckResult], verbose: bool) -> str:
+def _format_pretty(
+    contract: MemoryContract | None, results: list[CheckResult], verbose: bool
+) -> str:
     """Human-readable report to stderr."""
     if contract is None:
-        return "[memory-doctor] AGENTIC_MEMORY_PROVIDER unset — memory not opted in. No checks run.\n"
+        return f"[{CAPABILITY}-doctor] {Env.PROVIDER} unset — memory not opted in. No checks run.\n"
 
     lines: list[str] = []
     lines.append("[memory-doctor] Memory contract diagnostics")
@@ -575,8 +783,15 @@ def main(argv: list[str] | None = None) -> int:
         prog="agentic-memory-doctor",
         description="Validate the workspace's memory contract.",
     )
-    p.add_argument("--json", action="store_true", help="JSON to stdout (pretty stays on stderr)")
-    p.add_argument("--verbose", "-v", action="store_true", help="Include extra detail in pretty output")
+    p.add_argument(
+        "--json", action="store_true", help="JSON to stdout (pretty stays on stderr)"
+    )
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Include extra detail in pretty output",
+    )
     p.add_argument(
         "--provider",
         help="Override AGENTIC_MEMORY_PROVIDER for this run (testing).",
@@ -604,11 +819,11 @@ def main(argv: list[str] | None = None) -> int:
     # Apply CLI overrides into env before parsing the contract.
     env = os.environ.copy()
     if args.provider is not None:
-        env["AGENTIC_MEMORY_PROVIDER"] = args.provider
+        env[Env.PROVIDER] = args.provider
     if args.namespace is not None:
-        env["AGENTIC_MEMORY_NAMESPACE"] = args.namespace
+        env[Env.NAMESPACE] = args.namespace
     if args.url is not None:
-        env["AGENTIC_MEMORY_URL"] = args.url
+        env[Env.URL] = args.url
 
     contract = MemoryContract.from_env(env)
     results, exit_code = run_checks(contract)
@@ -620,6 +835,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         payload = {
             "doctor_version": "1.0",
+            "capability": CAPABILITY,
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "provider": contract.provider if contract else None,
             "namespace": contract.namespace if contract else None,
@@ -631,7 +847,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.flush()
 
     if args.fix and not args.apply:
-        sys.stderr.write("[memory-doctor] --fix --dry-run: no changes applied (--apply not yet implemented)\n")
+        sys.stderr.write(
+            "[memory-doctor] --fix --dry-run: no changes applied (--apply not yet implemented)\n"
+        )
 
     return exit_code
 

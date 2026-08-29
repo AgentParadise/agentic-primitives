@@ -219,20 +219,19 @@ contract supports both via the entrypoint's read of `/etc/agentic/workspace/`
   discovery (entrypoint section 2) is unchanged; per-workspace plugins
   append to the same variable.
 - **Pre-existing LSP test bug** surfaced during Phase B
-  ([docs/issues/001](../issues/001-lsp-entrypoint-test-stdout-pollution.md))
+  ([docs/issues/closed/001](../issues/closed/001-lsp-entrypoint-test-stdout-pollution.md))
   — not caused by this work but discovered alongside.
 
 ## Implementation Notes
 
-**Plan:**
-[`docs/superpowers/plans/2026-05-12-workspace-injection-contract.md`](../superpowers/plans/2026-05-12-workspace-injection-contract.md).
-Five phases:
+**Plan:** `docs/superpowers/plans/2026-05-12-workspace-injection-contract.md`,
+which is no longer in the repository. Five phases:
 
 - **A** — env rename in agentic-domain-runner
   (`AGENTIC_DOMAIN_*` → `AGENTIC_WORKSPACE_*`; path
   `/etc/agentic/domain/` → `/etc/agentic/workspace/`;
   `AGENTIC_ALLOWED_TOOLS` removed entirely).
-- **B** — entrypoint section 5.5 in `providers/workspaces/claude-cli/scripts/entrypoint.sh`
+- **B** — entrypoint section 5.5 in `workspace/entrypoint.sh`
   + 6 integration tests in `tests/integration/test_entrypoint_workspace_injection.py`.
 - **C** — `WorkspaceFiles` helper in
   `lib/python/agentic_isolation/agentic_isolation/workspace_files.py`
@@ -256,10 +255,9 @@ uv run scripts/build-provider.py claude-cli
 
 ## References
 
-- Design spec:
-  [`docs/superpowers/specs/2026-05-12-workspace-injection-contract-design.md`](../superpowers/specs/2026-05-12-workspace-injection-contract-design.md)
-- Plan:
-  [`docs/superpowers/plans/2026-05-12-workspace-injection-contract.md`](../superpowers/plans/2026-05-12-workspace-injection-contract.md)
+- Design spec and plan: `docs/superpowers/specs/2026-05-12-workspace-injection-contract-design.md`
+  and `docs/superpowers/plans/2026-05-12-workspace-injection-contract.md`. Neither
+  is in the repository any more; this ADR and `docs/workspace.md` are what remain.
 - Canonical doc: [`docs/workspace.md`](../workspace.md)
 - Sibling spec (runner / consumer side):
   [agentic-domain-runner per-domain context injection](https://gitea.neuralempowerment.xyz/HomeLab/agentic-domain-runner/src/branch/main/docs/superpowers/specs/2026-05-12-per-domain-context-injection-design.md)

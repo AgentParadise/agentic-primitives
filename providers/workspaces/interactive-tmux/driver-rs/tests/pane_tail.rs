@@ -73,7 +73,10 @@ fn pane_tail_short_returns_pane_verbatim() {
 
 #[test]
 fn pane_tail_long_truncates_to_last_n_lines() {
-    let pane: String = (0..200).map(|i| format!("row{i}")).collect::<Vec<_>>().join("\n");
+    let pane: String = (0..200)
+        .map(|i| format!("row{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let tail = pane_tail(&pane, 50);
     let lines: Vec<&str> = tail.split('\n').collect();
     assert_eq!(lines.len(), 50);

@@ -270,3 +270,72 @@ class TestResolvePluginEnv:
         config.resolve_plugin_env()  # Second call should be safe
 
         assert config.secrets["TOKEN"] == "abc"
+
+
+class TestWorkspaceConfigDoesNotReprCredentials:
+    """A rendered config must not print credentials.
+
+    `WorkspaceConfig` is a plain dataclass, so before this was fixed its
+    generated `__repr__` rendered `secrets` and `environment` in plaintext. That
+    is not an exotic path: a failed assertion in any test comparing configs, a
+    debugger frame, an exception interpolating the object, or a DEBUG log line
+    all render it. One assertion failure is enough to put a live credential into
+    CI output.
+
+    Both fields are covered. `secrets` is obvious; `environment` matters because
+    a capability contract delivered through it can carry a credential
+    (`AGENTIC_SESSION_STORE_AUTH` is the live example), which makes the field's
+    original "non-secret" description untrue in practice.
+    """
+
+    TOKEN = "SUPERSECRET-do-not-print-me"
+
+    def _cfg(self, **kw: object) -> WorkspaceConfig:
+        return WorkspaceConfig(provider="docker", image="x", **kw)  # type: ignore[arg-type]
+
+    def test_environment_value_is_not_in_repr(self) -> None:
+        cfg = self._cfg(environment={"AGENTIC_SESSION_STORE_AUTH": self.TOKEN})
+        assert self.TOKEN not in repr(cfg)
+
+    def test_secrets_value_is_not_in_repr(self) -> None:
+        cfg = self._cfg(secrets={"TOKEN": self.TOKEN})
+        assert self.TOKEN not in repr(cfg)
+
+    def test_str_and_format_are_covered_too(self) -> None:
+        """`str()` and f-strings fall back to `__repr__` for a dataclass.
+
+        Asserting only on `repr()` would leave the two spellings a caller is
+        most likely to reach for untested.
+        """
+        cfg = self._cfg(
+            environment={"A": self.TOKEN},
+            secrets={"B": self.TOKEN},
+        )
+        assert self.TOKEN not in str(cfg)
+        assert self.TOKEN not in f"{cfg}"
+        assert self.TOKEN not in "{}".format(cfg)  # noqa: UP032
+
+    def test_keys_still_appear_nowhere_but_config_is_still_usable(self) -> None:
+        """`repr=False` hides the field, so the values remain readable in code."""
+        cfg = self._cfg(environment={"K": self.TOKEN}, secrets={"S": self.TOKEN})
+        assert cfg.environment["K"] == self.TOKEN
+        assert cfg.secrets["S"] == self.TOKEN
+
+    def test_asdict_still_exposes_values_and_that_is_the_documented_boundary(
+        self,
+    ) -> None:
+        """`repr=False` does NOT affect `dataclasses.asdict`, by design.
+
+        This test exists so the limit is recorded rather than assumed. `asdict`
+        is an explicit request for the data by a caller who wants it, which is a
+        different act from a config being incidentally rendered into a log or a
+        failure message. Anything that serialises a config for output still has
+        to redact for itself.
+
+        If this test ever starts failing because `asdict` was made to redact,
+        that is a real improvement and the test should be updated, not deleted.
+        """
+        import dataclasses
+
+        cfg = self._cfg(environment={"K": self.TOKEN})
+        assert self.TOKEN in repr(dataclasses.asdict(cfg))
