@@ -2,7 +2,10 @@
 name = "itmux"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.74"
+# The released APSS Agent Recipe Standard inherits its MSRV from the APSS
+# workspace. Keep the executable's declared MSRV truthful to the recipe
+# contract it compiles and validates against.
+rust-version = "1.85"
 description = "Rust port of the interactive-tmux workspace driver (Python parity)."
 license = "MIT OR Apache-2.0"
 publish = false
@@ -16,10 +19,26 @@ name = "itmux"
 path = "src/lib.rs"
 
 [dependencies]
+# Recipe-directory schema/loader (EXP-V1-0005). Pin the released v0.2.0 tag,
+# rather than a moving APSS branch or PR merge commit, so recipes accepted by
+# `itmux run` have a stable, published contract. Cargo still PRINTS non-fatal
+# `invalid character '{' in package name: '{{slug}}'` diagnostics for the
+# excluded template Cargo.tomls while scanning the git-source workspace - they
+# are printed-but-non-fatal (the build and tests succeed).
+agent_recipe = { git = "https://github.com/AgentParadise/agent-paradise-standards-system", rev = "c34c848e7cc1f41ab06bdae0c880c638b9baf610", package = "apss-v1-0005-agent-recipe" }
 clap = { version = "4", features = ["derive"] }
 regex = "1"
+schemars = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Signal handling for `itmux run` two-tier cancellation. Required because the
+# crate forbids `unsafe` (`unsafe_code = "forbid"`) and std has no safe API to
+# install a SIGINT/SIGTERM handler - a raw `sigaction` needs `unsafe`.
+# signal-hook encapsulates that FFI and exposes a safe, async-signal-safe
+# self-pipe `Signals` iterator we drive from a normal watcher thread. Minimal,
+# widely-used, unix-only (matching this docker/tmux host-side driver).
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3"
 
 [profile.release]
 lto = "thin"

@@ -1165,29 +1165,23 @@ class _CodexAdapter:
             raise FileNotFoundError(f"codex auth dir not found: {host_src}")
         dst_dir = ctx.host_throwaway_dir / "codex.dir"
         dst_dir.mkdir(parents=True, exist_ok=True)
-        # Copy the .codex/ tree but skip the live tmp/ subdir - codex races
-        # there (creates and deletes argv files during normal operation), so
-        # copytree against it sees vanished files. The auth lives in
-        # auth.json / config.toml / sessions/ at the top level. `plugins/` is
-        # a large plugin/dependency cache (node_modules), never auth, and
-        # staging it turns start_workspace into a multi-minute, thousands-of-
-        # exec crawl - skip it (node_modules/.git anywhere are skipped by the
-        # copytree ignore filter as defense in depth).
-        skip = {"tmp", "log", "logs", "plugins"}
-        for item in host_src.iterdir():
-            if item.name in skip:
-                continue
-            target = dst_dir / item.name
-            if item.is_dir():
-                shutil.copytree(
-                    item,
-                    target,
-                    dirs_exist_ok=True,
-                    ignore_dangling_symlinks=True,
-                    ignore=_ignore_uncopyable,
-                )
-            else:
-                shutil.copy2(item, target)
+        # Stage ONLY the codex auth/config surface via an allowlist. A modern
+        # `~/.codex` (codex-cli 0.139.0) mixes a few small credential/config
+        # files (`auth.json`, `config.toml`) with hundreds of megabytes of
+        # operational state under directories that vary by release: `.tmp/`,
+        # `sessions/`, `archived_sessions/`, `logs_2.sqlite*`, `computer-use/`,
+        # `plugins/`, `cache/`, etc. The old `{tmp, log, logs, plugins}`
+        # denylist missed all of those, turning start_workspace into a
+        # multi-minute, thousands-of-`docker exec` crawl that never completes
+        # (the startup-timeout bound covers only the post-launch readiness
+        # wait, not credential staging). An allowlist is the only stable fix:
+        # it can't regress when codex adds new state directories. Keep in sync
+        # with the Rust driver's `CODEX_AUTH_FILES`.
+        allow = ("auth.json", "config.toml", "config.json", "AGENTS.md")
+        for name in allow:
+            item = host_src / name
+            if item.is_file():
+                shutil.copy2(item, dst_dir / name)
         _chown_recursive(dst_dir, 1000, 1000)
         return {"codex_dir": (dst_dir, "/home/agent/.codex")}
 

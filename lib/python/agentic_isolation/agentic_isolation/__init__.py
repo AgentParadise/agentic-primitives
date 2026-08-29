@@ -51,13 +51,23 @@ from agentic_isolation.config import (
     WorkspaceConfig,
 )
 from agentic_isolation.providers import (
+    AgentName,
     AwaitResult,
     ExecuteResult,
+    HarnessPlugin,
+    HarnessTranscript,
     InteractiveSession,
+    SupportsStagedTeardown,
+    SupportsWorkspaceLogs,
+    TranscriptExtractionResult,
+    TranscriptSource,
     Workspace,
     WorkspaceDockerProvider,
     WorkspaceLocalProvider,
     WorkspaceProvider,
+    exec_argv,
+    get_harness,
+    register_harness,
 )
 
 # Claude CLI specific components
@@ -93,12 +103,23 @@ __all__ = [
     "SecurityConfig",
     # Providers
     "WorkspaceProvider",
+    "SupportsStagedTeardown",
+    "SupportsWorkspaceLogs",
     "Workspace",
     "ExecuteResult",
     "InteractiveSession",
     "AwaitResult",
     "WorkspaceLocalProvider",
     "WorkspaceDockerProvider",
+    # Harness contract (see agentic_isolation.harnesses, issue #792)
+    "AgentName",
+    "HarnessPlugin",
+    "HarnessTranscript",
+    "TranscriptExtractionResult",
+    "TranscriptSource",
+    "exec_argv",
+    "get_harness",
+    "register_harness",
     # Workspace file staging primitives
     "WorkspaceFiles",
     # Claude CLI (session output)
@@ -119,4 +140,4 @@ __all__ = [
     "CircuitOpenError",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.7.0"

@@ -16,7 +16,7 @@ Last Updated: December 2, 2025
 
 ## Model Registry Architecture
 
-See [ADR-018: Model Registry Architecture](../../docs/adrs/018-model-registry-architecture.md) for the complete design.
+See [ADR-018: Model Registry Architecture](../../../docs/adrs/018-model-registry-architecture.md) for the complete design.
 
 **Key Concepts:**
 - **Simple Aliases** (`sonnet`, `claude-sonnet`): Version-agnostic, auto-upgrade with new releases

@@ -1,7 +1,7 @@
 {
   "name": "research",
-  "version": "1.1.0",
-  "description": "Information gathering — web scraping, documentation extraction, and research tools",
+  "version": "1.1.2",
+  "description": "Information gathering \u2014 web scraping, documentation extraction, and research tools",
   "author": {
     "name": "NeuralEmpowerment"
   },

@@ -1,0 +1,693 @@
+# Authoring a workspace capability
+
+How to add a pluggable subsystem to the workspace image, end to end.
+
+The decision record is [ADR-040](adrs/040-workspace-capability-modules.md).
+This document is the procedure. Read the ADR when you want to know *why*
+something is shaped the way it is; read this when you want to build one.
+
+The worked example throughout is `session-store`, the capability that
+uploads agent transcripts to a session store speaking APS-V1-0004. Every
+file referenced below exists and can be read alongside this guide.
+
+---
+
+## The one invariant
+
+> **Adding a capability requires ZERO changes to `entrypoint.sh`.**
+
+If you find yourself editing `workspace/entrypoint.sh`
+to make your capability work, stop. That is not a task, it is a signal:
+the contract is wrong, and the fix belongs in the contract. The generic
+lifecycle in sections 5.6, 5.7, and 6 is capability-agnostic on purpose,
+and every per-capability line added to it costs the next author.
+
+Verify the invariant on your own branch before you open the PR:
+
+```bash
+git diff main -- workspace/entrypoint.sh
+```
+
+That should be empty.
+
+---
+
+## The two halves
+
+A capability has an **in-container half** (portable shell plus a Python
+contract library, baked into the image) and a **host-side half** (how the
+contract's env vars, mounts, and timings actually reach the container).
+
+You are almost always writing the in-container half. It must not know it is
+running in Docker. Anything it needs from the substrate arrives as an env
+var or a mounted path. That discipline is what lets the same adapter run
+unchanged on a future E2B binding.
+
+---
+
+## Step 1: Pick the name
+
+The registry name is lowercase letters, digits, and hyphens only
+(`[a-z0-9-]+`). This is enforced by `__capability_name_safe` in the
+entrypoint, and the charset is narrower than the provider charset for a
+concrete reason: a name containing `.` uppercases into a prefix like
+`AGENTIC_A.B`, whose expansion is a bash bad substitution that kills the
+whole entrypoint under `set -e`.
+
+The name determines your env prefix by the ADR-040 rule:
+
+```
+AGENTIC_<CAP_UPPER>_<FIELD>      uppercase, '-' -> '_'
+```
+
+So `session-store` + `partition` gives `AGENTIC_SESSION_STORE_PARTITION`.
+
+`AGENTIC_<CAP>_PROVIDER` is reserved by the lifecycle. It selects your
+adapter directory, and when unset or set to `none` your capability is a
+complete no-op.
+
+---
+
+## Step 2: Write the contract library
+
+Create `lib/python/agentic_<name>/` with a `contract.py`. Two rules:
+
+**Every env var name is declared exactly once, in an `Env` StrEnum.**
+Nothing in the package, its doctor, or its tests may spell one as a string
+literal. A renamed variable must break at import, not at runtime inside a
+container three deploys later.
+
+**Ship `capability_env_name()`.** It is the Python half of the naming rule;
+`__capability_env_prefix` in the entrypoint is the shell half. A conformance
+test pins the two together so drift is a CI failure.
+
+From `agentic_session_store/contract.py`:
+
+```python
+CAPABILITY = "session-store"
+
+class Env(StrEnum):
+    PROVIDER  = "AGENTIC_SESSION_STORE_PROVIDER"
+    URL       = "AGENTIC_SESSION_STORE_URL"
+    AUTH      = "AGENTIC_SESSION_STORE_AUTH"
+    TAGS      = "AGENTIC_SESSION_STORE_TAGS"
+    SPOOL     = "AGENTIC_SESSION_STORE_SPOOL"
+    PARTITION = "AGENTIC_SESSION_STORE_PARTITION"
+```
+
+Members are `str`, so they pass straight to `env.get()`,
+`monkeypatch.setenv()`, and f-strings with no `.value`. Member *names* are
+the field half of the naming rule, which is what the conformance test
+checks.
+
+Then a frozen dataclass with a `from_env(env: Mapping[str, str])`
+classmethod obeying two behaviors:
+
+- **Not opted in returns `None`.** Provider unset or `none`, no exception,
+  no checks, no side effects.
+- **Opted in but misconfigured raises `ValueError`.** Opting in is opting
+  into loud failure (ADR-036, still binding).
+
+Validate anything that will become a path. `session-store` rejects a
+provider name outside `[a-zA-Z0-9][a-zA-Z0-9._-]*` or containing `..`, and
+rejects an absolute or `..`-containing partition. Do the same for your own
+fields. If a value ends up in a filesystem path, it is untrusted input.
+
+If your capability *exports* provider-native vars, name those in a second
+enum (`ExporterEnv` in the example) so the doctor can assert on them
+without restating literals.
+
+---
+
+## Step 3: Write the doctor
+
+Create `doctor.py` in the same package with a `main(argv)` that:
+
+- returns **0 and prints nothing** when `from_env()` returns `None`,
+- runs every check even after one fails, so one invocation gives the
+  operator the whole picture,
+- writes a pretty summary to **stderr** and, under `--json`, one JSON
+  object to **stdout**,
+- returns 0 when all checks pass, 1 otherwise.
+
+Follow the `session-store` payload shape for new capabilities:
+
+```json
+{"capability": "...", "passed": true, "checks": [{"name": "...", "passed": true, "detail": "..."}]}
+```
+
+`memory` predates this shape (`doctor_version`, `timestamp`, `provider`,
+`namespace`, `status`, `checks: [{name, status, message, details,
+duration_ms}]`, `exit_code`) and has not been reconciled to it. That
+reconciliation is a deliberate follow-up, not something to replicate in a
+new capability. The only field guaranteed present in both today is
+`capability`, which is what lets a reader attribute a record in a shared
+audit directory; do not assume any further overlap.
+
+**A doctor must never crash.** `run_checks` wraps each check in an outer
+`try/except` that converts an unanticipated exception into a failed
+`CheckResult`. Individual checks additionally catch their own *expected*
+failure modes so the detail string is specific rather than a generic
+"raised: ...". A doctor that dies on a malformed URL takes the other four
+checks down with it and tells the operator nothing.
+
+`session-store` ships six checks, and their shape is a reasonable template:
+`contract_parses`, `init_complete`, `spool_writable`, `symlinks_correct`,
+`exporter_present`, `store_reachable` (the list in `CHECKS` in
+`agentic_session_store/doctor.py` is the source of truth). Memory ships
+eight, including a `ProviderSpecificCheck` that shells out to the adapter's
+own `doctor.sh`.
+
+`init_complete` is worth copying. `init.sh` mints a per-run token, exports
+it, and writes it to a marker file as its very last act; the doctor checks
+that the marker holds *this* run's token. A marker whose only job was to
+exist would be satisfied by a previous run's file on a persisted spool,
+which is exactly the stale state it needs to detect. If your `init.sh` can
+fail partway and still return zero (see the `set -e` hazard below), you
+want this.
+
+Add the bash entry point at
+`workspace/capabilities/<name>/doctor`. It is a thin
+wrapper, copied from either existing capability, that execs the Python
+module and passes flags through:
+
+```bash
+if [ -x "/opt/venv/bin/python" ]; then
+  exec /opt/venv/bin/python -m agentic_<name>.doctor "$@"
+fi
+exec python3 -m agentic_<name>.doctor "$@"
+```
+
+---
+
+## Step 4: Write the adapter hooks
+
+Adapters live at
+`workspace/capabilities/<name>/<provider>/`.
+`scripts/build-provider.py`'s `stage_workspace_runtime()` copies the whole tree
+into the build context and the Dockerfile `COPY`s it to
+`/opt/agentic/capabilities/`. You do not touch either file.
+
+### `init.sh` (required)
+
+**Sourced** by entrypoint 5.6, so its `export`s propagate to every later
+process spawn. Its whole job is translating your `AGENTIC_<CAP>_*` contract
+into whatever the underlying tool actually reads.
+
+On success the lifecycle also exports `AGENTIC_<CAP>_READY=1`. On failure
+it warns and continues, and section 5.7's doctor is what turns the failure
+into a hard stop with a specific cause.
+
+Keep it portable shell. No `docker`, no host paths, no substrate
+assumptions.
+
+Four hazards `session-store` hit that are worth knowing before you hit them.
+The first is a premise rather than a pitfall, so read it before you write a
+line:
+
+- **`set -e` does NOT work in your `init.sh`, no matter what you write at the
+  top of it.** Entrypoint 5.6 sources the adapter as the condition of an `if`
+  (`if . "${__init}"; then`), and bash disables errexit inside a command
+  evaluated as a condition, sourced files included. So a failing command does
+  not stop your adapter, and a later successful command makes it return zero,
+  which the lifecycle records as a healthy init. Verify it yourself in ten
+  seconds:
+
+  ```sh
+  printf 'set -e\nfalse\necho REACHED\n' > /tmp/p.sh
+  bash -c 'if . /tmp/p.sh; then echo "rc=0"; fi'
+  # REACHED
+  # rc=0
+  ```
+
+  **Check every command whose failure should matter, and `return 1`
+  explicitly.** Both shipped adapters do this. The cost of getting it wrong
+  is not a crash: it is a capability that reports ready and is silently
+  misconfigured, which for `session-store` meant transcripts uploading with
+  no tags and no error anywhere. Note this applies to `init.sh` alone.
+  `doctor.sh` is executed rather than sourced, so its `set -e` behaves
+  normally.
+
+  **`finalize.sh` is the reference implementation for this.** It declares
+  `set -u` and deliberately no `set -e`, because errexit would break its
+  contract of always exiting 0, so all of its error handling is explicit.
+  Two adapters declaring `set -e` and one omitting it looks like an
+  inconsistency and is not: the one omitting it is the one that was written
+  against how the shell actually behaves.
+
+- **Symlinks, not bind-mounts, under `$HOME`.** Docker creates a bind-mount
+  root as root-owned while the container runs as uid 1000 (verified in
+  EXP-07), which breaks writes. Put the real directory outside `$HOME` and
+  symlink it in.
+- **Migrate a pre-existing real directory; never delete it.** If
+  `~/.claude/projects` already exists as a directory, `ln -sfn` nests the
+  link *inside* it rather than replacing it, and your doctor then hard-fails
+  the workspace with a confusing error. The obvious fix, `rm -rf` the
+  directory first, is a data-loss bug, and shipped as one: on a persisted
+  `$HOME`, or any workspace where the harness already ran, it destroys
+  un-uploaded transcripts at startup, before the exporter has ever run.
+  Instead move the contents into the partition so this run's finalize sweeps
+  and uploads them, then symlink. Use `mv -n` (never overwrite) followed by
+  `rmdir` (refuses a non-empty directory) so that anything the move could not
+  place leaves the source intact and the adapter returns non-zero rather than
+  guessing. A missing path is fine to leave to `ln -sfn`. A workspace that
+  refuses to start is recoverable; a deleted transcript is not.
+- **An existing symlink is not automatically yours, and "inside your
+  directory" does not prove that it is.** `ln -sfn` replaces one silently.
+  That is right when the link already points at the exact destination this
+  run captures into, and wrong for every other link: retargeting deletes
+  nothing and still stops the capture happening where the operator asked,
+  with nothing in the doctor output saying so. Test the target against the
+  one value you would have written, not against a path prefix. `session-store`
+  accepted any link resolving anywhere under its spool, which silently
+  repointed a link into a *different* partition of that same spool. A
+  dangling link is not yours either.
+
+**Withholding a value from the agent.** If your adapter puts a credential in
+the environment and only your `finalize.sh` needs it, declare the names so
+the agent never inherits them (ADR-040 s2):
+
+```sh
+AGENTIC_CAPABILITY_WITHHOLD="${AGENTIC_CAPABILITY_WITHHOLD:-} FOO BAR"
+export AGENTIC_CAPABILITY_WITHHOLD
+```
+
+**Append, never assign.** Assigning discards other capabilities'
+declarations, and the lifecycle can only warn about it after the fact. The
+lifecycle records which names YOUR init.sh appended and restores exactly
+those, and only inside the subshell your own finalizer runs in, so your
+credential does not reach anyone else's finalize hook and theirs does not
+reach yours.
+
+### `doctor.sh` (optional)
+
+Provider-specific checks that do not belong in the generic Python doctor.
+Emit JSON on stdout, exit 0 for pass and 1 for fail.
+
+You can wire it into the Python doctor's check list, as memory does with
+`ProviderSpecificCheck`, or leave it as a hand-run tool, as `session-store`
+does today. If you leave it unwired, say so in the module README so nobody
+assumes it runs at startup.
+
+### `finalize.sh` (optional)
+
+**Executed** (not sourced) by entrypoint section 6 after the agent exits.
+This is the hook for post-agent work: sweeping, uploading, flushing.
+
+Five rules, each of which cost something to learn:
+
+1. **Always exit 0.** The lifecycle already calls it as `|| true`, but the
+   hook itself must also be soft. A failed upload after an hour of
+   successful agent work must never make the phase report as failed.
+2. **Never write to stdout.** Under the old `exec "$@"`, container stdout
+   was exclusively the agent's. Finalize now runs after the agent, so
+   chatter on stdout corrupts anything parsing it (an agent CMD invoked
+   with a structured `--output-format`, for instance). Send both streams to
+   stderr with `>&2 2>&1`, in that order. **Redirecting a subprocess is not
+   the same as replaying one.** If the subprocess is a binary deployment
+   supplies rather than one this image builds, its output is untrusted
+   input: capture it, parse what you need, and report values you
+   reconstructed. `session-store`'s finalize echoed the exporter's captured
+   stdout and stderr to fd2 so its summary line was visible, which put
+   whatever that build chose to print -- an environment dump, an
+   `Authorization` header, a request body -- into durable container logs.
+3. **Assume it may run without your `init.sh`'s environment.** Section 5.6
+   warns and continues when an adapter's init fails, so section 6 still runs
+   your finalizer with whatever is left. Guard every variable you read
+   (`${VAR:-}`), because a bare expansion under `set -u` aborts the script and
+   breaks the "always exit 0" contract on exactly that path. **Then say so.**
+   A guard that only prevents the crash turns a broken run into a silent one,
+   and "always exit 0" means the only report you have is a warning on stderr.
+   Do not document a hand-invocation or recovery procedure your hook does not
+   implement: `session-store`'s finalize claimed to be runnable standalone for
+   a recovery sweep, and an operator following that got a success status and
+   no output. A recovery path that belongs to the lifecycle (start a workspace
+   with the same configuration and let the hook run) is a procedure you can
+   document, because it is one the code actually has.
+4. **Be fast.** You are inside the container stop grace. See the timing
+   budget below.
+5. **Delete nothing.** A finalize hook may write and it may report, but it
+   must not reclaim. `session-store`'s finalize used to prune its spool
+   partition after a sweep it judged clean; five data-loss paths were found
+   on that branch and every one of them reached destruction through that one
+   `rm -rf`, with four of them introduced by the fix for the previous one.
+   The mechanism was removed rather than hardened again, and the spool is now
+   append-only: the remote store is the durable copy, unbounded local growth
+   is the accepted tradeoff, and reclaiming space is an operator decision
+   made with a view of the remote side that a hook running inside the stop
+   grace does not have.
+
+### The timing budget
+
+`__TERM_GRACE_TICKS` in `entrypoint.sh` (currently 15 ticks of 0.1s, so
+1.5s) must stay **strictly below** the `docker stop -t` value in
+`lib/python/agentic_isolation/agentic_isolation/providers/docker.py`
+(currently 5s), with the remaining headroom (about 3.5s) available for your
+finalize hook's real work.
+
+During implementation the two were effectively tied and finalize silently
+never ran, with the container's exit code becoming 137 and nothing in the
+logs saying why. Both files carry cross-referencing comments. If your
+finalize needs more than the headroom, raise the `docker stop` grace, not
+the ticks.
+
+#### `AGENTIC_FINALIZE_BUDGET_S`
+
+Your finalizer receives a per-run budget in seconds through this variable.
+
+**Read it, never set it.** It is not user-facing configuration and is not part
+of the capability contract's public surface. It is an internal call parameter
+between `entrypoint.sh` and the finalizers, travelling by environment because
+that is how you pass a value to a child process. Do not document it to
+operators as a knob, and do not add it to a `.env.example`.
+
+Treat an absent, non-numeric, or **zero** value as "use your own default":
+
+```sh
+case "${AGENTIC_FINALIZE_BUDGET_S:-}" in
+    "" | *[!0-9]* | 0) __TIMEOUT_S="${__TIMEOUT_DEFAULT_S}" ;;
+    *) __TIMEOUT_S="${AGENTIC_FINALIZE_BUDGET_S}" ;;
+esac
+```
+
+Zero matters as much as empty. GNU `timeout 0` means *no timeout at all*, so a
+guard that only tested for empty or non-numeric would leave `0` as a silent way
+to disable the bound entirely, which is the exact failure the budget exists to
+prevent.
+
+**The budget is asymmetric, because the deadline only exists on one path.**
+`__run_finalizers` is called on both exits, but the SIGKILL escalation window
+only runs when the agent's status is `>128`, the signal path. Your finalizer
+cannot tell which path it is on; only the entrypoint knows, which is why the
+value is passed in rather than decided locally.
+
+| Constant | Value | Path |
+|---|---|---|
+| `__FINALIZE_BUDGET_SIGNAL_S` | 2 | Signal. `docker stop -t 5` is already ticking. |
+| `__FINALIZE_BUDGET_CLEAN_S` | 120 | Clean exit. Nothing is waiting; the bound only stops a wedged finalizer hanging the run forever. |
+
+Measured 2026-08-14 through the real entrypoint: escalation completes at ~1.66s
+for a stubborn agent and ~0.22s for a cooperative one, leaving ~3.3s of the
+stop grace. A 2s budget finishes at ~3.66s, a 1.3s margin; 3s would leave 0.34s,
+too thin.
+
+**The 120 is bounded, not derived. It was chosen because it is comfortably
+larger than 2, not because anything measured it.** Nobody has run a real sweep
+against a large migrated transcript history. It may be short for a heavy first
+sweep, which is also the case where failing to complete hurts most, because a
+capability that never finishes its work never gets that data off the box. Treat
+it as a ceiling that
+has not yet been tested against the workload that would falsify it, and if you
+are the first to run that workload, measure it and replace this paragraph.
+
+A single tight bound applied to both paths was the tempting simplification and
+is wrong: it kills a legitimate multi-second sweep on every normal run, so the
+capability never completes its work, which for a heavy user is permanent.
+
+**One invariant to preserve.** `entrypoint.sh` assigns the value
+unconditionally:
+
+```sh
+AGENTIC_FINALIZE_BUDGET_S="${1}"
+```
+
+There is deliberately no `:-` fallback. That is what stops
+`docker run -e AGENTIC_FINALIZE_BUDGET_S=99999` from reaching your finalizer:
+the outer value is always overwritten before export. A refactor to
+`"${AGENTIC_FINALIZE_BUDGET_S:-$1}"` reads as a harmless defensive tidy and
+silently reopens it.
+
+---
+
+## Step 5: Handle untrusted values correctly
+
+If your capability persists an orchestrator-supplied value to disk for a
+later process to read, that file is **data, and must be parsed, never
+sourced**.
+
+`session-store` writes tags to
+`$SPOOL/.agentic-session-store/$PARTITION/.capture-env` (see the next
+section for why that path is not `$SPOOL/$PARTITION`):
+
+```
+SESSION_STORE_TAGS_B64=<base64 of the opaque tag string, exactly as received>
+```
+
+It looks like shell. Sourcing it is arbitrary code execution in a process
+holding the store write token. Demonstrated during review, not theorized: a
+tag of `workflow:$(touch /tmp/PWNED)` executed on source, and any tag
+containing a space truncated the value to empty, destroying the very
+attribution the file exists to preserve.
+
+**Encode the value if the format is line-oriented and the value is
+opaque.** A raw record survived the shell-injection fix and still lost a tag
+containing a newline: any read-one-line consumer truncated at the first
+line. base64 makes the encoded value a single line of `[A-Za-z0-9+/=]` by
+construction, so the record stays trivially parseable, and no character in
+that alphabet means anything to a shell, so it cannot reintroduce what the
+first fix removed.
+
+The correct read parses the line, then decodes:
+
+```bash
+b64="$(sed -n 's/^SESSION_STORE_TAGS_B64=//p' "${capture_env}" | head -1)"
+IFS= read -r -d '' SESSION_STORE_TAGS < <(printf '%s' "${b64}" | base64 -d) || true
+export SESSION_STORE_TAGS
+```
+
+`read -r -d ''` rather than `$(base64 -d)`, because command substitution
+strips trailing newlines from a value this layer treats as opaque. `export`
+is required because the consumer is a child process; a bare shell variable
+never reaches it.
+
+`session-store`'s `finalize.sh` also accepts a legacy bare
+`SESSION_STORE_TAGS=` record, for partitions written before the encoding
+changed, and warns on stderr whenever that path fires. If you introduce an
+encoding change to a record that outlives the container, plan the same
+shape: read both, prefer the current one, and say loudly when the old one
+was used.
+
+Write such files under `umask 077` in a subshell, not with a post-hoc
+`chmod`, which leaves a window where the file is world-readable.
+
+---
+
+## Step 5b: Put your metadata in a reserved namespace you can prove you own
+
+A capability's contract usually names a directory the **operator** chose,
+and an operator may point it at a directory that already holds their data.
+`session-store` was configured with `SPOOL=/workspace PARTITION=repos`,
+an existing mount, and the adapter wrote its own `.capture-env` and
+`state.json` straight into it, `rm -f`-ing any file already at the first of
+those names. That destroyed an operator file before the doctor ever ran.
+
+Separate the two questions, because they have two different owners:
+
+- **Where the capability's payload must land** is fixed by whatever writes
+  it (for `session-store`, the harnesses write transcripts, so those go to
+  `$SPOOL/$PARTITION/{claude,codex}`). The only operations an adapter may
+  perform on that directory are `mkdir -p` and creating the subdirectories
+  it needs. No file of its own, no deletes.
+- **Where the adapter's own metadata lands** is the adapter's choice, so
+  choose a reserved namespace under the same root and mark it:
+
+  ```
+  $SPOOL/.agentic-session-store/          <- reserved for this adapter
+    .owner                                <- ownership marker, versioned id
+    $PARTITION/
+      .capture-env
+      .init-complete
+      state.json
+  ```
+
+Claim the namespace before writing anything into it, and **refuse loudly
+rather than deleting or overwriting** when the claim fails: the name is
+taken by a non-directory, the marker is missing while the directory has
+contents, or the marker holds an id you do not recognise. Returning
+non-zero from `init.sh` routes to the doctor, which fails the workspace
+with a named path. A refused start is recoverable; an overwritten file is
+not.
+
+**A marker on the namespace root proves the root, and nothing under it.**
+The files land in `$SPOOL/.agentic-session-store/$PARTITION/`, and
+`$PARTITION` is a multi-component relative path, so between the marked root
+and the file there are directories the marker says nothing about. Any of
+them can be a symlink, and `mkdir -p` walks a symlinked component without a
+word, which puts the write back outside the namespace that exists to
+contain it. Build that chain one component at a time with plain `mkdir`:
+it creates the last component itself, never resolves a link sitting at that
+name, and fails on any existing name, so a success is proof rather than a
+check. Classify the failure (symlink, or not a directory) and refuse it;
+never repair it. Then resolve the finished path and require it to be the
+root plus the components, which catches a component swapped during the
+walk.
+
+A check still leaves a window before the write, so narrow it at the write
+too: create the file with `O_CREAT|O_EXCL` (`set -o noclobber` inside the
+writing subshell, which is where a sourced adapter must confine a shell
+option), removing your own stale copy first. `O_EXCL` refuses every
+existing name, a dangling symlink included, so a link planted at that name
+after the check fails the write instead of receiving it.
+
+**Know what that buys and say so where you claim it.** `O_EXCL` constrains
+the FINAL component and nothing above it: the kernel resolves the parent
+directories on the way to that name as it always does, so a parent swapped
+for a symlink after your walk finished is still followed. And a path you
+merely hand onward (the exporter's `state.json`, opened later by another
+process, after the agent has run) has no `O_EXCL` cover at all; classifying
+its name at init time rules out a link that is already there and nothing
+that appears afterwards. Both are races that a writer with access to the
+spool can win. Shell cannot close them, since that needs per-component
+`openat` with `O_NOFOLLOW` from a directory fd, so write them down as known
+limitations. A comment claiming the writes cannot escape is worse than no
+comment: the next reader plans around a guarantee that is not there.
+
+With that in place, replacing a stale copy of your own metadata file is a
+normal write, and removing a stale copy when this run produces no value for
+it is what stops a reused partition serving a previous run's data. Neither
+is a prune: they touch only files this adapter wrote, at a path whose every
+component from the marked root down was proven a real directory this
+adapter created or accepted when the walk ran, and no payload directory
+lies on that path.
+
+A path is not the only thing an adapter can overwrite by mistake. Audit
+every filesystem mutation you perform against the same question: `rm`,
+`mv`, `>` redirection, truncation, `chmod`/`chown`, and **symlink
+replacement**, which is the quiet one. `ln -sfn` silently retargets a link
+the operator made, which deletes nothing and yet stops the capability doing
+its job where they asked.
+
+---
+
+## Step 6: Register it
+
+Add the name to `AGENTIC_CAPABILITIES` in the `ENV` block of **every**
+Dockerfile that hosts capabilities. Two do today,
+`providers/workspaces/claude-cli/Dockerfile` and
+`providers/workspaces/omni-agent/Dockerfile`, and they must agree:
+
+```dockerfile
+AGENTIC_CAPABILITIES="memory session-store" \
+```
+
+`interactive-tmux` and `base` host no capabilities. They stage neither
+`workspace/entrypoint.sh` nor `workspace/capabilities/` and set no
+registry, so nothing here applies to them.
+
+Space-separated. The lifecycle iterates this list in both 5.6 and 5.7, and
+a listed capability with no `AGENTIC_<CAP>_PROVIDER` set is a silent no-op,
+so listing a capability costs nothing at runtime.
+
+Operators can override the list, and this is the one place a
+misconfiguration only warns: setting `AGENTIC_<CAP>_PROVIDER` for a
+capability *not* in the registry produces a stderr warning at startup and
+otherwise does nothing. That is deliberate (an operator may be disabling a
+capability on purpose), but it means an override that forgets a name
+silently disables it.
+
+Then bump the `manifest.yaml` of each provider you touched. A new
+capability is a minor bump. Moving or renaming an interface that an ADR
+names is a major bump, as the 1.3.0 to 2.0.0 move on `claude-cli` was
+(1.2.0 was the last released version; the intermediate 1.3.0 never
+shipped).
+
+The bump is not optional for a published provider: `_check-version.yml`
+fails a release PR when a provider's own directory or any shared path
+(`workspace/`, `plugins/`, `lib/python/`, `scripts/build-provider.py`)
+changed without its manifest version moving. A capability lives under
+`workspace/`, so it trips that rule for every published provider. See
+[`docs/release-process.md`](release-process.md).
+
+---
+
+## Step 7: Test it
+
+Add to `tests/integration/test_entrypoint_capabilities.py`. The existing
+tests are the checklist. Cover at minimum:
+
+**Registry hardening**, which is generic and mostly already covered:
+unknown capability name is skipped rather than fatal, a provider name
+cannot escape the capabilities directory, an invalid capability name is
+skipped, an unregistered provider warns without failing.
+
+**Your adapter**: that `init.sh` translates the contract and creates
+whatever it is supposed to create, and that it is idempotent across a
+re-run.
+
+**Your doctor**: at least one specific failure (`exporter_present` when the
+binary is absent) and one full pass against a real dependency.
+
+**Your finalize**, if you have one: that it never changes the agent's exit
+code (on both success and failure paths), that a missing hook is a silent
+skip, that it survives its own env being unset, and that it parses rather
+than sources any persisted data. Use hostile fixtures for that last one,
+not friendly strings.
+
+**The timing arms**, if you have a finalize: a `docker stop` against a
+cooperative agent (exits with its own code, finalize runs) and against a
+stubborn one (killed, finalize still runs). These are the tests that catch
+a broken stop-grace coupling, and nothing else will.
+
+If you need a dependency you cannot ship, commit a test double.
+`tests/integration/fixtures/stub-exporter` satisfies `exporter_present` and
+emits the real binary's summary-line shape. It is not a substitute for an
+end-to-end run against the real thing.
+
+---
+
+## Step 8: Document it
+
+Write `workspace/capabilities/<name>/README.md`, so
+the module is comprehensible standalone. The two existing READMEs are the
+template: contract table, on-disk layout, what the adapter deliberately
+does *not* do, and how to run the doctor by hand.
+
+If your capability requires something the image does not ship, say so
+explicitly and give the provisioning routes. See the session-store README's
+exporter provisioning contract.
+
+---
+
+## Known limits
+
+- **Headless only.** `InteractiveTmuxProvider` rejects `environment` and
+  `secrets` outright, so the capability contract cannot reach
+  interactive-tmux workspaces at all. Extending that provider is separate
+  work.
+- **Docker only, today.** The in-container half is substrate-neutral by
+  construction, but the only host-side binding that exists is
+  `DockerProvider`.
+- **Section 6 is a wrapper, not `exec`.** PID 1 is the wrapper. Exit codes
+  are preserved explicitly. Note that both production providers run the
+  image with `sleep infinity` as CMD and launch agents via `docker exec`,
+  so on that path the agent is not the wrapper's child and the exit-code
+  handling is never exercised. What matters in production is that finalize
+  fires inside the stop grace.
+
+## Adding a substrate
+
+Do not start from `entrypoint.sh`.
+
+`lib/python/agentic_isolation/agentic_isolation/harnesses/` already defines
+a provider-abstracted `TranscriptSource` protocol, with `claude` and
+`codex` plugins, contracted never to raise (failures come back through
+`TranscriptExtractionResult.errors` so a harvest can never abort a
+teardown). `DockerProvider` already implements `transcript_source()`. It
+has **no production caller** only because the in-container exporter was
+already validated end to end by EXP-08 and a second live capture path would
+have meant two mechanisms to keep correct.
+
+For a substrate with no entrypoint of ours to wrap, that protocol is the
+natural host-side half. Start there.
+
+## References
+
+- [ADR-040: Workspace Capability Modules](adrs/040-workspace-capability-modules.md)
+- [ADR-036: Memory Primitive and Doctor](adrs/036-memory-primitive-and-doctor.md)
+- [ADR-035: Workspace Injection Contract](adrs/035-workspace-injection-contract.md)
+- EXP-08: Workspace capability capture lifecycle. Cited throughout for the
+  measurements behind sections 6, 8 and 9 of ADR-040. The `experiments/`
+  tree moved to a private archive in `9371a0b`, so there is no link to
+  follow from this repository.
+- [session-store module README](../workspace/capabilities/session-store/README.md)
+- [memory module README](../workspace/capabilities/memory/README.md)

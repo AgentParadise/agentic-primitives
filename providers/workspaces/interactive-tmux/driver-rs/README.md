@@ -73,7 +73,7 @@ Source of truth for these encodings:
 - `src/auth.rs` — host-auth mount preparation (synthesised
   `~/.claude.json` builder, gemini `settings.json` patch, codex
   tmp/log skip rule)
-- `../../experiments/ANALYTICS.md` §4 — the matrix this implements
+- EXP-05 `ANALYTICS.md` §4 (private experiments archive, moved in `9371a0b`) - the matrix this implements
 - `../driver/interactive_tmux.py` — the Python original this ports
 
 ## Tests

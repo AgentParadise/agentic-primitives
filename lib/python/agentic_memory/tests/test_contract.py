@@ -2,15 +2,77 @@
 
 from __future__ import annotations
 
-import pytest
+import pathlib
+import re
+import subprocess
 
+import pytest
 from agentic_memory.contract import (
+    CAPABILITY,
+    Env,
     MemoryContract,
     NamespaceKind,
+    capability_env_name,
     is_namespace_well_formed,
     is_provider_well_formed,
     sanitize_namespace,
 )
+
+
+def test_env_names_follow_the_adr_038_rule():
+    """Every name in Env must match AGENTIC_<CAP>_<FIELD>.
+
+    This is what keeps the enum honest: a typo'd literal in Env fails here
+    rather than silently reading a variable nobody sets.
+    """
+    for member in Env:
+        assert member == capability_env_name(CAPABILITY, member.name), (
+            f"{member.name} = {member!s} violates the AGENTIC_<CAP>_<FIELD> rule"
+        )
+
+
+# --- ADR-040 shell/Python naming conformance ---------------------------------
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
+ENTRYPOINT_SH = REPO_ROOT / "workspace" / "entrypoint.sh"
+_SHELL_FN = re.compile(r"__capability_env_prefix\(\)\s*\{.*?\n\}", re.DOTALL)
+
+
+def _shell_capability_env_name(capability: str, field: str) -> str:
+    """Run the *actual* `__capability_env_prefix` from entrypoint.sh in a
+    bash subprocess and combine it with `field`.
+
+    This is the conformance test ADR-040 and this module's docstring claim
+    exists: `__capability_env_prefix` (shell) and `capability_env_name()`
+    (Python) are two implementations of one naming rule, and this pins them
+    together instead of re-deriving the shell logic in Python, which would
+    only test Python against itself.
+    """
+    source = ENTRYPOINT_SH.read_text()
+    match = _SHELL_FN.search(source)
+    assert match, f"__capability_env_prefix() not found in {ENTRYPOINT_SH}"
+    script = f'{match.group(0)}\n__capability_env_prefix "$1"\n'
+    result = subprocess.run(
+        ["bash", "-c", script, "bash", capability],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return f"{result.stdout.strip()}_{field}"
+
+
+@pytest.mark.parametrize(
+    "capability", ["memory", "session-store", "multi-hyphen-cap-name"]
+)
+def test_shell_and_python_env_naming_agree(capability):
+    """ADR-040's `AGENTIC_<CAP>_<FIELD>` rule has two implementations:
+    `__capability_env_prefix` in entrypoint.sh and `capability_env_name()`
+    here. They must produce identical names or a capability's doctor
+    or init.sh silently reads the wrong variable.
+    """
+    assert _shell_capability_env_name(capability, "PROVIDER") == capability_env_name(
+        capability, "PROVIDER"
+    )
 
 
 class TestNamespaceKind:
@@ -68,7 +130,9 @@ class TestNamespaceValidation:
 
 
 class TestProviderValidation:
-    @pytest.mark.parametrize("provider", ["hindsight", "lossless-claw", "provider_1", "v1.2"])
+    @pytest.mark.parametrize(
+        "provider", ["hindsight", "lossless-claw", "provider_1", "v1.2"]
+    )
     def test_well_formed_providers(self, provider):
         assert is_provider_well_formed(provider) is True
 
@@ -91,16 +155,16 @@ class TestProviderValidation:
 class TestMemoryContractFromEnv:
     def test_no_provider_returns_none(self):
         assert MemoryContract.from_env({}) is None
-        assert MemoryContract.from_env({"AGENTIC_MEMORY_PROVIDER": ""}) is None
-        assert MemoryContract.from_env({"AGENTIC_MEMORY_PROVIDER": "none"}) is None
-        assert MemoryContract.from_env({"AGENTIC_MEMORY_PROVIDER": "NONE"}) is None
+        assert MemoryContract.from_env({Env.PROVIDER: ""}) is None
+        assert MemoryContract.from_env({Env.PROVIDER: "none"}) is None
+        assert MemoryContract.from_env({Env.PROVIDER: "NONE"}) is None
 
     def test_minimal_contract(self):
         c = MemoryContract.from_env(
             {
-                "AGENTIC_MEMORY_PROVIDER": "hindsight",
-                "AGENTIC_MEMORY_NAMESPACE": "task-abc",
-                "AGENTIC_MEMORY_URL": "http://hindsight:8888",
+                Env.PROVIDER: "hindsight",
+                Env.NAMESPACE: "task-abc",
+                Env.URL: "http://hindsight:8888",
             }
         )
         assert c is not None
@@ -115,12 +179,12 @@ class TestMemoryContractFromEnv:
     def test_full_contract(self):
         c = MemoryContract.from_env(
             {
-                "AGENTIC_MEMORY_PROVIDER": "hindsight",
-                "AGENTIC_MEMORY_NAMESPACE": "wf:phase-1",
-                "AGENTIC_MEMORY_URL": "http://hindsight:8888",
-                "AGENTIC_MEMORY_NAMESPACE_KIND": "workflow",
-                "AGENTIC_MEMORY_AUTH": "hsk_abc123",
-                "AGENTIC_MEMORY_CONFIG_JSON": '{"recallAdditionalBanks": ["shared"]}',
+                Env.PROVIDER: "hindsight",
+                Env.NAMESPACE: "wf:phase-1",
+                Env.URL: "http://hindsight:8888",
+                Env.NAMESPACE_KIND: "workflow",
+                Env.AUTH: "hsk_abc123",
+                Env.CONFIG_JSON: '{"recallAdditionalBanks": ["shared"]}',
             }
         )
         assert c is not None
@@ -131,10 +195,10 @@ class TestMemoryContractFromEnv:
     def test_invalid_config_json_does_not_raise(self):
         c = MemoryContract.from_env(
             {
-                "AGENTIC_MEMORY_PROVIDER": "hindsight",
-                "AGENTIC_MEMORY_NAMESPACE": "x",
-                "AGENTIC_MEMORY_URL": "http://x:1",
-                "AGENTIC_MEMORY_CONFIG_JSON": "{not-valid-json",
+                Env.PROVIDER: "hindsight",
+                Env.NAMESPACE: "x",
+                Env.URL: "http://x:1",
+                Env.CONFIG_JSON: "{not-valid-json",
             }
         )
         assert c is not None
@@ -144,9 +208,9 @@ class TestMemoryContractFromEnv:
     def test_whitespace_stripped(self):
         c = MemoryContract.from_env(
             {
-                "AGENTIC_MEMORY_PROVIDER": "  hindsight  ",
-                "AGENTIC_MEMORY_NAMESPACE": "  task-x  ",
-                "AGENTIC_MEMORY_URL": "  http://x:1  ",
+                Env.PROVIDER: "  hindsight  ",
+                Env.NAMESPACE: "  task-x  ",
+                Env.URL: "  http://x:1  ",
             }
         )
         assert c is not None
@@ -157,7 +221,44 @@ class TestMemoryContractFromEnv:
     def test_missing_required_does_not_raise(self):
         """from_env() returns a contract even with missing required vars —
         the doctor's job to surface the issue, not from_env's."""
-        c = MemoryContract.from_env({"AGENTIC_MEMORY_PROVIDER": "hindsight"})
+        c = MemoryContract.from_env({Env.PROVIDER: "hindsight"})
         assert c is not None
         assert c.namespace == ""
         assert c.url is None
+
+
+PKG = pathlib.Path(__file__).resolve().parent.parent
+_PREFIX = capability_env_name(CAPABILITY, "")
+# Matches the name in either quote style ("..." or '...'), same quote on
+# both ends (backreference) — a single-quoted literal is just as much an
+# evasion of the enum as a double-quoted one.
+LITERAL = re.compile(rf'(["\']){re.escape(_PREFIX)}[A-Z_]+\1')
+
+
+def test_no_env_name_literals_outside_the_enum():
+    """Only contract.py's Env block may spell these names as literals.
+
+    Scans both the package and its tests/ directory — the regex is derived
+    from CAPABILITY (via the same `capability_env_name` rule Env's members
+    are built from) rather than a hardcoded prefix, so a capability rename
+    keeps this guard honest instead of silently going stale.
+    """
+    skip_dirs = {".venv", "__pycache__", "build", "dist"}
+    offenders = []
+    for path in PKG.rglob("*.py"):
+        if skip_dirs & set(path.relative_to(PKG).parts):
+            continue
+        if any(part.endswith(".egg-info") for part in path.parts):
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            if not LITERAL.search(line):
+                continue
+            # The Env class body is the one legal home for these literals.
+            if path.name == "contract.py" and any(
+                line.strip().startswith(f"{m.name} =") for m in Env
+            ):
+                continue
+            offenders.append(f"{path.name}:{lineno}: {line.strip()}")
+    assert not offenders, "use Env.<NAME> instead of a literal:\n" + "\n".join(
+        offenders
+    )

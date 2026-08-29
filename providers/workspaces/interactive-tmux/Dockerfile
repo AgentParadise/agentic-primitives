@@ -10,8 +10,10 @@
 # bidirectional control of agents on subscription billing. The provider
 # bundles all three CLIs so a single workspace can host a small swarm.
 #
-# Validated against EXP-01..04 (all `go`); see experiments/EXP-05-...md
-# for the design that this image implements.
+# Validated against EXP-01..04 (all `go`); see EXP-05-interactive-tmux-provider.md
+# for the design that this image implements. The reports live in the private
+# AgentParadise/experiments archive, under
+# agentic-primitives/2026-06-15--tmux-workspace--lab-reports/.
 #
 # Build via the existing repo convention (DO NOT `docker build` directly):
 #   uv run scripts/build-provider.py interactive-tmux
@@ -64,9 +66,11 @@ RUN npm install -g \
         @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION} \
         @openai/codex@${CODEX_CLI_VERSION} \
         @google/gemini-cli@${GEMINI_CLI_VERSION} \
+        skills@1.5.14 \
     && claude --version \
     && codex --version \
-    && gemini --version
+    && gemini --version \
+    && skills --version
 
 # Non-root user. node:22-slim ships node:node uid/gid 1000; rename to
 # agent for parity with the claude-cli provider's user model.

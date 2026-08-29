@@ -146,7 +146,9 @@ Implementation notes and the full per-agent matrix encoding live at
 EXP-01 and EXP-04 disagreed on where Claude's OAuth tokens live. The
 disagreement was resolved empirically in EXP-05a (sibling probe on
 `agentprims-exp02`, full 2×2 mount matrix; report:
-`experiments/EXP-05a-claude-auth-matrix.md` on `agentprims-lab`). The
+`EXP-05a-claude-auth-matrix.md`, archived under
+`agentic-primitives/2026-06-15--tmux-workspace--lab-reports/` in the private
+`AgentParadise/experiments` repository). The
 finding is unambiguous: **Claude needs BOTH `~/.claude/` AND
 `~/.claude.json` mounted to start an authenticated interactive
 session.** Either alone is insufficient.
@@ -394,9 +396,12 @@ await provider.destroy(ws)
 
 ## See also
 
-- `experiments/EXP-05-interactive-tmux-provider.md` — design,
-  hypothesis, run evidence, verdict.
-- `experiments/LAB-PLAN.md` (on `ntm/agentprims/cc_1`) — the broader
-  lab roadmap.
-- `experiments/EXP-01-claude-tmux-workspace.md` and friends — per-agent
-  protocol validation that this provider is the integration of.
+The lab reports below live in the private `AgentParadise/experiments`
+repository, under `agentic-primitives/2026-06-15--tmux-workspace--lab-reports/`.
+They were moved out of this repo on 2026-08-14 so the code repo stays focused.
+
+- `EXP-05-interactive-tmux-provider.md` — design, hypothesis, run
+  evidence, verdict.
+- `LAB-PLAN.md` — the broader lab roadmap.
+- `EXP-01-claude-tmux-workspace.md` and friends — per-agent protocol
+  validation that this provider is the integration of.

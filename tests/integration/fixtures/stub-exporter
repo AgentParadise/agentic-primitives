@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Test stub standing in for SeshMagicSessionExporter.
+#
+# Emits the real binary's summary line shape so the capability's finalize
+# path can be exercised without the real exporter (which lives in a
+# separate repo). NOT a mock of upload behavior — it uploads nothing.
+set -eu
+
+if [ "${1:-}" = "--version" ]; then
+    echo "SeshMagicSessionExporter 0.0.0-stub"
+    exit 0
+fi
+
+echo "run: discovered=0 skipped_unchanged=0 uploaded=0 accepted=0 duplicate=0 rejected=0 skipped_oversize=0 failed=0"
+exit 0

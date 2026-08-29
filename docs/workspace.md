@@ -8,27 +8,37 @@ inside one of these.
 
 This page is the canonical reference for what the workspace does and what
 it exposes. For the design rationale see
-[`docs/adrs/035-workspace-injection-contract.md`](adrs/035-workspace-injection-contract.md);
-for the full design see
-[`docs/superpowers/specs/2026-05-12-workspace-injection-contract-design.md`](superpowers/specs/2026-05-12-workspace-injection-contract-design.md).
+[`docs/adrs/035-workspace-injection-contract.md`](adrs/035-workspace-injection-contract.md).
 
 ## What the workspace is
 
-A container image — today `agentic-workspace-claude-cli:<tag>`, more
-provider variants later — with an entrypoint that prepares the agent's
-environment before exec'ing the orchestrator's CMD.
+A container image with an entrypoint that prepares the agent's environment
+before running the orchestrator's CMD.
 
-The entrypoint owns three responsibilities:
+The runtime itself is harness-neutral and lives at the repository root in
+[`workspace/`](../workspace/): `entrypoint.sh` plus `capabilities/`. It used
+to live under `providers/workspaces/claude-cli/`. A provider image stages
+that tree at build time (`stage_workspace_runtime()` in
+`scripts/build-provider.py`) and `COPY`s it to `/opt/agentic/entrypoint.sh`
+and `/opt/agentic/capabilities/`. Two provider images do so today,
+`claude-cli` and `omni-agent`; `interactive-tmux` ships its own entrypoint
+and `base` ships none.
+
+The entrypoint owns four responsibilities:
 
 1. **Inject** orchestrator-supplied context.
 2. **Isolate** the agent's effects (tmpfs, read-only mounts, network
    whitelisting).
 3. **Observe** what the agent did (git hooks → JSONL on stderr,
    stream-json on stdout, output artifacts on disk).
+4. **Run capabilities**, the pluggable subsystems registered in
+   `AGENTIC_CAPABILITIES`, across their three-hook lifecycle.
 
 This page focuses on **(1) inject** since that's the part with a
 documented contract. Isolate and observe are status quo and described
-briefly below.
+briefly below. Capabilities have their own contract and their own page: see
+[`docs/workspace-capabilities.md`](workspace-capabilities.md) and
+[ADR-040](adrs/040-workspace-capability-modules.md).
 
 ## Inject — what the orchestrator puts in
 
@@ -137,19 +147,23 @@ daemon share a filesystem. The inject path works against any daemon
 # Canonical:
 just build-workspace-claude-cli
 
+# Any provider:
+just build-provider omni-agent
+
 # Or via the script directly:
 uv run scripts/build-provider.py claude-cli
 ```
 
-The build tags `agentic-workspace-claude-cli:latest` plus a version tag
-matching the bundled Claude CLI release.
+The local build tags `agentic-workspace-claude-cli:latest` plus a version
+tag matching the bundled Claude CLI release. That is the local build only.
+CI publishes a different, larger tag set from a different branch: see
+[`docs/release-process.md`](release-process.md).
 
 ## Pointers
 
-- **Design spec:** [`docs/superpowers/specs/2026-05-12-workspace-injection-contract-design.md`](superpowers/specs/2026-05-12-workspace-injection-contract-design.md)
 - **ADR:** [`docs/adrs/035-workspace-injection-contract.md`](adrs/035-workspace-injection-contract.md)
-- **Implementation plan:** [`docs/superpowers/plans/2026-05-12-workspace-injection-contract.md`](superpowers/plans/2026-05-12-workspace-injection-contract.md)
-- **Entrypoint script (source of truth for behavior):** [`providers/workspaces/claude-cli/scripts/entrypoint.sh`](../providers/workspaces/claude-cli/scripts/entrypoint.sh)
+- **Capabilities:** [`docs/workspace-capabilities.md`](workspace-capabilities.md)
+- **Entrypoint script (source of truth for behavior):** [`workspace/entrypoint.sh`](../workspace/entrypoint.sh)
 - **Python helper:** [`lib/python/agentic_isolation/agentic_isolation/workspace_files.py`](../lib/python/agentic_isolation/agentic_isolation/workspace_files.py)
 - **Integration tests:** [`tests/integration/test_entrypoint_workspace_injection.py`](../tests/integration/test_entrypoint_workspace_injection.py)
 - **Sibling spec (consumer side, runner):** [agentic-domain-runner per-domain context injection design](https://gitea.neuralempowerment.xyz/HomeLab/agentic-domain-runner/src/branch/main/docs/superpowers/specs/2026-05-12-per-domain-context-injection-design.md)
