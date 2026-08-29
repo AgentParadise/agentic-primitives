@@ -1,12 +1,12 @@
 ---
-title: "ADR-039: Agent execution model - pass a command, exit-code completion, Stop-hook observability"
+title: "ADR-042: Agent execution model - pass a command, exit-code completion, Stop-hook observability"
 status: proposed
 created: 2026-07-07
 updated: 2026-07-07
 author: Syntropic137
 ---
 
-# ADR-039: Agent execution model - pass a command, exit-code completion, Stop-hook observability
+# ADR-042: Agent execution model - pass a command, exit-code completion, Stop-hook observability
 
 ## Status
 
@@ -15,7 +15,7 @@ author: Syntropic137
 - Created: 2026-07-07
 - Updated: 2026-07-07
 - Author(s): Syntropic137
-- Related: ADR-038 (Rust-first execution + contracts), ADR-035 (workspace injection contract)
+- Related: ADR-041 (Rust-first execution + contracts), ADR-035 (workspace injection contract)
 
 ## Context
 
@@ -63,7 +63,7 @@ to an opt-in adapter:
    spuriously after every `Stop`).
 4. **Credentials** are supplied per-run via a `.env`/env (`CLAUDE_CODE_OAUTH_TOKEN` /
    `CODEX_AUTH_FILE`, API-key fallbacks) and injected securely; the stale host on-disk file is
-   never the source (ADR-039 companion work: PR #254).
+   never the source (ADR-042 companion work: PR #254).
 5. **tmux is retained** as the multi-harness substrate (persistence, pane observability, harnesses
    without a headless mode) and as a hedge - not because `-p` is unavailable (it is not; see H2d).
 
@@ -185,7 +185,7 @@ is lighter than a mode switch.
   command) - experiment records in `experiments/`, run 2026-07-07, evidence under
   `experiments/runs/EXP-0{7,8,9}/` (verified from container captures: written sentinels, session
   ids, token counts, `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` unset).
-- ADR-038: Rust-first execution and contracts.
+- ADR-041: Rust-first execution and contracts.
 - ADR-035: Workspace injection contract.
 - PR #247: `itmux run` contract + R7 orchestrator. PR #254: `.env` credential loader.
 - pi.recipes / introspection.dev - prior art for the recipe artifact (see the recipe standard).
