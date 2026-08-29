@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔧 omni-agent 1.5.0: `just` is installed in the workspace image
+
+The image now ships the `just` command runner, pinned to v1.58.0 and verified
+by SHA256 against the checksums published with that release.
+
+**Why.** A capability probe run inside a real agent workspace, against a repo
+that was already checked out, found `just: command not found`. In the
+repositories these workspaces target, `just` is not a convenience: it is the
+front door to every static check and QA gate a contributor is expected to pass
+before proposing a change (`just fitness-check`, `just docs-sync`,
+`just check-workflows`, `just preflight`, `just test`, `just qa`). Without the
+binary, an agent can write a change but cannot run a single one of the gates
+that would tell it whether the change is correct. Tracked as
+syntropic137/syntropic137#949.
+
+**This grants no additional access.** `just` runs recipes out of a justfile in
+a repository the agent already has, invoking commands the agent could already
+run by hand through Bash. It is a missing binary, not a widened permission.
+
+**MINOR, not patch.** New capability, backward compatible: nothing is removed
+or renamed, and an image consumer that never invokes `just` sees the behaviour
+1.4.0 gave it. `/usr/local/bin/just` was previously absent, so nothing can be
+shadowed by it.
+
+**Pinned, not fetched latest**, consistent with how this image pins
+claude-code, codex, the skills CLI, uv, and the session-store exporter. The
+upstream release is a statically linked musl binary, so it carries no libc
+floor against this base. Bumping `ARG JUST_VERSION` requires moving the two
+per-architecture SHA256 pins in the same layer; the `--version` grep at the end
+of that layer fails the build if the two ever disagree.
+
+### 📦 omni-agent 1.4.0: claude-code 2.1.250, codex 0.150.1
+
+MINOR rather than PATCH because the image's *behaviour* changes, not only its
+contents:
+
+- **The default delegate model moves.** An unpinned `claude -p` resolved to
+  `claude-sonnet-4-6` at 2.1.126; upstream moved the default to Sonnet 5 at
+  2.1.197 and Opus 5 at 2.1.219, and which one a run gets is ACCOUNT-TIER
+  dependent (Pro/Team-Standard -> Sonnet 5; Max/Team-Premium/API -> Opus 5).
+  Probed on the built image: `claude-opus-5[1m]`, with no settings.json and no
+  model env var.
+- **Cache-creation numbers legitimately rise.** 2.1.152 fixed
+  `cache_creation_input_tokens` reporting 0 when the API reported cache writes
+  only via a nested breakdown. Post-bump figures are not comparable with
+  pre-bump baselines.
+- **`codex exec --full-auto` is rejected** as of 0.147.0 (`unexpected argument`,
+  exit 2). No script, hook or executable recipe in this repo invokes it; the
+  delegation skill already documents the removal and uses `-s workspace-write`.
+
+Schemas verified UNCHANGED against the new CLIs, which is what makes the bump
+safe for downstream cost attribution: the codex `--json` stdout vocabulary, the
+codex on-disk rollout record types and `total_token_usage` fields, and Claude's
+`message.usage` field names and per-message-delta semantics. `turn.completed`
+gains an additive `cache_write_input_tokens`.
+
+`claude-cli` and `interactive-tmux` deliberately keep their existing pins;
+interactive-tmux pins to protocol experiments and must not be bumped blindly.
+Consumers should pin the omni-agent digest rather than assume providers are
+interchangeable.
+
+
 ### 📦 Version bookkeeping: agentic-isolation 0.7.0, agentic-session-store 0.2.1, claude-cli 2.1.1, interactive-tmux 0.2.1
 
 Four artifacts were still equal to `release` while shared image inputs and

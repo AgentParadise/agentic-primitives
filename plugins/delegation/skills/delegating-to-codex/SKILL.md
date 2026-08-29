@@ -89,6 +89,36 @@ Pick the least privilege that lets the task finish. Granularity Codex exposes:
 | `-s danger-full-access` | Writes anywhere, network | Almost never; prefer adding `--add-dir` to widen scope precisely |
 | `--dangerously-bypass-approvals-and-sandbox` | No sandbox, no prompts | ONLY when the host is already externally sandboxed (CI container, disposable VM) |
 
+### Inside a container, the bypass flag is the correct choice, not the reckless one
+
+`-s workspace-write` makes Codex sandbox itself with **bubblewrap**, and
+bubblewrap needs an unprivileged user namespace. Docker does not grant that by
+default, so inside a container every sandboxed operation fails:
+
+```
+warning: Codex could not find bubblewrap on PATH ... will use the bundled
+         bubblewrap in the meantime
+bwrap: No permissions to create a new namespace, likely because the kernel does
+       not allow non-privileged user namespaces.
+Failed to write file /workspace/palindrome.py
+```
+
+Read that stack carefully: the missing-bwrap line is a **warning** and Codex
+continues with a bundled copy. The namespace denial underneath it is the real
+fault, and the write failure is only the symptom. Diagnosing from the first
+plausible line sends you to install bubblewrap, which does not help.
+
+When the host is already a container, use:
+
+```sh
+codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check \
+  -C /workspace "$TASK_PROMPT" < /dev/null
+```
+
+The container is the sandbox. Codex sandboxing inside it is redundant and
+broken, so the flag restores correct behaviour rather than removing a
+protection. On a developer laptop the earlier warning still stands.
+
 Reach for `--dangerously-bypass-approvals-and-sandbox` only in an
 already-isolated host. On a developer machine it is the equivalent of handing
 out an unsandboxed shell.
