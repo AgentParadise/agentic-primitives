@@ -1,5 +1,5 @@
 ---
-title: "ADR-038: Rust-First for Workspace Execution and Contracts"
+title: "ADR-041: Rust-First for Workspace Execution and Contracts"
 status: accepted
 created: 2026-07-07
 updated: 2026-07-07
@@ -7,7 +7,7 @@ author: NeuralEmpowerment
 tags: [rust, python, workspace, itmux, contracts, language-choice, architecture]
 ---
 
-# ADR-038: Rust-First for Workspace Execution and Contracts
+# ADR-041: Rust-First for Workspace Execution and Contracts
 
 ## Status
 
