@@ -69,6 +69,7 @@ fn prepare_yields_staged_destination_paths_not_mount_bind_args() {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("claude-throwaway"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
 
     let prepared = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
@@ -150,6 +151,7 @@ fn plan_for_prepared_claude_auth_includes_transfer_and_secure_steps_for_every_st
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("claude-throwaway-2"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let prepared = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
 
@@ -183,6 +185,7 @@ fn stage_into_container_without_docker_fails_cleanly_not_via_v_mount() {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("claude-throwaway-3"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let prepared = prepare(Agent::Claude, &claude_dir, &ctx).unwrap();
 
@@ -215,6 +218,7 @@ fn gemini_stages_only_durable_auth_and_config_files() {
         workdir: "/workspace".to_string(),
         throwaway_dir: tmp("gemini-throwaway"),
         host_claude_dotjson: None,
+        claude_omit_credentials: false,
     };
     let prepared = prepare(Agent::Gemini, &gemini_dir, &ctx).unwrap();
     let staged = prepared.first().expect("Gemini has one staged directory");

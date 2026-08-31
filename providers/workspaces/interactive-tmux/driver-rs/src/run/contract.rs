@@ -29,6 +29,7 @@
 //! deserialized. See `agent_run_event_rejects_unknown_top_level_field` in
 //! `tests/contract_json.rs` for the behavioral proof.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use schemars::JsonSchema;
@@ -63,6 +64,18 @@ pub struct AgentRunSpec {
 
 /// Per-harness credentials for the run. All fields optional - only the
 /// harnesses actually exercised by the recipe need credentials supplied.
+///
+/// # Secrets travel here, never in argv (security-critical)
+///
+/// Every field on this struct carries credential MATERIAL (token contents,
+/// `auth.json` bytes, raw env-var values). The executor injects them into the
+/// container ONLY over the base64-over-stdin `docker exec` transfer and, at
+/// launch, via an in-container `0600` env file the harness pane `source`s
+/// before `exec`ing the CLI. No credential value ever reaches a `docker
+/// run`/`docker exec` argv or a `tmux` command line - argv is world-readable
+/// via `ps` / `/proc/<pid>/cmdline`; stdin and a `0600` file are not. The
+/// `secret_env` redaction test (`tests/secret_redaction.rs`) is the load-
+/// bearing guard for that invariant.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentRunCredentials {
@@ -70,6 +83,14 @@ pub struct AgentRunCredentials {
     pub claude: Option<ClaudeCredentials>,
     #[serde(default)]
     pub codex: Option<CodexCredentials>,
+    /// Generic, harness-neutral secret environment variables (R2). Populated
+    /// by the `.env`/process-env loader with an ALLOWLISTED set of names only
+    /// (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). The
+    /// executor routes each var to the relevant harness pane's sourced `0600`
+    /// env file; values never touch argv. Empty by default. A `BTreeMap` so the
+    /// serialized order is deterministic (stable schema round-trips).
+    #[serde(default)]
+    pub secret_env: BTreeMap<String, String>,
 }
 
 /// Claude Code credentials. `oauth_token` is the token CONTENTS, not a path.
