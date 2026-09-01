@@ -230,8 +230,15 @@ bump-version part artifact:
 # Normative source: APS-V1-0003 section 6.4 (DOC03-claude-md-copy).
 [group('qa')]
 sync-agent-docs:
-    @cp AGENTS.md CLAUDE.md
-    @echo '{{ GREEN }}✓ CLAUDE.md regenerated from AGENTS.md{{ NORMAL }}'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # rm first: `cp` onto a SYMLINK writes THROUGH it, truncating the target -
+    # which here is AGENTS.md itself. Removing the entry replaces the link
+    # rather than following it, and repairs a CLAUDE.md turned back into one.
+    rm -f CLAUDE.md
+    cp AGENTS.md CLAUDE.md
+    chmod 0644 CLAUDE.md
+    echo "CLAUDE.md regenerated from AGENTS.md"
 
 # Gate: the copy must stay identical.
 #
@@ -242,6 +249,29 @@ sync-agent-docs:
 check-agent-docs:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Representation first, THEN bytes. `cmp` follows symlinks and ignores
+    # mode, so a committed `CLAUDE.md -> AGENTS.md` symlink compares equal on
+    # Linux while reintroducing the precise Windows breakage this rule exists
+    # to prevent. A content-only gate would pass that and call it conformant.
+    for f in AGENTS.md CLAUDE.md; do
+        if [ -L "$f" ]; then
+            echo "$f is a SYMLINK; it must be a regular file."
+            echo "git for Windows checks a committed symlink out as a text file"
+            echo "containing the target path, which Claude Code loads as context."
+            echo "Fix: just sync-agent-docs"
+            exit 1
+        fi
+        if [ ! -f "$f" ]; then
+            echo "$f is missing or not a regular file."
+            exit 1
+        fi
+    done
+    modes="$(git ls-files -s -- AGENTS.md CLAUDE.md | awk '{print $1}' | sort -u)"
+    if [ "$modes" != "100644" ]; then
+        echo "AGENTS.md and CLAUDE.md must both be committed as mode 100644."
+        echo "Found: $(git ls-files -s -- AGENTS.md CLAUDE.md)"
+        exit 1
+    fi
     if ! cmp -s AGENTS.md CLAUDE.md; then
         echo "CLAUDE.md is not identical to AGENTS.md."
         echo "AGENTS.md is canonical. Edit THAT, never CLAUDE.md."

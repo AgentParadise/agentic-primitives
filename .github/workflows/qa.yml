@@ -23,6 +23,20 @@ jobs:
   # PYTHON JOBS - Matrix strategy for all packages
   #############################################################################
 
+  agent-docs:
+    name: Agent docs (AGENTS.md == CLAUDE.md)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install just
+        uses: extractions/setup-just@v2
+      # AGENTS.md is canonical; CLAUDE.md is a byte-identical committed copy.
+      # This gate must run in CI, not only inside `just qa`: this workflow
+      # defines its own jobs and never invokes that recipe, so a gate living
+      # only there would never execute on a PR.
+      - name: Check CLAUDE.md matches AGENTS.md
+        run: just check-agent-docs
+
   python-packages:
     name: Python ${{ matrix.package.name }}
     runs-on: ubuntu-latest
@@ -512,6 +526,7 @@ jobs:
     name: QA Success
     if: always()
     needs:
+      - agent-docs
       - python-packages
       - python-hooks
       - consumer-contracts
@@ -522,7 +537,8 @@ jobs:
     steps:
       - name: Check all jobs
         run: |
-          if [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
+          if [[ "${{ needs.agent-docs.result }}" == "failure" ]] || \
+             [[ "${{ needs.python-packages.result }}" == "failure" ]] || \
              [[ "${{ needs.python-hooks.result }}" == "failure" ]] || \
              [[ "${{ needs.consumer-contracts.result }}" == "failure" ]] || \
              [[ "${{ needs.ruff-version-consistency.result }}" == "failure" ]] || \
