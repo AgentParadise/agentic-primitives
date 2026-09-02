@@ -26,6 +26,19 @@ class EventType(StrEnum):
     SUBAGENT_STOPPED = "subagent_stopped"
 
 
+class ClaudeToolName(StrEnum):
+    """Claude CLI built-in tool names the parser treats specially.
+
+    The CLI renamed its subagent-spawning tool from "Task" to "Agent"; both
+    names have been observed in the wild (see event_parser.py). Kept local to
+    this package (mirroring the duplication of EventType above) rather than
+    importing agentic_events, since agentic_isolation has no dependency on it.
+    """
+
+    SUBAGENT = "Agent"
+    SUBAGENT_LEGACY = "Task"
+
+
 @dataclass
 class TokenUsage:
     """Token usage from a message or session."""

@@ -5,10 +5,11 @@ ObservabilityEvents. Handles the tool_use_id → tool_name mapping
 that Claude CLI doesn't provide in tool_result events.
 
 Subagent Tracking:
-- Detects Task tool usage as SUBAGENT_STARTED
-- Tracks concurrent subagents by their Task tool_use_id
+- Detects subagent tool usage (ClaudeToolName: "Agent", or the legacy "Task"
+  name) as SUBAGENT_STARTED
+- Tracks concurrent subagents by their tool_use_id
 - Tags events with parent_tool_use_id for correlation
-- Emits SUBAGENT_STOPPED when Task tool_result is received
+- Emits SUBAGENT_STOPPED when the subagent's tool_result is received
 """
 
 from __future__ import annotations
@@ -20,11 +21,29 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from agentic_isolation.providers.claude_cli.types import (
+    ClaudeToolName,
     EventType,
     ObservabilityEvent,
     SessionSummary,
     TokenUsage,
 )
+
+_SUBAGENT_TOOL_NAMES = frozenset(name.value for name in ClaudeToolName)
+
+# Top-level Claude CLI stream-json event types this parser understands, mapped
+# to the EventParser method name that handles each one. This is the single
+# source of truth for `parse_line`'s dispatch below AND for anything (tests,
+# the contract canary) that needs to know what the parser depends on -- so
+# that list can't drift from what the parser actually does, the way the
+# hardcoded "Task" literal drifted from the CLI's actual tool name.
+_STREAM_EVENT_HANDLER_NAMES: dict[str, str] = {
+    "system": "_handle_system",
+    "assistant": "_handle_assistant",
+    "user": "_handle_user",
+    "result": "_handle_result",
+}
+
+KNOWN_STREAM_EVENT_TYPES = frozenset(_STREAM_EVENT_HANDLER_NAMES)
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +72,11 @@ class EventParser:
     tool_result events with the missing tool name.
 
     Subagent Tracking:
-    - Detects `tool_use.name == "Task"` as subagent start
+    - Detects `tool_use.name in ClaudeToolName` (both "Agent" and the legacy
+      "Task" name) as subagent start
     - Tracks concurrent subagents in `_active_subagents` dict
     - Correlates events via `parent_tool_use_id` field
-    - Emits SUBAGENT_STOPPED when Task tool_result is received
+    - Emits SUBAGENT_STOPPED when the subagent's tool_result is received
 
     Usage:
         parser = EventParser(session_id="session-123")
@@ -159,16 +179,10 @@ class EventParser:
         timestamp = self._parse_timestamp(raw)
         self._event_count += 1
 
-        handlers: dict[str, Any] = {
-            "system": self._handle_system,
-            "assistant": self._handle_assistant,
-            "user": self._handle_user,
-            "result": self._handle_result,
-        }
-
-        handler = handlers.get(event_type)
-        if handler is None:
+        handler_name = _STREAM_EVENT_HANDLER_NAMES.get(event_type)
+        if handler_name is None:
             return []
+        handler = getattr(self, handler_name)
 
         result = handler(raw, timestamp)
         if isinstance(result, list):
@@ -271,9 +285,10 @@ class EventParser:
             subagent = self._active_subagents[parent_tool_use_id]
             subagent.tools_used[tool_name] = subagent.tools_used.get(tool_name, 0) + 1
 
-        if tool_name == "Task":
+        if tool_name in _SUBAGENT_TOOL_NAMES:
             return self._start_subagent(
                 tool_use_id,
+                tool_name,
                 tool_input,
                 raw,
                 timestamp,
@@ -294,6 +309,7 @@ class EventParser:
     def _start_subagent(
         self,
         tool_use_id: str,
+        tool_name: str,
         tool_input: dict[str, Any],
         raw: dict[str, Any],
         timestamp: datetime,
@@ -314,7 +330,7 @@ class EventParser:
             session_id=self.session_id,
             timestamp=timestamp,
             raw_event=raw,
-            tool_name="Task",
+            tool_name=tool_name,
             tool_use_id=tool_use_id,
             tool_input=tool_input,
             agent_name=subagent_name,
