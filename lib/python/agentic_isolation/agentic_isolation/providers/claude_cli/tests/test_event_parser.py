@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from agentic_isolation.providers.claude_cli.event_parser import EventParser
 from agentic_isolation.providers.claude_cli.types import EventType
 
@@ -178,35 +180,44 @@ class TestEventParser:
 class TestSubagentTracking:
     """Tests for subagent lifecycle tracking."""
 
-    def test_task_tool_emits_subagent_started(self) -> None:
-        """Task tool usage should emit SUBAGENT_STARTED event."""
+    @pytest.mark.parametrize("alias", ["Task", "Agent"])
+    def test_subagent_tool_emits_subagent_started(self, alias: str) -> None:
+        """Either tool name alias should emit SUBAGENT_STARTED and preserve it.
+
+        The Claude CLI renamed this built-in tool from "Task" to "Agent"
+        (see ClaudeToolName). A parser that only recognizes one literal
+        silently downgrades the other alias to an ordinary tool call.
+        """
         parser = EventParser(session_id="test-session")
 
-        line = """{"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "id": "task_123", "name": "Task", "input": {
+        line = f"""{{"type": "assistant", "message": {{"content": [
+            {{"type": "tool_use", "id": "task_123", "name": "{alias}", "input": {{
                 "description": "List all files",
                 "prompt": "Run ls -la"
-            }}
-        ]}}"""
+            }}}}
+        ]}}}}"""
         events = parser.parse_line(line)
 
         event = get_event_by_type(events, EventType.SUBAGENT_STARTED)
         assert event is not None
-        assert event.tool_name == "Task"
+        # The emitted tool_name must be the actual observed alias, not a
+        # hardcoded literal for whichever alias the parser happens to know.
+        assert event.tool_name == alias
         assert event.tool_use_id == "task_123"
         assert event.agent_name == "List all files"
         assert event.subagent_tool_use_id == "task_123"
 
-    def test_task_result_emits_subagent_stopped(self) -> None:
-        """Task tool_result should emit SUBAGENT_STOPPED event."""
+    @pytest.mark.parametrize("alias", ["Task", "Agent"])
+    def test_subagent_result_emits_subagent_stopped(self, alias: str) -> None:
+        """Either tool name alias's tool_result should emit SUBAGENT_STOPPED."""
         parser = EventParser(session_id="test-session")
 
         # First, start the subagent
-        parser.parse_line("""{"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "id": "task_456", "name": "Task", "input": {
+        parser.parse_line(f"""{{"type": "assistant", "message": {{"content": [
+            {{"type": "tool_use", "id": "task_456", "name": "{alias}", "input": {{
                 "description": "Check status"
-            }}
-        ]}}""")
+            }}}}
+        ]}}}}""")
 
         # Then complete it
         line = """{"type": "user", "message": {"content": [
@@ -220,6 +231,36 @@ class TestSubagentTracking:
         assert event.subagent_tool_use_id == "task_456"
         assert event.duration_ms is not None
         assert event.duration_ms >= 0
+        assert event.tool_name == alias
+
+    @pytest.mark.parametrize("alias", ["Task", "Agent"])
+    def test_subagent_start_stop_pair_counts_exactly_one(self, alias: str) -> None:
+        """A start/result pair for EACH alias yields exactly one start, one
+        stop, and subagent_count == 1 in the summary.
+
+        This is the exact scenario the task's confirmed bug broke: since the
+        parser only recognized "Task", every "Agent" event was silently
+        downgraded to an ordinary tool_execution_* pair and subagent_count
+        stayed 0 forever.
+        """
+        parser = EventParser(session_id="test-session")
+
+        start_events = parser.parse_line(f"""{{"type": "assistant", "message": {{"content": [
+            {{"type": "tool_use", "id": "sub_1", "name": "{alias}", "input": {{
+                "description": "Do work"
+            }}}}
+        ]}}}}""")
+        stop_events = parser.parse_line("""{"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "sub_1", "content": "done"}
+        ]}}""")
+
+        started = [e for e in start_events if e.event_type == EventType.SUBAGENT_STARTED]
+        stopped = [e for e in stop_events if e.event_type == EventType.SUBAGENT_STOPPED]
+        assert len(started) == 1
+        assert len(stopped) == 1
+
+        summary = parser.get_summary()
+        assert summary.subagent_count == 1
 
     def test_concurrent_subagents_tracked_independently(self) -> None:
         """Multiple concurrent subagents should be tracked independently."""

@@ -380,6 +380,16 @@ langfuse-self-hosted-serve:
 langfuse-self-hosted-health:
     infra/langfuse/self-hosted/deploy.sh health
 
+# Harness output-contract canary: runs a REAL `claude` CLI session and fails
+# loudly if the stream-json event types, fields, or tool names event_parser.py
+# depends on have drifted (e.g. a future rename of the "Agent"/"Task" tool).
+# Requires an authenticated `claude` CLI on PATH + network access to the
+# Anthropic API -- not runnable in an unauthenticated sandbox. See
+# scripts/claude_cli_contract_canary.py for what it checks and why.
+[group('observability')]
+canary-claude-cli-contract *args:
+    uv run scripts/claude_cli_contract_canary.py {{ args }}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOCKER / WORKSPACE IMAGES
 # ═══════════════════════════════════════════════════════════════════════════════

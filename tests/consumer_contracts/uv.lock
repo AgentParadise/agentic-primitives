@@ -23,7 +23,7 @@ dev = [
 
 [[package]]
 name = "agentic-isolation"
-version = "0.7.0"
+version = "0.7.1"
 source = { directory = "../../lib/python/agentic_isolation" }
 dependencies = [
     { name = "pydantic" },
