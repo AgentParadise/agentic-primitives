@@ -94,11 +94,30 @@ REQUIRED_TOP_LEVEL_FIELDS: dict[str, tuple[str, ...]] = {
     "system": (),
     "assistant": ("message",),
     "user": ("message",),
-    "result": ("is_error", "total_cost_usd", "duration_ms", "duration_api_ms", "num_turns"),
+    "result": (
+        "is_error",
+        "total_cost_usd",
+        "duration_ms",
+        "duration_api_ms",
+        "num_turns",
+        "usage",
+    ),
 }
 
 REQUIRED_TOOL_USE_FIELDS = ("id", "name", "input")
-REQUIRED_TOOL_RESULT_FIELDS = ("tool_use_id",)
+REQUIRED_TOOL_RESULT_FIELDS = ("tool_use_id", "is_error")
+
+# Sub-fields event_parser.py's _extract_token_usage / _handle_result read off
+# a `usage` dict (assistant.message.usage and result.usage share this exact
+# shape -- both are read with the same four .get(..., 0) calls). Checked
+# separately from REQUIRED_TOP_LEVEL_FIELDS because "usage" itself is a
+# nested dict, not a top-level scalar.
+REQUIRED_USAGE_FIELDS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+)
 
 
 class ContractViolation(RuntimeError):
@@ -188,8 +207,25 @@ def check_contract(raw_lines: list[str]) -> None:
             if field not in raw:
                 _fail(f"{event_type!r} event is missing required field {field!r}: {raw}")
 
+        if event_type == "result":
+            usage = raw.get("usage", {})
+            for field in REQUIRED_USAGE_FIELDS:
+                if field not in usage:
+                    _fail(f"'result' event's usage is missing required field {field!r}: {usage}")
+
         if event_type == "assistant":
-            for item in raw.get("message", {}).get("content", []):
+            message = raw.get("message", {})
+            if "usage" not in message:
+                _fail(f"'assistant' event's message is missing required field 'usage': {message}")
+            usage = message["usage"]
+            for field in REQUIRED_USAGE_FIELDS:
+                if field not in usage:
+                    _fail(
+                        f"'assistant' event's message.usage is missing required field "
+                        f"{field!r}: {usage}"
+                    )
+
+            for item in message.get("content", []):
                 if not (isinstance(item, dict) and item.get("type") == "tool_use"):
                     continue
                 for field in REQUIRED_TOOL_USE_FIELDS:
