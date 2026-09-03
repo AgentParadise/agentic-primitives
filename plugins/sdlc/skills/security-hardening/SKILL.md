@@ -344,8 +344,9 @@ default is defensible alone.
 sat alone on the default bridge with no secrets in its environment. Result: stolen CPU
 rather than a compromised host.
 
-That list is the minimum, not the whole set. Also check, because each one turns the same
-intrusion into a host compromise: **host PID or network namespace** (`--pid=host`,
+That list is the minimum, not the whole set. Also check each of these - `docker.sock` and
+`--privileged` are host root outright; the rest widen the blast radius and each opens a
+plausible path to one: **host PID or network namespace** (`--pid=host`,
 `--network=host`), **added capabilities** (`CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`,
 `CAP_NET_ADMIN`), **device passthrough** (`--device`), **other runtime sockets**
 (containerd, podman, a kubelet), **sensitive host paths** mounted at all (`/`, `/etc`,
@@ -368,20 +369,26 @@ executed on that kernel, on host CPU, opening outbound connections from the host
    it (`iptables-persistent` or the provisioning scripts) so a rebuild cannot silently drop
    it.
 
-   **Rule order is load-bearing. A lone DROP breaks every container's outbound
-   networking**, because replies to container-initiated connections also arrive on the
-   public interface from untrusted addresses. Accept established flows first, and match only
-   NEW inbound:
    ```bash
-   iptables -C DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null ||
-     iptables -I DOCKER-USER 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-   iptables -C DOCKER-USER -i <public-if> -m conntrack --ctstate NEW \
-     ! -s <trusted-cidr> -j DROP 2>/dev/null ||
-     iptables -I DOCKER-USER 2 -i <public-if> -m conntrack --ctstate NEW \
+   # Match only NEW inbound connections. Replies to container-initiated traffic are
+   # ESTABLISHED, so they never match this rule and keep working - no companion
+   # "allow established" rule is needed, and adding one is worse than useless:
+   # ACCEPT is a terminal verdict, so an unscoped ACCEPT in DOCKER-USER would
+   # short-circuit all later FORWARD processing, including non-Docker forwarding.
+   # If you keep such a rule anyway, use RETURN (resume FORWARD), never ACCEPT.
+   iptables -I DOCKER-USER 1 -i <public-if> -m conntrack --ctstate NEW \
      ! -s <trusted-cidr> -j DROP
    ```
-   Scope conditions, all of which silently produce a false sense of coverage:
+
+   **Do not use `iptables -C` as proof this is done.** `-C` searches the whole chain and
+   says nothing about position; a matching rule sitting at position 5 passes the check while
+   traffic is already accepted above it. Order is the whole point of this rule. Assert on
+   numbered output instead, and rebuild the managed block when it has drifted:
+   ```bash
+   iptables -L DOCKER-USER -n --line-numbers
+   ```
+
+   Scope conditions, each of which silently produces a false sense of coverage:
    - This is the **iptables** backend. Docker's **nftables** backend has no `DOCKER-USER`;
      you need a forward hook at an earlier priority.
    - **IPv6 is separate.** Where Docker IPv6 is enabled, an equivalent `ip6tables` policy is
@@ -408,48 +415,69 @@ reading as a clean result - is exactly what unguarded pipelines produce:
 ```bash
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# Every check must distinguish three outcomes: hazard found, verified clean, and
+# NOT CHECKED. Collapsing the last two is the failure this whole section is about.
 
 echo "== 1. containers published to every interface =="
-# A wildcard bind is the condition that caused the incident.
 if ! names=$(docker ps --format '{{.Names}}'); then
-  echo "  FAIL: docker unavailable - this check proved nothing"; exit 1
+  echo "  NOT CHECKED: docker unavailable"; exit 1
 fi
 hits=$(docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '0\.0\.0\.0|\[::\]' || true)
 echo "${hits:-  OK: docker queried, 0 wildcard publications}"
-echo "  NOTE: misses host-network containers and non-Docker listeners; see check 5."
 
 echo "== 2. is the firewall hook attached, and does it cover v6 =="
 sudo iptables -S FORWARD | grep -q DOCKER-USER \
   && echo "  FORWARD -> DOCKER-USER: attached" \
-  || echo "  WARN: DOCKER-USER exists but FORWARD does not jump to it"
-sudo iptables -S DOCKER-USER || echo "  WARN: no DOCKER-USER chain (nftables backend?)"
-sudo ip6tables -S DOCKER-USER 2>/dev/null || echo "  NOTE: no IPv6 chain - fine only if Docker IPv6 is off"
+  || echo "  WARN: FORWARD does not jump to DOCKER-USER - the chain is inert"
+sudo iptables -L DOCKER-USER -n --line-numbers || echo "  WARN: no DOCKER-USER (nftables backend?)"
+sudo ip6tables -L DOCKER-USER -n --line-numbers 2>/dev/null \
+  || echo "  NOTE: no IPv6 chain - fine only if Docker IPv6 is off"
 
 echo "== 3. executables in container /tmp =="
-# Deliberately broader than -rwx: any owner-execute bit, plus a size listing so an
-# interpreted script with no execute bit is still visible to a human reader.
+# All three execute positions, including setuid/setgid/sticky (s/t). Prints the whole
+# listing on request so an interpreted script with no execute bit is still reviewable.
 for c in $names; do
   if out=$(docker exec "$c" sh -c 'ls -la /tmp 2>/dev/null' 2>&1); then
-    printf '%s' "$out" | grep -E '^-..x|^-.....x' | sed "s|^|  $c: |" || true
+    printf '%s\n' "$out" | grep -E '^-([r-][w-][xst]|[r-][w-][r-][r-][w-][xst]|[r-][w-][r-][r-][w-][r-][r-][w-][xst])' \
+      | sed "s|^|  $c: |" || true
   else
     echo "  $c: NOT CHECKED ($(printf '%s' "$out" | head -1))"
   fi
 done
 
 echo "== 4. CPU that no workload explains =="
-docker stats --no-stream --format '{{.CPUPerc}}\t{{.Name}}' | sort -rn | head
+# No `| head`: under pipefail a short reader makes the pipeline exit 141 and, with
+# set -e, silently ends the audit on any host with more than ten containers.
+if ! stats=$(docker stats --no-stream --format '{{.CPUPerc}}\t{{.Name}}'); then
+  echo "  NOT CHECKED: docker stats failed"; exit 1
+fi
+printf '%s\n' "$stats" | sort -rn | head -10 || true
 echo "  Compare each against what that container should be doing. In this incident every"
 echo "  real postgres worker sat at 0.0% while /tmp/postgresql held 787%."
 
 echo "== 5. host listeners (catches what check 1 cannot) =="
-sudo ss -lntup | grep -vE '127\.0\.0\.|\[::1\]' || echo "  none beyond loopback"
+# -H drops the header, so 'no matches' is genuinely empty rather than a surviving title row.
+if ! listeners=$(sudo ss -H -lntup); then
+  echo "  NOT CHECKED: ss failed"; exit 1
+fi
+printf '%s\n' "$listeners" | grep -vE '127\.0\.0\.|\[::1\]' || echo "  OK: none beyond loopback"
 
 echo "== 6. blast-radius multipliers =="
-docker ps -q | xargs -r -I{} docker inspect {} --format \
-  '{{.Name}} priv={{.HostConfig.Privileged}} caps={{.HostConfig.CapAdd}} pid={{.HostConfig.PidMode}} net={{.HostConfig.NetworkMode}} {{range .Mounts}}{{.Source}} {{end}}' \
-  | grep -E 'priv=true|docker\.sock|pid=host|net=host|CapAdd:\[[^]]' || echo "  none found"
-echo "  A mounted docker.sock, --privileged, host PID or host network each turn a contained"
-echo "  intrusion into a host compromise."
+# Per-container, so a failed inspect prints NOT CHECKED instead of vanishing into a
+# pipeline whose `|| echo "none found"` would report the host as clean.
+found=0
+for c in $names; do
+  if ! insp=$(docker inspect "$c" --format \
+      '{{.Name}} priv={{.HostConfig.Privileged}} caps={{.HostConfig.CapAdd}} pid={{.HostConfig.PidMode}} net={{.HostConfig.NetworkMode}} devs={{len .HostConfig.Devices}} mounts={{range .Mounts}}{{.Source}},{{end}}'); then
+    echo "  $c: NOT CHECKED (inspect failed)"; found=1; continue
+  fi
+  printf '%s\n' "$insp" | grep -E 'priv=true|caps=\[[^]]|pid=host|net=host|devs=[1-9]|docker\.sock|containerd\.sock|/etc,|/root,|\.ssh|/,' \
+    && found=1 || true
+done
+[ "$found" -eq 0 ] && echo "  OK: all $(printf '%s\n' "$names" | wc -l) containers inspected, no multipliers found"
+echo "  docker.sock or --privileged is host root outright. Host PID/network, added"
+echo "  capabilities, device passthrough and sensitive mounts widen the blast radius and"
+echo "  each opens a plausible path to one - treat any hit as needing a reason to exist."
 ```
 
 **On log-grepping for the technique.** This is evidence collection, never proof of absence -
@@ -1132,9 +1160,9 @@ packages/syn-shared/         @<team>
 
 ## Runtime Exposure (per host — see Area 11)
 
-| Host | Wildcard publications | DOCKER-USER attached | Container /tmp clean | Blast-radius mounts |
-|------|----------------------|----------------------|----------------------|---------------------|
-| <host> | <count> | <yes/no> | <yes/no> | <docker.sock / privileged / host-ns / none> |
+| Host | Wildcard publications | DOCKER-USER attached (v4/v6) | Container /tmp | Unexplained CPU | Blast-radius multipliers |
+|------|----------------------|------------------------------|----------------|-----------------|--------------------------|
+| <host> | <count / NOT CHECKED> | <yes-yes / yes-no / NOT CHECKED> | <clean / N hits / NOT CHECKED> | <none / list> | <docker.sock, privileged, host-ns, caps, devices, mounts, none> |
 
 ## Critical Findings (P0 — Fix before next push)
 
