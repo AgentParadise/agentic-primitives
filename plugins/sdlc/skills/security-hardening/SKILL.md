@@ -21,7 +21,7 @@ MODE: $1 || "both"
 
 ## Threat Model
 
-This skill covers ten attack surface areas. Each has a concrete historical incident:
+This skill covers eleven attack surface areas. Each has a concrete historical incident:
 
 ### 1. Supply Chain — Tag Repointing (XZ-utils, 2024)
 
@@ -238,6 +238,126 @@ it's about recognizing that each dependency carries ongoing risk that compounds 
   and `@nivo/*` for charts), pick one and remove the other.
 - **Question heavy transitive trees**: A package with 3 direct deps that pulls in 150
   transitive deps is a red flag. Look for lighter alternatives or vendor the functionality.
+
+
+### 11. Runtime Exposure — Published Ports Bypass the Host Firewall (observed incident, 2026)
+
+Every area above concerns code *entering* the system. This one concerns a service already
+running and reachable — the surface an audit of the repository never sees, because nothing
+in the repository is wrong.
+
+**The observed incident.** A `postgres:16` container was started by hand on a public VPS
+with `-p 5433:5432`, to hold throwaway test fixtures. Timeline from its own logs:
+
+```
+02:20:09  container starts
+02:51:37  first connection from the internet matches pg_hba "host all all all"
+02:55:50  remote code execution
+12:00     XMRig-derived Monero miner running as /tmp/systemd
+```
+
+Thirty-five minutes from start to compromise. It then consumed ~8 of 16 cores for 21 days
+before anyone noticed, and it was noticed only because someone asked why the machine was
+slow.
+
+**Failure one: the firewall was enabled and did nothing.** `ufw` reported default-deny
+incoming with only SSH and Tailscale allowed. Docker publishes a port by writing its own
+NAT rule; traffic is rewritten to the container address *before* the routing decision, so
+it is forwarded and never traverses the INPUT chain ufw manages. Docker provides
+`DOCKER-USER` as the hook for exactly this and ships it empty:
+
+```
+-A DOCKER ! -i docker0 -p tcp --dport 5433 -j DNAT --to-destination 172.17.0.2:5432
+
+$ iptables -S DOCKER-USER
+-N DOCKER-USER          # no rules
+```
+
+A host firewall that reports a rule it does not enforce is worse than no firewall, because
+it terminates the investigation.
+
+**Failure two: a database superuser is an operating-system account.** The attacker did not
+exploit a vulnerability. `COPY ... FROM PROGRAM` runs a shell command as the superuser, by
+design, for ETL. So does `pg_read_server_files`, an untrusted-language function, or a C
+extension. There is no CVE and no patch, because within PostgreSQL's threat model nothing
+was violated: superuser access *is* shell access.
+
+```sql
+COPY tests FROM PROGRAM 'echo <base64>|base64 -d|bash';
+```
+
+Do not confuse this with CVE-2025-1094 or any other PostgreSQL CVE. Upgrading changes
+nothing. The equivalents elsewhere: Redis unauthenticated `CONFIG SET dir` writing an SSH
+key or cron entry, MongoDB with no auth, an exposed Docker API on 2375, Elasticsearch
+scripting.
+
+**Failure three: an image default widened the surface.** Upstream `initdb` listens on
+localhost. The official Postgres *Docker image* rewrites `pg_hba.conf` to
+`host all all all scram-sha-256` when `POSTGRES_PASSWORD` is set and
+`POSTGRES_HOST_AUTH_METHOD` is not. Sensible on a private compose network; a loaded gun the
+moment the port is published. Each default is defensible alone.
+
+**What limited the damage, and what would not have.** The container had no
+`/var/run/docker.sock`, no host bind mounts, no added capabilities, was not privileged, and
+sat alone on the default bridge with no secrets in its environment. Result: stolen CPU
+rather than a compromised host. Any one of those being different — most commonly a mounted
+Docker socket — turns the same intrusion into full host takeover. Containment is what made
+this survivable; do not treat "it was only a container" as reassurance, because code
+executed on that kernel, on host CPU, opening outbound connections from the host's address.
+
+**Defense, in priority order:**
+
+1. **Never write a bare `-p`.** Name the interface so private is the default.
+   ```
+   -p 5433:5432                   # every interface, including public
+   -p 127.0.0.1:5433:5432         # loopback only
+   -p 100.64.0.2:5433:5432        # VPN address only
+   ```
+2. **Fill in `DOCKER-USER`** so a forgotten bare `-p` cannot reach the internet, and persist
+   it (`iptables-persistent` or the provisioning scripts) so a rebuild cannot silently drop
+   it:
+   ```
+   iptables -I DOCKER-USER -i <public-if> ! -s <trusted-cidr> -j DROP
+   ```
+3. **Set `POSTGRES_HOST_AUTH_METHOD`/`pg_hba.conf` deliberately** rather than inheriting the
+   image default, and never reuse a database password that also exists elsewhere.
+4. **Treat every datastore superuser as an OS account** when deciding what may reach it.
+5. **Alert on sustained CPU with no corresponding workload.** The one signal that would have
+   caught this in hour one rather than week three.
+
+**Audit commands** (run per host, not per repository):
+
+```bash
+# 1. anything published to every interface
+docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '0\.0\.0\.0|\[::\]'
+
+# 2. the hook that should stop it reaching the internet
+iptables -S DOCKER-USER
+
+# 3. executables in container /tmp — almost nothing legitimate runs from there
+for c in $(docker ps --format '{{.Names}}'); do
+  docker exec "$c" sh -c 'ls -la /tmp 2>/dev/null | grep "^-rwx"' 2>/dev/null | sed "s|^|$c: |"
+done
+
+# 4. CPU that does not match what the container should be doing
+docker stats --no-stream --format '{{.CPUPerc}}\t{{.Name}}' | sort -rn | head
+
+# 5. the technique, retroactively, in any Postgres that was ever reachable
+docker logs <pg-container> 2>&1 \
+  | grep -iE 'COPY .*PROGRAM|WITH SUPERUSER|pg_execute_server_program'
+
+# 6. the blast-radius multipliers
+docker ps -q | xargs -I{} docker inspect {} \
+  --format '{{.Name}} privileged={{.HostConfig.Privileged}} mounts={{range .Mounts}}{{.Source}} {{end}}' \
+  | grep -E 'privileged=true|docker.sock'
+```
+
+**A note on verifying a clean result.** During this investigation a role check returned
+empty output and read as "no attacker accounts present". The command had in fact failed —
+that image sets `POSTGRES_USER=sessions`, so `psql -U postgres` errored — and a failed
+command and a clean result are indistinguishable when you grep the output. Make each check
+prove it ran: assert on an expected header, a non-empty baseline, or an exit code. This
+applies to every command in this skill.
 
 ---
 
@@ -947,6 +1067,7 @@ packages/syn-shared/         @<team>
 | tj-actions/changed-files | Tag repointing | 2025 | SHA pin Actions |
 | litellm 1.82.8 | PyPI .pth file injection | 2026 | pip-audit, hash verification, dep minimization |
 | Shai-Halud | AI/ML package credential theft | 2025 | pip-audit, hash verification, dep minimization |
+| Exposed Postgres cryptojack | Published port + `COPY FROM PROGRAM` | 2026 | Bind to an interface, fill `DOCKER-USER`, set `pg_hba` |
 
 ## Reference: Tools
 
