@@ -273,35 +273,86 @@ $ iptables -S DOCKER-USER
 -N DOCKER-USER          # no rules
 ```
 
+Scope that claim precisely: it holds for traffic DNATed to a bridge-network container.
+`ufw` *can* manage forwarding policy — the problem is that a default-deny **incoming**
+policy, which is what everyone configures and everyone checks, does not govern this path.
+
 A host firewall that reports a rule it does not enforce is worse than no firewall, because
 it terminates the investigation.
 
-**Failure two: a database superuser is an operating-system account.** The attacker did not
-exploit a vulnerability. `COPY ... FROM PROGRAM` runs a shell command as the superuser, by
-design, for ETL. So does `pg_read_server_files`, an untrusted-language function, or a C
-extension. There is no CVE and no patch, because within PostgreSQL's threat model nothing
-was violated: superuser access *is* shell access.
+**Failure two: a database superuser can run programs as the server's OS user.** The
+attacker did not exploit a vulnerability. `COPY ... FROM PROGRAM` is documented
+functionality for ETL, available to superusers and to members of
+`pg_execute_server_program`. It runs the command with the OS credentials of the PostgreSQL
+server process.
 
 ```sql
 COPY tests FROM PROGRAM 'echo <base64>|base64 -d|bash';
 ```
 
-Do not confuse this with CVE-2025-1094 or any other PostgreSQL CVE. Upgrading changes
-nothing. The equivalents elsewhere: Redis unauthenticated `CONFIG SET dir` writing an SSH
-key or cron entry, MongoDB with no auth, an exposed Docker API on 2375, Elasticsearch
-scripting.
+Be precise about the ceiling, because the imprecise version leads people to the wrong fix.
+A superuser is *not* automatically host root; it obtains the privileges of the account the
+server runs as, subject to container and OS confinement. Related but distinct capabilities:
+`pg_read_server_files` **reads** files that account can read - it does not execute anything -
+while untrusted procedural languages and C extensions can reach native execution where the
+extension is available and loadable. Different doors, one blast radius.
 
-**Failure three: an image default widened the surface.** Upstream `initdb` listens on
-localhost. The official Postgres *Docker image* rewrites `pg_hba.conf` to
-`host all all all scram-sha-256` when `POSTGRES_PASSWORD` is set and
-`POSTGRES_HOST_AUTH_METHOD` is not. Sensible on a private compose network; a loaded gun the
-moment the port is published. Each default is defensible alone.
+There is no patch for this because nothing was violated. Which is exactly why an exposed
+PostgreSQL is not "a database at risk" but "the server's OS account at risk".
+
+**This was not CVE-2025-1094**, and the distinction matters in both directions. That CVE is
+an input-escaping flaw in PostgreSQL/libpq quoting functions that can produce SQL injection
+under affected encodings; upgrading fixes it, and you should. What upgrading does *not* do
+is remove an authenticated superuser's documented ability to run server-side programs.
+Establish the initial-access path from the logs before classifying: an attacker who
+authenticated and then used `COPY PROGRAM` is a different incident from an escaping bug.
+
+Equivalents elsewhere, each with the qualification that makes it true:
+
+- **Redis** - a chain, not a one-liner. `CONFIG SET dir` plus `dbfilename` plus a forced
+  save can write an SSH key or cron entry, but only where filesystem permissions allow and
+  the version/config still permits those protected settings. Modern Redis restricts this.
+- **MongoDB with authentication disabled** - full data read/write; not code execution by
+  itself.
+- **Docker API on 2375** - the worst of the set: it *is* host root, immediately, via a
+  privileged container with the host filesystem mounted.
+- **Elasticsearch** - historical script-execution paths, largely closed in current versions;
+  treat as version-dependent rather than assumed.
+
+**Failure three: an image default widened the surface.** Three layers are involved and
+collapsing them produces the wrong mental model. Upstream PostgreSQL defaults to
+`listen_addresses='localhost'` (`initdb` initializes a cluster; it does not listen). On
+**first initialization of a data directory**, the official Docker image configures network
+listening and appends `host all all all <method>` to `pg_hba.conf` - with PostgreSQL 16 and
+no explicit `POSTGRES_HOST_AUTH_METHOD`, that method is normally `scram-sha-256`. Both
+layers must line up for exposure: listening beyond loopback *and* an HBA rule that
+authorizes the remote address.
+
+Note this applies to a *new* cluster. Changing the environment later does not rewrite an
+existing data directory, so an inherited volume keeps whatever it was born with. Verify
+rather than assume:
+
+```sql
+SHOW listen_addresses;  SHOW password_encryption;  SHOW hba_file;
+```
+
+Sensible on a private compose network; a loaded gun the moment the port is published. Each
+default is defensible alone.
 
 **What limited the damage, and what would not have.** The container had no
 `/var/run/docker.sock`, no host bind mounts, no added capabilities, was not privileged, and
 sat alone on the default bridge with no secrets in its environment. Result: stolen CPU
-rather than a compromised host. Any one of those being different — most commonly a mounted
-Docker socket — turns the same intrusion into full host takeover. Containment is what made
+rather than a compromised host.
+
+That list is the minimum, not the whole set. Also check, because each one turns the same
+intrusion into a host compromise: **host PID or network namespace** (`--pid=host`,
+`--network=host`), **added capabilities** (`CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`,
+`CAP_NET_ADMIN`), **device passthrough** (`--device`), **other runtime sockets**
+(containerd, podman, a kubelet), **sensitive host paths** mounted at all (`/`, `/etc`,
+`/root`, `~/.ssh`, cloud credential directories), and a **shared network with a service
+worth pivoting to**. A mounted Docker socket is the most common of these, not the only one.
+
+Containment is what made
 this survivable; do not treat "it was only a container" as reassurance, because code
 executed on that kernel, on host CPU, opening outbound connections from the host's address.
 
@@ -315,41 +366,101 @@ executed on that kernel, on host CPU, opening outbound connections from the host
    ```
 2. **Fill in `DOCKER-USER`** so a forgotten bare `-p` cannot reach the internet, and persist
    it (`iptables-persistent` or the provisioning scripts) so a rebuild cannot silently drop
-   it:
+   it.
+
+   **Rule order is load-bearing. A lone DROP breaks every container's outbound
+   networking**, because replies to container-initiated connections also arrive on the
+   public interface from untrusted addresses. Accept established flows first, and match only
+   NEW inbound:
+   ```bash
+   iptables -C DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null ||
+     iptables -I DOCKER-USER 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+   iptables -C DOCKER-USER -i <public-if> -m conntrack --ctstate NEW \
+     ! -s <trusted-cidr> -j DROP 2>/dev/null ||
+     iptables -I DOCKER-USER 2 -i <public-if> -m conntrack --ctstate NEW \
+     ! -s <trusted-cidr> -j DROP
    ```
-   iptables -I DOCKER-USER -i <public-if> ! -s <trusted-cidr> -j DROP
-   ```
+   Scope conditions, all of which silently produce a false sense of coverage:
+   - This is the **iptables** backend. Docker's **nftables** backend has no `DOCKER-USER`;
+     you need a forward hook at an earlier priority.
+   - **IPv6 is separate.** Where Docker IPv6 is enabled, an equivalent `ip6tables` policy is
+     required or the rule covers half your attack surface.
+   - Chain **existence is not attachment** - confirm `FORWARD` actually jumps to
+     `DOCKER-USER` (`iptables -S FORWARD`), not merely that the chain exists.
+   - Verify all three outcomes, not just the first: untrusted client blocked, trusted client
+     allowed, **and a container can still make an outbound request and receive the reply.**
+
+   This is defence in depth. Binding to loopback or a private address (1) remains the
+   primary control.
 3. **Set `POSTGRES_HOST_AUTH_METHOD`/`pg_hba.conf` deliberately** rather than inheriting the
    image default, and never reuse a database password that also exists elsewhere.
-4. **Treat every datastore superuser as an OS account** when deciding what may reach it.
+4. **Ask what OS account a datastore's admin role can reach**, and let that decide what may
+   connect to it - not the sensitivity of the data it holds. The compromised database here
+   contained nothing of value.
 5. **Alert on sustained CPU with no corresponding workload.** The one signal that would have
    caught this in hour one rather than week three.
 
-**Audit commands** (run per host, not per repository):
+**Audit script** (run per host, not per repository). Written as one script rather than
+loose one-liners, because the failure mode this section warns about - an empty result
+reading as a clean result - is exactly what unguarded pipelines produce:
 
 ```bash
-# 1. anything published to every interface
-docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '0\.0\.0\.0|\[::\]'
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# 2. the hook that should stop it reaching the internet
-iptables -S DOCKER-USER
+echo "== 1. containers published to every interface =="
+# A wildcard bind is the condition that caused the incident.
+if ! names=$(docker ps --format '{{.Names}}'); then
+  echo "  FAIL: docker unavailable - this check proved nothing"; exit 1
+fi
+hits=$(docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '0\.0\.0\.0|\[::\]' || true)
+echo "${hits:-  OK: docker queried, 0 wildcard publications}"
+echo "  NOTE: misses host-network containers and non-Docker listeners; see check 5."
 
-# 3. executables in container /tmp — almost nothing legitimate runs from there
-for c in $(docker ps --format '{{.Names}}'); do
-  docker exec "$c" sh -c 'ls -la /tmp 2>/dev/null | grep "^-rwx"' 2>/dev/null | sed "s|^|$c: |"
+echo "== 2. is the firewall hook attached, and does it cover v6 =="
+sudo iptables -S FORWARD | grep -q DOCKER-USER \
+  && echo "  FORWARD -> DOCKER-USER: attached" \
+  || echo "  WARN: DOCKER-USER exists but FORWARD does not jump to it"
+sudo iptables -S DOCKER-USER || echo "  WARN: no DOCKER-USER chain (nftables backend?)"
+sudo ip6tables -S DOCKER-USER 2>/dev/null || echo "  NOTE: no IPv6 chain - fine only if Docker IPv6 is off"
+
+echo "== 3. executables in container /tmp =="
+# Deliberately broader than -rwx: any owner-execute bit, plus a size listing so an
+# interpreted script with no execute bit is still visible to a human reader.
+for c in $names; do
+  if out=$(docker exec "$c" sh -c 'ls -la /tmp 2>/dev/null' 2>&1); then
+    printf '%s' "$out" | grep -E '^-..x|^-.....x' | sed "s|^|  $c: |" || true
+  else
+    echo "  $c: NOT CHECKED ($(printf '%s' "$out" | head -1))"
+  fi
 done
 
-# 4. CPU that does not match what the container should be doing
+echo "== 4. CPU that no workload explains =="
 docker stats --no-stream --format '{{.CPUPerc}}\t{{.Name}}' | sort -rn | head
+echo "  Compare each against what that container should be doing. In this incident every"
+echo "  real postgres worker sat at 0.0% while /tmp/postgresql held 787%."
 
-# 5. the technique, retroactively, in any Postgres that was ever reachable
-docker logs <pg-container> 2>&1 \
-  | grep -iE 'COPY .*PROGRAM|WITH SUPERUSER|pg_execute_server_program'
+echo "== 5. host listeners (catches what check 1 cannot) =="
+sudo ss -lntup | grep -vE '127\.0\.0\.|\[::1\]' || echo "  none beyond loopback"
 
-# 6. the blast-radius multipliers
-docker ps -q | xargs -I{} docker inspect {} \
-  --format '{{.Name}} privileged={{.HostConfig.Privileged}} mounts={{range .Mounts}}{{.Source}} {{end}}' \
-  | grep -E 'privileged=true|docker.sock'
+echo "== 6. blast-radius multipliers =="
+docker ps -q | xargs -r -I{} docker inspect {} --format \
+  '{{.Name}} priv={{.HostConfig.Privileged}} caps={{.HostConfig.CapAdd}} pid={{.HostConfig.PidMode}} net={{.HostConfig.NetworkMode}} {{range .Mounts}}{{.Source}} {{end}}' \
+  | grep -E 'priv=true|docker\.sock|pid=host|net=host|CapAdd:\[[^]]' || echo "  none found"
+echo "  A mounted docker.sock, --privileged, host PID or host network each turn a contained"
+echo "  intrusion into a host compromise."
+```
+
+**On log-grepping for the technique.** This is evidence collection, never proof of absence -
+PostgreSQL does not log successful statements unless `log_statement` is set, so a successful
+`COPY ... PROGRAM` may leave no trace at all:
+
+```bash
+: "${PG_CONTAINER:?set PG_CONTAINER}"
+docker logs "$PG_CONTAINER" 2>&1 \
+  | grep -iE 'COPY .*PROGRAM|WITH SUPERUSER|pg_execute_server_program' \
+  || echo "no matches - which means nothing unless log_statement was enabled"
 ```
 
 **A note on verifying a clean result.** During this investigation a role check returned
@@ -623,6 +734,19 @@ done
 ```
 
 ---
+
+### Step 12: Runtime Exposure (per HOST, not per repo)
+
+Every step above reads the repository. This one cannot be answered from a repository at all
+— the exposure exists on a machine, and a clean repo audit is compatible with a fully
+compromised host. Run the audit script in **Area 11** against each host that runs
+containers, and treat any of these as a finding:
+
+- a container published to `0.0.0.0` / `[::]` on a host with a public address
+- `FORWARD` not jumping to `DOCKER-USER`, or `DOCKER-USER` empty
+- an executable under a container's `/tmp`
+- sustained CPU with no workload that accounts for it
+- `docker.sock`, `--privileged`, host PID/network, or a sensitive host path on any container
 
 ## Fix Recipes
 
@@ -1005,6 +1129,12 @@ packages/syn-shared/         @<team>
 | Dependabot configured | ✅/❌ | P2 |
 
 ---
+
+## Runtime Exposure (per host — see Area 11)
+
+| Host | Wildcard publications | DOCKER-USER attached | Container /tmp clean | Blast-radius mounts |
+|------|----------------------|----------------------|----------------------|---------------------|
+| <host> | <count> | <yes/no> | <yes/no> | <docker.sock / privileged / host-ns / none> |
 
 ## Critical Findings (P0 — Fix before next push)
 
