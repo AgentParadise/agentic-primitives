@@ -112,6 +112,10 @@ capabilities:
     - name: rtk
       version: "0.48.0"
       harness: both
+      # amd64 only. Upstream ships no aarch64 musl build, and its aarch64 gnu
+      # build needs GLIBC_2.39 against this base's 2.36. arm64 images omit it.
+      architectures:
+        - amd64
 
 # Health check configuration
 health:

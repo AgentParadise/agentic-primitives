@@ -17,10 +17,10 @@ images and initialized via `rtk init` in the entrypoint", publishing a measured
 across this repo returned zero commits. Every workspace run since April has
 paid full context cost while the docs described the savings as shipped.
 
-- `providers/workspaces/omni-agent/Dockerfile`: installs RTK 0.48.0, pinned,
-  with per-arch checksum verification and a version assertion, matching the
-  existing `just` install. amd64 takes the static musl build, arm64 the glibc
-  build.
+- `providers/workspaces/omni-agent/Dockerfile`: installs RTK 0.48.0 on
+  **amd64 only**, pinned, with checksum verification and a version assertion,
+  matching the existing `just` install. arm64 builds skip it and say so: see
+  the architecture note below.
 - `workspace/entrypoint.sh`: initialises RTK for both harnesses after the
   settings.json heredoc. Claude gets a PreToolUse hook, codex gets instructions
   at `~/.codex/RTK.md`.
@@ -37,6 +37,15 @@ trusting the exit status.
 RTK does support codex, via a separate `--codex` mode that writes instructions
 rather than a hook. `--codex` is mutually exclusive with `--auto-patch`, so the
 two harnesses need two distinct invocations.
+
+**arm64 does not get RTK.** Upstream publishes a static musl build for x86_64
+and a glibc build for aarch64, with no aarch64 musl build in any release. The
+aarch64 binary requires `GLIBC_2.39` and this base (node:22-slim, bookworm)
+provides 2.36, so it fails at `rtk --version`. Observed in CI, not theoretical.
+Moving the base, or building from source with a Rust toolchain this image
+deliberately omits, both cost more than the feature is worth on that arch.
+arm64 workspaces run normally without compression. Revisit when upstream ships
+an aarch64 musl build.
 
 
 ### 🔧 omni-agent 1.5.0: `just` is installed in the workspace image

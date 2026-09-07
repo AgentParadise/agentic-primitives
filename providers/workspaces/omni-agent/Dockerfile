@@ -116,26 +116,37 @@ RUN npm install -g skills@1.5.14
 # but no image ever installed the binary, so every run since has paid full
 # context cost. This block is the missing half.
 #
-# HARNESS SCOPE. `rtk init` targets Claude Code and has no codex target, so
-# this is claude-only tooling. It is installed unconditionally because the
-# image hosts both harnesses and a codex run simply never invokes it.
+# AMD64 ONLY, DELIBERATELY. Upstream publishes exactly two linux artifacts:
+# a static musl build for x86_64 and a *glibc* build for aarch64. There is no
+# aarch64 musl build in any release. The aarch64 gnu binary requires
+# GLIBC_2.39, and this image's base (node:22-slim, Debian bookworm) provides
+# 2.36, so it fails at `rtk --version` with:
+#
+#   rtk: /lib/aarch64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found
+#
+# That is a real CI failure, observed, not theoretical. The three ways out are
+# all worse than skipping: moving the base to trixie changes the runtime for
+# every other tool, building from source needs the Rust toolchain this image
+# deliberately does not carry (see the manifest's capabilities comment), and
+# shipping a binary that aborts on start is not an option.
+#
+# So arm64 images build without RTK and log it. The entrypoint already treats a
+# missing rtk as a skip rather than an error, so an arm64 workspace runs
+# normally, just without compression. Revisit when upstream ships an aarch64
+# musl build.
 #
 # CHECKSUMS. Pinned and verified, matching the `just` install below. Bumping
-# RTK_VERSION without moving both checksums fails loudly rather than shipping
-# a mismatch. Values are from the release's own checksums.txt.
-#
-# ARCHITECTURE. amd64 ships a static musl build, arm64 ships a glibc build.
-# That asymmetry is upstream's, not ours. The base is Debian, so both link.
+# RTK_VERSION without moving the checksum fails loudly rather than shipping a
+# mismatch. Value is from the release's own checksums.txt.
 ARG RTK_VERSION
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
-    case "${arch}" in \
-      amd64) rtk_target="x86_64-unknown-linux-musl"; \
-             rtk_sha256="e4e650fa1677c0de2f6839a6040d7b17f312d32f163c402b75af70e9e5af1a91" ;; \
-      arm64) rtk_target="aarch64-unknown-linux-gnu"; \
-             rtk_sha256="5ed65486a96077bd6bba7c87fdc9d0e4a1918d19619be3c87380888389a30c7c" ;; \
-      *) echo "unsupported architecture for rtk: ${arch}" >&2; exit 1 ;; \
-    esac; \
+    if [ "${arch}" != "amd64" ]; then \
+      echo "rtk: no usable prebuilt binary for ${arch}, building without bash output compression" >&2; \
+      exit 0; \
+    fi; \
+    rtk_target="x86_64-unknown-linux-musl"; \
+    rtk_sha256="e4e650fa1677c0de2f6839a6040d7b17f312d32f163c402b75af70e9e5af1a91"; \
     tarball="rtk-${rtk_target}.tar.gz"; \
     curl -fsSL -o "/tmp/${tarball}" \
       "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/${tarball}"; \
