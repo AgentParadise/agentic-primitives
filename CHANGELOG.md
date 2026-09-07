@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### ✨ RTK token compression: installed for the first time (omni-agent 1.6.0, claude-cli 2.1.4, interactive-tmux 0.2.4)
+
+ADR-056 was accepted on 2026-04-04 and states RTK is "baked into workspace
+images and initialized via `rtk init` in the entrypoint", publishing a measured
+53% context reduction. **No image ever installed it.** `git log -S rtk --all`
+across this repo returned zero commits. Every workspace run since April has
+paid full context cost while the docs described the savings as shipped.
+
+- `providers/workspaces/omni-agent/Dockerfile`: installs RTK 0.48.0, pinned,
+  with per-arch checksum verification and a version assertion, matching the
+  existing `just` install. amd64 takes the static musl build, arm64 the glibc
+  build.
+- `workspace/entrypoint.sh`: initialises RTK for both harnesses after the
+  settings.json heredoc. Claude gets a PreToolUse hook, codex gets instructions
+  at `~/.codex/RTK.md`.
+- All three published provider versions bump because `workspace/` is staged
+  into every image by `stage_workspace_runtime`.
+
+Two things worth knowing for anyone reviewing this:
+
+`--auto-patch` is mandatory. Without it `rtk init` prompts, and under a non-TTY
+entrypoint it prints manual instructions, patches nothing, and still exits 0.
+The entrypoint therefore greps settings.json for the registered hook instead of
+trusting the exit status.
+
+RTK does support codex, via a separate `--codex` mode that writes instructions
+rather than a hook. `--codex` is mutually exclusive with `--auto-patch`, so the
+two harnesses need two distinct invocations.
+
+
 ### 🔧 omni-agent 1.5.0: `just` is installed in the workspace image
 
 The image now ships the `just` command runner, pinned to v1.58.0 and verified

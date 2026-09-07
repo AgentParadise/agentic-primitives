@@ -67,21 +67,44 @@ chmod 600 ~/.claude/settings.json
 # 1b. RTK bash-output compression (ADR-056)
 # -----------------------------------------------------------------------------
 # MUST run after the settings.json write above, not before: /home/agent is a
-# tmpfs that is wiped on every start, the heredoc above recreates the file from
-# scratch, and `rtk init` edits that same file. Initialising first would have
-# its hook silently clobbered.
+# tmpfs wiped on every start, the heredoc above recreates the file from
+# scratch, and the claude init below patches that same file. Initialising
+# first would have its hook silently clobbered. Verified: --auto-patch merges
+# into the existing JSON and preserves enabledPlugins.
 #
-# CLAUDE ONLY. `rtk init` has targets for claude, cursor, windsurf and others,
-# but none for codex. On a codex phase this hook is simply never consulted.
+# --auto-patch IS REQUIRED. Without it `rtk init` PROMPTS for permission to
+# patch settings.json. Under a non-TTY entrypoint it then prints manual
+# instructions, patches nothing, and STILL EXITS 0. Testing exit status alone
+# would report success while the hook was never registered, so the claude
+# branch below greps for the hook instead of trusting the exit code.
+#
+# BOTH HARNESSES. RTK supports codex through a separate `--codex` mode that
+# writes ~/.codex/RTK.md and references it from AGENTS.md, rather than a hook.
+# `--codex` is mutually exclusive with `--auto-patch` (there is no settings
+# file to patch), so these are two distinct invocations, not one with a flag.
+# Both run because the image hosts both harnesses and the entrypoint does not
+# know which one this phase will invoke.
 #
 # NON-FATAL. This script runs under `set -e`. RTK is an optimisation, so a
-# missing binary or a failed init must not take the whole workspace down: the
-# phase should still run, just without compression.
+# failure here must not take the workspace down: the phase still runs, just
+# without compression.
 if command -v rtk >/dev/null 2>&1; then
-    if rtk init -g >/dev/null 2>&1; then
-        echo "[entrypoint] RTK initialised: bash output compression active" >&2
+    # Claude: PreToolUse hook patched into ~/.claude/settings.json
+    RTK_TELEMETRY_DISABLED=1 rtk init -g --auto-patch --no-trust-filters \
+        >/dev/null 2>&1 </dev/null || true
+    if grep -q "rtk hook claude" ~/.claude/settings.json 2>/dev/null; then
+        echo "[entrypoint] RTK: claude hook registered" >&2
     else
-        echo "[entrypoint] WARNING: rtk init failed, continuing without compression" >&2
+        echo "[entrypoint] WARNING: RTK claude hook NOT registered, continuing without compression" >&2
+    fi
+
+    # Codex: instructions written to ~/.codex/RTK.md, no hook to verify
+    RTK_TELEMETRY_DISABLED=1 rtk init -g --codex --no-trust-filters \
+        >/dev/null 2>&1 </dev/null || true
+    if [ -f ~/.codex/RTK.md ]; then
+        echo "[entrypoint] RTK: codex instructions installed" >&2
+    else
+        echo "[entrypoint] WARNING: RTK codex instructions NOT installed" >&2
     fi
 else
     echo "[entrypoint] RTK not present in this image, skipping compression" >&2
