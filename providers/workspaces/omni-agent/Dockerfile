@@ -49,6 +49,66 @@ ARG RTK_VERSION=0.48.0
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
 # =============================================================================
+# =============================================================================
+# Stage 0: RTK builder (bash output compression, ADR-056)
+# =============================================================================
+# WHY BUILD FROM SOURCE. Upstream publishes two linux artifacts: a static musl
+# build for x86_64 and a *glibc* build for aarch64. There is no aarch64 musl
+# build in any release, and the aarch64 gnu binary is linked against
+# GLIBC_2.39 while this image's base (node:22-slim, bookworm) provides 2.36.
+# Installing it fails at `rtk --version` with:
+#
+#   rtk: /lib/aarch64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found
+#
+# Observed in CI, not theoretical. Building here against bookworm's own glibc
+# produces a binary that links to 2.36 and runs on both arches. Verified
+# locally: `ldd` on the result resolves against Debian GLIBC 2.36 and
+# `rtk --version` prints `rtk 0.48.0`.
+#
+# WHY --platform=$BUILDPLATFORM. arm64 images are built under QEMU emulation on
+# amd64 runners. Without this the compiler itself would run emulated, turning a
+# ~1m36s build into tens of minutes. Pinning the builder to the BUILD platform
+# runs cargo natively and cross-compiles to the target instead.
+#
+# The Rust toolchain stays in this stage. Only the finished binary is copied
+# out, so the shipped image carries no compiler and the manifest's "no Rust
+# toolchain" statement remains true.
+FROM --platform=$BUILDPLATFORM rust:1-bookworm AS rtk-builder
+ARG RTK_VERSION
+ARG TARGETARCH
+# CROSS-COMPILING C, NOT JUST RUST. rtk depends on libsqlite3-sys, which runs a
+# build script that compiles C. That needs the TARGET's libc headers, not just
+# a cross gcc. Installing only gcc-<arch>-linux-gnu fails with:
+#
+#   fatal error: bits/libc-header-start.h: No such file or directory
+#
+# libc6-dev-<arch>-cross supplies those headers. It is a recommends of the gcc
+# package, so --no-install-recommends drops it. Name it explicitly.
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) rust_target="x86_64-unknown-linux-gnu"; \
+             cross_pkgs="gcc-x86-64-linux-gnu libc6-dev-amd64-cross" ;; \
+      arm64) rust_target="aarch64-unknown-linux-gnu"; \
+             cross_pkgs="gcc-aarch64-linux-gnu libc6-dev-arm64-cross" ;; \
+      *) echo "unsupported TARGETARCH for rtk: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    if [ "$(dpkg --print-architecture)" != "${TARGETARCH}" ]; then \
+      apt-get update; \
+      apt-get install -y --no-install-recommends ${cross_pkgs}; \
+      rm -rf /var/lib/apt/lists/*; \
+    fi; \
+    case "${TARGETARCH}" in \
+      amd64) export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
+                    CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc ;; \
+      arm64) export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+                    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc ;; \
+    esac; \
+    rustup target add "${rust_target}"; \
+    cargo install --locked --root /rtkout \
+      --git https://github.com/rtk-ai/rtk --tag "v${RTK_VERSION}" \
+      --target "${rust_target}" rtk; \
+    test -x /rtkout/bin/rtk
+
 FROM node:22-slim AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -109,51 +169,19 @@ RUN npm install -g skills@1.5.14
 # =============================================================================
 # RTK: bash output compression (ADR-056)
 # =============================================================================
-# WHY THIS IS HERE. RTK intercepts Bash tool calls and compresses the output of
-# high-volume commands (ls, find, git log, tree) before it reaches the model.
-# The measured effect on an "explore repository" task was a 53% context
-# reduction. ADR-056 accepted this in April 2026 and documented it as shipped,
-# but no image ever installed the binary, so every run since has paid full
-# context cost. This block is the missing half.
+# Built in the rtk-builder stage above, against this base's glibc. See that
+# stage for why the upstream prebuilt aarch64 binary cannot be used.
 #
-# AMD64 ONLY, DELIBERATELY. Upstream publishes exactly two linux artifacts:
-# a static musl build for x86_64 and a *glibc* build for aarch64. There is no
-# aarch64 musl build in any release. The aarch64 gnu binary requires
-# GLIBC_2.39, and this image's base (node:22-slim, Debian bookworm) provides
-# 2.36, so it fails at `rtk --version` with:
+# ADR-056 was accepted in April 2026 and documented RTK as shipped, with a
+# measured 53% context reduction, but no image ever installed it. This is the
+# missing half.
 #
-#   rtk: /lib/aarch64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found
-#
-# That is a real CI failure, observed, not theoretical. The three ways out are
-# all worse than skipping: moving the base to trixie changes the runtime for
-# every other tool, building from source needs the Rust toolchain this image
-# deliberately does not carry (see the manifest's capabilities comment), and
-# shipping a binary that aborts on start is not an option.
-#
-# So arm64 images build without RTK and log it. The entrypoint already treats a
-# missing rtk as a skip rather than an error, so an arm64 workspace runs
-# normally, just without compression. Revisit when upstream ships an aarch64
-# musl build.
-#
-# CHECKSUMS. Pinned and verified, matching the `just` install below. Bumping
-# RTK_VERSION without moving the checksum fails loudly rather than shipping a
-# mismatch. Value is from the release's own checksums.txt.
+# Claude gets a PreToolUse hook and codex gets instructions at
+# ~/.codex/RTK.md. Both are wired by workspace/entrypoint.sh.
+COPY --from=rtk-builder /rtkout/bin/rtk /usr/local/bin/rtk
 ARG RTK_VERSION
 RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    if [ "${arch}" != "amd64" ]; then \
-      echo "rtk: no usable prebuilt binary for ${arch}, building without bash output compression" >&2; \
-      exit 0; \
-    fi; \
-    rtk_target="x86_64-unknown-linux-musl"; \
-    rtk_sha256="e4e650fa1677c0de2f6839a6040d7b17f312d32f163c402b75af70e9e5af1a91"; \
-    tarball="rtk-${rtk_target}.tar.gz"; \
-    curl -fsSL -o "/tmp/${tarball}" \
-      "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/${tarball}"; \
-    echo "${rtk_sha256}  /tmp/${tarball}" | sha256sum -c -; \
-    tar -xzf "/tmp/${tarball}" -C /tmp rtk; \
-    install -m 755 /tmp/rtk /usr/local/bin/rtk; \
-    rm -f "/tmp/${tarball}" /tmp/rtk; \
+    chmod 755 /usr/local/bin/rtk; \
     rtk --version; \
     rtk --version | grep -q "^rtk ${RTK_VERSION}$"
 
