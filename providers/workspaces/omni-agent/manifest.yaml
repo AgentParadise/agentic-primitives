@@ -6,7 +6,7 @@
 # See ADR-040 section 12: The workspace image contract
 
 name: omni-agent
-version: "1.5.0"
+version: "1.6.0"
 description: >-
   Multi-harness workspace hosting both the Claude CLI and the Codex CLI on the
   shared ADR-040 capability runtime (memory, session-store). Second
@@ -102,6 +102,20 @@ capabilities:
       version: "22"
     - name: python
       version: "3.12"
+
+  # Bash output compression (ADR-056). Installed and checksum-verified in the
+  # Dockerfile, initialised by workspace/entrypoint.sh after it writes
+  # settings.json. Both harnesses: claude gets a PreToolUse hook, codex gets
+  # instructions at ~/.codex/RTK.md referenced from AGENTS.md. Declared here
+  # only because the image now actually carries it.
+  tools:
+    - name: rtk
+      version: "0.48.0"
+      harness: both
+      # Built from source in the rtk-builder stage against this base's glibc,
+      # on both arches. Upstream's prebuilt aarch64 binary cannot be used: it
+      # needs GLIBC_2.39 and this base provides 2.36.
+      source: build-from-source
 
 # Health check configuration
 health:

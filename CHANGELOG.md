@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### ✨ RTK token compression: installed for the first time (omni-agent 1.6.0, claude-cli 2.1.4, interactive-tmux 0.2.4)
+
+ADR-056 was accepted on 2026-04-04 and states RTK is "baked into workspace
+images and initialized via `rtk init` in the entrypoint", publishing a measured
+53% context reduction. **No image ever installed it.** `git log -S rtk --all`
+across this repo returned zero commits. Every workspace run since April has
+paid full context cost while the docs described the savings as shipped.
+
+- `providers/workspaces/omni-agent/Dockerfile`: builds RTK 0.48.0 from source
+  in a `--platform=$BUILDPLATFORM` builder stage, pinned by git tag with
+  `--locked`, cross-compiled to the target arch and copied in as a bare
+  binary. Works on **both** amd64 and arm64. The Rust toolchain stays in the
+  builder, so the shipped image carries no compiler.
+- `workspace/entrypoint.sh`: initialises RTK for both harnesses after the
+  settings.json heredoc. Claude gets a PreToolUse hook, codex gets instructions
+  at `~/.codex/RTK.md`.
+- All three published provider versions bump because `workspace/` is staged
+  into every image by `stage_workspace_runtime`.
+
+Two things worth knowing for anyone reviewing this:
+
+`--auto-patch` is mandatory. Without it `rtk init` prompts, and under a non-TTY
+entrypoint it prints manual instructions, patches nothing, and still exits 0.
+The entrypoint therefore greps settings.json for the registered hook instead of
+trusting the exit status.
+
+RTK does support codex, via a separate `--codex` mode that writes instructions
+rather than a hook. `--codex` is mutually exclusive with `--auto-patch`, so the
+two harnesses need two distinct invocations.
+
+**Why source, not the published binary.** Upstream publishes a static musl
+build for x86_64 and a glibc build for aarch64, with no aarch64 musl build in
+any release. The aarch64 binary requires `GLIBC_2.39` while this base
+(node:22-slim, bookworm) provides 2.36, so installing it fails at
+`rtk --version`. That was observed in CI, not theoretical. Compiling against
+the base's own glibc produces a binary that links to 2.36 on both arches.
+
+Two details a reviewer should check. The builder is pinned to
+`$BUILDPLATFORM` so cargo runs natively on the amd64 runner rather than under
+QEMU, which is the difference between roughly 1m36s and tens of minutes. And
+rtk depends on `libsqlite3-sys`, which compiles C, so the cross build needs
+`libc6-dev-<arch>-cross` for the target's headers. That package is a
+*recommends* of the cross gcc, so `--no-install-recommends` drops it and the
+build fails with `bits/libc-header-start.h: No such file or directory`.
+
+Tradeoff accepted: the version is pinned by git tag plus `--locked` rather
+than by a SHA256 of a release artifact, which is weaker provenance than the
+checksummed `just` download alongside it. There is no publishable artifact
+that works on both arches, so this is the cost of supporting arm64 at all.
+
+
 ### 🔧 omni-agent 1.5.0: `just` is installed in the workspace image
 
 The image now ships the `just` command runner, pinned to v1.58.0 and verified
