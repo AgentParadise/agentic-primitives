@@ -103,6 +103,16 @@ capabilities:
     - name: python
       version: "3.12"
 
+  # Bash output compression (ADR-056). Installed and checksum-verified in the
+  # Dockerfile, initialised by workspace/entrypoint.sh after it writes
+  # settings.json. Claude-only: `rtk init` has no codex target, so a codex
+  # phase never consults the hook. Declared here only because the image now
+  # actually carries it.
+  tools:
+    - name: rtk
+      version: "0.48.0"
+      harness: claude
+
 # Health check configuration
 health:
   interval: 30s

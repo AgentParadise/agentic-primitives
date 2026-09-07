@@ -64,6 +64,30 @@ EOF
 chmod 600 ~/.claude/settings.json
 
 # -----------------------------------------------------------------------------
+# 1b. RTK bash-output compression (ADR-056)
+# -----------------------------------------------------------------------------
+# MUST run after the settings.json write above, not before: /home/agent is a
+# tmpfs that is wiped on every start, the heredoc above recreates the file from
+# scratch, and `rtk init` edits that same file. Initialising first would have
+# its hook silently clobbered.
+#
+# CLAUDE ONLY. `rtk init` has targets for claude, cursor, windsurf and others,
+# but none for codex. On a codex phase this hook is simply never consulted.
+#
+# NON-FATAL. This script runs under `set -e`. RTK is an optimisation, so a
+# missing binary or a failed init must not take the whole workspace down: the
+# phase should still run, just without compression.
+if command -v rtk >/dev/null 2>&1; then
+    if rtk init -g >/dev/null 2>&1; then
+        echo "[entrypoint] RTK initialised: bash output compression active" >&2
+    else
+        echo "[entrypoint] WARNING: rtk init failed, continuing without compression" >&2
+    fi
+else
+    echo "[entrypoint] RTK not present in this image, skipping compression" >&2
+fi
+
+# -----------------------------------------------------------------------------
 # 2. Plugin Discovery (ADR-033)
 # -----------------------------------------------------------------------------
 # Scan /opt/agentic/plugins/ for valid plugin directories and build

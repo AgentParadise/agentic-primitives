@@ -41,6 +41,11 @@ ARG CODEX_CLI_VERSION=0.150.1
 # SHA256 pins in the install layer at the same time - they are per-version.
 ARG JUST_VERSION=1.58.0
 
+# RTK (Rust Token Killer): compresses bash output before it reaches the model.
+# ADR-056 accepted this and it was never actually installed. See the install
+# block below for the arch split.
+ARG RTK_VERSION=0.48.0
+
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
 # =============================================================================
@@ -100,6 +105,46 @@ RUN claude --version && codex --version
 
 # Install the skills CLI globally via npm. Pin exact version deliberately.
 RUN npm install -g skills@1.5.14
+
+# =============================================================================
+# RTK: bash output compression (ADR-056)
+# =============================================================================
+# WHY THIS IS HERE. RTK intercepts Bash tool calls and compresses the output of
+# high-volume commands (ls, find, git log, tree) before it reaches the model.
+# The measured effect on an "explore repository" task was a 53% context
+# reduction. ADR-056 accepted this in April 2026 and documented it as shipped,
+# but no image ever installed the binary, so every run since has paid full
+# context cost. This block is the missing half.
+#
+# HARNESS SCOPE. `rtk init` targets Claude Code and has no codex target, so
+# this is claude-only tooling. It is installed unconditionally because the
+# image hosts both harnesses and a codex run simply never invokes it.
+#
+# CHECKSUMS. Pinned and verified, matching the `just` install below. Bumping
+# RTK_VERSION without moving both checksums fails loudly rather than shipping
+# a mismatch. Values are from the release's own checksums.txt.
+#
+# ARCHITECTURE. amd64 ships a static musl build, arm64 ships a glibc build.
+# That asymmetry is upstream's, not ours. The base is Debian, so both link.
+ARG RTK_VERSION
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "${arch}" in \
+      amd64) rtk_target="x86_64-unknown-linux-musl"; \
+             rtk_sha256="e4e650fa1677c0de2f6839a6040d7b17f312d32f163c402b75af70e9e5af1a91" ;; \
+      arm64) rtk_target="aarch64-unknown-linux-gnu"; \
+             rtk_sha256="5ed65486a96077bd6bba7c87fdc9d0e4a1918d19619be3c87380888389a30c7c" ;; \
+      *) echo "unsupported architecture for rtk: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    tarball="rtk-${rtk_target}.tar.gz"; \
+    curl -fsSL -o "/tmp/${tarball}" \
+      "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/${tarball}"; \
+    echo "${rtk_sha256}  /tmp/${tarball}" | sha256sum -c -; \
+    tar -xzf "/tmp/${tarball}" -C /tmp rtk; \
+    install -m 755 /tmp/rtk /usr/local/bin/rtk; \
+    rm -f "/tmp/${tarball}" /tmp/rtk; \
+    rtk --version; \
+    rtk --version | grep -q "^rtk ${RTK_VERSION}$"
 
 # =============================================================================
 # The `just` command runner
