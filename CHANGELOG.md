@@ -37,6 +37,11 @@ decision and the message.
 - stderr is now decoded with `errors="replace"`. The old strict `.decode()`
   raised `UnicodeDecodeError` from inside the error path, replacing the failure
   being reported with a complaint about decoding it.
+- One further instance outside the package, found by sweeping every
+  returncode-gated raise in the repo: `plugins/observability/scripts/
+  langfuse-backfill-claude-chunked.py` raised the bare words `official hook
+  failed` when the hook died without writing anything. Fixed inline (a
+  `uv run --script` file cannot import the library) — observability 0.3.8.
 - **Message format change.** Anything matching on the string `Failed to create
   container:` needs updating; nothing in this repo does.
 

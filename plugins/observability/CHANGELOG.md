@@ -1,5 +1,12 @@
 # Changelog — observability plugin
 
+## 0.3.8
+- `scripts/langfuse-backfill-claude-chunked.py`: a failed hook invocation now
+  reports the exit status that decided it failed, and says "(no output)" when
+  the child wrote nothing, instead of the content-free fallback "official hook
+  failed". Same defect as issue #1247, which was reported against the Docker
+  isolation provider; this was the only other instance outside that package.
+
 ## 0.3.7
 - Added `agentic_langfuse_session_index`, a direct-API session discovery view
   that derives harness, host, environment, project, turn, cost, token, tool,

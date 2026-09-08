@@ -141,7 +141,15 @@ def run_hook(hook: Path, replay: Path, session_id: str, environment: dict[str, s
         check=False,
     )
     if process.returncode:
-        raise RuntimeError(process.stderr.strip() or process.stdout.strip() or "official hook failed")
+        # The exit status is what decided this failed, so it is what the
+        # message carries. A hook that dies without writing anything used to
+        # produce the bare words "official hook failed", which says nothing a
+        # reader did not already know (issue #1247).
+        detail = process.stderr.strip() or process.stdout.strip()
+        raise RuntimeError(
+            f"official hook failed with exit code {process.returncode}"
+            + (f": {detail}" if detail else " (no output)")
+        )
 
 
 def hook_turn_count(hook_home: Path, session_id: str, replay: Path) -> int:

@@ -24,7 +24,7 @@ from urllib import error, parse, request
 
 PROTOCOL_VERSION = "2024-11-05"
 # Keep in step with plugins/observability/.claude-plugin/plugin.json.
-SERVER_VERSION = "0.3.7"
+SERVER_VERSION = "0.3.8"
 DEFAULT_TIMEOUT_S = 60
 REDACTION = "[REDACTED]"
 SECRET_PATTERNS = [
