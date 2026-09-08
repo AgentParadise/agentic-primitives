@@ -45,6 +45,7 @@ from agentic_isolation.providers.base import (
     BaseProvider,
     ExecuteResult,
     InteractiveSession,
+    SubprocessFailure,
     Workspace,
 )
 
@@ -512,7 +513,7 @@ class InteractiveTmuxProvider(BaseProvider):
         )
         _, stderr = await proc.communicate(content_bytes)
         if proc.returncode != 0:
-            raise RuntimeError(f"write_file({path!r}) failed: {stderr.decode('utf-8', 'replace')}")
+            raise SubprocessFailure(f"write_file({path!r})", proc.returncode, stderr)
 
     async def read_file(self, workspace: Workspace, path: str) -> str:
         ws_handle: InteractiveTmuxWorkspace | None = workspace._handle
@@ -534,7 +535,7 @@ class InteractiveTmuxProvider(BaseProvider):
             stderr_text = stderr.decode("utf-8", "replace")
             if "No such file" in stderr_text or "not found" in stderr_text.lower():
                 raise FileNotFoundError(target)
-            raise RuntimeError(f"read_file({path!r}) failed: {stderr_text}")
+            raise SubprocessFailure(f"read_file({path!r})", proc.returncode, stderr_text)
         return stdout.decode("utf-8", "replace")
 
     async def file_exists(self, workspace: Workspace, path: str) -> bool:

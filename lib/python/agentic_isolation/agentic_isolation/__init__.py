@@ -57,6 +57,7 @@ from agentic_isolation.providers import (
     HarnessPlugin,
     HarnessTranscript,
     InteractiveSession,
+    SubprocessFailure,
     SupportsStagedTeardown,
     SupportsWorkspaceLogs,
     TranscriptExtractionResult,
@@ -107,6 +108,7 @@ __all__ = [
     "SupportsWorkspaceLogs",
     "Workspace",
     "ExecuteResult",
+    "SubprocessFailure",
     "InteractiveSession",
     "AwaitResult",
     "WorkspaceLocalProvider",
@@ -140,4 +142,4 @@ __all__ = [
     "CircuitOpenError",
 ]
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"

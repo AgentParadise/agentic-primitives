@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -18,6 +19,59 @@ if TYPE_CHECKING:
     from agentic_isolation.harnesses import TranscriptSource
 
 logger = logging.getLogger(__name__)
+
+
+class SubprocessFailure(RuntimeError):
+    """A provider subprocess exited non-zero, reported with the status.
+
+    Raised in place of a bare ``RuntimeError`` built from stderr. The exit
+    status is what decides a subprocess failed, so it is what the message
+    has to carry: stderr is routinely empty (docker writes nothing on some
+    daemon-side rejections, and a killed client writes nothing at all), and
+    a message assembled from stderr alone then says nothing whatsoever about
+    the failure it exists to report. See issue #1247, where a lost run's
+    only trace was the string ``Unknown error``.
+
+    The status also survives as ``returncode`` rather than only as prose, so
+    a caller wrapping this exception can attribute the failure without
+    parsing the message.
+
+    Callers say what they were doing; how a failure reads is decided here
+    and nowhere else.
+    """
+
+    def __init__(
+        self,
+        action: str,
+        returncode: int | None,
+        stderr: bytes | str | None = None,
+    ) -> None:
+        self.action = action
+        self.returncode = returncode
+        # errors="replace" because a decode error inside the error path
+        # would replace the failure being reported with a UnicodeDecodeError
+        # about it - losing the diagnosis exactly when it is needed.
+        if isinstance(stderr, bytes):
+            self.stderr = stderr.decode("utf-8", "replace").strip()
+        else:
+            self.stderr = (stderr or "").strip()
+
+        detail = f": {self.stderr}" if self.stderr else " (no stderr)"
+        super().__init__(f"{action} failed with {_describe_status(returncode)}{detail}")
+
+
+def _describe_status(returncode: int | None) -> str:
+    """Render a process exit status the way an operator needs to read it."""
+    if returncode is None:
+        # communicate()/wait() not awaited, or the process is still running.
+        return "no exit status"
+    if returncode < 0:
+        signum = -returncode
+        try:
+            return f"signal {signum} ({signal.Signals(signum).name})"
+        except ValueError:
+            return f"signal {signum}"
+    return f"exit code {returncode}"
 
 
 @dataclass

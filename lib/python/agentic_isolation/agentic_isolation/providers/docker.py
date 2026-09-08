@@ -26,6 +26,7 @@ from agentic_isolation.harnesses import ExecFn, TranscriptSource, get_harness
 from agentic_isolation.providers.base import (
     BaseProvider,
     ExecuteResult,
+    SubprocessFailure,
     Workspace,
 )
 
@@ -170,8 +171,9 @@ class WorkspaceDockerProvider(BaseProvider):
             stdout, stderr = await proc.communicate()
 
             if proc.returncode != 0:
-                error_msg = stderr.decode().strip() if stderr else "Unknown error"
-                raise RuntimeError(f"Failed to create container: {error_msg}")
+                raise SubprocessFailure(
+                    f"create container {container_name}", proc.returncode, stderr
+                )
 
             container_id = stdout.decode().strip()
 

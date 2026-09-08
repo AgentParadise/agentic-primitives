@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🐛 A failed provider subprocess now reports the status that decided it failed (agentic-isolation 0.8.0)
+
+Issue #1247. `WorkspaceDockerProvider.create()` built its error message from
+stderr alone and substituted the literal string `Unknown error` when stderr was
+empty. Run `exec-abdef9078efe` (2026-09-06) died with
+
+```
+Failed to create container: Unknown error
+```
+
+and could not be attributed — no exit code, no signal, no stderr. The exit
+status is what decides a subprocess failed, and it was discarded between that
+decision and the message.
+
+- `providers/base.py`: new `SubprocessFailure(RuntimeError)`, exported from
+  `agentic_isolation`. Callers pass what they were doing plus the process's
+  `returncode` and raw stderr; how a failure reads is decided in one place.
+  Messages now read `create container agentic-ws-1a2b failed with exit code
+  125: <stderr>` or `... (no stderr)`, and a negative status renders as
+  `signal 9 (SIGKILL)`. The status also survives as `.returncode`, so a
+  wrapping caller can attribute a failure without parsing the message.
+- The same shape was fixed at **two further sites the issue did not name**:
+  `InteractiveTmuxProvider.write_file` and `.read_file` raised
+  `f"... failed: {stderr}"`, which on empty stderr trails off into nothing.
+  They were the only other instances in the package — the audit is in the PR.
+- stderr is now decoded with `errors="replace"`. The old strict `.decode()`
+  raised `UnicodeDecodeError` from inside the error path, replacing the failure
+  being reported with a complaint about decoding it.
+- **Message format change.** Anything matching on the string `Failed to create
+  container:` needs updating; nothing in this repo does.
+
 ### ✨ RTK token compression: installed for the first time (omni-agent 1.6.0, claude-cli 2.1.4, interactive-tmux 0.2.4)
 
 ADR-056 was accepted on 2026-04-04 and states RTK is "baked into workspace

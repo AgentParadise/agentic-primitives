@@ -25,6 +25,7 @@ from agentic_isolation.providers.base import (
     AwaitResult,
     ExecuteResult,
     InteractiveSession,
+    SubprocessFailure,
     SupportsStagedTeardown,
     SupportsWorkspaceLogs,
     Workspace,
@@ -62,6 +63,7 @@ __all__ = [
     "SupportsWorkspaceLogs",
     "Workspace",
     "ExecuteResult",
+    "SubprocessFailure",
     "InteractiveSession",
     "AwaitResult",
     # Providers
