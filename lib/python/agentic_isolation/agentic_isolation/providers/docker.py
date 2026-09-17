@@ -170,8 +170,23 @@ class WorkspaceDockerProvider(BaseProvider):
             stdout, stderr = await proc.communicate()
 
             if proc.returncode != 0:
-                error_msg = stderr.decode().strip() if stderr else "Unknown error"
-                raise RuntimeError(f"Failed to create container: {error_msg}")
+                # `docker create` can exit non-zero with EMPTY stderr. When it
+                # does, the exit code is the only diagnostic left, and this
+                # branch used to discard it in favour of the string "Unknown
+                # error" - which is what a real provisioning failure reported,
+                # leaving nothing to investigate. Keep every channel that
+                # carries signal: stderr when there is any, stdout because
+                # docker sometimes puts the reason there, and the exit code
+                # always, because it is the one thing that is never empty.
+                detail = stderr.decode().strip() if stderr else ""
+                if not detail:
+                    detail = stdout.decode().strip() if stdout else ""
+                if not detail:
+                    detail = "no output on stderr or stdout"
+                raise RuntimeError(
+                    f"Failed to create container: {detail} "
+                    f"(docker create exited {proc.returncode})"
+                )
 
             container_id = stdout.decode().strip()
 
