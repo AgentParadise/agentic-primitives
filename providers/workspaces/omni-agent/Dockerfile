@@ -45,6 +45,12 @@ ARG JUST_VERSION=1.58.0
 # ADR-056 accepted this and it was never actually installed. See the install
 # block below for the arch split.
 ARG RTK_VERSION=0.48.0
+# rustup binary only, no toolchain (see the native build floor block). Bump
+# deliberately, and update the two SHA256 pins there at the same time.
+ARG RUSTUP_VERSION=1.29.1
+# bun runtime (see the native build floor block). Same bump rule: move the two
+# SHA256 pins with the version.
+ARG BUN_VERSION=1.3.14
 
 # =============================================================================
 # Stage 1: Node.js base with system dependencies
@@ -71,8 +77,9 @@ ARG RTK_VERSION=0.48.0
 # runs cargo natively and cross-compiles to the target instead.
 #
 # The Rust toolchain stays in this stage. Only the finished binary is copied
-# out, so the shipped image carries no compiler and the manifest's "no Rust
-# toolchain" statement remains true.
+# out, so the shipped image carries no Rust toolchain. (It does carry a C
+# toolchain and the bare rustup binary, for a different reason: see the native
+# build floor block in the tooling stage.)
 FROM --platform=$BUILDPLATFORM rust:1-bookworm AS rtk-builder
 ARG RTK_VERSION
 ARG TARGETARCH
@@ -245,6 +252,103 @@ RUN set -eux; \
     rm -f "/tmp/${tarball}" /tmp/just; \
     just --version; \
     just --version | grep -q "^just ${JUST_VERSION}$"
+
+# =============================================================================
+# Native build floor: a C toolchain, rustup, and the pnpm shim
+# =============================================================================
+# WHY THIS IS HERE. The same argument as `just` above: this image is where
+# agents run a repository's own gates, and three missing pieces made those
+# gates unreachable for any repository that compiles native code. Measured
+# inside a real workspace against a Rust + pnpm monorepo (dream-ship_v0),
+# 2026-09-17:
+#
+#   cargo check  ->  error: linker `cc` not found        (no C compiler at all)
+#   bun install  ->  error: unzip is required to install bun
+#   pnpm         ->  command not found; `corepack enable` -> EROFS on
+#                    /usr/local/bin, because the agent user cannot write there
+#
+# and the agent cannot fix any of it: it runs as uid 1000 with no sudo, so
+# `apt-get install build-essential` is denied. `cc` is not a Rust-only need -
+# Python sdists with C extensions and node-gyp fail the same way.
+#
+# WHAT THIS DOES NOT DO. The header of this file records that the whole Rust
+# toolchain was deliberately left out as harness weight. That stays true: only
+# the rustup *binary* ships here (single-digit MB), with NO toolchain. A
+# repository's own rust-toolchain.toml selects and installs its pinned
+# toolchain on first use (measured at ~30s for a nightly with clippy, rustfmt
+# and a wasm target), into a writable RUSTUP_HOME under /workspace (see
+# workspace/entrypoint.sh section 5). Nothing here grants access: these are
+# binaries the repository's own contributors run.
+#
+# WHY rustup-init BY URL AND CHECKSUM. Same reasoning as `just`: a
+# releases URL is not content-addressed, so the SHA256 is what pins the bytes.
+# Both values are the published rustup-init.sha256 for the pinned version.
+#
+# PROXIES, NOT A CARGO_HOME. rustup dispatches on argv[0], so cargo, rustc and
+# friends are symlinks to the one rustup binary in /usr/local/bin. That keeps
+# them on PATH while every mutable byte (toolchains, registry, git checkouts)
+# goes to the runtime-writable homes the entrypoint sets up.
+ARG RUSTUP_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      pkg-config \
+      unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "${arch}" in \
+      amd64) rustup_target="x86_64-unknown-linux-gnu"; \
+             rustup_sha256="dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71" ;; \
+      arm64) rustup_target="aarch64-unknown-linux-gnu"; \
+             rustup_sha256="15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433" ;; \
+      *) echo "unsupported architecture for rustup: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/rustup-init \
+      "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${rustup_target}/rustup-init"; \
+    echo "${rustup_sha256}  /tmp/rustup-init" | sha256sum -c -; \
+    install -m 755 /tmp/rustup-init /usr/local/bin/rustup; \
+    rm -f /tmp/rustup-init; \
+    for proxy in cargo rustc rustdoc rustfmt cargo-fmt cargo-clippy clippy-driver rust-analyzer rust-gdb rust-lldb; do \
+      ln -s rustup "/usr/local/bin/${proxy}"; \
+    done; \
+    rustup --version 2>/dev/null | grep -q "^rustup ${RUSTUP_VERSION} "; \
+    cc --version; \
+    unzip -v | head -1
+
+# pnpm via corepack. Only pnpm is enabled: the base image already ships yarn 1
+# at /usr/local/bin/yarn, and a blanket `corepack enable` would replace it.
+# The shim resolves the version a repository pins in packageManager, and
+# downloads it into COREPACK_HOME at first use.
+RUN corepack enable pnpm && test -L /usr/local/bin/pnpm
+
+# bun. Baked rather than left to the agent, because the only agent-side install
+# path puts a ~90 MB binary in ~/.bun, on the 128 MB $HOME tmpfs. The
+# harness-app-template family of repos fronts `just test`, `just qa` and
+# `just lint` with `bun run scripts/*.ts`, so without it those gates stop at
+# `bun: not found` (measured 2026-09-17, after the C toolchain above was in).
+# Pinned by version and by the SHA256 published in the release's SHASUMS256.txt,
+# checked before unpacking.
+ARG BUN_VERSION
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "${arch}" in \
+      amd64) bun_target="linux-x64"; \
+             bun_sha256="951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f" ;; \
+      arm64) bun_target="linux-aarch64"; \
+             bun_sha256="a27ffb63a8310375836e0d6f668ae17fa8d8d18b88c37c821c65331973a19a3b" ;; \
+      *) echo "unsupported architecture for bun: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o "/tmp/bun-${bun_target}.zip" \
+      "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-${bun_target}.zip"; \
+    echo "${bun_sha256}  /tmp/bun-${bun_target}.zip" | sha256sum -c -; \
+    unzip -q "/tmp/bun-${bun_target}.zip" -d /tmp/bun-unpack; \
+    install -m 755 "/tmp/bun-unpack/bun-${bun_target}/bun" /usr/local/bin/bun; \
+    rm -rf "/tmp/bun-${bun_target}.zip" /tmp/bun-unpack; \
+    test "$(bun --version)" = "${BUN_VERSION}"
+# Bun's transpiler cache is pure overhead in a workspace that lives for one
+# phase; Bun's own container guidance disables it.
+ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 
 # =============================================================================
 # Stage 3: Install Python packages from staged wheels
@@ -545,7 +649,8 @@ RUN chmod -R 755 /opt/agentic/plugins \
 # Verify core installations (before security hardening).
 # Both harnesses are verified: an omni image with one working harness is a
 # broken omni image, not a degraded one.
-RUN claude --version && codex --version && python3 --version && node --version && uv --version && gh --version && just --version
+RUN claude --version && codex --version && python3 --version && node --version && uv --version && gh --version && just --version \
+    && cc --version && rustup --version && test -L /usr/local/bin/pnpm && bun --version
 
 # Verify the capability runtime the image claims to host: both doctors must
 # be importable from the venv this image ships.
