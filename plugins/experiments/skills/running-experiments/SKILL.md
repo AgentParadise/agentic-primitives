@@ -63,6 +63,18 @@ An experiment is for a question whose outcome you don't already know. Debugging,
 
 5. **Verdicts are tied to evidence, not impressions.** `go` / `no-go` / `inconclusive` each cites paths under `runs/`. `inconclusive` is a real verdict, not a copout -- use it freely and follow up with a sharper probe.
 
+7. **Verify the treatment actually occurred before comparing arms.** A condition that was configured is not a condition that ran. Check the mechanism directly -- the event stream for the tool you expect, the file at the path you expect, the field in the persisted record -- not the agent's prose claim that it used one. A declared capability that silently does nothing turns an A/B into an A/A, and the result will look like "no effect" rather than "no treatment". Measured instance: phases declared review skills for months and invoked them zero times across 1,333 recorded operations; every comparison against that arm was measuring nothing.
+
+8. **Re-derive any number a subagent reports before acting on it.** Analysis agents miscount, and a miscount is indistinguishable from a finding. Check the load-bearing numbers yourself -- not all of them, the ones a decision rests on. Measured instance: an agent reported 55 and 50 occurrences of two shell errors across a transcript corpus; the true count for both was zero, from loose pattern matching. Its tool-frequency table, checked the same way, reproduced exactly. Both halves of that outcome are typical.
+
+9. **Pre-register the honest outcomes, and name "no difference" as one of them.** An arm that knows it cost several times the baseline is under pressure to justify itself, and that pressure manufactures findings. State the plausible results in the dispatch itself, with "the treatment adds nothing" listed as a legitimate one. This costs a sentence and removes a systematic bias toward positive results.
+
+10. **Confirm the target is still live before spending on it.** Issue queues contain entries already fixed under other numbers, and branches contain work already merged. An agent discovering this is the expensive way to find out. Measured instance: two full executions spent independently confirming a fix that had landed weeks earlier under a different issue.
+
+11. **Stored runs are a free control group.** If a previous run already exercised the baseline against the same target, that IS the control -- read the stored record instead of paying to reproduce it. This also removes a confound: a re-run baseline differs from the original by whatever else changed in between.
+
+12. **A merge invalidates every comparison in flight.** Any probe that records a base revision and then aborts when that base moves cannot run concurrently with a merge queue, which silently serialises the whole pipeline. Distinguish the two events: the thing under test moving invalidates the run; the base moving underneath it usually does not. Measured instance: one merge invalidated two independent reviews whose subjects had not changed at all.
+
 6. **Tool guidance is dated and isolated.** Specific commands (`pnpm harness boot --bug …`, `rtk pnpm …`, LogsQL projections) live in `## Recommended tools and practices` so they can rot without taking the principles down with them.
 
 ## Anti-patterns
@@ -82,6 +94,12 @@ Observations from probe audits. Each names a failure mode an auditor can spot in
 - **Debugging stuffed into `experiments/`.** The README's question is "why is the layout broken?" instead of "does technique X catch layout breaks within Y wall-clock?". This is a debugging session, not an experiment.
 
 - **Mid-experiment eval-pack edits.** `git log -- experiments/<slug>/eval-pack.md` shows edits after the first `runs/` file. The frozen-spec rule was violated.
+
+- **An arm that was never applied.** `results.md` reports "no significant difference" for a treatment whose mechanism was never verified. The auditor checks whether the treatment left any trace -- a tool call, a written file, a persisted field -- and finds none. The probe measured the baseline twice.
+
+- **A conclusion resting on a subagent's arithmetic.** The verdict quotes a count that appears nowhere except an analysis agent's summary. No one re-derived it. The number may be real; nothing in the folder distinguishes that from the alternative.
+
+- **Correlation with no mechanism behind it.** `verdict.md` reports a clean relationship across a large sample and infers a cause, with no test of whether the cause is even possible. A large agreeing sample licenses nothing on its own: check that the mechanism exists before believing the correlation, and weight the negative cases, which is usually where the tell is.
 
 - **Tool churn rotting principles.** Removing a specific command (say, an RTK invocation) breaks half the skill body because tool guidance was woven through the structural sections. Dated `## Recommended tools and practices` exists to prevent exactly this.
 
