@@ -89,9 +89,14 @@ class TestHarnessContract:
         assert AgentName.parse("unknown-harness") is None
 
     def test_registry_round_trips(self) -> None:
-        register_harness(_FakeHarness())
-        assert get_harness("claude") is not None
-        assert get_harness("nope") is None
+        original = get_harness("claude")
+        assert original is not None
+        try:
+            register_harness(_FakeHarness())
+            assert get_harness("claude") is not None
+            assert get_harness("nope") is None
+        finally:
+            register_harness(original)
 
     def test_registry_rejects_names_agentname_does_not_know(self) -> None:
         """A harness must not register under a name the rest of the

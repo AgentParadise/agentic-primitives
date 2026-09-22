@@ -2,9 +2,6 @@ version = 1
 revision = 3
 requires-python = ">=3.11"
 
-[options]
-exclude-newer = "2026-08-20T21:12:36Z"
-
 [[package]]
 name = "agentic-session-store"
 version = "0.2.1"

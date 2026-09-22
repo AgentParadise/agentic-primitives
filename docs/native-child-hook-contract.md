@@ -202,3 +202,13 @@ warnings. The session-store dependency lock now includes tomlkit. Full AP `just 
 is not green: after bypassing parent-workspace auto-sync with `UV_NO_SYNC=1`, its
 lock gate reports stale locks in agentic_events, agentic_isolation, agentic_logging
 and agentic_memory. These unrelated locks were not regenerated for this checkpoint.
+
+Hosted CI follow-up: declared agentic-session-store as an isolation development
+dependency for the real export round-trip test, regenerated portable locks without
+user-level uv config, and corrected SubagentStop formatting. Full isolated
+agentic_isolation tests now pass 577 cases with locked all-extras dependencies.
+The existing registry round-trip test now restores its original plugin instead
+of leaking a fake into later evidence tests. The locked session-store suite also
+passes (real exporter case remains an explicit opt-in, validated separately).
+Main QA now passes topology fitness but fails its default-branch submodule
+reachability gate until this upstream draft is merged; that gate remains intact.
