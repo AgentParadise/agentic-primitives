@@ -5,14 +5,14 @@ from __future__ import annotations
 import argparse
 import fcntl
 import os
+import sqlite3
 import stat
 import sys
 import tempfile
 from pathlib import Path
 
-from agentic_session_store.codex_hook_config import merge_capture_hooks
 from agentic_session_store.child_journal import ChildJournal
-import sqlite3
+from agentic_session_store.codex_hook_config import merge_capture_hooks
 
 MAX_CONFIG_BYTES = 1024 * 1024
 
@@ -89,7 +89,7 @@ def main() -> int:
                 raise ValueError("Journal must not be a symlink")
             ChildJournal(args.journal)
         install(args.config)
-    except (ValueError, OSError, sqlite3.Error):
+    except (ValueError, TypeError, OSError, sqlite3.Error):
         print(
             "Child capture hook installation failed; check configuration and storage.",
             file=sys.stderr,

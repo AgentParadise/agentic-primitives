@@ -37,7 +37,7 @@ def _object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 def _parse(content: bytes | str) -> dict[str, object]:
     value = json.loads(content, object_pairs_hook=_object)
     if not isinstance(value, dict):
-        raise ValueError("Hook must be an object")
+        raise TypeError("Hook must be an object")
     return value
 
 
@@ -86,7 +86,7 @@ def record_codex_hook(content: bytes, environment: Mapping[str, str]) -> None:
     response = event.get("tool_response")
     # Codex serializes the model-facing FunctionCallOutput body as a JSON string.
     if not isinstance(response, str):
-        raise ValueError("Unsupported spawn response")
+        raise TypeError("Unsupported spawn response")
     child = _identity(_parse(response).get("agent_id"))
     journal.bind(call, child)
 

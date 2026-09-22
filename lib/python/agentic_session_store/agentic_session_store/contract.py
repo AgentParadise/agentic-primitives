@@ -57,8 +57,10 @@ def capability_env_name(capability: str, field: str) -> str:
     the two implementations of one rule. The conformance test in
     tests/test_contract.py pins them together.
     """
+
     def normalize(part: str) -> str:
         return part.upper().replace("-", "_")
+
     return f"AGENTIC_{normalize(capability)}_{normalize(field)}"
 
 

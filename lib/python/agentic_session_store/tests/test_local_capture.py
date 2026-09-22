@@ -69,6 +69,7 @@ def test_local_init_preserves_native_roots_and_exports_durable_index(tmp_path):
     result = subprocess.run(
         ["bash", "-c", script, "test", str(CAPABILITY / "local/init.sh")],
         env=env,
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -104,6 +105,7 @@ def test_local_finalizer_invokes_local_capture_and_retains_files(tmp_path, exit_
     result = subprocess.run(
         ["bash", str(CAPABILITY / "local/finalize.sh")],
         env=env,
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -134,6 +136,7 @@ def test_local_init_does_not_claim_ready_when_hooks_are_disabled(tmp_path):
     result = subprocess.run(
         ["bash", "-c", '. "$1"', "test", str(CAPABILITY / "local/init.sh")],
         env=env,
+        check=False,
         capture_output=True,
         text=True,
     )

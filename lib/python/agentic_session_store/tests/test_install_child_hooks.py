@@ -1,11 +1,11 @@
 """File replacement is idempotent and failure never destroys the old config."""
 
 import os
-import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+import tomllib
 
 from agentic_session_store.install_child_hooks import install
 

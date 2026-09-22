@@ -1,8 +1,7 @@
 """Composition retains user hooks, permissions and unrelated TOML types."""
 
-import tomllib
-
 import pytest
+import tomllib
 
 from agentic_session_store.codex_hook_config import HOOK_COMMAND, merge_capture_hooks
 
@@ -38,7 +37,7 @@ def test_merge_retains_user_configuration_and_is_idempotent(content: str) -> Non
     "content", ['hooks="invalid"', "[hooks]\nPreToolUse=1", "invalid={"]
 )
 def test_invalid_configuration_is_not_replaced(content: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, TypeError)):
         merge_capture_hooks(content)
 
 
