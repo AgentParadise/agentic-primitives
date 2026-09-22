@@ -27,6 +27,7 @@ not an error.
 from __future__ import annotations
 
 from agentic_isolation.harnesses import AgentName, ExecFn, TranscriptSource, register_harness
+from agentic_isolation.harnesses.codex.evidence import CodexNativeEvidenceReader
 from agentic_isolation.harnesses.codex.transcripts import CodexTranscriptSource
 
 
@@ -34,8 +35,15 @@ class CodexHarness:
     """`HarnessPlugin` for the `codex` (OpenAI Codex CLI) harness."""
 
     @property
+    def exporter_agent(self) -> str:
+        return "Codex"
+
+    @property
     def name(self) -> AgentName:
         return AgentName.CODEX
+
+    def evidence_reader(self) -> CodexNativeEvidenceReader:
+        return CodexNativeEvidenceReader()
 
     def transcript_source(self, exec_fn: ExecFn) -> TranscriptSource | None:
         return CodexTranscriptSource(exec_fn)

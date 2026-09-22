@@ -224,7 +224,17 @@ class WorkspaceDockerProvider(BaseProvider):
         ]
 
         # Security hardening
-        cmd.extend(security.to_docker_run_args())
+        # An explicit persistent mount replaces the default tmpfs at that path.
+        # Docker otherwise accepts both and the tmpfs hides the durable volume.
+        mount_targets = {mount.to_docker_mount()["target"] for mount in config.mounts}
+        cmd.extend(
+            arg
+            for arg in security.to_docker_run_args()
+            if not (
+                arg.startswith("--tmpfs=")
+                and arg.partition("=")[2].partition(":")[0] in mount_targets
+            )
+        )
 
         # Resource limits
         limits = config.limits
@@ -238,6 +248,13 @@ class WorkspaceDockerProvider(BaseProvider):
         # Workspace mount
         cmd.append(f"-v={workspace_dir}:/workspace:rw")
         cmd.append("-w=/workspace")
+        targets = {"/workspace"}
+        for mount in config.mounts:
+            target = mount.to_docker_mount()["target"]
+            if target in targets:
+                raise ValueError(f"Duplicate Docker mount target: {target}")
+            targets.add(target)
+            cmd.extend(["--mount", mount.to_docker_run_arg()])
 
         # Environment variables
         env_vars = {
