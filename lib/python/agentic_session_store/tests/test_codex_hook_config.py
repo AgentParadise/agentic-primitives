@@ -1,7 +1,8 @@
 """Composition retains user hooks, permissions and unrelated TOML types."""
 
-import pytest
 import tomllib
+
+import pytest
 
 from agentic_session_store.codex_hook_config import HOOK_COMMAND, merge_capture_hooks
 

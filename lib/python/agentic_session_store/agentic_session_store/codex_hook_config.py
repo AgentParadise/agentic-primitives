@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import tomllib
 from collections.abc import MutableMapping, MutableSequence
 
 import tomlkit
-import tomllib
 
 HOOK_COMMAND = "python3 -m agentic_session_store.child_hook"
 EVENTS = ("PreToolUse", "PostToolUse")
