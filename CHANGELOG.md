@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### ✨ Native build floor: repositories that compile can now run their own gates (omni-agent 1.7.0, claude-cli 2.1.5, interactive-tmux 0.2.5)
+
+Measured inside a real workspace against a Rust + pnpm + bun monorepo
+(NeuralEmpowerment/dream-ship_v0), under the production limits (read-only root,
+128 MB `$HOME` tmpfs, noexec `/tmp`, 4 GB, 2-CPU quota, pids 256). Before:
+`cargo check` failed on `linker cc not found`, `pnpm` and `bun` were absent,
+and every dependency install that did get going filled `$HOME` with ENOSPC.
+After: `pnpm install`, `cargo check --workspace` and the repo's own turbo test
+graph run (21/23 tasks; the other two were the consuming repo's turbo env
+filter, not the image).
+
+- `providers/workspaces/omni-agent/Dockerfile`: `build-essential`,
+  `pkg-config` and `unzip`; the rustup 1.29.1 binary only, SHA256-pinned, with
+  argv[0] proxies and **no toolchain** (a repo's `rust-toolchain.toml` installs
+  its own on first use); `corepack enable pnpm` (yarn 1 left untouched); bun
+  1.3.14, SHA256-pinned and verified before unpacking.
+- `workspace/entrypoint.sh` (shared, hence all three provider bumps): tool
+  homes that outgrow the tmpfs (rustup, cargo, pnpm, corepack, node-gyp, npm,
+  uv, pip, bun) are symlinked into `/workspace/.tools`, because task runners
+  with strict env filtering (turbo) drop the cache variables the orchestrator
+  sets. Fails closed if `.tools` or a target is a planted symlink or
+  non-directory. Writes `~/.cargo/config.toml` with `jobs` sized to the cgroup
+  CPU quota (v2 and v1), because `nproc` reports host cores and 16 parallel
+  links were OOM-killed under the 4 GB limit.
+- Reviewed twice by Codex (security and resource exhaustion); both passes'
+  blockers are addressed.
+
 ### ✨ RTK token compression: installed for the first time (omni-agent 1.6.0, claude-cli 2.1.4, interactive-tmux 0.2.4)
 
 ADR-056 was accepted on 2026-04-04 and states RTK is "baked into workspace
