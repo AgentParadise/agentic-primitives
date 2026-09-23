@@ -1,4 +1,4 @@
-"""Bounded Codex spawn hook adapter. Run with python -m agentic_session_store.child_hook.
+"""Bounded native child hook adapter. Run with python -m agentic_session_store.child_hook.
 
 Exit 2 with nonempty stderr explicitly denies a failed pre-tool registration in
 Codex 0.150.1. The harness can still fail open if this process cannot start.
@@ -53,26 +53,39 @@ def _identity(value: object) -> str:
     return value
 
 
-def record_codex_hook(content: bytes, environment: Mapping[str, str]) -> None:
+def _claude_identity(value: object) -> str:
+    native = _identity(value)
+    return native if native.startswith("agent-") else "agent-" + native
+
+
+def record_child_hook(content: bytes, environment: Mapping[str, str]) -> None:
     contract = SessionStoreContract.from_env(environment)
     if contract is None:
         return
     if len(content) > MAX_HOOK_BYTES:
         raise ValueError("Hook byte limit exceeded")
     event = _parse(content)
-    if event.get("tool_name") not in {"spawn_agent", "collaborationspawn_agent"}:
+    if event.get("tool_name") not in {
+        "spawn_agent",
+        "collaborationspawn_agent",
+        "Agent",
+        "Task",
+    }:
         return
     kind = event.get("hook_event_name")
     if kind not in {"PreToolUse", "PostToolUse"}:
         raise ValueError("Unsupported child hook event")
+    claude = event.get("tool_name") in {"Agent", "Task"}
     parent = _identity(event.get("session_id"))
+    if claude and "agent_id" in event:
+        parent = _claude_identity(event["agent_id"])
     root = None
     if event.get("tool_name") == "collaborationspawn_agent":
         parent, root = parent_identity(event, environment)
     call = ChildCall(
         invocation_id=_identity(environment.get(InvocationEnv.INVOCATION_ID)),
         attempt_id=_identity(environment.get(InvocationEnv.ATTEMPT_ID)),
-        harness="codex",
+        harness="claude" if claude else "codex",
         parent_native_id=_identity(parent),
         tool_call_id=_identity(event.get("tool_use_id")),
     )
@@ -89,6 +102,11 @@ def record_codex_hook(content: bytes, environment: Mapping[str, str]) -> None:
         journal.register(call)
         return
     response = event.get("tool_response")
+    if claude:
+        if not isinstance(response, dict):
+            raise TypeError("Unsupported Agent response")
+        journal.bind(call, _claude_identity(response.get("agentId")))
+        return
     # Codex serializes the model-facing FunctionCallOutput body as a JSON string.
     if not isinstance(response, str):
         raise TypeError("Unsupported spawn response")
@@ -103,7 +121,7 @@ def record_codex_hook(content: bytes, environment: Mapping[str, str]) -> None:
 
 def main() -> int:
     try:
-        record_codex_hook(sys.stdin.buffer.read(MAX_HOOK_BYTES + 1), os.environ)
+        record_child_hook(sys.stdin.buffer.read(MAX_HOOK_BYTES + 1), os.environ)
     except (
         ValueError,
         TypeError,

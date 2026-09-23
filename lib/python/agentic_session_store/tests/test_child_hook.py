@@ -176,3 +176,57 @@ def test_v2_binds_exact_native_child_from_task_path(environment, tmp_path, neste
         json.dumps({"type": "session_meta", "payload": child}) + "\n"
     )
     assert _run(environment, json.dumps(event).encode()).returncode == 2
+
+
+@pytest.mark.parametrize("tool", ["Agent", "Task"])
+@pytest.mark.parametrize("nested", [False, True])
+def test_claude_native_child_uses_exact_call_and_parent(environment, tool, nested):
+    event = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": tool,
+        "session_id": "root",
+        "tool_use_id": "claude-call",
+        "tool_input": {"prompt": "PRIVATE"},
+    }
+    if nested:
+        event["agent_id"] = "parent"
+    assert _run(environment, json.dumps(event).encode()).returncode == 0
+    event.update(hook_event_name="PostToolUse", tool_response={"agentId": "child"})
+    assert _run(environment, json.dumps(event).encode()).returncode == 0
+    journal = ChildJournal(
+        Path(environment[Env.SPOOL])
+        / METADATA_NAMESPACE
+        / "run/workspace/children.sqlite"
+    )
+    changes = journal.page().changes
+    assert len(changes) == 2
+    assert changes[0].intent.child_native_id is None
+    assert changes[1].intent.child_native_id == "agent-child"
+    assert changes[1].intent.call.harness == "claude"
+    assert changes[1].intent.call.parent_native_id == (
+        "agent-parent" if nested else "root"
+    )
+    event["tool_response"] = {"agentId": "different-child"}
+    assert _run(environment, json.dumps(event).encode()).returncode == 2
+    assert len(journal.page().changes) == 2
+
+
+@pytest.mark.parametrize("response", [None, {}, "agentId: secret", {"agentId": ""}])
+def test_claude_invalid_response_keeps_unbound_intent(environment, response):
+    event = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Agent",
+        "session_id": "root",
+        "tool_use_id": "call",
+    }
+    assert _run(environment, json.dumps(event).encode()).returncode == 0
+    event.update(hook_event_name="PostToolUse", tool_response=response)
+    result = _run(environment, json.dumps(event).encode())
+    assert result.returncode == 2
+    assert result.stderr == b"Durable child-session recording failed.\n"
+    journal = ChildJournal(
+        Path(environment[Env.SPOOL])
+        / METADATA_NAMESPACE
+        / "run/workspace/children.sqlite"
+    )
+    assert len(journal.page().changes) == 1

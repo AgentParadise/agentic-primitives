@@ -1,6 +1,8 @@
 """Local workspace capture requires no store and preserves native roots."""
 
+import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -81,7 +83,16 @@ def test_local_init_preserves_native_roots_and_exports_durable_index(tmp_path):
     import tomllib
 
     config = tomllib.loads((home / ".codex/config.toml").read_text())
-    assert config["hooks"]["PreToolUse"][0]["matcher"] == "spawn_agent"
+    matcher = config["hooks"]["PreToolUse"][0]["matcher"]
+    assert re.fullmatch(matcher, "spawn_agent")
+    assert re.fullmatch(matcher, "collaborationspawn_agent")
+    assert not re.fullmatch(matcher, "other_spawn_agent")
+    claude = json.loads((home / ".claude/settings.json").read_text())
+    for event in ("PreToolUse", "PostToolUse"):
+        matcher = claude["hooks"][event][0]["matcher"]
+        assert re.fullmatch(matcher, "Agent")
+        assert re.fullmatch(matcher, "Task")
+        assert not re.fullmatch(matcher, "TaskOutput")
     assert (home / ".claude/projects").is_symlink()
     assert (
         spool / "run/phase/claude/project/session.jsonl"
@@ -117,11 +128,20 @@ def test_local_finalizer_invokes_local_capture_and_retains_files(tmp_path, exit_
     assert retained.read_text() == "recoverable"
 
 
-def test_local_init_does_not_claim_ready_when_hooks_are_disabled(tmp_path):
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+def test_local_init_does_not_claim_ready_when_hooks_are_disabled(tmp_path, harness):
     home = tmp_path / "home"
-    (home / ".codex").mkdir(parents=True)
-    config = home / ".codex/config.toml"
-    original = "[features]\nhooks=false\n"
+    (home / f".{harness}").mkdir(parents=True)
+    config = (
+        home
+        / f".{harness}"
+        / ("settings.json" if harness == "claude" else "config.toml")
+    )
+    original = (
+        '{"disableAllHooks":true}'
+        if harness == "claude"
+        else "[features]\nhooks=false\n"
+    )
     config.write_text(original)
     spool = tmp_path / "spool"
     env = {

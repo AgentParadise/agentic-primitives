@@ -276,3 +276,22 @@ Child: `01a0cbd8-8210-7333-918f-8c9346742e28`.
 This supersedes the earlier statements that native child capture was unverified.
 Universal closed coverage, launch-time fail-closed enforcement, and the broader
 cross-harness acceptance matrix remain separate work.
+
+
+## Claude 2.1.250 native child capture
+
+Local workspace initialization installs synchronous `PreToolUse` and
+`PostToolUse` hooks for `Agent` and legacy `Task`, preserving other settings and
+plugin hooks. Explicit `disableAllHooks` prevents the local readiness marker.
+Before launch, the hook commits an intent keyed by invocation, attempt, parent
+native identity and tool-call ID. The post hook binds the structured `agentId`
+response. A hook inside a subagent uses its `agent_id` as immediate parent,
+not the shared root `session_id`. Failed or ambiguous binding retains the intent.
+
+`tests/test_pinned_claude_child.py` drives the pinned binary with an offline
+Messages fixture. Three nested launches must produce three pre-launch intents
+and three exact bindings. Independent native transcript headers must match all
+child IDs and retain the root session ID. Run with
+`CLAUDE_NATIVE_TEST_BINARY=/path/to/claude`; Docker conformance runs disable
+networking and supply no real credentials. This proves native registration and
+binding, not descendant settlement or mixed-harness delegation.

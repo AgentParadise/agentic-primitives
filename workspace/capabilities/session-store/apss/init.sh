@@ -781,6 +781,11 @@ if [ "${AGENTIC_SESSION_STORE_PROVIDER:-}" = "local" ]; then
         echo "[session-store] child capture initialization failed" >&2
         return 1
     fi
+    if ! python3 -m agentic_session_store.install_child_hooks \
+        "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/settings.json" --harness claude; then
+        echo "[session-store] Claude child capture initialization failed" >&2
+        return 1
+    fi
 fi
 
 # --- Record that this init completed ------------------------------------------

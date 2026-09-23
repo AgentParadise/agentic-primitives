@@ -41,3 +41,7 @@ exclude = ["tests*"]
 extend = "../../../ruff.toml"
 target-version = "py311"
 src = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--confcutdir=."
