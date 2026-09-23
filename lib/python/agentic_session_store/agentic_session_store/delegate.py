@@ -1,6 +1,6 @@
 """Run a delegate with durable intent, native binding and its own exit status.
 
-Parent identity must be supplied by the harness command-context hook. Shell
+Parent identity comes from the harness hook or native shell environment. Shell
 text is never scanned to decide whether delegation happened.
 """
 

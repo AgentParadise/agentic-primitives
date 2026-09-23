@@ -43,6 +43,12 @@ def test_real_cross_harness_depth_three(tmp_path):
     path = spool / ".agentic-session-store/run/children.sqlite"
     path.parent.mkdir(parents=True)
     journal = ChildJournal(path)
+    runner = os.environ.get("DELEGATE_NATIVE_TEST_BINARY")
+    runner = (
+        shlex.quote(runner)
+        if runner
+        else shlex.quote(sys.executable) + " -m agentic_session_store.delegate"
+    )
     requests = {"claude": 0, "codex": 0}
     prelaunch = []
     diagnostics = []
@@ -65,8 +71,8 @@ def test_real_cross_harness_depth_three(tmp_path):
                     )
                 responses(
                     self,
-                    shlex.quote(sys.executable)
-                    + " -m agentic_session_store.delegate claude --prompt FIXTURE_FINAL --model claude-sonnet-4-5 --timeout 20"
+                    runner
+                    + " claude --prompt FIXTURE_FINAL --model claude-sonnet-4-5 --timeout 20"
                     if requests["codex"] == 1
                     else None,
                 )
@@ -90,8 +96,7 @@ def test_real_cross_harness_depth_three(tmp_path):
                     )
                 messages(
                     self,
-                    shlex.quote(sys.executable)
-                    + " -m agentic_session_store.delegate codex --prompt FIXTURE_CODEX --timeout 30"
+                    runner + " codex --prompt FIXTURE_CODEX --timeout 30"
                     if requests["claude"] == 1
                     else None,
                 )
