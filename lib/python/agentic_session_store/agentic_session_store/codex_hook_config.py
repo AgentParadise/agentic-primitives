@@ -17,11 +17,11 @@ EVENTS = ("PreToolUse", "PostToolUse")
 CAPTURE_HASHES = {
     "PreToolUse": (
         "pre_tool_use",
-        "sha256:9a034149e7c29c315ce5c38584cbddee34d8520aea923440a68277636c09c3c6",
+        "sha256:5ea34728dafb7e29d4a35159afd34785a8cead4482d4c14be615d75464e7a101",
     ),
     "PostToolUse": (
         "post_tool_use",
-        "sha256:974c902411a510addfa36497c43289977bbbc73d3bd1f32ed99b57846159499b",
+        "sha256:c589c26e18c4d88deff114d53b50f1cc84a86492924bc20de0add5c7c670cfce",
     ),
 }
 
@@ -64,7 +64,7 @@ def merge_capture_hooks(content: str, *, config_path: Path | None = None) -> str
         if not isinstance(groups, MutableSequence):
             raise TypeError("Codex hook event must contain matcher groups")
         expected = {
-            "matcher": "spawn_agent",
+            "matcher": "^(spawn_agent|collaborationspawn_agent)$",
             "hooks": [
                 {
                     "type": "command",

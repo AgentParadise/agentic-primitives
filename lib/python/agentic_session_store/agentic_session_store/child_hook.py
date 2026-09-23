@@ -15,6 +15,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from agentic_session_store.child_journal import ChildCall, ChildJournal
+from agentic_session_store.codex_child_identity import child_identity, parent_identity
 from agentic_session_store.contract import METADATA_NAMESPACE, SessionStoreContract
 
 MAX_HOOK_BYTES = 1024 * 1024
@@ -59,16 +60,20 @@ def record_codex_hook(content: bytes, environment: Mapping[str, str]) -> None:
     if len(content) > MAX_HOOK_BYTES:
         raise ValueError("Hook byte limit exceeded")
     event = _parse(content)
-    if event.get("tool_name") != "spawn_agent":
+    if event.get("tool_name") not in {"spawn_agent", "collaborationspawn_agent"}:
         return
     kind = event.get("hook_event_name")
     if kind not in {"PreToolUse", "PostToolUse"}:
         raise ValueError("Unsupported child hook event")
+    parent = _identity(event.get("session_id"))
+    root = None
+    if event.get("tool_name") == "collaborationspawn_agent":
+        parent, root = parent_identity(event, environment)
     call = ChildCall(
         invocation_id=_identity(environment.get(InvocationEnv.INVOCATION_ID)),
         attempt_id=_identity(environment.get(InvocationEnv.ATTEMPT_ID)),
         harness="codex",
-        parent_native_id=_identity(event.get("session_id")),
+        parent_native_id=_identity(parent),
         tool_call_id=_identity(event.get("tool_use_id")),
     )
     # Init owns the retained partition. A missing directory is an error, not a
@@ -87,7 +92,12 @@ def record_codex_hook(content: bytes, environment: Mapping[str, str]) -> None:
     # Codex serializes the model-facing FunctionCallOutput body as a JSON string.
     if not isinstance(response, str):
         raise TypeError("Unsupported spawn response")
-    child = _identity(_parse(response).get("agent_id"))
+    result = _parse(response)
+    child = _identity(
+        child_identity(root, parent, result.get("task_name"))
+        if root is not None
+        else result.get("agent_id")
+    )
     journal.bind(call, child)
 
 

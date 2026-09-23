@@ -241,7 +241,7 @@ The offline pinned Codex 0.150.1 fixture successfully spawned a native child
 through `collaboration.spawn_agent`. Its hook-facing name was
 `collaborationspawn_agent`; its response contained `task_name`, not `agent_id`.
 The existing `spawn_agent` matcher therefore did not record that launch.
-This is still an open binding path, not a successful capture demonstration.
+That observation drove the v2 binding fix described below.
 
 The child's first session_meta had distinct `id` (child thread) and `session_id`
 (shared root), plus `multi_agent_version: "v2"`, its immediate parent ID and
@@ -249,3 +249,30 @@ agent_path. Native evidence and transcript extraction now retain the child `id`
 for explicitly marked v2 headers, preserving the shared root separately. A
 fixture-derived nested-child regression passes alongside all 30 focused native
 evidence and Codex transcript tests. Legacy header interpretation is unchanged.
+
+
+## Live native child demonstration, 2026-09-23 UTC
+
+Pinned Codex 0.150.1 now records `collaborationspawn_agent` as well as legacy
+`spawn_agent`. The v2 hook reads the canonical parent header from the runtime's
+`transcript_path`, then resolves the returned task path against child headers
+with that exact immediate parent. It never treats the shared root session ID as
+a nested parent's native identity. Scans are bounded to 4096 directory entries
+and 1 MiB per header. Missing, conflicting, or ambiguous evidence leaves the
+registered intent unbound and reports hook failure. No timestamp matching.
+
+The updated matcher has new hashes obtained from the pinned `hooks/list` API.
+The offline `test_pinned_codex_child.py` uses the real binary and a loopback
+Responses fixture inside a network-disabled container. It verifies registration
+before binding and distinct parent/child native IDs. The separate real-binary
+trust test also passes. Subprocess regressions cover direct and nested parent
+identities plus ambiguous task paths.
+
+A real Syntropic137 workflow, `exec-2349a316ec77`, completed in the isolated
+stack with SeshMagic disabled. Its durable child journal bound the child;
+its live API served both exact transcript archives and their spawn relationship.
+Parent: `01a0cbd8-694c-7cb1-9b10-31b352994c3f`.
+Child: `01a0cbd8-8210-7333-918f-8c9346742e28`.
+This supersedes the earlier statements that native child capture was unverified.
+Universal closed coverage, launch-time fail-closed enforcement, and the broader
+cross-harness acceptance matrix remain separate work.

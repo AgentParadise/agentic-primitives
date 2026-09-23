@@ -95,5 +95,5 @@ class CodexNativeEvidenceReader:
             identity_lines=(line,),
             links=links,
             issues=(*issues, *(("parent_identity_conflict",) if len(parents) > 1 else ())),
-            extractor_version="codex-native-evidence/1",
+            extractor_version="codex-native-evidence/2",
         )

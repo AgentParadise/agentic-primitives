@@ -24,7 +24,7 @@ def test_merge_retains_user_configuration_and_is_idempotent(content: str) -> Non
         existing = original.get("hooks", {}).get(event, [])
         assert parsed["hooks"][event][:-1] == existing
         added = parsed["hooks"][event][-1]
-        assert added["matcher"] == "spawn_agent"
+        assert added["matcher"] == "^(spawn_agent|collaborationspawn_agent)$"
         assert added["hooks"][0]["command"] == HOOK_COMMAND
         assert "async" not in added["hooks"][0]
     if content.startswith("#"):

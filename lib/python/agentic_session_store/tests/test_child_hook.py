@@ -114,3 +114,65 @@ def test_disabled_capability_has_no_side_effect(environment: dict[str, str]) -> 
     result = _run(environment, b"invalid")
     assert result.returncode == 0
     assert not list(Path(environment[Env.SPOOL]).rglob("*.sqlite"))
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_v2_binds_exact_native_child_from_task_path(environment, tmp_path, nested):
+    home = tmp_path / "home"
+    sessions = home / "sessions"
+    sessions.mkdir(parents=True)
+    environment["CODEX_HOME"] = str(home)
+    parent = "nested-parent" if nested else "root"
+    parent_file = sessions / "parent.jsonl"
+    parent_file.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {
+                    "id": parent,
+                    "session_id": "root",
+                    "multi_agent_version": "v2",
+                },
+            }
+        )
+        + "\n"
+    )
+    task = "/root/parent/child" if nested else "/root/child"
+    event = json.loads(_event("PreToolUse", "v2"))
+    event.update(
+        tool_name="collaborationspawn_agent",
+        session_id="root",
+        transcript_path=str(parent_file),
+    )
+    result = _run(environment, json.dumps(event).encode())
+    assert result.returncode == 0, result.stderr
+    child = {
+        "id": "child",
+        "session_id": "root",
+        "multi_agent_version": "v2",
+        "parent_thread_id": parent,
+        "agent_path": task,
+    }
+    (sessions / "child.jsonl").write_text(
+        json.dumps({"type": "session_meta", "payload": child})
+        + "\n"
+        + parent_file.read_text()
+    )
+    event.update(
+        hook_event_name="PostToolUse", tool_response=json.dumps({"task_name": task})
+    )
+    result = _run(environment, json.dumps(event).encode())
+    assert result.returncode == 0, result.stderr
+    journal = ChildJournal(
+        Path(environment[Env.SPOOL])
+        / METADATA_NAMESPACE
+        / "run/workspace/children.sqlite"
+    )
+    call = ChildCall("invocation", "attempt", "codex", parent, "v2")
+    assert journal.lookup(call).child_native_id == "child"
+    # A second native ID for the same parent/task is ambiguous, never guessed.
+    child["id"] = "other-child"
+    (sessions / "duplicate.jsonl").write_text(
+        json.dumps({"type": "session_meta", "payload": child}) + "\n"
+    )
+    assert _run(environment, json.dumps(event).encode()).returncode == 2
