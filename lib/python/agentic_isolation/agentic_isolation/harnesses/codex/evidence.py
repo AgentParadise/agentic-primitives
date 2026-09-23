@@ -24,6 +24,7 @@ class _Source(WireModel):
 class _Meta(WireModel):
     id: str | None = None
     session_id: str | None = None
+    multi_agent_version: str | None = None
     parent_thread_id: str | None = None
     forked_from_id: str | None = None
     source: _Source | str | None = None
@@ -51,8 +52,13 @@ class CodexNativeEvidenceReader:
             return NativeEvidence(native_id=None, issues=(*issues, "canonical_header_unreadable"))
         if meta is None:
             return NativeEvidence(native_id=None, issues=(*issues, "canonical_header_unreadable"))
-        native = meta.session_id or meta.id
-        if not native or (meta.session_id and meta.id and meta.session_id != meta.id):
+        native = meta.id if meta.multi_agent_version == "v2" else meta.session_id or meta.id
+        if not native or (
+            meta.multi_agent_version != "v2"
+            and meta.session_id
+            and meta.id
+            and meta.session_id != meta.id
+        ):
             return NativeEvidence(
                 native_id=None, issues=(*issues, "identity_missing_or_conflicting")
             )
@@ -85,6 +91,7 @@ class CodexNativeEvidenceReader:
             )
         return NativeEvidence(
             native_id=native,
+            root_id=meta.session_id if meta.multi_agent_version == "v2" else None,
             identity_lines=(line,),
             links=links,
             issues=(*issues, *(("parent_identity_conflict",) if len(parents) > 1 else ())),

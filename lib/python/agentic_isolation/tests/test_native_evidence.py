@@ -129,3 +129,35 @@ def test_legacy_harvest_does_not_replace_child_identity_with_root() -> None:
     lines = _spawn("child", "grandchild").decode().splitlines()
     lines.insert(0, json.dumps({"sessionId": "root"}))
     assert _resolve_session_id(lines, "/root/subagents/agent-child.jsonl") == "agent-child"
+
+
+def test_codex_v2_child_keeps_thread_identity_separate_from_shared_root() -> None:
+    from agentic_isolation.harnesses.codex.transcripts import _resolve_session_id
+
+    # Field semantics observed from the real 0.150.1 native-child fixture.
+    row = {
+        "type": "session_meta",
+        "payload": {
+            "id": "child-thread",
+            "session_id": "root-session",
+            "multi_agent_version": "v2",
+            "parent_thread_id": "immediate-parent",
+            "source": {
+                "subagent": {
+                    "thread_spawn": {
+                        "parent_thread_id": "immediate-parent",
+                        "depth": 2,
+                        "agent_path": "/root/child/grandchild",
+                    }
+                }
+            },
+        },
+    }
+    facts = CodexNativeEvidenceReader().extract(_bytes(row))
+    assert facts.native_id == "child-thread"
+    assert facts.root_id == "root-session"
+    assert facts.issues == ()
+    assert [(link.parent_id, link.child_id) for link in facts.links] == [
+        ("immediate-parent", "child-thread")
+    ]
+    assert _resolve_session_id([json.dumps(row)], "/rollout-unknown.jsonl") == "child-thread"

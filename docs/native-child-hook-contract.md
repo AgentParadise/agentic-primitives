@@ -234,3 +234,18 @@ an unrelated handler stays untrusted, and installation is idempotent. No model
 requests, credentials or user configuration were used. This proves runtime hook
 activation eligibility only; real child spawning, binding and capture, and
 fail-closed launch enforcement remain open acceptance work.
+
+## Real v2 child identity observation
+
+The offline pinned Codex 0.150.1 fixture successfully spawned a native child
+through `collaboration.spawn_agent`. Its hook-facing name was
+`collaborationspawn_agent`; its response contained `task_name`, not `agent_id`.
+The existing `spawn_agent` matcher therefore did not record that launch.
+This is still an open binding path, not a successful capture demonstration.
+
+The child's first session_meta had distinct `id` (child thread) and `session_id`
+(shared root), plus `multi_agent_version: "v2"`, its immediate parent ID and
+agent_path. Native evidence and transcript extraction now retain the child `id`
+for explicitly marked v2 headers, preserving the shared root separately. A
+fixture-derived nested-child regression passes alongside all 30 focused native
+evidence and Codex transcript tests. Legacy header interpretation is unchanged.
