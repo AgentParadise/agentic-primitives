@@ -2,6 +2,13 @@
 
 > Atomic building blocks for AI agent systems
 
+> **Repository split in progress.** Installable skills and collections now live
+> in [Agentic Skills](https://github.com/AgentParadise/agentic-skills). Workspace
+> contracts, runtime libraries, images, and Local/Docker implementations now
+> live in [Agentic Workspace](https://github.com/AgentParadise/agentic-workspace).
+> Existing plugin consumers remain supported during the compatibility window.
+> See the [extraction and migration guide](docs/extraction.md).
+
 [![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
