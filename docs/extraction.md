@@ -61,6 +61,9 @@ Archive this repository only after all of these are true:
 3. Syntropic137 has released against Agentic Workspace and passed its rollback proof.
 4. An owned-reference audit finds no active consumers of this repository.
 
+The initial owned-reference baseline and final recheck procedure are recorded
+in [the retirement reference audit](retirement-reference-audit.md).
+
 Until then, changes here should be limited to compatibility, security, and
 migration documentation. New skills belong in Agentic Skills. New workspace
 runtime or provider work belongs in Agentic Workspace.
