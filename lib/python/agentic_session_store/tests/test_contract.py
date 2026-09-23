@@ -5,6 +5,7 @@ import subprocess
 import urllib.parse
 
 import pytest
+
 from agentic_session_store.contract import (
     AUTHORITY_PATTERN,
     CAPABILITY,

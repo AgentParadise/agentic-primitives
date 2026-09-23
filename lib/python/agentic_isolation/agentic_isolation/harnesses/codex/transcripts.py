@@ -122,7 +122,9 @@ def _resolve_session_id(lines: list[str], source_path: str) -> str:
         payload = parsed.get("payload")
         if not isinstance(payload, dict):
             continue
-        session_id = payload.get("session_id")
+        # In pinned v2 rollouts, session_id is shared by the tree; id names this thread.
+        key = "id" if payload.get("multi_agent_version") == "v2" else "session_id"
+        session_id = payload.get(key)
         if isinstance(session_id, str) and session_id:
             return session_id
     return Path(source_path).stem

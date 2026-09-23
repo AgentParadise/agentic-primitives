@@ -12,6 +12,26 @@ Invoke this skill any time you are about to write a `claude -p` invocation or de
 
 The single guiding finding: **hard gates and explicit prompt verbs are what steer `claude -p`. Soft documentation (CLAUDE.md content, skill indices, advisory rules) is largely inert in non-interactive mode unless the user prompt names it explicitly.**
 
+## Captured workflow delegation
+
+When `AGENTIC_SESSION_STORE_PROVIDER=local`, use the installed structured shim:
+
+```sh
+syn-delegate claude --prompt "$TASK_PROMPT" --timeout 600
+```
+
+Use `--model` when selecting a model explicitly. Run from the intended working
+directory. Existing harness configuration controls permissions; the shim does
+not grant permissions. It records intent before launch, binds the delegate's own
+native session ID, and preserves its actual exit status even when a caller uses
+`|| true` or a pipeline. Claude's shell hook supplies exact parent context;
+Codex supplies its native `CODEX_THREAD_ID`. Missing parent context or durable
+storage denies launch. Do not fabricate these context values or fall back to a
+raw CLI to bypass a capture failure.
+
+The raw CLI examples below describe uncaptured use and underlying harness
+options. In captured workflows, use the shim so the run can discover this launch.
+
 ## The validated invocation
 
 ```sh

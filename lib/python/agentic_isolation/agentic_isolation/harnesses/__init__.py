@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
+from agentic_isolation.harnesses.evidence import NativeEvidenceReader
 from agentic_isolation.providers.base import ExecuteResult
 
 
@@ -208,6 +209,13 @@ class HarnessPlugin(Protocol):
         ...
 
 
+@runtime_checkable
+class EvidenceHarnessPlugin(HarnessPlugin, Protocol):
+    """Optional normalized identity/lineage extraction capability."""
+
+    def evidence_reader(self) -> NativeEvidenceReader: ...
+
+
 _REGISTRY: dict[AgentName, HarnessPlugin] = {}
 """Typed registry of the bundled harness plugins, keyed by `AgentName`.
 
@@ -245,6 +253,22 @@ def get_harness(name: str) -> HarnessPlugin | None:
 def iter_harnesses() -> tuple[HarnessPlugin, ...]:
     """All registered harness plugins."""
     return tuple(_REGISTRY.values())
+
+
+@runtime_checkable
+class CapturedHarnessPlugin(HarnessPlugin, Protocol):
+    @property
+    def exporter_agent(self) -> str: ...
+
+
+def harness_for_exporter_agent(agent: str) -> AgentName | None:
+    """Resolve a captured agent through registered harness-owned metadata."""
+    matches = [
+        plugin.name
+        for plugin in iter_harnesses()
+        if isinstance(plugin, CapturedHarnessPlugin) and plugin.exporter_agent == agent
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _register_bundled_harnesses() -> None:

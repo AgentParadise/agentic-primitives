@@ -55,7 +55,11 @@ def main() -> None:
         emitter = _get_emitter(session_id)
         if emitter:
             emitter.subagent_stopped(
-                subagent_id=event.get("subagent_id", "unknown"),
+                # Claude's wire field is agent_id. Retain the older adapter
+                # spelling only as a fallback; never substitute the root ID.
+                subagent_id=event.get("agent_id")
+                or event.get("subagent_id")
+                or "unknown",
                 reason=event.get("reason", "normal"),
             )
 
