@@ -34,8 +34,8 @@
 # Global build args (declared before any FROM so all stages can inherit).
 # Stages that need these must re-declare `ARG <name>` without a default.
 # Both harnesses are pinned; bump deliberately.
-ARG CLAUDE_CLI_VERSION=2.1.250
-ARG CODEX_CLI_VERSION=0.150.1
+ARG CLAUDE_CLI_VERSION=2.1.258
+ARG CODEX_CLI_VERSION=0.152.1
 # The `just` command runner. Pinned like the harnesses above; `latest` would
 # silently change between builds. Bump deliberately, and update the two
 # SHA256 pins in the install layer at the same time - they are per-version.
