@@ -27,6 +27,7 @@ def capability_env_name(capability: str, field_name: str) -> str:
     the two implementations of one rule. The conformance test in
     tests/test_contract.py pins them together.
     """
+
     def normalize(part: str) -> str:
         return part.upper().replace("-", "_")
 
