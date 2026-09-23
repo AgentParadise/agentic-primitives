@@ -28,4 +28,17 @@ def merge_capture_hooks(content: str) -> str:
         if expected not in groups:
             groups.append(expected)
             changed = True
+    context = {
+        "matcher": "^Bash$",
+        "hooks": [
+            {
+                "type": "command",
+                "command": "python3 -m agentic_session_store.command_context",
+                "timeout": 10,
+            }
+        ],
+    }
+    if context not in hooks["PreToolUse"]:
+        hooks["PreToolUse"].append(context)
+        changed = True
     return json.dumps(document, indent=2) + "\n" if changed else content

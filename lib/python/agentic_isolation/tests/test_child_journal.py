@@ -14,10 +14,11 @@ from agentic_isolation.providers.base import ExecuteResult
 
 
 @pytest.mark.asyncio
-async def test_real_export_roundtrip_recovers_late_binding(tmp_path: Path) -> None:
+@pytest.mark.parametrize("target_harness", [None, "claude"])
+async def test_real_export_roundtrip_recovers_late_binding(tmp_path: Path, target_harness) -> None:
     path = tmp_path / "retained 'quoted' journal.sqlite"
     journal = ChildJournal(path)
-    call = ChildCall("invocation", "attempt", "codex", "parent/α", "call")
+    call = ChildCall("invocation", "attempt", "codex", "parent/α", "call", target_harness)
     registered = journal.register(call)
 
     async def execute(command: str, **kwargs: object) -> ExecuteResult:
@@ -39,8 +40,15 @@ async def test_real_export_roundtrip_recovers_late_binding(tmp_path: Path) -> No
     assert initial.changes[0].intent.child_invocation_id == registered.child_invocation_id
     assert initial.changes[0].intent.call.parent_native_id == "parent/α"
     journal.bind(call, "child/β")
+    if target_harness is not None:
+        journal.launched(call)
+        journal.finished(call, 3)
     late = await reader.page(initial.watermark)
     assert late.changes[0].intent.child_native_id == "child/β"
+    assert late.changes[0].intent.call.target_harness == target_harness
+    if target_harness is not None:
+        assert late.changes[-1].intent.status == "failed"
+        assert late.changes[-1].intent.exit_code == 3
     assert await reader.page(watermark=initial.watermark) == initial
 
 

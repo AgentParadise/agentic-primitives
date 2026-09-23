@@ -6,16 +6,28 @@ import argparse
 import json
 import sqlite3
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
 from agentic_session_store.child_journal import ChildJournal, ChildPage
 
 
-@dataclass(frozen=True)
-class ExportPage:
-    schema_version: int
-    page: ChildPage
+def export_page(page: ChildPage) -> dict[str, object]:
+    """Keep v1 native records byte-compatible; v2 adds delegation lifecycle."""
+    body = asdict(page)
+    version = 1
+    for change in body["changes"]:
+        intent = change["intent"]
+        for owner, names in (
+            (intent, ("status", "exit_code")),
+            (intent["call"], ("target_harness",)),
+        ):
+            for name in names:
+                if owner[name] is None:
+                    del owner[name]
+                else:
+                    version = 2
+    return {"schema_version": version, "page": body}
 
 
 def main() -> int:
@@ -29,7 +41,7 @@ def main() -> int:
         journal = ChildJournal(args.journal, read_only=True)
         page = journal.page(args.after, watermark=args.watermark, limit=args.limit)
         payload = json.dumps(
-            asdict(ExportPage(1, page)), ensure_ascii=True, separators=(",", ":")
+            export_page(page), ensure_ascii=True, separators=(",", ":")
         )
     except (ValueError, OSError, sqlite3.Error):
         print("Child-session journal unavailable or invalid.", file=sys.stderr)

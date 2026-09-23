@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from agentic_isolation.harnesses import ExecFn, exec_argv
 
@@ -37,6 +37,7 @@ class ChildCall(_Wire):
     harness: Literal["claude", "codex"]
     parent_native_id: Identity
     tool_call_id: Identity
+    target_harness: Literal["claude", "codex"] | None = None
 
 
 class ChildIntent(_Wire):
@@ -44,6 +45,22 @@ class ChildIntent(_Wire):
     child_invocation_id: Identity
     call: ChildCall
     child_native_id: Identity | None
+    status: Literal["launched", "launch_failed", "completed", "failed", "cancelled"] | None = None
+    exit_code: int | None = Field(default=None, ge=-255, le=255)
+
+    @model_validator(mode="after")
+    def valid_outcome(self):
+        if self.status in {None, "launched", "launch_failed"}:
+            valid = self.exit_code is None
+        elif self.status == "completed":
+            valid = self.exit_code == 0
+        elif self.status == "failed":
+            valid = self.exit_code is not None and self.exit_code > 0
+        else:
+            valid = self.exit_code is not None and self.exit_code < 0
+        if not valid or (self.status == "launch_failed" and self.child_native_id is not None):
+            raise ValueError("Invalid child launch outcome")
+        return self
 
 
 class ChildChange(_Wire):
@@ -58,7 +75,7 @@ class ChildPage(_Wire):
 
 
 class _Export(_Wire):
-    schema_version: Literal[1]
+    schema_version: Literal[1, 2]
     page: ChildPage
 
 

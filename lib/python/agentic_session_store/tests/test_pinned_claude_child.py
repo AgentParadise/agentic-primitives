@@ -16,7 +16,7 @@ BINARY = os.environ.get("CLAUDE_NATIVE_TEST_BINARY")
 
 
 @unittest.skipUnless(BINARY, "Set CLAUDE_NATIVE_TEST_BINARY for native conformance")
-def test_native_claude_depth_three(tmp_path: Path):
+def test_native_claude_depth_three(tmp_path: Path, shell_context=False):
     assert (
         subprocess.check_output([BINARY, "--version"], text=True).strip()
         == "2.1.250 (Claude Code)"
@@ -44,7 +44,7 @@ def test_native_claude_depth_three(tmp_path: Path):
                 (
                     t["name"]
                     for t in req.get("tools", [])
-                    if t["name"] in ("Agent", "Task")
+                    if t["name"] in (("Bash",) if shell_context else ("Agent", "Task"))
                 ),
                 None,
             )
@@ -70,13 +70,17 @@ def test_native_claude_depth_three(tmp_path: Path):
             prior_call = any(
                 m.get("role") == "assistant" for m in req.get("messages", [])
             )
-            spawn = depth < 3 and not prior_call and agent
+            spawn = depth < (1 if shell_context else 3) and not prior_call and agent
             block = (
                 {
                     "type": "tool_use",
                     "id": f"native-claude-call-{depth}",
                     "name": agent,
                     "input": {
+                        "command": "printf '%s' \"$AGENTIC_PARENT_HARNESS:$AGENTIC_PARENT_NATIVE_ID\" > parent-context.txt"
+                    }
+                    if shell_context
+                    else {
                         "description": "Fixture child",
                         "prompt": f"FIXTURE_DEPTH_{depth + 1}",
                         "subagent_type": "general-purpose",
@@ -169,9 +173,9 @@ def test_native_claude_depth_three(tmp_path: Path):
                 "--model",
                 "claude-sonnet-4-5",
                 "--tools",
-                "Agent",
+                "Bash" if shell_context else "Agent",
                 "--allowedTools",
-                "Agent",
+                "Bash" if shell_context else "Agent",
                 "--settings",
                 str(settings),
                 "--setting-sources",
@@ -191,6 +195,11 @@ def test_native_claude_depth_three(tmp_path: Path):
         assert result.returncode == 0, result.stderr
         output = json.loads(result.stdout)
         assert output["is_error"] is False
+        if shell_context:
+            assert (root / "parent-context.txt").read_text() == "claude:" + output[
+                "session_id"
+            ]
+            return
         changes = ChildJournal(journal_path).page().changes
         assert len(changes) == 6
         assert registered_before_child_request == [True, True, True]
@@ -225,7 +234,14 @@ def test_native_claude_depth_three(tmp_path: Path):
         thread.join(timeout=5)
 
 
+@unittest.skipUnless(BINARY, "Set CLAUDE_NATIVE_TEST_BINARY for native conformance")
+def test_native_claude_shell_context(tmp_path: Path):
+    test_native_claude_depth_three(tmp_path, shell_context=True)
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         test_native_claude_depth_three(Path(directory))
-    print("Pinned Claude depth-three capture passed")
+    with tempfile.TemporaryDirectory() as directory:
+        test_native_claude_shell_context(Path(directory))
+    print("Pinned Claude depth-three capture and shell context passed")

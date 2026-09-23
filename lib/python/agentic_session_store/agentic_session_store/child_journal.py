@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from agentic_session_store.child_schema import upgrade
+
 
 @dataclass(frozen=True)
 class ChildCall:
@@ -21,10 +23,13 @@ class ChildCall:
     harness: str
     parent_native_id: str
     tool_call_id: str
+    target_harness: str | None = None
 
     def __post_init__(self) -> None:
         if self.harness not in {"claude", "codex"}:
             raise ValueError("Unsupported child-call harness")
+        if self.target_harness not in {None, "claude", "codex"}:
+            raise ValueError("Unsupported target harness")
         for value in self.key:
             if not value or len(value.encode("utf-8")) > 2048 or "\x00" in value:
                 raise ValueError("Invalid child-call identity")
@@ -46,6 +51,8 @@ class ChildIntent:
     child_invocation_id: str
     call: ChildCall
     child_native_id: str | None
+    status: str | None = None
+    exit_code: int | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,7 @@ class ChildJournal:
         if read_only:
             return
         with closing(self._connect()) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS child_intents (
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,21 +116,7 @@ class ChildJournal:
                     SELECT 1 FROM child_changes WHERE intent_sequence=intent.sequence
                 )
             """)
-            connection.execute("""
-                CREATE TRIGGER IF NOT EXISTS child_registered AFTER INSERT ON child_intents
-                BEGIN
-                    INSERT INTO child_changes (intent_sequence, child_native_id)
-                    VALUES (NEW.sequence, NEW.child_native_id);
-                END
-            """)
-            connection.execute("""
-                CREATE TRIGGER IF NOT EXISTS child_bound AFTER UPDATE OF child_native_id
-                ON child_intents WHEN OLD.child_native_id IS NOT NEW.child_native_id
-                BEGIN
-                    INSERT INTO child_changes (intent_sequence, child_native_id)
-                    VALUES (NEW.sequence, NEW.child_native_id);
-                END
-            """)
+            upgrade(connection)
 
     def _connect(self) -> sqlite3.Connection:
         if self._read_only:
@@ -136,14 +130,16 @@ class ChildJournal:
     @staticmethod
     def _get(connection: sqlite3.Connection, call: ChildCall) -> ChildIntent:
         row = connection.execute(
-            """SELECT sequence, child_invocation_id, child_native_id FROM child_intents
+            """SELECT sequence, child_invocation_id, child_native_id, target_harness, status, exit_code FROM child_intents
                WHERE invocation_id=? AND attempt_id=? AND harness=?
                  AND parent_native_id=? AND tool_call_id=?""",
             call.key,
         ).fetchone()
         if row is None:
             raise ValueError("Child call has no durable registration")
-        return ChildIntent(row[0], row[1], call, row[2])
+        if row[3] != call.target_harness:
+            raise ValueError("Conflicting child target harness")
+        return ChildIntent(row[0], row[1], call, row[2], row[4], row[5])
 
     def register(self, call: ChildCall) -> ChildIntent:
         with closing(self._connect()) as connection:
@@ -151,10 +147,10 @@ class ChildJournal:
                 connection.execute(
                     """INSERT INTO child_intents
                        (child_invocation_id, invocation_id, attempt_id, harness,
-                        parent_native_id, tool_call_id) VALUES (?, ?, ?, ?, ?, ?)
+                        parent_native_id, tool_call_id, target_harness) VALUES (?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (invocation_id, attempt_id, harness,
                                     parent_native_id, tool_call_id) DO NOTHING""",
-                    (str(uuid4()), *call.key),
+                    (str(uuid4()), *call.key, call.target_harness),
                 )
                 intent = self._get(connection, call)
             return intent
@@ -170,6 +166,8 @@ class ChildJournal:
             with connection:
                 connection.execute("BEGIN IMMEDIATE")
                 intent = self._get(connection, call)
+                if intent.status == "launch_failed":
+                    raise ValueError("Failed launch cannot bind a native child")
                 if intent.child_native_id not in {None, child_native_id}:
                     raise ValueError("Conflicting child native identity")
                 connection.execute(
@@ -178,6 +176,53 @@ class ChildJournal:
                 )
                 bound = self._get(connection, call)
             return bound
+
+    def launched(self, call: ChildCall) -> ChildIntent:
+        return self._transition(call, "launched", None)
+
+    def launch_failed(self, call: ChildCall) -> ChildIntent:
+        return self._transition(call, "launch_failed", None)
+
+    def finished(self, call: ChildCall, exit_code: int) -> ChildIntent:
+        if (
+            isinstance(exit_code, bool)
+            or not isinstance(exit_code, int)
+            or not -255 <= exit_code <= 255
+        ):
+            raise ValueError("Invalid delegate exit status")
+        status = (
+            "completed"
+            if exit_code == 0
+            else "cancelled"
+            if exit_code < 0
+            else "failed"
+        )
+        return self._transition(call, status, exit_code)
+
+    def _transition(
+        self, call: ChildCall, status: str, exit_code: int | None
+    ) -> ChildIntent:
+        with closing(self._connect()) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            intent = self._get(connection, call)
+            if (intent.status, intent.exit_code) == (status, exit_code):
+                return intent
+            if intent.status is not None and intent.status != "launched":
+                raise ValueError("Child launch outcome is terminal")
+            if status == "launch_failed" and intent.child_native_id is not None:
+                raise ValueError("Bound child cannot have failed to launch")
+            if status in {"launched", "launch_failed"} and intent.status is not None:
+                raise ValueError("Conflicting child launch state")
+            if (
+                status not in {"launched", "launch_failed"}
+                and intent.status != "launched"
+            ):
+                raise ValueError("Child must launch before finishing")
+            connection.execute(
+                "UPDATE child_intents SET status=?, exit_code=? WHERE sequence=?",
+                (status, exit_code, intent.sequence),
+            )
+            return self._get(connection, call)
 
     def lookup(self, call: ChildCall) -> ChildIntent:
         with closing(self._connect()) as connection:
@@ -205,10 +250,26 @@ class ChildJournal:
             head = latest if watermark is None else watermark
             if head > latest or after > head:
                 raise ValueError("Child journal cursor is beyond retained history")
+            intent_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(child_intents)")
+            }
+            change_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(child_changes)")
+            }
+            target = (
+                "intent.target_harness"
+                if "target_harness" in intent_columns
+                else "NULL"
+            )
+            status = (
+                "change.status, change.exit_code"
+                if "status" in change_columns
+                else "NULL, NULL"
+            )
             rows = connection.execute(
-                """SELECT change.sequence, intent.sequence, intent.child_invocation_id,
+                f"""SELECT change.sequence, intent.sequence, intent.child_invocation_id,
                           intent.invocation_id, intent.attempt_id, intent.harness,
-                          intent.parent_native_id, intent.tool_call_id, change.child_native_id
+                          intent.parent_native_id, intent.tool_call_id, change.child_native_id, {target}, {status}
                    FROM child_changes AS change
                    JOIN child_intents AS intent ON intent.sequence=change.intent_sequence
                    WHERE change.sequence > ? AND change.sequence <= ?
@@ -217,7 +278,15 @@ class ChildJournal:
             ).fetchall()
             changes = tuple(
                 ChildChange(
-                    row[0], ChildIntent(row[1], row[2], ChildCall(*row[3:8]), row[8])
+                    row[0],
+                    ChildIntent(
+                        row[1],
+                        row[2],
+                        ChildCall(*row[3:8], target_harness=row[9]),
+                        row[8],
+                        row[10],
+                        row[11],
+                    ),
                 )
                 for row in rows[:limit]
             )

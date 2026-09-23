@@ -69,4 +69,4 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.uv.sources]
-agentic-session-store = { path = "../agentic_session_store" }
+agentic-session-store = { path = "../agentic_session_store", editable = true }

@@ -28,7 +28,7 @@ def test_concurrent_claude_install_preserves_settings(tmp_path):
     document = json.loads(path.read_text())
     assert document["enabledPlugins"] == {"observability@agentic": True}
     assert document["hooks"]["PreToolUse"][0] == existing
-    assert len(document["hooks"]["PreToolUse"]) == 2
+    assert len(document["hooks"]["PreToolUse"]) == 3
     assert len(document["hooks"]["PostToolUse"]) == 1
     before = path.stat()
     assert not install(path, harness="claude")

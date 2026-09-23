@@ -176,3 +176,76 @@ def test_invalid_recovery_cursor_fails(
     journal = ChildJournal(tmp_path / "children.sqlite")
     with pytest.raises(ValueError):
         journal.page(after, watermark=watermark, limit=limit)
+
+
+def test_cross_harness_lifecycle_is_durable_and_conflicts_fail(tmp_path, call):
+    cross = replace(call, target_harness="claude")
+    journal = ChildJournal(tmp_path / "children.sqlite")
+    initial = journal.register(cross)
+    assert initial.status is None
+    assert journal.launched(cross).status == "launched"
+    journal.bind(cross, "actual-native-child")
+    outcome = journal.finished(cross, 7)
+    assert (outcome.status, outcome.exit_code) == ("failed", 7)
+    assert ChildJournal(journal.path).lookup(cross) == outcome
+    assert journal.finished(cross, 7) == outcome
+    with pytest.raises(ValueError, match="terminal"):
+        journal.finished(cross, 0)
+    with pytest.raises(ValueError, match="target harness"):
+        journal.register(replace(cross, target_harness="codex"))
+    changes = journal.page().changes
+    assert len(changes) == 4
+    assert [c.intent.status for c in changes] == [
+        None,
+        "launched",
+        "launched",
+        "failed",
+    ]
+    assert changes[0].intent.child_native_id is None
+    assert changes[2].intent.child_native_id == "actual-native-child"
+
+
+def test_failed_launch_is_distinct_and_cannot_finish(tmp_path, call):
+    journal = ChildJournal(tmp_path / "children.sqlite")
+    journal.register(call)
+    with pytest.raises(ValueError, match="before finishing"):
+        journal.finished(call, 0)
+    result = journal.launch_failed(call)
+    assert result.child_native_id is None
+    assert result.status == "launch_failed"
+    assert result.exit_code is None
+    assert journal.launch_failed(call) == result
+    with pytest.raises(ValueError, match="Failed launch"):
+        journal.bind(call, "fabricated")
+    with pytest.raises(ValueError, match="terminal"):
+        journal.launched(call)
+
+
+def test_additive_migration_preserves_old_wire_records(tmp_path):
+    from agentic_session_store.child_export import export_page
+
+    path = tmp_path / "old.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.executescript("""
+            CREATE TABLE child_intents (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                child_invocation_id TEXT NOT NULL UNIQUE,
+                invocation_id TEXT NOT NULL, attempt_id TEXT NOT NULL,
+                harness TEXT NOT NULL, parent_native_id TEXT NOT NULL,
+                tool_call_id TEXT NOT NULL, child_native_id TEXT,
+                UNIQUE(invocation_id,attempt_id,harness,parent_native_id,tool_call_id));
+            CREATE TABLE child_changes (sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                intent_sequence INTEGER NOT NULL, child_native_id TEXT);
+            INSERT INTO child_intents VALUES (1,'child-invocation','invocation','attempt','codex','parent','call', 'child');
+            INSERT INTO child_changes VALUES (1,1,NULL),(2,1,'child');
+        """)
+    before = export_page(ChildJournal(path, read_only=True).page())
+    journal = ChildJournal(path)
+    assert export_page(journal.page()) == before
+    assert before["schema_version"] == 1
+    cross = ChildCall("invocation", "attempt", "codex", "parent", "new-call", "claude")
+    journal.register(cross)
+    journal.launched(cross)
+    journal.finished(cross, 0)
+    assert export_page(journal.page())["schema_version"] == 2
+    assert export_page(journal.page(watermark=2)) == before

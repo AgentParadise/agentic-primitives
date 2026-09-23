@@ -16,7 +16,7 @@ BINARY = os.environ.get("CODEX_NATIVE_TEST_BINARY")
 
 
 @unittest.skipUnless(BINARY, "Set CODEX_NATIVE_TEST_BINARY for native conformance")
-def test_native_v2_spawn_registers_before_binding(tmp_path: Path):
+def test_native_v2_spawn_registers_before_binding(tmp_path: Path, shell_context=False):
     assert (
         subprocess.check_output([BINARY, "--version"], text=True).strip()
         == "codex-cli 0.150.1"
@@ -41,10 +41,12 @@ def test_native_v2_spawn_registers_before_binding(tmp_path: Path):
                 {
                     "type": "function_call",
                     "call_id": "native-spawn-1",
-                    "namespace": "collaboration",
-                    "name": "spawn_agent",
+                    "namespace": "functions" if shell_context else "collaboration",
+                    "name": "exec_command" if shell_context else "spawn_agent",
                     "arguments": json.dumps(
-                        {"message": "Reply done", "task_name": "child"}
+                        {"cmd": "printf '%s' \"$CODEX_THREAD_ID\" > parent-context.txt"}
+                        if shell_context
+                        else {"message": "Reply done", "task_name": "child"}
                     ),
                 }
                 if len(requests) == 1
@@ -89,6 +91,11 @@ def test_native_v2_spawn_registers_before_binding(tmp_path: Path):
                 BINARY,
                 "exec",
                 "--skip-git-repo-check",
+                *(
+                    ["--dangerously-bypass-approvals-and-sandbox"]
+                    if shell_context
+                    else []
+                ),
                 "--json",
                 "-c",
                 'model_provider="fixture"',
@@ -122,6 +129,13 @@ def test_native_v2_spawn_registers_before_binding(tmp_path: Path):
             check=False,
         )
         assert result.returncode == 0, result.stderr
+        if shell_context:
+            events = [json.loads(line) for line in result.stdout.splitlines()]
+            native = next(
+                e["thread_id"] for e in events if e.get("type") == "thread.started"
+            )
+            assert (tmp_path / "parent-context.txt").read_text() == native
+            return
         changes = ChildJournal(journal_path).page().changes
         assert len(changes) == 2
         assert changes[0].intent.child_native_id is None
@@ -138,7 +152,14 @@ def test_native_v2_spawn_registers_before_binding(tmp_path: Path):
         thread.join(timeout=5)
 
 
+@unittest.skipUnless(BINARY, "Set CODEX_NATIVE_TEST_BINARY for native conformance")
+def test_native_codex_shell_context(tmp_path: Path):
+    test_native_v2_spawn_registers_before_binding(tmp_path, shell_context=True)
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         test_native_v2_spawn_registers_before_binding(Path(directory))
-    print("Pinned native child capture passed")
+    with tempfile.TemporaryDirectory() as directory:
+        test_native_codex_shell_context(Path(directory))
+    print("Pinned Codex child capture and shell context passed")

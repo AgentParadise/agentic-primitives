@@ -295,3 +295,26 @@ child IDs and retain the root session ID. Run with
 `CLAUDE_NATIVE_TEST_BINARY=/path/to/claude`; Docker conformance runs disable
 networking and supply no real credentials. This proves native registration and
 binding, not descendant settlement or mixed-harness delegation.
+
+
+## Structured cross-harness delegation
+
+`syn-delegate` uses the retained child journal for Claude-to-Codex and
+Codex-to-Claude calls. Each intent retains the parent's harness and the target
+harness separately. The runner binds only the new process's own machine-stream
+identity, records successful OS launch separately from failure to start, and
+retains the actual exit code or terminating signal. Parent environment markers
+are cleared before spawning so nested calls cannot inherit an obsolete parent.
+
+Claude's `Bash` hook prepends quoted context exports without changing the tool's
+permission decision. Codex uses its native shell `CODEX_THREAD_ID`; no Codex
+command-rewrite or permission-granting hook is installed. Journal migration adds
+nullable lifecycle fields without changing existing exported records or their
+source hashes. Version 2 pages carry cross-harness/lifecycle observations;
+readers still accept version 1.
+
+The offline `test_pinned_cross_harness.py` runs real Claude 2.1.250 and Codex
+0.150.1 through Claude -> Codex -> Claude. It verifies independent native files,
+pre-launch intents, exact parents and successful delegate outcomes. This proves
+the controlled shim path; it does not seal run-wide descendant coverage, add a
+workflow-success gate, or complete mixed resume/fork acceptance.

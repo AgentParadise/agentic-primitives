@@ -174,6 +174,7 @@ COPY packages/*.whl /tmp/packages/
 # agentic_memory and agentic_session_store are what the two capability
 # doctors exec; pyjwt is required for MCP authentication.
 RUN uv pip install --no-cache /tmp/packages/*.whl pyjwt \
+    && ln -s /opt/venv/bin/syn-delegate /usr/local/bin/syn-delegate \
     && rm -rf /tmp/packages
 
 # =============================================================================
