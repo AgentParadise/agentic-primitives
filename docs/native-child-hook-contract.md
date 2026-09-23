@@ -212,3 +212,25 @@ of leaking a fake into later evidence tests. The locked session-store suite also
 passes (real exporter case remains an explicit opt-in, validated separately).
 Main QA now passes topology fitness but fails its default-branch submodule
 reachability gate until this upstream draft is merged; that gate remains intact.
+
+## Pinned runtime trust conformance
+
+The real workspace image `omni-agent-workspace:2.1.250` reports Codex 0.150.1
+and Claude Code 2.1.250. An offline Codex app-server probe found that capture
+handlers installed without `hooks.state` are enabled but **untrusted**, so the
+runtime excludes them from execution. Feature enablement alone was insufficient.
+
+The installer now records the pinned runtime's normalized hashes for only the
+exact capture handlers it adds or finds, using their actual configuration path
+and group index. Existing unrelated trust entries remain unchanged; explicitly
+disabled capture handlers fail installation. No global hook-trust bypass is used.
+Hashes are tied to the exact command, matcher, event and timeout. Changing those
+fields or the supported Codex version requires rerunning real-binary conformance.
+
+`tests/test_pinned_codex_hooks.py` in the session-store package runs directly with
+Python when `CODEX_NATIVE_TEST_BINARY` points to Codex 0.150.1. In an offline,
+disposable pinned-image container it verified both capture handlers are trusted,
+an unrelated handler stays untrusted, and installation is idempotent. No model
+requests, credentials or user configuration were used. This proves runtime hook
+activation eligibility only; real child spawning, binding and capture, and
+fail-closed launch enforcement remain open acceptance work.

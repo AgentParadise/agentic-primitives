@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import MutableMapping, MutableSequence
+from pathlib import Path
 
 import tomlkit
 
@@ -11,7 +12,38 @@ HOOK_COMMAND = "python3 -m agentic_session_store.child_hook"
 EVENTS = ("PreToolUse", "PostToolUse")
 
 
-def merge_capture_hooks(content: str) -> str:
+# Normalized identities reported by the pinned Codex 0.150.1 hooks/list API.
+# The offline pinned-binary test must pass whenever handler configuration changes.
+CAPTURE_HASHES = {
+    "PreToolUse": (
+        "pre_tool_use",
+        "sha256:9a034149e7c29c315ce5c38584cbddee34d8520aea923440a68277636c09c3c6",
+    ),
+    "PostToolUse": (
+        "post_tool_use",
+        "sha256:974c902411a510addfa36497c43289977bbbc73d3bd1f32ed99b57846159499b",
+    ),
+}
+
+
+def _trust_capture(hooks: MutableMapping, event: str, index: int, path: Path) -> bool:
+    state = hooks.setdefault("state", tomlkit.table())
+    if not isinstance(state, MutableMapping):
+        raise TypeError("Codex hook state must be a table")
+    label, digest = CAPTURE_HASHES[event]
+    key = f"{path.resolve()}:{label}:{index}:0"
+    entry = state.setdefault(key, tomlkit.table())
+    if not isinstance(entry, MutableMapping):
+        raise TypeError("Codex hook state entry must be a table")
+    if entry.get("enabled") is False:
+        raise ValueError("Capture hook is explicitly disabled")
+    if entry.get("trusted_hash") == digest:
+        return False
+    entry["trusted_hash"] = digest
+    return True
+
+
+def merge_capture_hooks(content: str, *, config_path: Path | None = None) -> str:
     """Preserve unrelated settings and comments; repeated installation is a no-op.
 
     tomlkit handles both inline arrays and arrays of tables. Reparse with the
@@ -41,10 +73,13 @@ def merge_capture_hooks(content: str) -> str:
                 }
             ],
         }
-        if any(group == expected for group in groups):
-            continue
-        groups.append(expected)
-        changed = True
+        index = next((i for i, group in enumerate(groups) if group == expected), None)
+        if index is None:
+            index = len(groups)
+            groups.append(expected)
+            changed = True
+        if config_path is not None:
+            changed = _trust_capture(hooks, event, index, config_path) or changed
     result = tomlkit.dumps(document) if changed else content
     tomllib.loads(result)
     return result

@@ -50,7 +50,9 @@ def install(path: Path) -> bool:
     try:
         fcntl.flock(lock, fcntl.LOCK_EX)
         original, mode = _read(path)
-        updated = merge_capture_hooks(original.decode("utf-8")).encode("utf-8")
+        updated = merge_capture_hooks(
+            original.decode("utf-8"), config_path=path
+        ).encode("utf-8")
         if original == updated:
             return False
         descriptor, temporary = tempfile.mkstemp(
