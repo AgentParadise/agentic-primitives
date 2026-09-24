@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 📦 omni-agent 1.7.0: claude-code 2.1.281, codex 0.156.1
+
+Brings the two current flagship models into the workspace image:
+
+- **Opus 5.5 becomes what `opus` means.** claude-code 2.1.280 added Opus 5.5
+  and made the `opus` alias resolve to it; 2.1.281 is the current npm release.
+  Probed on the built image with `claude -p --model opus`: the init event,
+  every assistant `message.model` and the `modelUsage` key all report
+  `claude-opus-5-5`, with **no** `[1m]` suffix. Consumers that price by the
+  reported model need a row for that exact spelling.
+- **`gpt-6-sol` is in the codex model catalog** from codex 0.156.1. Probed with
+  `codex exec --json -m gpt-6-sol`: the run completes, and the on-disk rollout
+  records `"model":"gpt-6-sol"`. The `--json` stdout still carries no model
+  field, so the rollout remains the only observed-model source.
+
+MINOR rather than PATCH for the same reason as 1.4.0: the behaviour of an
+image consumer changes even though nothing is removed. Any phase that asks for
+`opus` now runs, and is billed as, a different model.
+
+The Codex hook trust hashes in `codex_hook_config.CAPTURE_HASHES` were
+recomputed from the 0.156.1 `hooks/list` API and are **unchanged**: both
+capture handlers report the same `currentHash` and `trusted` status. All four
+pinned native conformance modules (`test_pinned_codex_hooks`,
+`test_pinned_codex_child`, `test_pinned_claude_child`,
+`test_pinned_cross_harness`) pass against the real binaries in a
+network-disabled container.
+
+`claude-cli` and `interactive-tmux` keep their existing pins.
+
 ### ✨ RTK token compression: installed for the first time (omni-agent 1.6.0, claude-cli 2.1.4, interactive-tmux 0.2.4)
 
 ADR-056 was accepted on 2026-04-04 and states RTK is "baked into workspace

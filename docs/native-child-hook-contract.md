@@ -3,9 +3,9 @@
 Research checkpoint for Syntropic137 #1398, 2026-09-22. Implementation and
 supported-launch acceptance remain incomplete.
 
-## Codex 0.150.1
+## Codex 0.156.1
 
-Repository: `openai/codex`, pinned tag `rust-v0.150.1`, matching the workspace
+Repository: `openai/codex`, pinned tag `rust-v0.156.1`, matching the workspace
 image. The pinned source, rather than current documentation, establishes these
 interfaces:
 
@@ -19,14 +19,14 @@ interfaces:
 
 Sources:
 
-- [Pre-execution hook boundary](https://github.com/openai/codex/blob/rust-v0.150.1/codex-rs/core/src/tools/registry.rs#L568)
-- [Tool matcher names](https://github.com/openai/codex/blob/rust-v0.150.1/codex-rs/core/src/tools/hook_names.rs#L41)
-- [PreToolUse payload](https://github.com/openai/codex/blob/rust-v0.150.1/codex-rs/hooks/src/events/pre_tool_use.rs#L24)
-- [Spawn and returned identity](https://github.com/openai/codex/blob/rust-v0.150.1/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs#L117)
-- [PostToolUse payload](https://github.com/openai/codex/blob/rust-v0.150.1/codex-rs/hooks/src/events/post_tool_use.rs#L150)
-- [Child hook dispatch and stop semantics](https://github.com/openai/codex/blob/rust-v0.150.1/codex-rs/core/src/hook_runtime.rs#L116)
+- [Pre-execution hook boundary](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/tools/registry.rs#L588)
+- [Tool matcher names](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/tools/hook_names.rs#L41)
+- [PreToolUse payload](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/hooks/src/events/pre_tool_use.rs#L24)
+- [Spawn and returned identity](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs#L109)
+- [PostToolUse payload](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/hooks/src/events/post_tool_use.rs#L150)
+- [Child hook dispatch and stop semantics](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/hook_runtime.rs#L126)
 
-The [failure handling](https://github.com/openai/codex/blob/rust-v0.150.1/codex-rs/hooks/src/events/pre_tool_use.rs#L197)
+The [failure handling](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/hooks/src/events/pre_tool_use.rs#L193)
 defaults to allowing execution. Hook launch errors, malformed JSON and several
 exit paths do not block. Exit 2 requires nonempty stderr and enabled control
 effects. A durable hook can reject known persistence failures, but a hook that
@@ -35,9 +35,18 @@ therefore require an enforced acknowledgement at the pinned runtime boundary,
 or must remain explicitly unproven. Do not convert hook installation into a
 claim of complete capture.
 
+Changes between 0.150.1 and 0.156.1 in the cited sources, checked by diffing
+both tags: the hook payloads, failure defaults, spawn identity, hook schema,
+`hooks` feature gate and trust-hash function are unchanged. Three additive
+changes exist. The tool registry gained a `tool_policy` that can keep a tool
+from registering at all, which also means no hook fires for it. `SubagentStart`
+now also fires for forked subagents, not only fresh ones. `SessionMeta` gained
+`forked_from_ordinal_exclusive` and `runtime_workspace_roots`. None of these
+alter the capture contract below.
+
 ## Claude Code
 
-Workspace pin: 2.1.250. Current official
+Workspace pin: 2.1.281. Current official
 [hook reference](https://code.claude.com/docs/en/hooks) documents `agent_id` for
 SubagentStop, distinct from the parent `session_id`. The workspace stop handler
 now preserves this field, with the old `subagent_id` adapter spelling as a
@@ -228,7 +237,7 @@ Hashes are tied to the exact command, matcher, event and timeout. Changing those
 fields or the supported Codex version requires rerunning real-binary conformance.
 
 `tests/test_pinned_codex_hooks.py` in the session-store package runs directly with
-Python when `CODEX_NATIVE_TEST_BINARY` points to Codex 0.150.1. In an offline,
+Python when `CODEX_NATIVE_TEST_BINARY` points to the pinned Codex binary. In an offline,
 disposable pinned-image container it verified both capture handlers are trusted,
 an unrelated handler stays untrusted, and installation is idempotent. No model
 requests, credentials or user configuration were used. This proves runtime hook
@@ -278,7 +287,7 @@ Universal closed coverage, launch-time fail-closed enforcement, and the broader
 cross-harness acceptance matrix remain separate work.
 
 
-## Claude 2.1.250 native child capture
+## Claude native child capture (proven at 2.1.250, re-verified at 2.1.281)
 
 Local workspace initialization installs synchronous `PreToolUse` and
 `PostToolUse` hooks for `Agent` and legacy `Task`, preserving other settings and
@@ -313,8 +322,27 @@ nullable lifecycle fields without changing existing exported records or their
 source hashes. Version 2 pages carry cross-harness/lifecycle observations;
 readers still accept version 1.
 
-The offline `test_pinned_cross_harness.py` runs real Claude 2.1.250 and Codex
-0.150.1 through Claude -> Codex -> Claude. It verifies independent native files,
+The offline `test_pinned_cross_harness.py` runs the pinned real Claude and Codex
+binaries through Claude -> Codex -> Claude. It verifies independent native files,
 pre-launch intents, exact parents and successful delegate outcomes. This proves
 the controlled shim path; it does not seal run-wide descendant coverage, add a
 workflow-success gate, or complete mixed resume/fork acceptance.
+
+
+## Re-verification at Claude 2.1.281 / Codex 0.156.1, 2026-09-24 UTC
+
+The omni-agent image moved to Claude Code 2.1.281 and Codex 0.156.1. The
+sections above that name 0.150.1 or 2.1.250 record what was observed at those
+versions and are kept as history.
+
+The Codex trust hashes were recomputed through the 0.156.1 `hooks/list` API
+against a freshly installed capture configuration. Both handlers report the
+same `currentHash` as before and `trustStatus: trusted`, so
+`CAPTURE_HASHES` is unchanged. Upstream's hash function
+(`codex_config::version_for_toml`) is byte-identical between the two tags.
+
+All four pinned modules, `test_pinned_codex_hooks.py`,
+`test_pinned_codex_child.py`, `test_pinned_claude_child.py` and
+`test_pinned_cross_harness.py`, passed (6 tests, none skipped) against the real
+binaries in the built image, in a network-disabled container, with no
+credentials.

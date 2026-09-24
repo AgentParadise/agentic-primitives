@@ -19,7 +19,7 @@ BINARY = os.environ.get("CLAUDE_NATIVE_TEST_BINARY")
 def test_native_claude_depth_three(tmp_path: Path, shell_context=False):
     assert (
         subprocess.check_output([BINARY, "--version"], text=True).strip()
-        == "2.1.250 (Claude Code)"
+        == "2.1.281 (Claude Code)"
     )
     root = tmp_path
     home = root / "home"

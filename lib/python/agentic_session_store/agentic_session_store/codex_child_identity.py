@@ -1,4 +1,4 @@
-"""Bounded native identity lookup for Codex 0.150.1 task-path spawn replies."""
+"""Bounded native identity lookup for Codex 0.156.1 task-path spawn replies."""
 
 from __future__ import annotations
 
