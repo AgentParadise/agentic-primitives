@@ -27,9 +27,9 @@ jobs:
     name: Agent docs (AGENTS.md == CLAUDE.md)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Install just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v2.0.0
       # AGENTS.md is canonical; CLAUDE.md is a byte-identical committed copy.
       # This gate must run in CI, not only inside `just qa`: this workflow
       # defines its own jobs and never invokes that recipe, so a gate living
