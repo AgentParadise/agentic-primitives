@@ -19,8 +19,22 @@ have failed and blocked the omni-agent 1.7.0 image. Levels reflect what moved:
   session evidence and child capture: `EvidenceHarnessPlugin`,
   `CapturedHarnessPlugin`, `harness_for_exporter_agent`, the
   `NativeEvidenceReader` protocol with Claude and Codex evidence readers, plus
-  the `child_journal` and `session_spool` modules. Backward compatible; a
-  consumer that does not use them is unaffected.
+  the `child_journal` and `session_spool` modules, and `MountConfig.kind`
+  (`bind` or `volume`) with `to_docker_run_arg()`. Existing behaviour also
+  changes, so review these before upgrading:
+  - `MountConfig` now validates on construction. A relative, root (`/`),
+    `//`-prefixed or `..`-containing `container_path`, control characters in
+    either path, or an invalid volume name raise `ValueError` where they were
+    previously accepted.
+  - `WorkspaceDockerProvider` now passes `config.mounts` to `docker run` as
+    `--mount` arguments, drops a default hardening tmpfs whose path an
+    explicit mount targets, and raises `ValueError` on a duplicate mount
+    target (including `/workspace`).
+  - Transcript session ids can differ for the same input. Claude sidechain
+    transcripts resolve to `agent-<agentId>` instead of the root `sessionId`;
+    Codex `multi_agent_version: v2` rollouts resolve to the per-thread
+    `payload.id` instead of the tree-wide `session_id`. Root transcripts are
+    unchanged.
 - **agentic-session-store 0.2.1 -> 0.3.0** (minor). Native child-session
   capture for Claude and Codex (hook installers, child journal, Codex child
   identity binding), structured cross-harness delegation, and a new
