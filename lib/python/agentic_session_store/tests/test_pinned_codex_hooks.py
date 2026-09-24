@@ -1,4 +1,4 @@
-"""Offline trust conformance against the workspace's real Codex 0.150.1 binary.
+"""Offline trust conformance against the workspace's real Codex 0.156.1 binary.
 
 Set CODEX_NATIVE_TEST_BINARY to opt in. No credentials, model calls or network
 are required. Run this module directly with Python inside the pinned image.
@@ -47,7 +47,7 @@ def request(process, identifier, method, params):
 class PinnedCodexHooks(unittest.TestCase):
     def test_only_installed_capture_handlers_are_trusted(self):
         version = subprocess.check_output([BINARY, "--version"], text=True).strip()
-        self.assertEqual(version, "codex-cli 0.150.1")
+        self.assertEqual(version, "codex-cli 0.156.1")
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             config = home / "config.toml"

@@ -12,7 +12,8 @@ HOOK_COMMAND = "python3 -m agentic_session_store.child_hook"
 EVENTS = ("PreToolUse", "PostToolUse")
 
 
-# Normalized identities reported by the pinned Codex 0.150.1 hooks/list API.
+# Normalized identities reported by the pinned Codex 0.156.1 hooks/list API
+# (recomputed 2026-09-24; identical to the 0.150.1 values).
 # The offline pinned-binary test must pass whenever handler configuration changes.
 CAPTURE_HASHES = {
     "PreToolUse": (

@@ -19,7 +19,7 @@ BINARY = os.environ.get("CODEX_NATIVE_TEST_BINARY")
 def test_native_v2_spawn_registers_before_binding(tmp_path: Path, shell_context=False):
     assert (
         subprocess.check_output([BINARY, "--version"], text=True).strip()
-        == "codex-cli 0.150.1"
+        == "codex-cli 0.156.1"
     )
     home = tmp_path / "home"
     home.mkdir()

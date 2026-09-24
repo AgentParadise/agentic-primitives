@@ -1,7 +1,7 @@
 """Bounded native child hook adapter. Run with python -m agentic_session_store.child_hook.
 
 Exit 2 with nonempty stderr explicitly denies a failed pre-tool registration in
-Codex 0.150.1. The harness can still fail open if this process cannot start.
+Codex 0.156.1. The harness can still fail open if this process cannot start.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Codex rollout header references, pinned against rust-v0.150.1 protocol.rs.
+"""Codex rollout header references, pinned against rust-v0.156.1 protocol.rs.
 
 Only the first session_meta is the current thread header. Later metadata may
 belong to inherited fork history and must never replace this identity.
