@@ -7,7 +7,10 @@ if [ -z "${EXPORTER_SPOOL_DIR:-}" ]; then
 fi
 exporter="${AGENTIC_SESSION_STORE_EXPORTER_BIN:-apss-session-exporter}"
 budget="${AGENTIC_FINALIZE_BUDGET_S:-30}"
-if timeout --signal=TERM --kill-after=1 "${budget}" "${exporter}" --spool-only; then
+# Exporter output never reaches container logs: an exporter (including an
+# override) may print transcript content or environment values. Only this
+# finalizer's own status lines are emitted, matching the apss finalizer.
+if timeout --signal=TERM --kill-after=1 "${budget}" "${exporter}" --spool-only >/dev/null 2>&1; then
     echo "[local-capture] sweep persisted; workflow coverage remains independently determined" >&2
 else
     rc=$?

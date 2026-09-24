@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔒 Security: mount guard and finalizer log leak (agentic-isolation 0.8.1; omni-agent 1.7.1, claude-cli 2.1.5, interactive-tmux 0.2.5)
+
+Ported from agentic-workspace PR #14 (e875ff0).
+
+- **agentic-isolation 0.8.0 -> 0.8.1.** `WorkspaceDockerProvider` let an
+  explicit mount replace, or nest beneath, the `/home/agent`, `/tmp` or
+  `/var/agentic` security tmpfs, so harness configuration and credentials
+  could persist across workspaces. Only `/spool` may now be replaced; a mount
+  target equal to or under a protected tmpfs raises `ValueError`.
+- **session-store `local` finalizer.** Exporter stdout and stderr went to
+  container logs, where an exporter (or an override) could print transcript
+  content or environment values. Both are now discarded, matching the `apss`
+  finalizer. The script is baked into every workspace image under
+  `/opt/agentic/capabilities/`, hence the patch bumps of omni-agent,
+  claude-cli and interactive-tmux; images carry the fix only after a release.
+
 ### 📦 Version bookkeeping: agentic-isolation 0.8.0, agentic-session-store 0.3.0, agentic-memory 0.2.1
 
 Three published packages had shipped content change on `main` since `release`
