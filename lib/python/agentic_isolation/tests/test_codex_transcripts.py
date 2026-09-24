@@ -483,3 +483,68 @@ class TestRealShellNeverFakeExecFn:
         assert result.returncode == 0
         assert str(transcript_path) in result.stdout
         assert _TRANSCRIPT_ROOT_ABSENT_MARKER not in result.stdout
+
+
+class TestSymlinkedSessionsRoot:
+    """The session-store capability replaces `~/.codex/sessions` with a
+    SYMLINK into its spool partition (`session-store/apss/init.sh`).
+    `find` does not follow a symlink given as its starting path, so a
+    plain `find "$root"` listed nothing, exited 0 and reported no error -
+    every codex rollout on a session-store workspace was invisible and no
+    codex phase ever recorded the model it ran (syntropic137#1415).
+
+    Real shell, real symlink: a fake `exec_fn` cannot reproduce this."""
+
+    def test_symlinked_root_still_lists_the_rollout(self, tmp_path: Path) -> None:
+        spool = tmp_path / "spool" / "codex" / "2026" / "09" / "24"
+        spool.mkdir(parents=True)
+        transcript = spool / "rollout-2026-09-24T19-10-16-abc.jsonl"
+        transcript.write_text(_session_meta_line("abc") + "\n")
+        codex_home = tmp_path / "home" / ".codex"
+        codex_home.mkdir(parents=True)
+        (codex_home / "sessions").symlink_to(tmp_path / "spool" / "codex")
+
+        env = dict(os.environ)
+        env["CODEX_HOME"] = str(codex_home)
+        result = subprocess.run(
+            ["sh", "-lc", _FIND_TRANSCRIPTS_COMMAND],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+
+        assert result.returncode == 0
+        assert result.stdout.strip().endswith(transcript.name)
+        assert _TRANSCRIPT_ROOT_ABSENT_MARKER not in result.stdout
+
+    async def test_extract_through_a_real_shell_finds_the_symlinked_rollout(
+        self, tmp_path: Path
+    ) -> None:
+        spool = tmp_path / "spool" / "codex" / "2026" / "09" / "24"
+        spool.mkdir(parents=True)
+        (spool / "rollout-2026-09-24T19-10-16-abc.jsonl").write_text(
+            _session_meta_line("abc") + "\n"
+        )
+        codex_home = tmp_path / "home" / ".codex"
+        codex_home.mkdir(parents=True)
+        (codex_home / "sessions").symlink_to(tmp_path / "spool" / "codex")
+
+        async def real_shell(
+            command: str,
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: dict[str, str] | None = None,
+        ) -> ExecuteResult:
+            shell_env = dict(os.environ)
+            shell_env["CODEX_HOME"] = str(codex_home)
+            done = subprocess.run(
+                ["sh", "-c", command], capture_output=True, text=True, env=shell_env, check=False
+            )
+            return ExecuteResult(exit_code=done.returncode, stdout=done.stdout, stderr=done.stderr)
+
+        result = await CodexTranscriptSource(real_shell).extract()
+
+        assert result.errors == []
+        assert [t.session_id for t in result.transcripts] == ["abc"]

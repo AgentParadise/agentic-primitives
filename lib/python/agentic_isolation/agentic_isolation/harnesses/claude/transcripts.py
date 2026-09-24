@@ -60,7 +60,12 @@ _FIND_TRANSCRIPTS_COMMAND = (
     # the fix: exactly the marker followed by one `\n` (0x0a), nothing
     # else.
     f"printf '%s\\n' '{_TRANSCRIPT_ROOT_ABSENT_MARKER}'; exit 0; fi; "
-    "find \"$root\" -name '*.jsonl' -type f"
+    # `-H`: follow the START path if it is a symlink (only that one, so no
+    # loop risk inside the tree). The session-store capability replaces
+    # this root with a symlink into its spool partition, and a plain
+    # `find` lists nothing there while exiting 0 - every transcript on a
+    # session-store workspace was silently invisible (syntropic137#1415).
+    "find -H \"$root\" -name '*.jsonl' -type f"
 )
 
 
