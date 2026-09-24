@@ -7,4 +7,4 @@ avoid the `RuntimeWarning: found in sys.modules` issue when running
 `python -m agentic_memory.doctor`.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"

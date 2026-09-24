@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 📦 Version bookkeeping: agentic-isolation 0.8.0, agentic-session-store 0.3.0, agentic-memory 0.2.1
+
+Three published packages had shipped content change on `main` since `release`
+while their versions stayed put, so the `main -> release` version gate would
+have failed and blocked the omni-agent 1.7.0 image. Levels reflect what moved:
+
+- **agentic-isolation 0.7.0 -> 0.8.0** (minor). New public surface for durable
+  session evidence and child capture: `EvidenceHarnessPlugin`,
+  `CapturedHarnessPlugin`, `harness_for_exporter_agent`, the
+  `NativeEvidenceReader` protocol with Claude and Codex evidence readers, plus
+  the `child_journal` and `session_spool` modules. Backward compatible; a
+  consumer that does not use them is unaffected.
+- **agentic-session-store 0.2.1 -> 0.3.0** (minor). Native child-session
+  capture for Claude and Codex (hook installers, child journal, Codex child
+  identity binding), structured cross-harness delegation, and a new
+  `syn-delegate` console script. Adds a runtime dependency on
+  `tomlkit>=0.13.3,<1`, which the package previously did not have.
+- **agentic-memory 0.2.0 -> 0.2.1** (patch). A lint-driven refactor of one
+  helper in `contract.py` (lambda to named function). No behaviour or API
+  change.
+
+`__version__` moves with `pyproject.toml` for both packages that expose it.
+
 ### 📦 omni-agent 1.7.0: claude-code 2.1.281, codex 0.156.1
 
 Brings the two current flagship models into the workspace image:
