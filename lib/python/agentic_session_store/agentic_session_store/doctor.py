@@ -227,6 +227,8 @@ def _symlinks_correct(contract: SessionStoreContract) -> CheckResult:
 
 
 def _exporter_present(contract: SessionStoreContract) -> CheckResult:
+    if contract.provider == "local":
+        return _local_exporter_present()
     # Resolution order: explicit override, then the standard name, then the
     # vendor-branded legacy name for backward compatibility.
     override = os.environ.get(EXPORTER_BINARY_ENV, "").strip()
@@ -283,6 +285,34 @@ def _exporter_present(contract: SessionStoreContract) -> CheckResult:
             detail=f"{path} --version exited {result.returncode}",
         )
     return CheckResult(name="exporter_present", passed=True, detail=path)
+
+
+def _local_exporter_present() -> CheckResult:
+    """Fail startup when the installed exporter lacks durable local operations."""
+    import subprocess
+
+    binary = os.environ.get(EXPORTER_BINARY_ENV, "").strip() or EXPORTER_BINARY
+    try:
+        result = subprocess.run(
+            [binary, "--help"],
+            capture_output=True,
+            text=True,
+            timeout=EXPORTER_VERSION_TIMEOUT_SECONDS,
+            check=False,
+        )
+        supported = result.returncode == 0 and all(
+            flag in result.stdout
+            for flag in ("--spool-only", "--spool-list", "--spool-read")
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        supported = False
+    return CheckResult(
+        name="exporter_present",
+        passed=supported,
+        detail="Local spool interface available"
+        if supported
+        else "Exporter lacks a usable local spool interface",
+    )
 
 
 # --- Credential-safe HTTP -----------------------------------------------------
@@ -369,6 +399,12 @@ of it, so this opener has exactly one redirect handler and it is this one.
 
 
 def _store_reachable(contract: SessionStoreContract) -> CheckResult:
+    if contract.provider == "local":
+        return CheckResult(
+            name="store_reachable",
+            passed=True,
+            detail="Local capture selected; remote store check not applicable.",
+        )
     health_url = contract.url.rstrip("/") + "/healthz"
     parsed = urllib.parse.urlparse(health_url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:

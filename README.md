@@ -2,6 +2,13 @@
 
 > Atomic building blocks for AI agent systems
 
+> **Repository split in progress.** Installable skills and collections now live
+> in [Agentic Skills](https://github.com/AgentParadise/agentic-skills). Workspace
+> contracts, runtime libraries, images, and Local/Docker implementations now
+> live in [Agentic Workspace](https://github.com/AgentParadise/agentic-workspace).
+> Existing plugin consumers remain supported during the compatibility window.
+> See the [extraction and migration guide](docs/extraction.md).
+
 [![Version](https://img.shields.io/badge/version-3.1.2-purple.svg)](VERSION)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
@@ -177,11 +184,11 @@ Infrastructure primitives in `lib/python/`, installable via `pip` or `uv`:
 
 | Package | Version | Description |
 |---------|---------|-------------|
-| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.7.0 | Docker workspace sandboxing for agent execution |
+| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.8.0 | Docker workspace sandboxing for agent execution |
 | [`agentic-events`](lib/python/agentic_events/) | 0.1.1 | Zero-dependency JSONL event emission |
 | [`agentic-logging`](lib/python/agentic_logging/) | 0.1.2 | Structured logging for agents and humans |
-| [`agentic-memory`](lib/python/agentic_memory/) | 0.2.0 | Contract and doctor for the `memory` workspace capability |
-| [`agentic-session-store`](lib/python/agentic_session_store/) | 0.2.1 | Contract and doctor for the `session-store` workspace capability |
+| [`agentic-memory`](lib/python/agentic_memory/) | 0.2.1 | Contract and doctor for the `memory` workspace capability |
+| [`agentic-session-store`](lib/python/agentic_session_store/) | 0.3.0 | Contract and doctor for the `session-store` workspace capability |
 
 ```bash
 # Install a package for development

@@ -1,5 +1,12 @@
 # Changelog - delegation plugin
 
+## 1.3.0 - 2026-09-23
+
+Captured workflows use `syn-delegate` for durable intent, exact native identity,
+parent association and actual process outcome. Missing durable context prevents
+launch. Existing harness permission configuration remains authoritative. Native
+Claude and Codex capture hooks remain separate from cross-harness delegation.
+
 ## 1.2.4 - 2026-08-28
 
 Names the workspace container as a case where

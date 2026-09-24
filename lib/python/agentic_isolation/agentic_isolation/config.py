@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -209,15 +212,46 @@ class MountConfig:
     host_path: str | Path
     container_path: str
     read_only: bool = False
+    kind: Literal["bind", "volume"] = "bind"
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("bind", "volume"):
+            raise ValueError("Unsupported mount kind")
+        target = PurePosixPath(self.container_path)
+        if (
+            not target.is_absolute()
+            or self.container_path.startswith("//")
+            or ".." in target.parts
+            or str(target) == "/"
+        ):
+            raise ValueError("Mount target must be an absolute non-root container path")
+        if any(char in str(self.host_path) + self.container_path for char in "\x00\r\n"):
+            raise ValueError("Mount paths must not contain control characters")
+        if self.kind == "volume" and not re.fullmatch(
+            r"[a-zA-Z0-9][a-zA-Z0-9_.-]+", str(self.host_path)
+        ):
+            raise ValueError("Invalid Docker volume name")
 
     def to_docker_mount(self) -> dict[str, Any]:
         """Convert to Docker mount specification."""
         return {
-            "type": "bind",
-            "source": str(Path(self.host_path).resolve()),
-            "target": self.container_path,
+            "type": self.kind,
+            "source": str(self.host_path)
+            if self.kind == "volume"
+            else str(Path(self.host_path).resolve()),
+            "target": str(PurePosixPath(self.container_path)),
             "read_only": self.read_only,
         }
+
+    def to_docker_run_arg(self) -> str:
+        """Encode one Docker --mount CSV argument without shell interpolation."""
+        mount = self.to_docker_mount()
+        fields = [f"type={mount['type']}", f"source={mount['source']}", f"target={mount['target']}"]
+        if self.read_only:
+            fields.append("readonly")
+        output = io.StringIO()
+        csv.writer(output, lineterminator="").writerow(fields)
+        return output.getvalue()
 
 
 @dataclass

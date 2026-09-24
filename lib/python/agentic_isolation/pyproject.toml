@@ -1,6 +1,6 @@
 [project]
 name = "agentic-isolation"
-version = "0.7.0"
+version = "0.8.0"
 description = "Workspace isolation for AI agent execution"
 readme = "README.md"
 license = { text = "MIT" }
@@ -28,6 +28,7 @@ docker = [
     "docker>=7.0.0",
 ]
 dev = [
+    "agentic-session-store",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "ruff==0.16.1",
@@ -66,3 +67,6 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.uv.sources]
+agentic-session-store = { path = "../agentic_session_store", editable = true }

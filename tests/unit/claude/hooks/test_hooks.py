@@ -1170,6 +1170,35 @@ class TestWorkspaceStop:
 class TestWorkspaceSubagentStop:
     """Workspace subagent-stop handler — observability only"""
 
+    @pytest.mark.parametrize(
+        ("identity_fields", "expected"),
+        [
+            ({"agent_id": "child/native-雪"}, "child/native-雪"),
+            ({"agent_id": "native-child", "subagent_id": "legacy-child"}, "native-child"),
+            ({"subagent_id": "legacy-child"}, "legacy-child"),
+            ({}, "unknown"),
+        ],
+    )
+    def test_emits_actual_child_identity_without_copying_response(
+        self, monkeypatch, identity_fields, expected
+    ):
+        monkeypatch.setenv("PYTHONPATH", str(PROJECT_ROOT / "lib/python/agentic_events"))
+        event = {
+            "session_id": "parent-root",
+            "hook_event_name": "SubagentStop",
+            "last_assistant_message": "private response must not be copied",
+            **identity_fields,
+        }
+        result = subprocess.run(
+            [sys.executable, str(WORKSPACE_HANDLERS / "subagent-stop.py")],
+            input=json.dumps(event), capture_output=True, text=True, check=True,
+        )
+        assert result.stdout == ""
+        emitted = [json.loads(line) for line in result.stderr.splitlines()]
+        assert len(emitted) == 1
+        assert emitted[0]["context"]["subagent_id"] == expected
+        assert "private response" not in result.stderr
+
     def test_never_blocks(self):
         event = {
             "session_id": "ws-sub",

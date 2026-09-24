@@ -215,12 +215,80 @@ bump-version part artifact:
 # QUALITY ASSURANCE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Regenerate CLAUDE.md from AGENTS.md.
+#
+# AGENTS.md is canonical; CLAUDE.md is a byte-identical COPY, committed so a
+# fresh clone has it. Deliberately NOT a symlink: git for Windows defaults to
+# core.symlinks=false and materialises a committed symlink as a plain text file
+# containing the target path, so CLAUDE.md would become a 9-byte file reading
+# "AGENTS.md" and Claude Code would load THAT as the entire project context.
+#
+# Deliberately not an `@AGENTS.md` import stub either: Claude resolves at most
+# 5 files deep and the stub spends one hop reaching AGENTS.md, leaving 3 levels
+# of nested imports instead of 4 (measured).
+#
+# Normative source: APS-V1-0003 section 6.4 (DOC03-claude-md-copy).
+[group('qa')]
+sync-agent-docs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # rm first: `cp` onto a SYMLINK writes THROUGH it, truncating the target -
+    # which here is AGENTS.md itself. Removing the entry replaces the link
+    # rather than following it, and repairs a CLAUDE.md turned back into one.
+    rm -f CLAUDE.md
+    cp AGENTS.md CLAUDE.md
+    chmod 0644 CLAUDE.md
+    echo "CLAUDE.md regenerated from AGENTS.md"
+
+# Gate: the copy must stay identical.
+#
+# This exists because making CLAUDE.md a real file INTRODUCED a drift risk that
+# the old symlink made impossible. A copy without a gate is strictly worse than
+# the symlink it replaced on that one axis, so the gate ships with the copy.
+[group('qa')]
+check-agent-docs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Representation first, THEN bytes. `cmp` follows symlinks and ignores
+    # mode, so a committed `CLAUDE.md -> AGENTS.md` symlink compares equal on
+    # Linux while reintroducing the precise Windows breakage this rule exists
+    # to prevent. A content-only gate would pass that and call it conformant.
+    for f in AGENTS.md CLAUDE.md; do
+        if [ -L "$f" ]; then
+            echo "$f is a SYMLINK; it must be a regular file."
+            echo "git for Windows checks a committed symlink out as a text file"
+            echo "containing the target path, which Claude Code loads as context."
+            echo "Fix: just sync-agent-docs"
+            exit 1
+        fi
+        if [ ! -f "$f" ]; then
+            echo "$f is missing or not a regular file."
+            exit 1
+        fi
+    done
+    modes="$(git ls-files -s -- AGENTS.md CLAUDE.md | awk '{print $1}' | sort -u)"
+    if [ "$modes" != "100644" ]; then
+        echo "AGENTS.md and CLAUDE.md must both be committed as mode 100644."
+        echo "Found: $(git ls-files -s -- AGENTS.md CLAUDE.md)"
+        exit 1
+    fi
+    if ! cmp -s AGENTS.md CLAUDE.md; then
+        echo "CLAUDE.md is not identical to AGENTS.md."
+        echo "AGENTS.md is canonical. Edit THAT, never CLAUDE.md."
+        echo "Then run: just sync-agent-docs"
+        diff AGENTS.md CLAUDE.md | head -20 || true
+        exit 1
+    fi
+    echo "CLAUDE.md matches AGENTS.md"
+
 # Run all QA checks (format check, lint, test)
 [group('qa')]
 qa:
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
     @echo '{{ GREEN }}Running Full QA Suite{{ NORMAL }}'
     @echo '{{ GREEN }}════════════════════════════════════════{{ NORMAL }}'
+    just check-agent-docs
+    @echo ''
     just python-lock-check
     @echo ''
     just fmt-check

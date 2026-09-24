@@ -57,7 +57,10 @@ def capability_env_name(capability: str, field: str) -> str:
     the two implementations of one rule. The conformance test in
     tests/test_contract.py pins them together.
     """
-    normalize = lambda part: part.upper().replace("-", "_")
+
+    def normalize(part: str) -> str:
+        return part.upper().replace("-", "_")
+
     return f"AGENTIC_{normalize(capability)}_{normalize(field)}"
 
 
@@ -110,6 +113,7 @@ class ExporterEnv(StrEnum):
     CLAUDE_ROOT = "CLAUDE_PROJECTS_ROOT"
     CODEX_ROOT = "CODEX_SESSIONS_ROOT"
     STATE_FILE = "EXPORTER_STATE_FILE"
+    SPOOL_DIR = "EXPORTER_SPOOL_DIR"
     #: The exporter's own name for the deployment identity, translated from
     #: Env.DEPLOYMENT by init.sh.
     ORIGIN_DEPLOYMENT = "SESSION_STORE_ORIGIN_DEPLOYMENT"
@@ -317,7 +321,8 @@ class SessionStoreContract:
         the doctor's contract-failure handling (one JSON object, five checks,
         `contract_parses` carrying the message) is unchanged.
         """
-        _require_origin_only_url(self.url)
+        if self.provider != "local" or self.url:
+            _require_origin_only_url(self.url)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> SessionStoreContract | None:
@@ -337,7 +342,7 @@ class SessionStoreContract:
             )
 
         url = _clean(env.get(Env.URL))
-        if not url:
+        if not url and provider != "local":
             raise ValueError(f"{Env.URL} is required when a provider is set")
         # The URL's own shape is checked by __post_init__, which every
         # construction path runs. What stays here is the one thing a
@@ -361,7 +366,7 @@ class SessionStoreContract:
 
         return cls(
             provider=provider,
-            url=url,
+            url=url or "",
             auth=_clean(env.get(Env.AUTH)),
             tags=_clean(env.get(Env.TAGS)),
             spool=spool,

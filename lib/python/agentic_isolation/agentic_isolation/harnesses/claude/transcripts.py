@@ -65,12 +65,12 @@ _FIND_TRANSCRIPTS_COMMAND = (
 
 
 def _resolve_session_id(lines: list[str], source_path: str) -> str:
-    """Prefer the first line's `sessionId`; fall back to the filename stem.
+    """Keep native child identity separate from its containing root sessionId.
 
-    Claude Code's JSONL lines all carry the same `sessionId`, but only
-    the first line is consulted: cheaper, and sufficient since the
-    field does not vary within one file.
+    Root transcripts retain their first sessionId. Sidechains use their own
+    agentId, matching the native agent-<id> transcript key.
     """
+    first_session_id: str | None = None
     for line in lines:
         try:
             parsed = json.loads(line)
@@ -89,10 +89,13 @@ def _resolve_session_id(lines: list[str], source_path: str) -> str:
             continue
         if not isinstance(parsed, dict):
             continue
+        agent_id = parsed.get("agentId")
+        if parsed.get("isSidechain") is True and isinstance(agent_id, str) and agent_id:
+            return "agent-" + agent_id
         session_id = parsed.get("sessionId")
-        if isinstance(session_id, str) and session_id:
-            return session_id
-    return Path(source_path).stem
+        if first_session_id is None and isinstance(session_id, str) and session_id:
+            first_session_id = session_id
+    return first_session_id or Path(source_path).stem
 
 
 @dataclass

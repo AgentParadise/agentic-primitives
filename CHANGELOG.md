@@ -9,6 +9,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 📦 Version bookkeeping: agentic-isolation 0.8.0, agentic-session-store 0.3.0, agentic-memory 0.2.1
+
+Three published packages had shipped content change on `main` since `release`
+while their versions stayed put, so the `main -> release` version gate would
+have failed and blocked the omni-agent 1.7.0 image. Levels reflect what moved:
+
+- **agentic-isolation 0.7.0 -> 0.8.0** (minor). New public surface for durable
+  session evidence and child capture: `EvidenceHarnessPlugin`,
+  `CapturedHarnessPlugin`, `harness_for_exporter_agent`, the
+  `NativeEvidenceReader` protocol with Claude and Codex evidence readers, plus
+  the `child_journal` and `session_spool` modules, and `MountConfig.kind`
+  (`bind` or `volume`) with `to_docker_run_arg()`. Existing behaviour also
+  changes, so review these before upgrading:
+  - `MountConfig` now validates on construction. A relative, root (`/`),
+    `//`-prefixed or `..`-containing `container_path`, control characters in
+    either path, or an invalid volume name raise `ValueError` where they were
+    previously accepted.
+  - `WorkspaceDockerProvider` now passes `config.mounts` to `docker run` as
+    `--mount` arguments, drops a default hardening tmpfs whose path an
+    explicit mount targets, and raises `ValueError` on a duplicate mount
+    target (including `/workspace`).
+  - Transcript session ids can differ for the same input. Claude sidechain
+    transcripts resolve to `agent-<agentId>` instead of the root `sessionId`;
+    Codex `multi_agent_version: v2` rollouts resolve to the per-thread
+    `payload.id` instead of the tree-wide `session_id`. Root transcripts are
+    unchanged.
+- **agentic-session-store 0.2.1 -> 0.3.0** (minor). Native child-session
+  capture for Claude and Codex (hook installers, child journal, Codex child
+  identity binding), structured cross-harness delegation, and a new
+  `syn-delegate` console script. Adds a runtime dependency on
+  `tomlkit>=0.13.3,<1`, which the package previously did not have.
+- **agentic-memory 0.2.0 -> 0.2.1** (patch). A lint-driven refactor of one
+  helper in `contract.py` (lambda to named function). No behaviour or API
+  change.
+
+`__version__` moves with `pyproject.toml` for both packages that expose it.
+
+### 📦 omni-agent 1.7.0: claude-code 2.1.281, codex 0.156.1
+
+Brings the two current flagship models into the workspace image:
+
+- **Opus 5.5 becomes what `opus` means.** claude-code 2.1.280 added Opus 5.5
+  and made the `opus` alias resolve to it; 2.1.281 is the current npm release.
+  Probed on the built image with `claude -p --model opus`: the init event,
+  every assistant `message.model` and the `modelUsage` key all report
+  `claude-opus-5-5`, with **no** `[1m]` suffix. Consumers that price by the
+  reported model need a row for that exact spelling.
+- **`gpt-6-sol` is in the codex model catalog** from codex 0.156.1. Probed with
+  `codex exec --json -m gpt-6-sol`: the run completes, and the on-disk rollout
+  records `"model":"gpt-6-sol"`. The `--json` stdout still carries no model
+  field, so the rollout remains the only observed-model source.
+
+MINOR rather than PATCH for the same reason as 1.4.0: the behaviour of an
+image consumer changes even though nothing is removed. Any phase that asks for
+`opus` now runs, and is billed as, a different model.
+
+The Codex hook trust hashes in `codex_hook_config.CAPTURE_HASHES` were
+recomputed from the 0.156.1 `hooks/list` API and are **unchanged**: both
+capture handlers report the same `currentHash` and `trusted` status. All four
+pinned native conformance modules (`test_pinned_codex_hooks`,
+`test_pinned_codex_child`, `test_pinned_claude_child`,
+`test_pinned_cross_harness`) pass against the real binaries in a
+network-disabled container.
+
+`claude-cli` and `interactive-tmux` keep their existing pins.
+
+### ✨ RTK token compression: installed for the first time (omni-agent 1.6.0, claude-cli 2.1.4, interactive-tmux 0.2.4)
+
+ADR-056 was accepted on 2026-04-04 and states RTK is "baked into workspace
+images and initialized via `rtk init` in the entrypoint", publishing a measured
+53% context reduction. **No image ever installed it.** `git log -S rtk --all`
+across this repo returned zero commits. Every workspace run since April has
+paid full context cost while the docs described the savings as shipped.
+
+- `providers/workspaces/omni-agent/Dockerfile`: builds RTK 0.48.0 from source
+  in a `--platform=$BUILDPLATFORM` builder stage, pinned by git tag with
+  `--locked`, cross-compiled to the target arch and copied in as a bare
+  binary. Works on **both** amd64 and arm64. The Rust toolchain stays in the
+  builder, so the shipped image carries no compiler.
+- `workspace/entrypoint.sh`: initialises RTK for both harnesses after the
+  settings.json heredoc. Claude gets a PreToolUse hook, codex gets instructions
+  at `~/.codex/RTK.md`.
+- All three published provider versions bump because `workspace/` is staged
+  into every image by `stage_workspace_runtime`.
+
+Two things worth knowing for anyone reviewing this:
+
+`--auto-patch` is mandatory. Without it `rtk init` prompts, and under a non-TTY
+entrypoint it prints manual instructions, patches nothing, and still exits 0.
+The entrypoint therefore greps settings.json for the registered hook instead of
+trusting the exit status.
+
+RTK does support codex, via a separate `--codex` mode that writes instructions
+rather than a hook. `--codex` is mutually exclusive with `--auto-patch`, so the
+two harnesses need two distinct invocations.
+
+**Why source, not the published binary.** Upstream publishes a static musl
+build for x86_64 and a glibc build for aarch64, with no aarch64 musl build in
+any release. The aarch64 binary requires `GLIBC_2.39` while this base
+(node:22-slim, bookworm) provides 2.36, so installing it fails at
+`rtk --version`. That was observed in CI, not theoretical. Compiling against
+the base's own glibc produces a binary that links to 2.36 on both arches.
+
+Two details a reviewer should check. The builder is pinned to
+`$BUILDPLATFORM` so cargo runs natively on the amd64 runner rather than under
+QEMU, which is the difference between roughly 1m36s and tens of minutes. And
+rtk depends on `libsqlite3-sys`, which compiles C, so the cross build needs
+`libc6-dev-<arch>-cross` for the target's headers. That package is a
+*recommends* of the cross gcc, so `--no-install-recommends` drops it and the
+build fails with `bits/libc-header-start.h: No such file or directory`.
+
+Tradeoff accepted: the version is pinned by git tag plus `--locked` rather
+than by a SHA256 of a release artifact, which is weaker provenance than the
+checksummed `just` download alongside it. There is no publishable artifact
+that works on both arches, so this is the cost of supporting arm64 at all.
+
+
 ### 🔧 omni-agent 1.5.0: `just` is installed in the workspace image
 
 The image now ships the `just` command runner, pinned to v1.58.0 and verified

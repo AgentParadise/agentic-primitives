@@ -1,6 +1,6 @@
 [project]
 name = "agentic-session-store"
-version = "0.2.1"
+version = "0.3.0"
 description = "Session-store capability contract + env-var interface for agentic-primitives workspaces"
 readme = "README.md"
 license = { text = "MIT" }
@@ -20,7 +20,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = []
+dependencies = ["tomlkit>=0.13.3,<1"]
+
+[project.scripts]
+syn-delegate = "agentic_session_store.delegate:main"
 
 [project.optional-dependencies]
 dev = [
@@ -36,3 +39,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["agentic_session_store*"]
 exclude = ["tests*"]
+
+[tool.ruff]
+extend = "../../../ruff.toml"
+target-version = "py311"
+src = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--confcutdir=."

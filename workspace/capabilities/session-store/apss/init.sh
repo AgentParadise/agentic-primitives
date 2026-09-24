@@ -68,7 +68,7 @@ PARTITION="${AGENTIC_SESSION_STORE_PARTITION:-${HOSTNAME}}"
 PART_DIR="${SPOOL}/${PARTITION}"
 
 # --- Store endpoint -----------------------------------------------------------
-export SESSION_STORE_URL="${AGENTIC_SESSION_STORE_URL}"
+export SESSION_STORE_URL="${AGENTIC_SESSION_STORE_URL:-}"
 if [ -n "${AGENTIC_SESSION_STORE_AUTH:-}" ]; then
     export SESSIONS_WRITE_TOKEN="${AGENTIC_SESSION_STORE_AUTH}"
 
@@ -723,8 +723,36 @@ export CODEX_SESSIONS_ROOT="${PART_DIR}/codex"
 # the proven namespace holding either a regular file or nothing.
 export EXPORTER_STATE_FILE="${__STATE_FILE}"
 
+# The local provider shares native-root preservation but publishes immutable
+# envelopes without contacting a remote store. Keep its index in our namespace.
+if [ "${AGENTIC_SESSION_STORE_PROVIDER:-}" = "local" ]; then
+    export EXPORTER_SPOOL_DIR="${META_DIR}/envelopes"
+    if [ -L "${EXPORTER_SPOOL_DIR}" ] || ! (umask 077; mkdir -p "${EXPORTER_SPOOL_DIR}"); then
+        echo "[session-store] cannot create a safe local envelope directory" >&2
+        return 1
+    fi
+    __origin_file="${META_DIR}/.origin-host"
+    if [ -L "${__origin_file}" ]; then
+        echo "[session-store] local capture origin must not be a symlink" >&2
+        return 1
+    fi
+    if [ ! -e "${__origin_file}" ]; then
+        (umask 077; set -o noclobber; hostname > "${__origin_file}") || return 1
+    fi
+    [ -f "${__origin_file}" ] || return 1
+    export SESSION_STORE_ORIGIN_HOST="$(cat "${__origin_file}")"
+    [ -n "${SESSION_STORE_ORIGIN_HOST}" ] || return 1
+    export SESSION_STORE_ORIGIN_ENV=container
+    __deployment_file="${META_DIR}/.origin-deployment"
+    [ ! -L "${__deployment_file}" ] || return 1
+    if [ ! -e "${__deployment_file}" ]; then
+        (umask 077; set -o noclobber; printf '%s' "${SESSION_STORE_ORIGIN_DEPLOYMENT:-}" > "${__deployment_file}") || return 1
+    fi
+    [ -f "${__deployment_file}" ] || return 1
+fi
+
 # --- Deliberately NOT set -----------------------------------------------------
-# SESSION_STORE_ORIGIN_HOST is left unset so the exporter reports the real
+# Remote-provider SESSION_STORE_ORIGIN_HOST is left unset so the exporter reports the real
 # hostname. The corpus uses origin_host for machine identity and per-machine
 # cost attribution keys on it; overloading it with phase identity would
 # corrupt that telemetry permanently.
@@ -743,6 +771,22 @@ if [ "${__migrate_failed}" -ne 0 ]; then
     return 1
 fi
 unset __migrate_failed
+
+# Local capture owns durable child observations as well as transcript bytes.
+# Initialize and install before the readiness marker; failures stay visible.
+if [ "${AGENTIC_SESSION_STORE_PROVIDER:-}" = "local" ]; then
+    if ! python3 -m agentic_session_store.install_child_hooks \
+        "${CODEX_HOME:-${HOME}/.codex}/config.toml" \
+        --journal "${META_DIR}/children.sqlite"; then
+        echo "[session-store] child capture initialization failed" >&2
+        return 1
+    fi
+    if ! python3 -m agentic_session_store.install_child_hooks \
+        "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/settings.json" --harness claude; then
+        echo "[session-store] Claude child capture initialization failed" >&2
+        return 1
+    fi
+fi
 
 # --- Record that this init completed ------------------------------------------
 # LAST, and reached only when every step above returned success, because the
