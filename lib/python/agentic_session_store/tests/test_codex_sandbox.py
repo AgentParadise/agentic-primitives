@@ -1,16 +1,15 @@
-"""Sandbox mode validation and fail-closed probe record parsing."""
+"""Sandbox mode validation and the fail-closed live probe."""
 
-import json
+import os
+import sys
 
 import pytest
 
 from agentic_session_store.codex_sandbox import (
-    DEFAULT_STATUS_PATH,
     CodexSandboxMode,
     parse_sandbox_mode,
-    read_status,
+    probe,
     resolve_sandbox_mode,
-    status_path,
 )
 
 
@@ -45,42 +44,52 @@ def test_cli_value_wins_over_environment():
     )
 
 
-def test_status_path_default_and_override(tmp_path):
-    assert status_path({}) == DEFAULT_STATUS_PATH
-    override = tmp_path / "s.json"
-    assert status_path({"AGENTIC_CODEX_SANDBOX_STATUS": str(override)}) == override
+def _codex(tmp_path, body):
+    binary = tmp_path / "bin" / "codex"
+    binary.parent.mkdir(exist_ok=True)
+    binary.write_text(f"#!{sys.executable}\n" + body)
+    binary.chmod(0o700)
+    return {**os.environ, "PATH": str(binary.parent)}
 
 
-def test_available_record(tmp_path):
-    path = tmp_path / "s.json"
-    path.write_text(
-        json.dumps({"schema_version": 1, "available": True, "detail": "ok"})
+def test_probe_passes_on_clean_exit(tmp_path):
+    record = tmp_path / "argv"
+    env = _codex(
+        tmp_path,
+        f"import sys,os\nopen({str(record)!r},'w').write(repr((sys.argv[1:], os.getcwd())))\n",
     )
-    status = read_status(path)
+    status = probe(CodexSandboxMode.READ_ONLY, environment=env, cwd=str(tmp_path))
     assert status.available
-    assert status.detail == "ok"
+    argv, cwd = eval(record.read_text())  # written by this test
+    assert argv == ["sandbox", "-c", 'sandbox_mode="read-only"', "--", "true"]
+    assert os.path.realpath(cwd) == os.path.realpath(tmp_path)
 
 
-@pytest.mark.parametrize(
-    "content",
-    [
-        b"",
-        b"[]",
-        b"{",
-        b'{"schema_version": 1}',
-        b'{"schema_version": 1, "available": 1}',
-        b'{"schema_version": 2, "available": true}',
-        b"\xff\xfe",
-        b" " * (64 * 1024 + 1),
-    ],
-)
-def test_malformed_records_fail_closed(tmp_path, content):
-    path = tmp_path / "s.json"
-    path.write_bytes(content)
-    assert not read_status(path).available
-
-
-def test_missing_record_fails_closed(tmp_path):
-    status = read_status(tmp_path / "absent.json")
+def test_probe_reports_the_bwrap_cause(tmp_path):
+    env = _codex(
+        tmp_path,
+        "import sys\nprint('warning: noise', file=sys.stderr)\n"
+        "print('bwrap: Failed to make / slave: Permission denied', file=sys.stderr)\n"
+        "print('trailing', file=sys.stderr)\nsys.exit(1)\n",
+    )
+    status = probe(CodexSandboxMode.WORKSPACE_WRITE, environment=env)
     assert not status.available
-    assert "no sandbox probe record" in status.detail
+    assert (
+        status.detail
+        == "probe exit 1: bwrap: Failed to make / slave: Permission denied"
+    )
+
+
+def test_probe_fails_closed_without_codex(tmp_path):
+    status = probe(
+        CodexSandboxMode.WORKSPACE_WRITE, environment={"PATH": str(tmp_path / "empty")}
+    )
+    assert not status.available
+    assert "not installed" in status.detail
+
+
+def test_probe_fails_closed_on_timeout(tmp_path):
+    env = _codex(tmp_path, "import time\ntime.sleep(5)\n")
+    status = probe(CodexSandboxMode.WORKSPACE_WRITE, environment=env, timeout=0.5)
+    assert not status.available
+    assert "timed out" in status.detail

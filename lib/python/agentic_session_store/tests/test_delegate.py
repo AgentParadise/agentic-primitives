@@ -19,10 +19,8 @@ def environment(tmp_path):
     (spool / ".agentic-session-store/run").mkdir(parents=True)
     binary = tmp_path / "bin"
     binary.mkdir()
-    status = tmp_path / "codex-sandbox.json"
-    status.write_text(
-        json.dumps({"schema_version": 1, "available": True, "detail": "probe ok"})
-    )
+    # The fake codex answers `codex sandbox ...` with this exit status.
+    (tmp_path / "probe-rc").write_text("0")
     return {
         **os.environ,
         "PATH": str(binary),
@@ -33,13 +31,23 @@ def environment(tmp_path):
         "AGENTIC_ATTEMPT_ID": "attempt",
         "AGENTIC_PARENT_HARNESS": "claude",
         "AGENTIC_PARENT_NATIVE_ID": "parent",
-        "AGENTIC_CODEX_SANDBOX_STATUS": str(status),
     }
 
 
 def _fake(environment, body):
+    """Fake codex: `codex sandbox` is the probe, anything else runs `body`."""
     binary = Path(environment["PATH"].split(os.pathsep)[0]) / "codex"
-    binary.write_text(f"#!{sys.executable}\n" + body)
+    probe = binary.parent.parent / "probe-rc"
+    probes = binary.parent.parent / "probes.jsonl"
+    dispatch = (
+        "import json as _j, sys as _s\n"
+        "if _s.argv[1:2] == ['sandbox']:\n"
+        f"    open({str(probes)!r}, 'a').write(_j.dumps(_s.argv[1:]) + '\\n')\n"
+        f"    _rc = int(open({str(probe)!r}).read())\n"
+        "    if _rc: print('bwrap: No permissions to create a new namespace', file=_s.stderr)\n"
+        "    raise SystemExit(_rc)\n"
+    )
+    binary.write_text(f"#!{sys.executable}\n" + dispatch + body)
     binary.chmod(0o700)
 
 
@@ -171,11 +179,15 @@ def test_codex_native_environment_supplies_parent_and_is_not_inherited(environme
 
 
 def test_failed_os_launch_retains_distinct_intent(environment):
-    _fake(environment, "")
-    binary = Path(environment["PATH"].split(os.pathsep)[0]) / "codex"
+    # Claude, because a Codex binary that cannot execute already fails the
+    # sandbox probe (covered below) before any launch is attempted.
+    binary = Path(environment["PATH"].split(os.pathsep)[0]) / "claude"
     binary.write_text("#!/definitely-missing-interpreter\n")
+    binary.chmod(0o700)
+    command = _command()
+    command[command.index("codex")] = "claude"
     result = subprocess.run(
-        _command(), env=environment, capture_output=True, timeout=10, check=False
+        command, env=environment, capture_output=True, timeout=10, check=False
     )
     assert result.returncode == 127
     last = _journal(environment).page().changes[-1].intent
@@ -247,33 +259,19 @@ def test_sandbox_disabling_modes_are_rejected_before_launch(
     assert not _journal(environment).page().changes
 
 
-@pytest.mark.parametrize(
-    "status",
-    [
-        None,
-        {"schema_version": 1, "available": False, "detail": "bwrap: no namespace"},
-        {"schema_version": 1, "available": "yes"},
-        {"schema_version": 99, "available": True},
-        "not json",
-    ],
-)
-def test_unavailable_sandbox_refuses_launch_and_records_reason(
-    environment, tmp_path, status
+@pytest.mark.parametrize("probe_rc", [1, 2, 127])
+def test_failed_probe_refuses_launch_and_records_reason(
+    environment, tmp_path, probe_rc
 ):
     marker = tmp_path / "launched"
     _fake(environment, f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
-    path = Path(environment["AGENTIC_CODEX_SANDBOX_STATUS"])
-    if status is None:
-        path.unlink()
-    elif isinstance(status, str):
-        path.write_text(status)
-    else:
-        path.write_text(json.dumps(status))
+    (tmp_path / "probe-rc").write_text(str(probe_rc))
     result = subprocess.run(
         _command(), env=environment, capture_output=True, timeout=10, check=False
     )
     assert result.returncode == 69
     assert b"Codex sandbox is unavailable" in result.stderr
+    assert b"bwrap: No permissions" in result.stderr
     assert not marker.exists()
     last = _journal(environment).page().changes[-1].intent
     assert last.status == "launch_failed"
@@ -282,8 +280,75 @@ def test_unavailable_sandbox_refuses_launch_and_records_reason(
     assert last.child_native_id is None
 
 
-def test_claude_delegate_ignores_codex_sandbox_status(environment, tmp_path):
-    Path(environment["AGENTIC_CODEX_SANDBOX_STATUS"]).unlink()
+def test_forged_status_record_cannot_override_a_failed_probe(environment, tmp_path):
+    # The retired status-file mechanism: an agent-writable verdict. Writing a
+    # forged "available" record, and pointing the old override at it, must not
+    # change the outcome of a live probe that fails.
+    marker = tmp_path / "launched"
+    _fake(environment, f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+    (tmp_path / "probe-rc").write_text("1")
+    forged = tmp_path / "codex-sandbox.json"
+    forged.write_text(json.dumps({"schema_version": 1, "available": True}))
+    environment["AGENTIC_CODEX_SANDBOX_STATUS"] = str(forged)
+    result = subprocess.run(
+        _command(), env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 69
+    assert not marker.exists()
+    assert _journal(environment).page().changes[-1].intent.status == "launch_failed"
+
+
+@pytest.mark.parametrize("mode", ["workspace-write", "read-only"])
+def test_probe_uses_the_requested_mode(environment, tmp_path, mode):
+    _fake(environment, "")
+    result = subprocess.run(
+        _command() + ["--sandbox", mode],
+        env=environment,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    probes = [
+        json.loads(line)
+        for line in (tmp_path / "probes.jsonl").read_text().splitlines()
+    ]
+    assert probes == [["sandbox", "-c", f'sandbox_mode="{mode}"', "--", "true"]]
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "--sandbox danger-full-access",
+        "--sandbox",
+        "-c",
+        'sandbox_mode="danger-full-access"',
+        "--",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-s",
+    ],
+)
+def test_prompt_that_looks_like_an_option_stays_a_prompt(environment, tmp_path, prompt):
+    record, body = _argv_recorder(tmp_path)
+    _fake(environment, body)
+    command = _command()
+    # `--prompt=VALUE` is how a prompt that starts with `-` reaches syn-delegate
+    # itself; `--prompt VALUE` makes argparse read VALUE as an option (exit 2).
+    at = command.index("--prompt")
+    command[at : at + 2] = [f"--prompt={prompt}"]
+    result = subprocess.run(
+        command, env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(record.read_text())
+    separator = argv.index("--")
+    assert argv[separator + 1 :] == [prompt]
+    assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    assert argv.index("--sandbox") < separator
+
+
+def test_claude_delegate_does_not_probe_codex(environment, tmp_path):
+    (tmp_path / "probe-rc").write_text("1")
     binary = Path(environment["PATH"].split(os.pathsep)[0]) / "claude"
     binary.write_text(f"#!{sys.executable}\n")
     binary.chmod(0o700)
@@ -293,6 +358,26 @@ def test_claude_delegate_ignores_codex_sandbox_status(environment, tmp_path):
         command, env=environment, capture_output=True, timeout=10, check=False
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_claude_prompt_follows_an_option_terminator(environment, tmp_path):
+    record = tmp_path / "claude-argv.json"
+    binary = Path(environment["PATH"].split(os.pathsep)[0]) / "claude"
+    binary.write_text(
+        f"#!{sys.executable}\nimport json,sys\n"
+        f"open({str(record)!r},'w').write(json.dumps(sys.argv[1:]))\n"
+    )
+    binary.chmod(0o700)
+    command = _command()
+    command[command.index("codex")] = "claude"
+    at = command.index("--prompt")
+    command[at : at + 2] = ["--prompt=--dangerously-skip-permissions"]
+    result = subprocess.run(
+        command, env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(record.read_text())
+    assert argv[-2:] == ["--", "--dangerously-skip-permissions"]
 
 
 def test_sandbox_flag_is_codex_only(environment):

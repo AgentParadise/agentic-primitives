@@ -1,27 +1,27 @@
-"""Codex sandbox policy for delegated runs: which mode, and whether it can work.
+"""Codex sandbox policy for delegated runs: which mode, and whether it works.
 
-The workspace entrypoint probes ``codex sandbox`` once at startup and writes
-the verdict to a status file. A delegate reads that verdict instead of
-launching Codex into a sandbox that cannot start: Codex exits 0 even when
-every shell tool call fails inside a broken sandbox, so a run that would
-record "completed" having done nothing is refused up front instead.
+Codex exits 0 even when every shell tool call fails inside a sandbox that
+cannot start, so a delegate that did nothing would be recorded as completed.
+syn-delegate therefore probes the sandbox itself, live, with the exact mode,
+working directory and environment the delegate will use, and refuses to
+launch when the probe fails. There is no status file to trust or forge.
+
+This is a reliability guard, not a security boundary: an agent can always run
+``codex`` directly. The boundary is the container's seccomp and AppArmor
+policy, which the probe only observes.
 
 Modes that disable Codex's own sandbox are rejected, never passed through.
 """
 
 from __future__ import annotations
 
-import json
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 
 SANDBOX_MODE_ENV = "AGENTIC_DELEGATE_CODEX_SANDBOX"
-STATUS_PATH_ENV = "AGENTIC_CODEX_SANDBOX_STATUS"
-DEFAULT_STATUS_PATH = Path("/var/agentic/codex-sandbox.json")
-STATUS_SCHEMA_VERSION = 1
-MAX_STATUS_BYTES = 64 * 1024
+PROBE_TIMEOUT_SECONDS = 30.0
 
 
 class CodexSandboxMode(StrEnum):
@@ -67,40 +67,46 @@ def resolve_sandbox_mode(
 
 @dataclass(frozen=True)
 class CodexSandboxStatus:
-    """Startup probe verdict. Absent or unreadable means unavailable."""
+    """Probe verdict. Anything but a clean exit means unavailable."""
 
     available: bool
     detail: str
 
 
-def status_path(environment: Mapping[str, str]) -> Path:
-    configured = environment.get(STATUS_PATH_ENV)
-    return Path(configured) if configured else DEFAULT_STATUS_PATH
-
-
-def read_status(path: Path) -> CodexSandboxStatus:
-    """Read the entrypoint's probe record, failing closed on anything odd."""
+def probe(
+    mode: CodexSandboxMode,
+    *,
+    environment: Mapping[str, str],
+    cwd: str | None = None,
+    timeout: float = PROBE_TIMEOUT_SECONDS,
+) -> CodexSandboxStatus:
+    """Run ``codex sandbox`` in ``mode`` exactly as the delegate will run."""
+    command = ["codex", "sandbox", "-c", f'sandbox_mode="{mode.value}"', "--", "true"]
     try:
-        with path.open("rb") as handle:
-            raw = handle.read(MAX_STATUS_BYTES + 1)
+        result = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            env=dict(environment),
+            cwd=cwd,
+            timeout=timeout,
+            check=False,
+        )
     except FileNotFoundError:
-        return CodexSandboxStatus(False, f"no sandbox probe record at {path}")
+        return CodexSandboxStatus(False, "codex is not installed")
+    except subprocess.TimeoutExpired:
+        return CodexSandboxStatus(
+            False, f"codex sandbox probe timed out after {timeout:g}s"
+        )
     except OSError as error:
         return CodexSandboxStatus(
-            False, f"sandbox probe record unreadable: {error.strerror}"
+            False, f"codex sandbox probe could not start: {error.strerror}"
         )
-    if len(raw) > MAX_STATUS_BYTES:
-        return CodexSandboxStatus(False, "sandbox probe record is too large")
-    try:
-        document: object = json.loads(raw)
-    except (ValueError, UnicodeError):
-        return CodexSandboxStatus(False, "sandbox probe record is not valid JSON")
-    if not isinstance(document, dict):
-        return CodexSandboxStatus(False, "sandbox probe record is not an object")
-    version = document.get("schema_version")
-    available = document.get("available")
-    detail = document.get("detail")
-    if version != STATUS_SCHEMA_VERSION or not isinstance(available, bool):
-        return CodexSandboxStatus(False, "sandbox probe record has an unknown shape")
-    text = detail if isinstance(detail, str) else ""
-    return CodexSandboxStatus(available, text[:500])
+    if result.returncode == 0:
+        return CodexSandboxStatus(True, f"codex sandbox {mode.value} probe passed")
+    lines = [line for line in result.stderr.splitlines() if line.strip()]
+    cause = next((line for line in lines if "bwrap" in line or "rror" in line), None)
+    detail = (cause or (lines[-1] if lines else "no output")).strip()[:300]
+    return CodexSandboxStatus(False, f"probe exit {result.returncode}: {detail}")

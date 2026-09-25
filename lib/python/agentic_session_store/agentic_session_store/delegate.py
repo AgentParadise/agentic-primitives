@@ -27,9 +27,8 @@ from agentic_session_store.child_journal import (
 from agentic_session_store.codex_sandbox import (
     SANDBOX_MODE_ENV,
     CodexSandboxMode,
-    read_status,
+    probe,
     resolve_sandbox_mode,
-    status_path,
 )
 from agentic_session_store.contract import METADATA_NAMESPACE, SessionStoreContract
 
@@ -165,17 +164,23 @@ def _stream(
         return process.returncode
 
 
-def run(
-    command: list[str], journal: ChildJournal, call: ChildCall, timeout: float
-) -> int:
-    environment = dict(os.environ)
+def child_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """The delegate's environment: the parent's, minus parent-identity markers."""
+    child = dict(environment)
     for key in (
         "AGENTIC_PARENT_HARNESS",
         "AGENTIC_PARENT_NATIVE_ID",
         "CODEX_THREAD_ID",
         "CLAUDECODE",
     ):
-        environment.pop(key, None)
+        child.pop(key, None)
+    return child
+
+
+def run(
+    command: list[str], journal: ChildJournal, call: ChildCall, timeout: float
+) -> int:
+    environment = child_environment(os.environ)
     try:
         process = subprocess.Popen(
             command,
@@ -225,10 +230,16 @@ def codex_command(sandbox: CodexSandboxMode) -> list[str]:
 
 
 def refuse_without_sandbox(
-    journal: ChildJournal, call: ChildCall, environment: Mapping[str, str]
+    journal: ChildJournal,
+    call: ChildCall,
+    sandbox: CodexSandboxMode,
+    environment: Mapping[str, str],
 ) -> int | None:
-    """Record launch_failed and return an exit status if Codex cannot sandbox."""
-    status = read_status(status_path(environment))
+    """Record launch_failed and return an exit status if Codex cannot sandbox.
+
+    Probes live with the delegate's own mode, directory and environment.
+    """
+    status = probe(sandbox, environment=child_environment(environment))
     if status.available:
         return None
     _record(journal.launch_failed, call, LaunchFailureReason.CODEX_SANDBOX_UNAVAILABLE)
@@ -274,7 +285,7 @@ def main() -> int:
         )
         return EXIT_CONTEXT_UNAVAILABLE
     if sandbox is not None:
-        refused = refuse_without_sandbox(journal, call, os.environ)
+        refused = refuse_without_sandbox(journal, call, sandbox, os.environ)
         if refused is not None:
             return refused
     command = (
@@ -284,7 +295,9 @@ def main() -> int:
     )
     if args.model:
         command.extend(["--model", args.model])
-    command.append(args.prompt)
+    # `--` ends option parsing, so a prompt that starts with `-` (for example
+    # "--sandbox danger-full-access" or "-c sandbox_mode=...") stays a prompt.
+    command.extend(["--", args.prompt])
     return run(command, journal, call, args.timeout)
 
 

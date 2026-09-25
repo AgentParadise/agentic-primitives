@@ -24,16 +24,21 @@ equivalent. The only hard bound is an external one (see the budget section).
 When `AGENTIC_SESSION_STORE_PROVIDER=local`, use the installed structured shim:
 
 ```sh
-syn-delegate codex --prompt "$TASK_PROMPT" --timeout 600
+syn-delegate codex --prompt="$TASK_PROMPT" --timeout 600
 ```
+
+Keep the `=` in `--prompt="$TASK_PROMPT"`: a prompt that starts with `-` is
+otherwise read as an option and the shim exits 2 without launching. The shim
+passes the prompt to the harness after `--`, so it can never become a CLI flag.
 
 Use `--model` when selecting a model explicitly. Run from the intended working
 directory. The shim always passes Codex an explicit `--sandbox`: `workspace-write`
 by default, or `read-only` via `--sandbox read-only` or
 `AGENTIC_DELEGATE_CODEX_SANDBOX=read-only`. Any other value is refused before
-launch. It launches Codex only when the workspace's startup probe found the
-Codex sandbox working (see the ladder below); otherwise it records
-`launch_failed` and exits 69. The shim grants no other permissions. It records intent before launch, binds the delegate's own
+launch. Before every launch it probes the Codex sandbox live, in the same mode,
+directory and environment Codex will get, and launches only if the probe
+passes (see the ladder below); otherwise it records `launch_failed` and exits
+69. The shim grants no other permissions. It records intent before launch, binds the delegate's own
 native session ID, and preserves its actual exit status even when a caller uses
 `|| true` or a pipeline. Claude's shell hook supplies exact parent context;
 Codex supplies its native `CODEX_THREAD_ID`. Missing parent context or durable
@@ -138,24 +143,27 @@ plausible line sends you to install bubblewrap, which does not help. Worse,
 `codex exec` still exits 0, so a caller that trusts the exit status records a
 run that did nothing as completed.
 
-The fix belongs to the workspace, not the invocation. Start Codex-capable
-workspaces with `SecurityConfig.production(codex_sandbox=True)` from
-`agentic_isolation`. That adds one narrow seccomp profile (Docker's default
-plus `clone` with namespace flags, `unshare`, `mount`, `umount2` and
-`pivot_root`) while `--cap-drop=ALL`, `no-new-privileges` and the read-only
-root stay in force. On AppArmor hosts (Ubuntu 24.04, where the symptom is
+The fix belongs to the workspace, not the invocation. `agentic_isolation`
+applies the Codex sandbox policy to every image labelled
+`agentic.codex_cli_version` (the Codex-capable workspace images are). It adds a
+narrow seccomp profile (Docker's default plus `clone`/`unshare` for the user,
+mount, pid, net and ipc namespaces, and `mount`, `umount2`, `pivot_root`)
+while `--cap-drop=ALL`, `no-new-privileges` and the read-only root stay in
+force. On AppArmor hosts (Ubuntu 24.04, where the symptom is
 `bwrap: Failed to make / slave: Permission denied`) it also applies the
 AppArmor profile `agentic-codex-sandbox`, which the host administrator loads
-once with `sudo apparmor_parser -r`. With both, `-s workspace-write` works as
-designed: writes inside the workspace succeed and writes outside it are denied.
+once with `sudo apparmor_parser -r`; it admits only the mounts bubblewrap
+performs, so Codex must run from a directory under `/workspace`. With both,
+`-s workspace-write` works as designed: writes inside the workspace succeed
+and writes outside it are denied.
 
-The workspace entrypoint probes this at startup with
-`codex sandbox -c 'sandbox_mode="workspace-write"' -- true` and records the
-verdict in `/var/agentic/codex-sandbox.json`. `syn-delegate codex` reads it and
-refuses to launch when the sandbox is unavailable: it records `launch_failed`
+`syn-delegate codex` probes `codex sandbox -c 'sandbox_mode="<mode>"' -- true`
+live before every launch and refuses when it fails: it records `launch_failed`
 with reason `codex_sandbox_unavailable` and exits 69, rather than running a
-Codex that cannot execute a single command. If you hit that, the workspace was
-started without the profile; do not route around it with a raw `codex exec`.
+Codex that cannot execute a single command. There is no status file to trust.
+The entrypoint logs the same probe at startup (`[entrypoint] codex sandbox:`)
+for diagnosis only. If you hit the refusal, the workspace lacks the policy or
+you are outside `/workspace`; do not route around it with a raw `codex exec`.
 
 ## Budget: there is no built-in cap
 
@@ -281,9 +289,11 @@ the format section is what steers the output. See Trial T2.
 | Cannot write files / run commands | Default sandbox is `read-only` | Set `-s workspace-write` explicitly |
 | Refuses to run | Not inside a git repo | Add `--skip-git-repo-check` |
 | Writes need a dir outside the workspace | `workspace-write` is workspace-scoped | Add `--add-dir <dir>`; keep the sandbox mode as it is |
-| `bwrap: No permissions to create a new namespace`, every write fails, exit 0 | Workspace runs Docker's default seccomp profile | Start it with `SecurityConfig.production(codex_sandbox=True)` |
-| `bwrap: Failed to make / slave: Permission denied` | AppArmor host, workspace confined by `docker-default` | Load `agentic-codex-sandbox` on the host (`sudo apparmor_parser -r`) and use the same opt-in |
-| `syn-delegate` exits 69, `launch_failed` / `codex_sandbox_unavailable` | Startup probe found the Codex sandbox unusable | Same fix: the workspace needs the Codex sandbox seccomp profile |
+| `bwrap: No permissions to create a new namespace`, every write fails, exit 0 | Workspace runs Docker's default seccomp profile | Use an image labelled `agentic.codex_cli_version` through `agentic_isolation`, which applies the Codex sandbox policy |
+| `bwrap: Failed to make / slave: Permission denied` | AppArmor host, workspace confined by `docker-default` | Load `agentic-codex-sandbox` on the host (`sudo apparmor_parser -r`) |
+| `bwrap: Can't bind mount ... Permission denied` | Codex started outside `/workspace` on an AppArmor host | Run from a directory under `/workspace` |
+| `syn-delegate` exits 69, `launch_failed` / `codex_sandbox_unavailable` | The live probe found the Codex sandbox unusable | Same fixes; the stderr line names the bwrap cause |
+| `syn-delegate` exits 2, `--prompt: expected one argument` | Prompt starts with `-` | Use `--prompt="$TASK_PROMPT"` |
 | Command fails on a quirky local env (e.g. `pytest` exit 127 under pyenv) | Sandbox shell inherits host PATH quirks | Under `-s workspace-write` Codex often self-recovers (Trial T1); for wrappers, pre-set env via `-c shell_environment_policy...` |
 
 ## Trial T1 — empirical reference

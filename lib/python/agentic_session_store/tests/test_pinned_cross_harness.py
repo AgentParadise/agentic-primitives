@@ -141,36 +141,9 @@ def test_real_cross_harness_depth_three(tmp_path):
         "AGENTIC_INVOCATION_ID": "invocation",
         "AGENTIC_ATTEMPT_ID": "attempt",
     }
-    # What the workspace entrypoint does at startup: probe the real sandbox and
-    # record the verdict. Without the Codex sandbox seccomp profile this reports
-    # unavailable and syn-delegate refuses to launch Codex.
-    probe = subprocess.run(
-        [
-            os.environ["CODEX_NATIVE_TEST_BINARY"],
-            "sandbox",
-            "-c",
-            'sandbox_mode="workspace-write"',
-            "--",
-            "true",
-        ],
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-    status = tmp_path / "codex-sandbox.json"
-    status.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "available": probe.returncode == 0,
-                "detail": probe.stderr[-300:],
-            }
-        )
-    )
-    environment["AGENTIC_CODEX_SANDBOX_STATUS"] = str(status)
+    # syn-delegate probes `codex sandbox` live before launching. Inside a
+    # container this needs the Codex sandbox seccomp (and, on AppArmor hosts,
+    # AppArmor) profile; without it the Codex delegate is refused.
     environment.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
     environment.pop("CODEX_THREAD_ID", None)
     try:

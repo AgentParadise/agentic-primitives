@@ -76,30 +76,33 @@ security = SecurityConfig.production()
 security = SecurityConfig.development()
 # - Less restrictive for debugging
 
-# Workspaces that can run Codex
-security = SecurityConfig.production(codex_sandbox=True)
-# - Everything production() sets, plus
+# Codex-capable images need nothing extra: the policy follows the image
+security = SecurityConfig.production()
+# For an image labelled agentic.codex_cli_version, create() adds
 #   --security-opt=seccomp=<installed codex-sandbox.json>
 #   --security-opt=apparmor=agentic-codex-sandbox (AppArmor hosts only)
+# production(codex_sandbox=True/False) asserts the expectation; a mismatch
+# with the image label raises CodexSandboxPolicyError before launch.
 ```
 
-`codex_sandbox=True` lets Codex's own bubblewrap sandbox create a user
-namespace, which Docker's default seccomp profile denies. The shipped profile
-is Docker's default plus exactly `clone` (namespace flags), `unshare`, `mount`,
-`umount2` and `pivot_root`; capabilities stay dropped and no-new-privileges and
-the read-only root stay on. Use it only for Codex-capable workspaces. Pass the
-same `SecurityConfig` as `WorkspaceConfig.security`, which takes precedence
-over the provider's. Provenance and trade-offs:
+The Codex sandbox policy lets Codex's own bubblewrap sandbox create its
+namespaces and mount tree, which Docker's defaults deny. It is derived at
+`create()` from the image's `agentic.codex_cli_version` label (read with
+`docker image inspect`, pulled first if absent; unreadable labels fail the
+launch). The seccomp profile is Docker's default plus `clone`/`unshare` for
+exactly the user, mount, pid, net and ipc namespaces, and `mount`, `umount2`,
+`pivot_root`; capabilities stay dropped and no-new-privileges and the
+read-only root stay on. Provenance and trade-offs:
 [`agentic_isolation/seccomp/README.md`](agentic_isolation/seccomp/README.md).
-`codex_sandbox_seccomp_profile()` returns the installed file path.
 
 On hosts where Docker uses AppArmor (Ubuntu 24.04 and most Debian/Ubuntu
-servers) the opt-in also applies the AppArmor profile `agentic-codex-sandbox`,
-docker-default with `deny mount,` replaced by the mounts bubblewrap needs. Load
-it once per boot on the Docker host:
+servers) the policy also applies the AppArmor profile `agentic-codex-sandbox`,
+docker-default with `deny mount,` replaced by only the mounts bubblewrap
+performs. Load it once per boot on the Docker host:
 `sudo apparmor_parser -r <codex_sandbox_apparmor_profile_path()>`. If AppArmor
-is active and the profile is missing, workspace creation raises
-`AppArmorProfileNotLoadedError`. Details:
+is active and the profile is missing, `create()` raises
+`AppArmorProfileNotLoadedError`; if `docker info` fails, it raises
+`DockerDetectionError` rather than assuming no AppArmor. Details:
 [`agentic_isolation/apparmor/README.md`](agentic_isolation/apparmor/README.md).
 
 ## Real-Time Streaming

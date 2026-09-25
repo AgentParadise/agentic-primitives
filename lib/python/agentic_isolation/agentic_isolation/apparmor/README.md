@@ -2,12 +2,13 @@
 
 ## `agentic-codex-sandbox`
 
-The AppArmor half of the Codex sandbox opt-in. It pairs with
-`../seccomp/codex-sandbox.json` and is applied only by
-`SecurityConfig.production(codex_sandbox=True)` (Python) or
-`DockerProvider::with_codex_sandbox` (Rust), and only when the Docker daemon
-reports AppArmor (`docker info` security options contain `name=apparmor`).
-Hosts without AppArmor, such as Docker Desktop, get no AppArmor option at all.
+The AppArmor half of the Codex sandbox policy. It pairs with
+`../seccomp/codex-sandbox.json` and is applied only to images that declare
+Codex with the `agentic.codex_cli_version` label (see the seccomp README for
+how the providers derive the policy), and only when the Docker daemon reports
+AppArmor (`docker info` security options contain `name=apparmor`). Hosts
+without AppArmor, such as Docker Desktop, get no AppArmor option at all. A
+`docker info` that fails is an error, never "no AppArmor", and is not cached.
 
 ### Why it is needed
 
@@ -33,29 +34,43 @@ is `agentic-codex-sandbox`.
 
 ### The one change
 
-`deny mount,` is replaced by exactly the operations bubblewrap performs while
-building its sandbox inside its own mount namespace, taken from complain-mode
-audit records of `codex sandbox` in workspace-write and read-only modes:
+`deny mount,` is replaced by exactly the mount operations codex-cli 0.156.1's
+bubblewrap performs for `sandbox_mode` read-only and workspace-write, plus
+explicit denials. The set was recorded in complain mode on the runner with a
+workspace-shaped container (`/workspace` bind mount, `/spool`, `/var/agentic`,
+`/tmp` and home tmpfs, read-only root, cwd `/workspace` and
+`/workspace/repos/x`). Each rule names its exact option set, source and target:
 
-| Rule | bubblewrap step |
+| Step | Operations |
 |---|---|
-| `mount options in (rw, silent, rslave) -> /` | stop propagation out of the new namespace |
-| `mount options in (rw, silent, rprivate) -> /oldroot/` | detach the old root before unmounting it |
-| `mount fstype=tmpfs ... tmpfs -> /tmp/` | staging root |
-| `mount options in (rw, rbind, silent) /tmp/newroot/ -> /tmp/newroot/` | bind the staging root onto itself |
-| `pivot_root oldroot=/tmp/oldroot/ /tmp/` | enter the staging root |
-| `mount fstype=tmpfs ... tmpfs -> /newroot/{,**}` | tmpfs directories in the sandbox tree |
-| `mount options in (rw, rbind, silent) /oldroot/{,**} -> /newroot/{,**}` | bind visible paths |
-| `mount options in (ro, nosuid, nodev, noexec, remount, bind, silent, relatime) -> /newroot/{,**}` | make them read-only |
-| `mount fstype=proc ... proc -> /newroot/proc/` | sandbox `/proc` |
-| `mount fstype=devpts ... devpts -> /newroot/dev/pts/` | sandbox `/dev/pts` |
-| `pivot_root oldroot=/newroot/ /newroot/` | final root switch |
+| staging | `rslave` on `/`; tmpfs on `/tmp/`; bind `/tmp/newroot/` onto itself; `pivot_root` into `/tmp/` |
+| sandbox tree | tmpfs on `/newroot/`; bind `/oldroot/` to `/newroot/`, or `/oldroot/usr/`, `usr/bin`, `usr/sbin`, `usr/lib`, `usr/lib64`, `etc` to their `/newroot/` names |
+| devices | tmpfs on `/newroot/dev/`; bind `null`, `zero`, `full`, `random`, `urandom`, `tty` each to itself; `devpts` on `/newroot/dev/pts/`; `proc` on `/newroot/proc/` |
+| writable roots | bind `/oldroot/tmp/`, the `codex-bwrap-synthetic-mount-targets-*` dir, and `/oldroot/workspace/...` to the same place under `/newroot/`; read-only tmpfs masks for `.git`, `.codex`, `.agents` in those roots and the `codex-daemon-*` dir |
+| remounts | read-only (three exact flag sets, all with `ro`) anywhere under `/newroot/`, which only narrows; read-write only on `/newroot/workspace/...` |
+| switch | `rprivate` on `/oldroot/`; final `pivot_root` into `/newroot/` |
+| explicit deny | `sysfs`, `cgroup`, `cgroup2`, `securityfs`, `debugfs`, `tracefs`, `bpf` filesystems; any bind from `/proc`, `/sys`, `/run`, `/var/run` (or their `/oldroot/` views); any bind of a `docker.sock`; a writable remount of `/newroot/{etc,usr,bin,sbin,lib,lib64,proc,sys,dev}` |
 
-Everything else is `docker-default` verbatim. Verified on the runner, in
-enforce mode: workspace-write writes succeed inside the workspace and are
-denied outside it, read-only mode denies writes, and arbitrary mounts
-(`tmpfs` on `/mnt`, bind of `/etc` on `/mnt`, `proc` on `/mnt`, `tmpfs` on
-`/tmp` from a non-`tmpfs` source) are still denied.
+Consequence: Codex's working directory must be under `/workspace`
+(workspace-write binds it as a writable root). A Codex sandbox started from
+elsewhere is refused by the profile, and `syn-delegate`'s live probe reports
+that before launching.
+
+AppArmor cannot say "source equals target", so the workspace bind rule allows
+any `/workspace` subdirectory onto any other; both sides stay inside the
+workspace the container can already write.
+
+### Verification (runner, enforce mode)
+
+With a static probe issuing exact `mount(2)`/`pivot_root(2)` calls after
+emulating bwrap's staging, every bwrap-shaped operation above succeeded and
+every one of these was denied: bind of `/oldroot/proc`, `/oldroot/sys`,
+`/oldroot/sys/fs/cgroup`, a `docker.sock` and `/oldroot/spool` into the tree;
+bind of `/oldroot/etc` into `/newroot/workspace/`; `sysfs`, `cgroup2` and
+`proc` mounts on arbitrary targets; tmpfs on an arbitrary target; a read-write
+remount of `/newroot/etc` and `/newroot/proc`; `rprivate` on `/`. Both Codex
+sandbox modes work from `/workspace` and a subdirectory (workspace-write
+writes inside, is denied outside; read-only denies writes).
 
 ### Host setup (once per boot, on the Docker host)
 

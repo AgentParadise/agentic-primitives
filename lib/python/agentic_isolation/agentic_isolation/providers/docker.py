@@ -13,6 +13,7 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shutil
 import tempfile
@@ -22,6 +23,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path, PurePosixPath
 
 from agentic_isolation.config import (
+    CODEX_IMAGE_LABEL,
     AppArmorProfileNotLoadedError,
     SecurityConfig,
     WorkspaceConfig,
@@ -124,6 +126,49 @@ class WorkspaceDockerProvider(BaseProvider):
         """Provider name."""
         return "docker"
 
+    async def _image_labels(self, image: str) -> dict[str, str]:
+        """Labels baked into ``image``; pulls it once if it is not local.
+
+        Fails closed: an image whose labels cannot be read cannot have its
+        security policy derived, so it is not launched.
+        """
+        for attempt in range(2):
+            proc = await asyncio.create_subprocess_exec(
+                "docker",
+                "image",
+                "inspect",
+                "--format",
+                "{{json .Config.Labels}}",
+                image,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode == 0:
+                parsed: object = json.loads(stdout.decode() or "null")
+                if parsed is None:
+                    return {}
+                if not isinstance(parsed, dict):
+                    raise RuntimeError(f"Unreadable labels for image {image}")
+                return {str(key): str(value) for key, value in parsed.items()}
+            if attempt == 0:
+                pull = await asyncio.create_subprocess_exec(
+                    "docker",
+                    "pull",
+                    "--quiet",
+                    image,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await pull.communicate()
+        raise RuntimeError(
+            f"Cannot inspect image {image} to derive its security policy: "
+            f"{stderr.decode(errors='replace').strip()[:300]}"
+        )
+
+    async def _image_codex_capable(self, image: str) -> bool:
+        return bool((await self._image_labels(image)).get(CODEX_IMAGE_LABEL))
+
     @staticmethod
     def is_available() -> bool:
         """Check if Docker is available."""
@@ -134,6 +179,13 @@ class WorkspaceDockerProvider(BaseProvider):
         # Resolve plugin env vars before creating container
         if config.plugins:
             config.resolve_plugin_env()
+
+        # The Codex sandbox policy comes from the image's own declaration, and
+        # is settled before anything is created so a mismatch leaves nothing.
+        image = config.image or self._default_image
+        security = (config.security or self._security).resolve_for_image(
+            await self._image_codex_capable(image)
+        )
 
         short_id = uuid.uuid4().hex[:8]
         workspace_id = f"ws-{short_id}"
@@ -158,8 +210,6 @@ class WorkspaceDockerProvider(BaseProvider):
         await self._ensure_network(self._default_network)
 
         # Build docker run command
-        image = config.image or self._default_image
-        security = config.security or self._security
 
         cmd = self._build_run_command(
             container_name=container_name,

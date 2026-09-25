@@ -45,9 +45,12 @@ Features:
 """
 
 from agentic_isolation.config import (
+    CODEX_IMAGE_LABEL,
     CODEX_SANDBOX_APPARMOR_PROFILE,
     CODEX_SANDBOX_SECCOMP_PROFILE_NAME,
     AppArmorProfileNotLoadedError,
+    CodexSandboxPolicyError,
+    DockerDetectionError,
     MountConfig,
     ResourceLimits,
     SecurityConfig,
@@ -110,6 +113,9 @@ __all__ = [
     "codex_sandbox_seccomp_profile",
     "CODEX_SANDBOX_APPARMOR_PROFILE",
     "AppArmorProfileNotLoadedError",
+    "CODEX_IMAGE_LABEL",
+    "CodexSandboxPolicyError",
+    "DockerDetectionError",
     "codex_sandbox_apparmor_profile_path",
     # Providers
     "WorkspaceProvider",

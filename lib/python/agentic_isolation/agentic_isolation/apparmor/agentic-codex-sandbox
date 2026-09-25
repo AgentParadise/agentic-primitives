@@ -2,8 +2,9 @@
 #
 # Docker's docker-default profile (moby/profiles/apparmor template vendored in
 # docker-v29.8.0) with ONE change: its blanket `deny mount,` is replaced by the
-# mount and pivot_root operations bubblewrap performs inside its own user and
-# mount namespace. Everything else is docker-default verbatim. No `userns,`
+# exact mount and pivot_root operations bubblewrap performs inside its own user
+# and mount namespace, plus explicit denials. Everything else is docker-default
+# verbatim. No `userns,`
 # rule is needed: this profile uses ABI 3.0 like docker-default, and user
 # namespace creation is gated by the paired seccomp profile, not AppArmor.
 #
@@ -45,23 +46,65 @@ profile agentic-codex-sandbox flags=(attach_disconnected,mediate_deleted) {
   deny @{PROC}/kcore rwklx,
 
   # --- agentic-isolation: bubblewrap sandbox construction (replaces `deny mount,`)
-  # Only effective inside a user namespace the container itself created; the
-  # container has no capabilities in the initial namespace.
-  # Stop mount events propagating out of bwrap's new mount namespace.
-  # (bwrap passes MS_SILENT, hence `silent`.)
-  mount options in (rw, silent, rslave) -> /,
-  mount options in (rw, silent, rprivate) -> /oldroot/,
-  # bwrap's staging root: a tmpfs over /tmp, bound onto itself.
-  mount fstype=tmpfs options in (rw, nosuid, nodev, silent) tmpfs -> /tmp/,
-  mount options in (rw, rbind, silent) /tmp/newroot/ -> /tmp/newroot/,
+  # Exactly the mount operations codex-cli 0.156.1's bubblewrap performs for
+  # sandbox_mode read-only and workspace-write, recorded in complain mode on
+  # an AppArmor host (see README.md). Anything else stays denied. These only
+  # take effect inside a user namespace the container created itself; the
+  # container holds no capabilities in the initial namespace.
+  #
+  # 1. Stop propagation, build the staging root on a tmpfs over /tmp, enter it.
+  mount options=(rw, silent, rslave) -> /,
+  mount fstype=tmpfs options=(rw, nosuid, nodev) tmpfs -> /tmp/,
+  mount options=(rw, rbind) /tmp/newroot/ -> /tmp/newroot/,
   pivot_root oldroot=/tmp/oldroot/ /tmp/,
-  # Assemble the sandbox tree under /newroot from the old root.
-  mount fstype=tmpfs options in (rw, nosuid, nodev, silent) tmpfs -> /newroot/{,**},
-  mount options in (rw, rbind, silent) /oldroot/{,**} -> /newroot/{,**},
-  mount options in (ro, nosuid, nodev, noexec, remount, bind, silent, relatime) -> /newroot/{,**},
-  mount fstype=proc options in (rw, nosuid, nodev, noexec, silent) proc -> /newroot/proc/,
-  mount fstype=devpts options in (rw, nosuid, noexec, silent) devpts -> /newroot/dev/pts/,
+  # 2. Sandbox tree: the old root (or its /usr and /etc) bound under /newroot.
+  mount fstype=tmpfs options=(rw, nosuid, nodev) tmpfs -> /newroot/,
+  mount options=(rw, rbind) /oldroot/ -> /newroot/,
+  mount options=(rw, rbind) /oldroot/usr/ -> /newroot/usr/,
+  mount options=(rw, rbind) /oldroot/usr/bin/ -> /newroot/bin/,
+  mount options=(rw, rbind) /oldroot/usr/sbin/ -> /newroot/sbin/,
+  mount options=(rw, rbind) /oldroot/usr/lib/ -> /newroot/lib/,
+  mount options=(rw, rbind) /oldroot/usr/lib64/ -> /newroot/lib64/,
+  mount options=(rw, rbind) /oldroot/etc/ -> /newroot/etc/,
+  # 3. Minimal /dev, /proc and /dev/pts.
+  mount fstype=tmpfs options=(rw, nosuid, nodev) tmpfs -> /newroot/dev/,
+  mount options=(rw, rbind) /oldroot/dev/null -> /newroot/dev/null,
+  mount options=(rw, rbind) /oldroot/dev/zero -> /newroot/dev/zero,
+  mount options=(rw, rbind) /oldroot/dev/full -> /newroot/dev/full,
+  mount options=(rw, rbind) /oldroot/dev/random -> /newroot/dev/random,
+  mount options=(rw, rbind) /oldroot/dev/urandom -> /newroot/dev/urandom,
+  mount options=(rw, rbind) /oldroot/dev/tty -> /newroot/dev/tty,
+  mount fstype=devpts options=(rw, nosuid, noexec) devpts -> /newroot/dev/pts/,
+  mount fstype=proc options=(rw, nosuid, nodev, noexec) proc -> /newroot/proc/,
+  # 4. Writable roots (workspace-write): /tmp and the working directory, which
+  #    must be under /workspace. Codex masks .git/.codex/.agents in each root
+  #    and its daemon directory with read-only tmpfs.
+  mount options=(rw, rbind) /oldroot/tmp/ -> /newroot/tmp/,
+  mount options=(rw, rbind) /oldroot/tmp/codex-bwrap-synthetic-mount-targets-*/ -> /newroot/tmp/codex-bwrap-synthetic-mount-targets-*/,
+  mount options=(rw, rbind) /oldroot/workspace/{,**/} -> /newroot/workspace/{,**/},
+  mount fstype=tmpfs options=(rw, nosuid, nodev) tmpfs -> /newroot/tmp/codex-daemon-*/,
+  mount fstype=tmpfs options=(rw, nosuid, nodev) tmpfs -> /newroot/{tmp,workspace,workspace/**}/.{git,codex,agents}/,
+  # 5. Remounts. Read-only anywhere in the sandbox tree (only ever narrows);
+  #    read-write only on the writable workspace roots.
+  mount options=(ro, nosuid, nodev, remount, bind, silent, relatime) -> /newroot/{,**},
+  mount options=(ro, nosuid, nodev, noexec, remount, bind, silent, relatime) -> /newroot/{,**},
+  mount options=(ro, nosuid, nodev, remount, bind, silent) -> /newroot/{,**},
+  mount options=(rw, nosuid, nodev, remount, bind, silent, relatime) -> /newroot/workspace/{,**/},
+  # 6. Drop the old root and switch into the sandbox.
+  mount options=(rw, silent, rprivate) -> /oldroot/,
   pivot_root oldroot=/newroot/ /newroot/,
+  # Explicit denials for sensitive sources and filesystems (deny wins).
+  deny mount fstype=sysfs,
+  deny mount fstype=cgroup,
+  deny mount fstype=cgroup2,
+  deny mount fstype=securityfs,
+  deny mount fstype=debugfs,
+  deny mount fstype=tracefs,
+  deny mount fstype=bpf,
+  deny mount /{,oldroot/}{proc,sys}/** -> /**,
+  deny mount /{,oldroot/}{run,var/run}/** -> /**,
+  deny mount /**/docker.sock -> /**,
+  deny mount options=(rw, nosuid, nodev, remount, bind, silent, relatime) -> /newroot/{etc,usr,bin,sbin,lib,lib64,proc,sys,dev}/{,**},
   # --- end agentic-isolation
 
   deny /sys/[^f]*/** wklx,

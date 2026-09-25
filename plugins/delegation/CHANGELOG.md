@@ -9,14 +9,16 @@ recommended anywhere in this plugin.
 
 The container failure (`bwrap: No permissions to create a new namespace`) is
 now fixed at the workspace: Codex-capable workspaces start with
-`SecurityConfig.production(codex_sandbox=True)`, a narrow seccomp profile that
-permits user-namespace creation while capabilities stay dropped, plus, on
+the Codex sandbox policy that `agentic_isolation` derives from the image's
+`agentic.codex_cli_version` label: a narrow seccomp profile that permits only
+the namespaces bubblewrap uses while capabilities stay dropped, plus, on
 AppArmor hosts, an AppArmor profile that permits only the mounts bubblewrap
-makes. `syn-delegate
+performs. `syn-delegate
 codex` passes an explicit `--sandbox` (default `workspace-write`, `read-only`
-allowed, anything else refused) and refuses to launch, recording
-`launch_failed` with reason `codex_sandbox_unavailable` and exiting 69, when the
-workspace's startup probe found the sandbox unusable. Previously Codex exited 0
+allowed, anything else refused), passes the prompt after `--`, and probes the
+sandbox live before every launch, refusing (recording `launch_failed` with
+reason `codex_sandbox_unavailable`, exit 69) when it fails. Use
+`--prompt="$TASK_PROMPT"`. Previously Codex exited 0
 with every shell call failed, and the run was recorded as completed.
 
 ## 1.3.0 - 2026-09-23
