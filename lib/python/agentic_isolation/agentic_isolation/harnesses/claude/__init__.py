@@ -9,6 +9,7 @@ conforms to.
 from __future__ import annotations
 
 from agentic_isolation.harnesses import AgentName, ExecFn, TranscriptSource, register_harness
+from agentic_isolation.harnesses.claude.conversation import ClaudeConversationReader
 from agentic_isolation.harnesses.claude.evidence import ClaudeNativeEvidenceReader
 from agentic_isolation.harnesses.claude.transcripts import ClaudeTranscriptSource
 
@@ -26,6 +27,9 @@ class ClaudeHarness:
 
     def evidence_reader(self) -> ClaudeNativeEvidenceReader:
         return ClaudeNativeEvidenceReader()
+
+    def conversation_reader(self) -> ClaudeConversationReader:
+        return ClaudeConversationReader()
 
     def transcript_source(self, exec_fn: ExecFn) -> TranscriptSource | None:
         return ClaudeTranscriptSource(exec_fn)

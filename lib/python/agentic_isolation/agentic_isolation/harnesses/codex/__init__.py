@@ -27,6 +27,7 @@ not an error.
 from __future__ import annotations
 
 from agentic_isolation.harnesses import AgentName, ExecFn, TranscriptSource, register_harness
+from agentic_isolation.harnesses.codex.conversation import CodexConversationReader
 from agentic_isolation.harnesses.codex.evidence import CodexNativeEvidenceReader
 from agentic_isolation.harnesses.codex.transcripts import CodexTranscriptSource
 
@@ -44,6 +45,9 @@ class CodexHarness:
 
     def evidence_reader(self) -> CodexNativeEvidenceReader:
         return CodexNativeEvidenceReader()
+
+    def conversation_reader(self) -> CodexConversationReader:
+        return CodexConversationReader()
 
     def transcript_source(self, exec_fn: ExecFn) -> TranscriptSource | None:
         return CodexTranscriptSource(exec_fn)
