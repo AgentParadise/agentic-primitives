@@ -30,7 +30,11 @@ from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
-from agentic_session_store.child_schema import upgrade
+from agentic_session_store.child_schema import SCHEMA_VERSION, upgrade
+
+
+def _schema_version(connection: sqlite3.Connection) -> int:
+    return int(connection.execute("PRAGMA user_version").fetchone()[0])
 
 
 class LaunchFailureReason(StrEnum):
@@ -128,42 +132,55 @@ class ChildJournal:
         self._busy_timeout = busy_timeout
         if read_only:
             return
-        with closing(self._connect()) as connection, connection:
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute("""
-                CREATE TABLE IF NOT EXISTS child_intents (
-                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                    child_invocation_id TEXT NOT NULL UNIQUE,
-                    invocation_id TEXT NOT NULL,
-                    attempt_id TEXT NOT NULL,
-                    harness TEXT NOT NULL,
-                    parent_native_id TEXT NOT NULL,
-                    tool_call_id TEXT NOT NULL,
-                    child_native_id TEXT,
-                    UNIQUE (invocation_id, attempt_id, harness, parent_native_id, tool_call_id)
-                )
-            """)
+        with closing(self._connect()) as connection:
+            # Every hook process opens the journal. Rewriting the schema on each
+            # open serializes concurrent launches behind an exclusive lock and,
+            # now that a lock timeout denies the launch, turns contention into
+            # refused children. A current journal is left untouched.
+            if _schema_version(connection) == SCHEMA_VERSION:
+                return
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                if _schema_version(connection) != SCHEMA_VERSION:
+                    self._migrate(connection)
 
-            connection.execute("""
-                CREATE TABLE IF NOT EXISTS child_changes (
-                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                    intent_sequence INTEGER NOT NULL REFERENCES child_intents(sequence),
-                    child_native_id TEXT
-                )
-            """)
-            connection.execute("""
-                CREATE INDEX IF NOT EXISTS child_changes_intent
-                ON child_changes(intent_sequence)
-            """)
-            # Upgrade journals written before incremental recovery existed.
-            connection.execute("""
-                INSERT INTO child_changes (intent_sequence, child_native_id)
-                SELECT sequence, child_native_id FROM child_intents AS intent
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM child_changes WHERE intent_sequence=intent.sequence
-                )
-            """)
-            upgrade(connection)
+    @staticmethod
+    def _migrate(connection: sqlite3.Connection) -> None:
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS child_intents (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                child_invocation_id TEXT NOT NULL UNIQUE,
+                invocation_id TEXT NOT NULL,
+                attempt_id TEXT NOT NULL,
+                harness TEXT NOT NULL,
+                parent_native_id TEXT NOT NULL,
+                tool_call_id TEXT NOT NULL,
+                child_native_id TEXT,
+                UNIQUE (invocation_id, attempt_id, harness, parent_native_id, tool_call_id)
+            )
+        """)
+
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS child_changes (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                intent_sequence INTEGER NOT NULL REFERENCES child_intents(sequence),
+                child_native_id TEXT
+            )
+        """)
+        connection.execute("""
+            CREATE INDEX IF NOT EXISTS child_changes_intent
+            ON child_changes(intent_sequence)
+        """)
+        # Upgrade journals written before incremental recovery existed.
+        connection.execute("""
+            INSERT INTO child_changes (intent_sequence, child_native_id)
+            SELECT sequence, child_native_id FROM child_intents AS intent
+            WHERE NOT EXISTS (
+                SELECT 1 FROM child_changes WHERE intent_sequence=intent.sequence
+            )
+        """)
+        upgrade(connection)
+        connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     def _connect(self) -> sqlite3.Connection:
         if self._read_only:

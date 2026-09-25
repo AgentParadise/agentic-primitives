@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import sqlite3
 
+# Stored in SQLite's user_version once upgrade() has run. Bump whenever
+# upgrade() or the base tables change, so existing journals migrate once.
+SCHEMA_VERSION = 1
+
 
 def upgrade(connection: sqlite3.Connection) -> None:
     for table, additions in (

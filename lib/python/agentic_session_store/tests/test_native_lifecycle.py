@@ -460,3 +460,17 @@ def test_harness_must_match_tool(tmp_path: Path, environment: dict[str, str]) ->
     result = _hook(environment, _claude("PreToolUse"), harness=HookHarness.CODEX)
     assert result.returncode == 2
     assert _journal(environment).page().changes == ()
+
+
+def test_opening_a_current_journal_takes_no_write_lock(tmp_path: Path) -> None:
+    """Every hook opens the journal; with the launch now denied on a lock
+    timeout, opening must not queue behind another writer's schema rewrite."""
+    path = tmp_path / "children.sqlite"
+    ChildJournal(path)
+    holder = sqlite3.connect(path, isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        ChildJournal(path, busy_timeout=0.05)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()

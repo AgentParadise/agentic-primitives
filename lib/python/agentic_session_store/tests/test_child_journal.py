@@ -290,6 +290,8 @@ def test_pre_reason_journal_upgrades_its_update_trigger(tmp_path, call):
                 INSERT INTO child_changes (intent_sequence, child_native_id, status, exit_code)
                 VALUES (NEW.sequence, NEW.child_native_id, NEW.status, NEW.exit_code);
             END;
+            -- Journals written before agentic-session-store 0.5.0 never set it.
+            PRAGMA user_version=0;
         """)
     journal = ChildJournal(path)
     journal.register(call)

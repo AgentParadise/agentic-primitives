@@ -397,6 +397,12 @@ the Codex trust entry is rewritten, not orphaned) instead of running both.
 Codex trust hashes for the three guarded handlers were read from the pinned
 0.156.1 `hooks/list` API and verified `trusted`.
 
+Because a lock timeout now denies the launch, opening a current journal takes no
+write lock: the schema migration runs once and records SQLite `user_version`.
+Before 0.5.0, every hook process rewrote the triggers under an exclusive lock,
+which serialized concurrent launches (a CI run of the 32-way concurrent
+registration test hit the 5 s busy timeout).
+
 When the recorder cannot run, nothing can be written, so a denied launch leaves
 no journal record. If the recorder committed the intent and then missed its
 deadline, it marks that intent `launch_failed` with reason `capture_hook_failed`
