@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
+from agentic_isolation.harnesses.conversation import ConversationReader
 from agentic_isolation.harnesses.evidence import NativeEvidenceReader
 from agentic_isolation.providers.base import ExecuteResult
 
@@ -214,6 +215,13 @@ class EvidenceHarnessPlugin(HarnessPlugin, Protocol):
     """Optional normalized identity/lineage extraction capability."""
 
     def evidence_reader(self) -> NativeEvidenceReader: ...
+
+
+@runtime_checkable
+class ConversationHarnessPlugin(HarnessPlugin, Protocol):
+    """Optional bounded user/assistant conversation preview capability."""
+
+    def conversation_reader(self) -> ConversationReader: ...
 
 
 _REGISTRY: dict[AgentName, HarnessPlugin] = {}
