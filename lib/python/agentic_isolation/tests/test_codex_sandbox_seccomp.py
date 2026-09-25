@@ -459,8 +459,10 @@ async def _create(
 
     monkeypatch.setattr(provider, "_ensure_network", noop)
     monkeypatch.setattr(provider, "_cleanup_container", noop)
+    # WorkspaceConfig.security always wins over the provider's, so the
+    # detection overrides above must travel on it.
     with pytest.raises(RuntimeError, match="stop here"):
-        await provider.create(WorkspaceConfig(provider="docker", image="img"))
+        await provider.create(WorkspaceConfig(provider="docker", image="img", security=security))
     return calls
 
 
