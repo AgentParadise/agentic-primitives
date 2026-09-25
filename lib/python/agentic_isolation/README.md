@@ -89,7 +89,12 @@ The Codex sandbox policy lets Codex's own bubblewrap sandbox create its
 namespaces and mount tree, which Docker's defaults deny. It is derived at
 `create()` from the image's `agentic.codex_cli_version` label (read with
 `docker image inspect`, pulled first if absent; unreadable labels fail the
-launch). The seccomp profile is Docker's default plus `clone`/`unshare` for
+launch). Images must carry `agentic.codex_cli_version` to run Codex
+sandboxed: an unlabelled image that happens to contain Codex keeps Docker's
+stricter defaults, bubblewrap fails there, and `syn-delegate`'s pre-launch probe
+refuses the delegate (`launch_failed`). The container is started by the
+inspected image ID, so the label that decided the policy belongs to the image
+that runs even if its tag moves. The seccomp profile is Docker's default plus `clone`/`unshare` for
 exactly the user, mount, pid, net and ipc namespaces, and `mount`, `umount2`,
 `pivot_root`; capabilities stay dropped and no-new-privileges and the
 read-only root stay on. Provenance and trade-offs:

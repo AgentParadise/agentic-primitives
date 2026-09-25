@@ -126,11 +126,13 @@ class WorkspaceDockerProvider(BaseProvider):
         """Provider name."""
         return "docker"
 
-    async def _image_labels(self, image: str) -> dict[str, str]:
-        """Labels baked into ``image``; pulls it once if it is not local.
+    async def _inspect_image(self, image: str) -> tuple[str, dict[str, str]]:
+        """The immutable image ID and labels of ``image``; pulls once if absent.
 
-        Fails closed: an image whose labels cannot be read cannot have its
-        security policy derived, so it is not launched.
+        The caller launches by the returned ID, so the label that decided the
+        security policy belongs to exactly the image that runs, even if the
+        tag is moved between inspect and ``docker run``. Fails closed: an image
+        whose labels cannot be read is not launched.
         """
         for attempt in range(2):
             proc = await asyncio.create_subprocess_exec(
@@ -138,19 +140,23 @@ class WorkspaceDockerProvider(BaseProvider):
                 "image",
                 "inspect",
                 "--format",
-                "{{json .Config.Labels}}",
+                # Not `.Config.Labels`: some Docker versions omit the key for
+                # unlabelled images, which makes that template fail.
+                "{{.Id}} {{json .Config}}",
                 image,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await proc.communicate()
             if proc.returncode == 0:
-                parsed: object = json.loads(stdout.decode() or "null")
-                if parsed is None:
-                    return {}
-                if not isinstance(parsed, dict):
-                    raise RuntimeError(f"Unreadable labels for image {image}")
-                return {str(key): str(value) for key, value in parsed.items()}
+                image_id, _, config_json = stdout.decode().strip().partition(" ")
+                config: object = json.loads(config_json or "null")
+                labels: object = config.get("Labels") if isinstance(config, dict) else None
+                if not image_id.startswith("sha256:") or not (
+                    labels is None or isinstance(labels, dict)
+                ):
+                    raise RuntimeError(f"Unreadable inspect output for image {image}")
+                return image_id, {str(key): str(value) for key, value in (labels or {}).items()}
             if attempt == 0:
                 pull = await asyncio.create_subprocess_exec(
                     "docker",
@@ -166,9 +172,6 @@ class WorkspaceDockerProvider(BaseProvider):
             f"{stderr.decode(errors='replace').strip()[:300]}"
         )
 
-    async def _image_codex_capable(self, image: str) -> bool:
-        return bool((await self._image_labels(image)).get(CODEX_IMAGE_LABEL))
-
     @staticmethod
     def is_available() -> bool:
         """Check if Docker is available."""
@@ -183,8 +186,9 @@ class WorkspaceDockerProvider(BaseProvider):
         # The Codex sandbox policy comes from the image's own declaration, and
         # is settled before anything is created so a mismatch leaves nothing.
         image = config.image or self._default_image
+        image_id, labels = await self._inspect_image(image)
         security = (config.security or self._security).resolve_for_image(
-            await self._image_codex_capable(image)
+            bool(labels.get(CODEX_IMAGE_LABEL))
         )
 
         short_id = uuid.uuid4().hex[:8]
@@ -215,7 +219,7 @@ class WorkspaceDockerProvider(BaseProvider):
             container_name=container_name,
             workspace_id=workspace_id,
             workspace_dir=host_mount_dir,  # Use HOST path for volume mount
-            image=image,
+            image=image_id,  # the inspected image, not whatever the tag is now
             config=config,
             security=security,
         )
@@ -255,6 +259,7 @@ class WorkspaceDockerProvider(BaseProvider):
                     "container_id": container_id,
                     "container_name": container_name,
                     "image": image,
+                    "image_id": image_id,
                     "workspace_dir": str(workspace_dir),
                 },
                 _handle=container_name,  # Use name for docker exec

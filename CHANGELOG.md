@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔒 Security: Codex keeps its own sandbox in workspaces (agentic-isolation 0.9.0, agentic-session-store 0.4.0; omni-agent 1.8.0, claude-cli 2.1.6; delegation plugin 1.4.0)
 
-Ported from agentic-workspace PR #2 (7dcbfe3, 89b0017, f7c2b8b); the Rust Docker adapter part is agentic-workspace only. Part of syntropic137/syntropic137#1398.
+Ported from agentic-workspace PR #2 (7dcbfe3, 89b0017, f7c2b8b, 531f7d1); the Rust Docker adapter part is agentic-workspace only. Part of syntropic137/syntropic137#1398.
 
 Docker's default seccomp profile denies user-namespace creation without
 `CAP_SYS_ADMIN`, so Codex's bubblewrap sandbox failed in every production
@@ -25,6 +25,12 @@ call failed, and `codex exec` still exited 0.
   with plain `SecurityConfig.production()`; others keep Docker's defaults.
   `production(codex_sandbox=True/False)` only asserts the expectation, and a
   contradiction raises `CodexSandboxPolicyError` before anything is created.
+  The container is started by the inspected image ID, so a retag between
+  inspect and `docker run` cannot change which image the policy applies to.
+  A Codex-labelled image always gets the shipped profiles; a caller-supplied
+  different seccomp or AppArmor profile is refused. Images must carry the
+  label to run Codex sandboxed (an unlabelled one fails closed at
+  `syn-delegate`'s probe).
   **Behaviour change:** Syntropic137's Codex-capable images now get the policy
   without code changes, and on AppArmor hosts need the host setup step below.
 - **Seccomp** (`agentic_isolation/seccomp/codex-sandbox.json`): Moby's default

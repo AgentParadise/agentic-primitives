@@ -227,12 +227,30 @@ class SecurityConfig:
         return cls(codex_sandbox=codex_sandbox)._with_codex_profiles()
 
     def _with_codex_profiles(self) -> SecurityConfig:
+        """Pin the shipped profiles; a different caller-supplied one is refused.
+
+        A Codex image's policy is exactly the shipped pair, so a custom
+        seccomp or AppArmor profile cannot silently replace it.
+        """
         if self.codex_sandbox is not True:
             return self
+        seccomp = codex_sandbox_seccomp_profile()
+        if self.seccomp_profile is not None and (
+            Path(self.seccomp_profile).resolve() != seccomp.resolve()
+        ):
+            raise CodexSandboxPolicyError(
+                f"a Codex image must use the shipped seccomp profile {seccomp}, "
+                f"not {self.seccomp_profile}"
+            )
+        if self.apparmor_profile not in (None, CODEX_SANDBOX_APPARMOR_PROFILE):
+            raise CodexSandboxPolicyError(
+                f"a Codex image must use the AppArmor profile {CODEX_SANDBOX_APPARMOR_PROFILE}, "
+                f"not {self.apparmor_profile}"
+            )
         return replace(
             self,
-            seccomp_profile=self.seccomp_profile or codex_sandbox_seccomp_profile(),
-            apparmor_profile=self.apparmor_profile or CODEX_SANDBOX_APPARMOR_PROFILE,
+            seccomp_profile=seccomp,
+            apparmor_profile=CODEX_SANDBOX_APPARMOR_PROFILE,
         )
 
     def resolve_for_image(self, codex_capable: bool) -> SecurityConfig:

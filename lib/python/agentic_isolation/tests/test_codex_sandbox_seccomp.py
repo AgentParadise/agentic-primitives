@@ -426,13 +426,22 @@ class _Proc:
         return self._out
 
 
+inspected: list[str] = []
+
+
 def _fake_docker(
     monkeypatch: pytest.MonkeyPatch, labels: dict[str, str] | None, calls: list[list[str]]
 ) -> None:
     async def spawn(*argv: str, **_kwargs: object) -> _Proc:
         calls.append(list(argv))
         if argv[1:3] == ("image", "inspect"):
-            return _Proc(0, json.dumps(labels).encode()) if labels is not None else _Proc(1)
+            if labels is None:
+                return _Proc(1)
+            # The tag resolves to a different image on every inspect, as if
+            # it were being moved concurrently.
+            inspected.append(f"sha256:{len(inspected):064x}")
+            config = {"Labels": labels} if labels else {}  # unlabelled: key absent
+            return _Proc(0, f"{inspected[-1]} {json.dumps(config)}".encode())
         if argv[1] == "pull":
             return _Proc(1, stderr=b"pull access denied")
         if argv[1] == "run":
@@ -522,3 +531,75 @@ async def test_create_fails_closed_when_image_labels_are_unreadable(
     with pytest.raises(RuntimeError, match="Cannot inspect image img"):
         await provider.create(WorkspaceConfig(provider="docker", image="img"))
     assert [call[1] for call in calls] == ["image", "pull", "image"]
+
+
+# --- Review pass 2 ------------------------------------------------------------
+
+
+async def test_create_launches_the_inspected_image_id_not_the_tag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls = await _create(
+        monkeypatch, tmp_path, {"agentic.codex_cli_version": "0.156.1"}, SecurityConfig.production()
+    )
+    inspects = [call for call in calls if call[1:3] == ["image", "inspect"]]
+    assert len(inspects) == 1  # inspected once
+    run = _run_args(calls)
+    assert "img" not in run
+    launched = [arg for arg in run if arg.startswith("sha256:")]
+    assert launched == [inspected[-1]]
+
+
+def test_codex_image_ignores_nothing_it_would_silently_replace(tmp_path: Path) -> None:
+    custom = tmp_path / "custom.json"
+    custom.write_text("{}")
+    with pytest.raises(CodexSandboxPolicyError, match="shipped seccomp profile"):
+        SecurityConfig(seccomp_profile=custom).resolve_for_image(codex_capable=True)
+    with pytest.raises(CodexSandboxPolicyError, match="AppArmor profile"):
+        SecurityConfig(apparmor_profile="unconfined").resolve_for_image(codex_capable=True)
+
+
+async def test_create_rejects_a_custom_profile_on_a_codex_image(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    custom = tmp_path / "custom.json"
+    custom.write_text("{}")
+    calls: list[list[str]] = []
+    _fake_docker(monkeypatch, {"agentic.codex_cli_version": "0.156.1"}, calls)
+    provider = WorkspaceDockerProvider(workspace_base_dir=tmp_path / "ws")
+    with pytest.raises(CodexSandboxPolicyError):
+        await provider.create(
+            WorkspaceConfig(
+                provider="docker", image="img", security=SecurityConfig(seccomp_profile=custom)
+            )
+        )
+    assert not any(call[1] == "run" for call in calls)
+
+
+async def test_codex_image_effective_args_are_the_shipped_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(config_module, "apparmor_profile_loaded", lambda _name: True)
+    security = SecurityConfig(
+        seccomp_profile=codex_sandbox_seccomp_profile(),
+        apparmor_profile=CODEX_SANDBOX_APPARMOR_PROFILE,
+    )
+    calls: list[list[str]] = []
+    _fake_docker(monkeypatch, {"agentic.codex_cli_version": "0.156.1"}, calls)
+    security.use_gvisor = False
+    security.use_apparmor = True
+    provider = WorkspaceDockerProvider(workspace_base_dir=tmp_path)
+
+    async def noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(provider, "_ensure_network", noop)
+    monkeypatch.setattr(provider, "_cleanup_container", noop)
+    with pytest.raises(RuntimeError, match="stop here"):
+        await provider.create(WorkspaceConfig(provider="docker", image="img", security=security))
+    run = _run_args(calls)
+    assert [a for a in run if a.startswith("--security-opt=")] == [
+        "--security-opt=no-new-privileges",
+        f"--security-opt=seccomp={codex_sandbox_seccomp_profile().resolve()}",
+        f"--security-opt=apparmor={CODEX_SANDBOX_APPARMOR_PROFILE}",
+    ]
