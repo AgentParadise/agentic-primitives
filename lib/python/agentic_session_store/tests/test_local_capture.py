@@ -103,7 +103,10 @@ def test_local_init_preserves_native_roots_and_exports_durable_index(tmp_path):
 def test_local_finalizer_invokes_local_capture_and_retains_files(tmp_path, exit_code):
     exporter = tmp_path / "exporter"
     exporter.write_text(
-        f'#!/bin/sh\n[ "$1" = "--spool-only" ] || exit 99\necho invoked\nexit {exit_code}\n'
+        f'#!/bin/sh\n[ "$1" = "--spool-only" ] || exit 99\n'
+        f"touch '{tmp_path / 'invoked'}'\n"
+        "echo transcript-secret-stdout\necho transcript-secret-stderr >&2\n"
+        f"exit {exit_code}\n"
     )
     exporter.chmod(0o700)
     retained = tmp_path / "native.jsonl"
@@ -121,7 +124,8 @@ def test_local_finalizer_invokes_local_capture_and_retains_files(tmp_path, exit_
         text=True,
     )
     assert result.returncode == 0
-    assert "invoked" in result.stdout
+    assert (tmp_path / "invoked").exists()
+    assert "transcript-secret" not in result.stdout + result.stderr
     assert (
         "requires recovery" in result.stderr or "require recovery" in result.stderr
     ) == (exit_code != 0)

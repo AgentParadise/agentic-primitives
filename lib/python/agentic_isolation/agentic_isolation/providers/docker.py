@@ -19,7 +19,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from agentic_isolation.config import SecurityConfig, WorkspaceConfig
 from agentic_isolation.harnesses import ExecFn, TranscriptSource, get_harness
@@ -28,6 +28,17 @@ from agentic_isolation.providers.base import (
     ExecuteResult,
     Workspace,
 )
+
+# Security tmpfs targets that an explicit mount may never replace or sit beneath:
+# /home/agent holds harness configuration and credentials, /tmp and /var/agentic
+# hold per-run scratch and capability state. Only the session spool is meant to
+# outlive the container (docs/persistent-workspace-mounts.md).
+PROTECTED_TMPFS_TARGETS = (
+    PurePosixPath("/home/agent"),
+    PurePosixPath("/tmp"),
+    PurePosixPath("/var/agentic"),
+)
+PERSISTABLE_TMPFS_TARGET = PurePosixPath("/spool")
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +238,14 @@ class WorkspaceDockerProvider(BaseProvider):
         # An explicit persistent mount replaces the default tmpfs at that path.
         # Docker otherwise accepts both and the tmpfs hides the durable volume.
         mount_targets = {mount.to_docker_mount()["target"] for mount in config.mounts}
+        for target in mount_targets:
+            target_path = PurePosixPath(target)
+            for protected in PROTECTED_TMPFS_TARGETS:
+                if target_path == protected or protected in target_path.parents:
+                    raise ValueError(
+                        f"Mount target {target} would persist the protected tmpfs "
+                        f"{protected}; only {PERSISTABLE_TMPFS_TARGET} may be replaced"
+                    )
         cmd.extend(
             arg
             for arg in security.to_docker_run_args()

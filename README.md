@@ -184,7 +184,7 @@ Infrastructure primitives in `lib/python/`, installable via `pip` or `uv`:
 
 | Package | Version | Description |
 |---------|---------|-------------|
-| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.8.0 | Docker workspace sandboxing for agent execution |
+| [`agentic-isolation`](lib/python/agentic_isolation/) | 0.8.1 | Docker workspace sandboxing for agent execution |
 | [`agentic-events`](lib/python/agentic_events/) | 0.1.1 | Zero-dependency JSONL event emission |
 | [`agentic-logging`](lib/python/agentic_logging/) | 0.1.2 | Structured logging for agents and humans |
 | [`agentic-memory`](lib/python/agentic_memory/) | 0.2.1 | Contract and doctor for the `memory` workspace capability |

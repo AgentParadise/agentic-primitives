@@ -385,3 +385,32 @@ class TestRealShellNeverFakeExecFn:
         assert result.returncode == 0
         assert str(transcript_path) in result.stdout
         assert _TRANSCRIPT_ROOT_ABSENT_MARKER not in result.stdout
+
+
+class TestSymlinkedProjectsRoot:
+    """The session-store capability replaces `~/.claude/projects` with a
+    SYMLINK into its spool partition; a plain `find "$root"` does not follow
+    a symlinked start path and silently listed nothing (syntropic137#1415)."""
+
+    def test_symlinked_root_still_lists_the_transcript(self, tmp_path: Path) -> None:
+        spool = tmp_path / "spool" / "claude" / "proj1"
+        spool.mkdir(parents=True)
+        transcript = spool / "session-abc.jsonl"
+        transcript.write_text(json.dumps({"sessionId": "session-abc"}) + "\n")
+        home = tmp_path / "home"
+        (home / ".claude").mkdir(parents=True)
+        (home / ".claude" / "projects").symlink_to(tmp_path / "spool" / "claude")
+
+        env = dict(os.environ)
+        env["HOME"] = str(home)
+        result = subprocess.run(
+            ["sh", "-c", _FIND_TRANSCRIPTS_COMMAND],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+
+        assert result.returncode == 0
+        assert result.stdout.strip().endswith(transcript.name)
+        assert _TRANSCRIPT_ROOT_ABSENT_MARKER not in result.stdout

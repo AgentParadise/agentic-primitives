@@ -79,3 +79,28 @@ def test_invalid_paths_fail_before_launch(source: str, target: str) -> None:
 def test_invalid_volume_names_fail(name: str) -> None:
     with pytest.raises(ValueError, match="volume name"):
         MountConfig(name, "/spool", kind="volume")
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "/home/agent",
+        "/home/agent/",
+        "/home/agent/.claude",
+        "/home/agent/.codex/auth",
+        "/tmp",
+        "/tmp/x",
+        "/var/agentic",
+    ],
+)
+@pytest.mark.parametrize("kind", ["volume", "bind"])
+def test_mount_cannot_persist_protected_tmpfs(target: str, kind: str) -> None:
+    source = "persisted-home" if kind == "volume" else "/host/dir"
+    with pytest.raises(ValueError, match="protected tmpfs"):
+        command([MountConfig(source, target, kind=kind)])  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("target", ["/spool", "/spool/run", "/home/agentx", "/opt/data"])
+def test_non_protected_targets_are_allowed(target: str) -> None:
+    args = command([MountConfig("vol", target, kind="volume")])
+    assert any(arg.startswith("--tmpfs=/home/agent:") for arg in args)
