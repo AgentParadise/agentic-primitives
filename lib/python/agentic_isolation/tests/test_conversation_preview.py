@@ -335,6 +335,10 @@ def test_child_transcript_shows_only_its_own_rows() -> None:
     )
     expected = [("user", "delegated task"), ("assistant", "child answer")]
     assert _pairs(ClaudeConversationReader().conversation(child)) == expected
+    other = _bytes(_user("HIDDEN sibling", isSidechain=True, agentId="c"))
+    assert _pairs(ClaudeConversationReader().conversation(other + child, native_id="agent-b")) == (
+        expected
+    )
     assert _pairs(ClaudeConversationReader().conversation(_MIXED, native_id="agent-b")) == [
         ("user", "HIDDEN child task"),
         ("assistant", "HIDDEN child answer"),
