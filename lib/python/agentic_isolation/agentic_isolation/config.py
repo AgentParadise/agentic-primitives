@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
@@ -42,6 +43,26 @@ def _resolve_single_env_var(
     return value, True
 
 
+CODEX_SANDBOX_SECCOMP_PROFILE_NAME = "codex-sandbox.json"
+
+
+def codex_sandbox_seccomp_profile() -> Path:
+    """Filesystem path of the shipped Codex sandbox seccomp profile.
+
+    Docker's default profile plus clone (namespace flags), unshare, mount,
+    umount2 and pivot_root, so Codex's bubblewrap sandbox can create a user
+    namespace. See ``agentic_isolation/seccomp/README.md`` for provenance.
+
+    The docker CLI reads this file on the host that runs ``docker run``, so it
+    must be a real file, not a zip member.
+    """
+    resource = resources.files("agentic_isolation.seccomp") / CODEX_SANDBOX_SECCOMP_PROFILE_NAME
+    path = Path(str(resource))
+    if not path.is_file():
+        raise FileNotFoundError(f"Codex sandbox seccomp profile is not installed as a file: {path}")
+    return path
+
+
 @dataclass
 class SecurityConfig:
     """Security hardening configuration for isolated workspaces.
@@ -65,6 +86,9 @@ class SecurityConfig:
 
         # Custom
         config = SecurityConfig(read_only_root=False)
+
+        # Workspace that can run Codex (allows user namespaces, nothing more)
+        config = SecurityConfig.production(codex_sandbox=True)
     """
 
     # Capability dropping
@@ -91,12 +115,24 @@ class SecurityConfig:
     # gVisor runtime (extra sandbox layer)
     use_gvisor: bool | None = None  # None = auto-detect, True/False = force
 
+    # Seccomp profile file (--security-opt=seccomp=<path>). None keeps Docker's
+    # default profile. Only set for Codex-capable workspaces, via
+    # production(codex_sandbox=True); see codex_sandbox_seccomp_profile().
+    seccomp_profile: Path | None = None
+
     @classmethod
-    def production(cls) -> SecurityConfig:
+    def production(cls, *, codex_sandbox: bool = False) -> SecurityConfig:
         """Production-grade security configuration.
 
         All security features enabled. Use for untrusted workloads.
+
+        ``codex_sandbox=True`` is for workspaces that can run Codex. It adds
+        only the shipped seccomp profile that lets Codex's bubblewrap sandbox
+        create a user namespace; capabilities stay dropped, no-new-privileges
+        and the read-only root stay on. Leave it False for everything else.
         """
+        if codex_sandbox:
+            return cls(seccomp_profile=codex_sandbox_seccomp_profile())
         return cls()  # All defaults are production-safe
 
     @classmethod
@@ -173,6 +209,12 @@ class SecurityConfig:
 
         if self.pids_limit > 0:
             args.append(f"--pids-limit={self.pids_limit}")
+
+        if self.seccomp_profile is not None:
+            profile = Path(self.seccomp_profile)
+            if not profile.is_file():
+                raise FileNotFoundError(f"Seccomp profile not found: {profile}")
+            args.append(f"--security-opt=seccomp={profile.resolve()}")
 
         # gVisor runtime
         use_gvisor = self.use_gvisor

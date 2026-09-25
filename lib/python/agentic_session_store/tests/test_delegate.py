@@ -1,5 +1,6 @@
 """Real subprocess launch, stream binding, crash, timeout and shell masking."""
 
+import json
 import os
 import signal
 import subprocess
@@ -18,6 +19,10 @@ def environment(tmp_path):
     (spool / ".agentic-session-store/run").mkdir(parents=True)
     binary = tmp_path / "bin"
     binary.mkdir()
+    status = tmp_path / "codex-sandbox.json"
+    status.write_text(
+        json.dumps({"schema_version": 1, "available": True, "detail": "probe ok"})
+    )
     return {
         **os.environ,
         "PATH": str(binary),
@@ -28,6 +33,7 @@ def environment(tmp_path):
         "AGENTIC_ATTEMPT_ID": "attempt",
         "AGENTIC_PARENT_HARNESS": "claude",
         "AGENTIC_PARENT_NATIVE_ID": "parent",
+        "AGENTIC_CODEX_SANDBOX_STATUS": str(status),
     }
 
 
@@ -174,5 +180,126 @@ def test_failed_os_launch_retains_distinct_intent(environment):
     assert result.returncode == 127
     last = _journal(environment).page().changes[-1].intent
     assert last.status == "launch_failed"
+    assert last.reason == "process_start_failed"
     assert last.child_native_id is None
     assert last.exit_code is None
+
+
+def _argv_recorder(tmp_path):
+    record = tmp_path / "argv.json"
+    return record, (
+        f"import json,sys\nopen({str(record)!r},'w').write(json.dumps(sys.argv[1:]))\n"
+    )
+
+
+def test_codex_receives_explicit_workspace_write_sandbox(environment, tmp_path):
+    record, body = _argv_recorder(tmp_path)
+    _fake(environment, body)
+    result = subprocess.run(
+        _command(), env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(record.read_text())
+    assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+
+
+@pytest.mark.parametrize(
+    ("cli", "env", "expected"),
+    [
+        (None, "read-only", "read-only"),
+        ("workspace-write", "read-only", "workspace-write"),
+        ("read-only", None, "read-only"),
+    ],
+)
+def test_sandbox_mode_override(environment, tmp_path, cli, env, expected):
+    record, body = _argv_recorder(tmp_path)
+    _fake(environment, body)
+    if env is not None:
+        environment["AGENTIC_DELEGATE_CODEX_SANDBOX"] = env
+    command = _command() + ([] if cli is None else ["--sandbox", cli])
+    result = subprocess.run(
+        command, env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(record.read_text())
+    assert argv[argv.index("--sandbox") + 1] == expected
+
+
+@pytest.mark.parametrize("mode", ["danger-full-access", "external-sandbox", "bogus"])
+@pytest.mark.parametrize("source", ["cli", "env"])
+def test_sandbox_disabling_modes_are_rejected_before_launch(
+    environment, tmp_path, mode, source
+):
+    marker = tmp_path / "launched"
+    _fake(environment, f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+    command = _command()
+    if source == "cli":
+        command += ["--sandbox", mode]
+    else:
+        environment["AGENTIC_DELEGATE_CODEX_SANDBOX"] = mode
+    result = subprocess.run(
+        command, env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 2
+    assert mode.encode() in result.stderr
+    assert not marker.exists()
+    assert not _journal(environment).page().changes
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        None,
+        {"schema_version": 1, "available": False, "detail": "bwrap: no namespace"},
+        {"schema_version": 1, "available": "yes"},
+        {"schema_version": 99, "available": True},
+        "not json",
+    ],
+)
+def test_unavailable_sandbox_refuses_launch_and_records_reason(
+    environment, tmp_path, status
+):
+    marker = tmp_path / "launched"
+    _fake(environment, f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+    path = Path(environment["AGENTIC_CODEX_SANDBOX_STATUS"])
+    if status is None:
+        path.unlink()
+    elif isinstance(status, str):
+        path.write_text(status)
+    else:
+        path.write_text(json.dumps(status))
+    result = subprocess.run(
+        _command(), env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 69
+    assert b"Codex sandbox is unavailable" in result.stderr
+    assert not marker.exists()
+    last = _journal(environment).page().changes[-1].intent
+    assert last.status == "launch_failed"
+    assert last.reason == "codex_sandbox_unavailable"
+    assert last.exit_code is None
+    assert last.child_native_id is None
+
+
+def test_claude_delegate_ignores_codex_sandbox_status(environment, tmp_path):
+    Path(environment["AGENTIC_CODEX_SANDBOX_STATUS"]).unlink()
+    binary = Path(environment["PATH"].split(os.pathsep)[0]) / "claude"
+    binary.write_text(f"#!{sys.executable}\n")
+    binary.chmod(0o700)
+    command = _command()
+    command[command.index("codex")] = "claude"
+    result = subprocess.run(
+        command, env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_sandbox_flag_is_codex_only(environment):
+    command = _command() + ["--sandbox", "read-only"]
+    command[command.index("codex")] = "claude"
+    result = subprocess.run(
+        command, env=environment, capture_output=True, timeout=10, check=False
+    )
+    assert result.returncode == 2
+    assert b"codex only" in result.stderr

@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔒 Security: Codex keeps its own sandbox in workspaces (agentic-isolation 0.9.0, agentic-session-store 0.4.0; omni-agent 1.8.0, claude-cli 2.1.6; delegation plugin 1.4.0)
+
+Ported from agentic-workspace PR #2 (7dcbfe3); the Rust Docker adapter part is agentic-workspace only. Part of syntropic137/syntropic137#1398.
+
+Docker's default seccomp profile denies user-namespace creation without
+`CAP_SYS_ADMIN`, so Codex's bubblewrap sandbox failed in every production
+workspace (`bwrap: No permissions to create a new namespace`), every shell tool
+call failed, and `codex exec` still exited 0.
+
+- **agentic-isolation 0.8.1 -> 0.9.0.** Ships
+  `agentic_isolation/seccomp/codex-sandbox.json`: Moby's default profile
+  (docker-v29.8.0, moby/profiles v0.2.3) plus one rule allowing `clone`
+  (namespace flags), `unshare`, `mount`, `umount2` and `pivot_root`. `setns`
+  and `clone3` stay denied. New `SecurityConfig.seccomp_profile` emits
+  `--security-opt=seccomp=<path>`; `SecurityConfig.production(codex_sandbox=True)`
+  opts in and `codex_sandbox_seccomp_profile()` resolves the installed file.
+  Default behaviour is unchanged: without the opt-in no seccomp option is
+  emitted. Cap-drop ALL, no-new-privileges and the read-only root remain.
+- **Workspace entrypoint (omni-agent 1.8.0, claude-cli 2.1.6).** When `codex`
+  is installed, probes `codex sandbox -c 'sandbox_mode="workspace-write"' -- true`
+  at startup and records the verdict in `/var/agentic/codex-sandbox.json`
+  (override: `AGENTIC_CODEX_SANDBOX_STATUS`). Never fatal.
+- **agentic-session-store 0.3.0 -> 0.4.0.** `syn-delegate codex` passes an
+  explicit `--sandbox` (default `workspace-write`; `read-only` via `--sandbox`
+  or `AGENTIC_DELEGATE_CODEX_SANDBOX`; `danger-full-access`,
+  `external-sandbox` and unknown values are refused with exit 2). When the
+  probe record is missing or reports unavailable it does not start Codex: it
+  records `launch_failed` with the new journal field `reason`
+  (`codex_sandbox_unavailable`) and exits 69. The child journal gains an
+  additive `reason` column; exports include it only when set.
+- **delegation plugin 1.4.0.** `delegating-to-codex` no longer recommends
+  disabling Codex's sandbox inside containers.
+
+Trade-off: unprivileged user namespaces widen kernel attack surface inside the
+opted-in container. Mitigations: all capabilities dropped, no-new-privileges,
+Codex-only scope, patched host kernels. Hosts restricting user namespaces via
+AppArmor (for example Ubuntu 24.04 with
+`kernel.apparmor_restrict_unprivileged_userns=1`) may also need an AppArmor
+profile; unverified.
+
 ### 🔒 Security: mount guard and finalizer log leak (agentic-isolation 0.8.1; omni-agent 1.7.1, claude-cli 2.1.5, interactive-tmux 0.2.5)
 
 Ported from agentic-workspace PR #14 (e875ff0).

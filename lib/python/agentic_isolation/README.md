@@ -75,7 +75,22 @@ security = SecurityConfig.production()
 # Development profile (for local testing)
 security = SecurityConfig.development()
 # - Less restrictive for debugging
+
+# Workspaces that can run Codex
+security = SecurityConfig.production(codex_sandbox=True)
+# - Everything production() sets, plus
+#   --security-opt=seccomp=<installed codex-sandbox.json>
 ```
+
+`codex_sandbox=True` lets Codex's own bubblewrap sandbox create a user
+namespace, which Docker's default seccomp profile denies. The shipped profile
+is Docker's default plus exactly `clone` (namespace flags), `unshare`, `mount`,
+`umount2` and `pivot_root`; capabilities stay dropped and no-new-privileges and
+the read-only root stay on. Use it only for Codex-capable workspaces. Pass the
+same `SecurityConfig` as `WorkspaceConfig.security`, which takes precedence
+over the provider's. Provenance and trade-offs:
+[`agentic_isolation/seccomp/README.md`](agentic_isolation/seccomp/README.md).
+`codex_sandbox_seccomp_profile()` returns the installed file path.
 
 ## Real-Time Streaming
 

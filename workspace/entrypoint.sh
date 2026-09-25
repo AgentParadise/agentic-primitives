@@ -599,6 +599,58 @@ if [ -n "${__withhold_ambient}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
+# 5.9 Codex sandbox probe
+# -----------------------------------------------------------------------------
+# Codex runs model shell commands under bubblewrap, which needs a user
+# namespace. Docker's default seccomp profile denies that without
+# CAP_SYS_ADMIN, so unless the workspace was started with the Codex sandbox
+# seccomp profile (SecurityConfig.production(codex_sandbox=True)) every Codex
+# shell tool call fails, and `codex exec` still exits 0. Probe once here and
+# record the verdict; syn-delegate refuses to launch Codex when it is not
+# available. Never fatal: Claude-only workloads do not need it.
+#
+# The record lives on a tmpfs the agent can write, so it is advisory, not a
+# security boundary. The boundary is the seccomp profile itself.
+if command -v codex >/dev/null 2>&1; then
+    __codex_status="${AGENTIC_CODEX_SANDBOX_STATUS:-/var/agentic/codex-sandbox.json}"
+    __codex_probe_rc=0
+    __codex_probe_err=""
+    if __codex_probe_dir="$(mktemp -d 2>/dev/null)"; then
+        # `codex sandbox` scopes workspace-write to its cwd. `-C` would need a
+        # --permission-profile on 0.156.1, so change directory instead.
+        __codex_probe_err="$(cd "${__codex_probe_dir}" && timeout 30 codex sandbox \
+            -c 'sandbox_mode="workspace-write"' -- true 2>&1 >/dev/null)" || __codex_probe_rc=$?
+        rm -rf "${__codex_probe_dir}" || true
+    else
+        __codex_probe_rc=125
+        __codex_probe_err="no writable temporary directory for the probe"
+    fi
+    if [ "${__codex_probe_rc}" -eq 0 ]; then
+        __codex_available=true
+        __codex_detail="codex sandbox workspace-write probe passed"
+    else
+        __codex_available=false
+        # Restrict to characters that need no JSON escaping.
+        # Prefer the bwrap/error line; the last line is often only a --help hint.
+        __codex_detail="probe exit ${__codex_probe_rc}: $( { printf '%s\n' "${__codex_probe_err}" \
+            | grep -m 1 -i -E 'bwrap|error' || printf '%s\n' "${__codex_probe_err}" | tail -n 1; } \
+            | tr -cd 'A-Za-z0-9 ._:,/()=+-' | cut -c1-300)"
+    fi
+    if printf '{"schema_version":1,"available":%s,"mode":"workspace-write","detail":"%s"}\n' \
+        "${__codex_available}" "${__codex_detail}" > "${__codex_status}.tmp" 2>/dev/null \
+        && mv -f "${__codex_status}.tmp" "${__codex_status}" 2>/dev/null; then
+        echo "[entrypoint] codex sandbox: available=${__codex_available} (record: ${__codex_status})" >&2
+    else
+        rm -f "${__codex_status}.tmp" 2>/dev/null || true
+        echo "[entrypoint] codex sandbox: available=${__codex_available}; record ${__codex_status} not writable, syn-delegate will refuse codex" >&2
+    fi
+    if [ "${__codex_available}" != true ]; then
+        echo "[entrypoint] codex sandbox unavailable: ${__codex_detail}" >&2
+    fi
+    unset __codex_status __codex_probe_dir __codex_probe_rc __codex_probe_err __codex_available __codex_detail
+fi
+
+# -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
 # Two paths, and which one runs is decided by whether any finalizer exists.

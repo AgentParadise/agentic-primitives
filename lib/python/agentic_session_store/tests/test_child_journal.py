@@ -249,3 +249,49 @@ def test_additive_migration_preserves_old_wire_records(tmp_path):
     journal.finished(cross, 0)
     assert export_page(journal.page())["schema_version"] == 2
     assert export_page(journal.page(watermark=2)) == before
+
+
+def test_launch_failure_reason_is_durable_and_exported(tmp_path, call):
+    from agentic_session_store.child_export import export_page
+    from agentic_session_store.child_journal import LaunchFailureReason
+
+    path = tmp_path / "children.sqlite"
+    journal = ChildJournal(path)
+    journal.register(call)
+    failed = journal.launch_failed(call, LaunchFailureReason.CODEX_SANDBOX_UNAVAILABLE)
+    assert failed.reason == "codex_sandbox_unavailable"
+    assert (
+        journal.launch_failed(call, LaunchFailureReason.CODEX_SANDBOX_UNAVAILABLE)
+        == failed
+    )
+    with pytest.raises(ValueError, match="terminal"):
+        journal.launch_failed(call, LaunchFailureReason.PROCESS_START_FAILED)
+    reopened = ChildJournal(path, read_only=True)
+    assert reopened.page().changes[-1].intent.reason == "codex_sandbox_unavailable"
+    exported = export_page(reopened.page())
+    assert exported["page"]["changes"][-1]["intent"]["reason"] == (
+        "codex_sandbox_unavailable"
+    )
+    assert "reason" not in exported["page"]["changes"][0]["intent"]
+
+
+def test_pre_reason_journal_upgrades_its_update_trigger(tmp_path, call):
+    from agentic_session_store.child_journal import LaunchFailureReason
+
+    path = tmp_path / "children.sqlite"
+    ChildJournal(path)
+    with sqlite3.connect(path) as connection:
+        # Recreate the state a journal written before `reason` existed had.
+        connection.executescript("""
+            DROP TRIGGER child_updated;
+            CREATE TRIGGER child_updated
+            AFTER UPDATE OF child_native_id, status, exit_code ON child_intents
+            BEGIN
+                INSERT INTO child_changes (intent_sequence, child_native_id, status, exit_code)
+                VALUES (NEW.sequence, NEW.child_native_id, NEW.status, NEW.exit_code);
+            END;
+        """)
+    journal = ChildJournal(path)
+    journal.register(call)
+    journal.launch_failed(call, LaunchFailureReason.PROCESS_START_FAILED)
+    assert journal.page().changes[-1].intent.reason == "process_start_failed"

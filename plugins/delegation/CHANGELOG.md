@@ -1,5 +1,22 @@
 # Changelog - delegation plugin
 
+## 1.4.0 - 2026-09-25
+
+`delegating-to-codex` keeps Codex's own sandbox inside workspace containers
+instead of switching it off. The sandbox ladder now stops at
+`workspace-write`; flags and modes that disable the sandbox are no longer
+recommended anywhere in this plugin.
+
+The container failure (`bwrap: No permissions to create a new namespace`) is
+now fixed at the workspace: Codex-capable workspaces start with
+`SecurityConfig.production(codex_sandbox=True)`, a narrow seccomp profile that
+permits user-namespace creation while capabilities stay dropped. `syn-delegate
+codex` passes an explicit `--sandbox` (default `workspace-write`, `read-only`
+allowed, anything else refused) and refuses to launch, recording
+`launch_failed` with reason `codex_sandbox_unavailable` and exiting 69, when the
+workspace's startup probe found the sandbox unusable. Previously Codex exited 0
+with every shell call failed, and the run was recorded as completed.
+
 ## 1.3.0 - 2026-09-23
 
 Captured workflows use `syn-delegate` for durable intent, exact native identity,
@@ -9,24 +26,17 @@ Claude and Codex capture hooks remain separate from cross-harness delegation.
 
 ## 1.2.4 - 2026-08-28
 
-Names the workspace container as a case where
-`--dangerously-bypass-approvals-and-sandbox` is the correct flag for
-`delegating-to-codex`.
+Documented the workspace-container failure of `-s workspace-write` in
+`delegating-to-codex`: Codex's bubblewrap sandbox needs an unprivileged user
+namespace, which Docker's default seccomp profile denies, so every file write
+fails. The first line of the resulting output is misleading - it reports that
+bubblewrap was not found on PATH and that a bundled copy will be used, sending
+readers off to install bubblewrap, which does not help. The actual fault is the
+denied namespace two lines later.
 
-The sandbox ladder scoped that flag to "when the host is already externally
-sandboxed" without saying a workspace container **is** that case, so readers
-reasonably avoided the alarming-sounding flag, chose `-s workspace-write`, and
-hit a wall.
-
-Inside Docker, `-s workspace-write` makes Codex sandbox itself with bubblewrap,
-which needs an unprivileged user namespace Docker does not grant. The first
-line of the resulting output is misleading - it reports that bubblewrap was not
-found on PATH and that a bundled copy will be used, sending readers off to
-install bubblewrap, which does not help. The actual fault is the denied
-namespace two lines later, and the symptom is that every file write fails.
-
-Verified in Syntropic137 workspace containers running claude -> codex
-delegation. Laptop guidance is unchanged.
+This entry originally recommended disabling Codex's sandbox inside containers
+as the workaround. That advice is withdrawn as of 1.4.0: the fix is the Codex
+sandbox seccomp profile on the workspace, with the sandbox left on.
 
 ## 1.2.3 - 2026-08-27
 

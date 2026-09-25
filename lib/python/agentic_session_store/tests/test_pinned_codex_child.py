@@ -91,11 +91,9 @@ def test_native_v2_spawn_registers_before_binding(tmp_path: Path, shell_context=
                 BINARY,
                 "exec",
                 "--skip-git-repo-check",
-                *(
-                    ["--dangerously-bypass-approvals-and-sandbox"]
-                    if shell_context
-                    else []
-                ),
+                # Codex's own sandbox stays on. In a container this needs the
+                # Codex sandbox seccomp profile (agentic_isolation).
+                *(["--sandbox", "workspace-write"] if shell_context else []),
                 "--json",
                 "-c",
                 'model_provider="fixture"',

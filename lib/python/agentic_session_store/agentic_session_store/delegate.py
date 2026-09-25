@@ -19,11 +19,27 @@ from pathlib import Path
 from uuid import uuid4
 
 from agentic_session_store.child_hook import InvocationEnv, _identity, _parse
-from agentic_session_store.child_journal import ChildCall, ChildJournal
+from agentic_session_store.child_journal import (
+    ChildCall,
+    ChildJournal,
+    LaunchFailureReason,
+)
+from agentic_session_store.codex_sandbox import (
+    SANDBOX_MODE_ENV,
+    CodexSandboxMode,
+    read_status,
+    resolve_sandbox_mode,
+    status_path,
+)
 from agentic_session_store.contract import METADATA_NAMESPACE, SessionStoreContract
 
 MAX_LINE_BYTES = 1024 * 1024
 RECORD_ERRORS = (ValueError, TypeError, OSError, sqlite3.Error)
+
+# Exit statuses, sysexits(3)-style where one fits.
+EXIT_SANDBOX_UNAVAILABLE = 69  # EX_UNAVAILABLE: Codex sandbox cannot start here
+EXIT_CONTEXT_UNAVAILABLE = 70  # durable parent context or storage unavailable
+EXIT_START_FAILED = 127  # the delegate binary could not be executed
 
 
 def launch_context(
@@ -169,9 +185,9 @@ def run(
             env=environment,
         )
     except OSError:
-        _record(journal.launch_failed, call)
+        _record(journal.launch_failed, call, LaunchFailureReason.PROCESS_START_FAILED)
         print("Delegate process could not start.", file=sys.stderr)
-        return 127
+        return EXIT_START_FAILED
     _record(journal.launched, call)
     previous = {}
 
@@ -196,15 +212,59 @@ def run(
     return code if code >= 0 else 128 - code
 
 
+def codex_command(sandbox: CodexSandboxMode) -> list[str]:
+    """Codex always gets an explicit sandbox; its default is not relied on."""
+    return [
+        "codex",
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "--sandbox",
+        sandbox.value,
+    ]
+
+
+def refuse_without_sandbox(
+    journal: ChildJournal, call: ChildCall, environment: Mapping[str, str]
+) -> int | None:
+    """Record launch_failed and return an exit status if Codex cannot sandbox."""
+    status = read_status(status_path(environment))
+    if status.available:
+        return None
+    _record(journal.launch_failed, call, LaunchFailureReason.CODEX_SANDBOX_UNAVAILABLE)
+    print(
+        "Delegate launch refused: the Codex sandbox is unavailable in this "
+        f"workspace ({status.detail or 'no detail'}). Codex was not started; "
+        "the workspace needs the Codex sandbox seccomp profile.",
+        file=sys.stderr,
+    )
+    return EXIT_SANDBOX_UNAVAILABLE
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("harness", choices=("claude", "codex"))
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--model")
     parser.add_argument("--timeout", type=float, default=600)
+    parser.add_argument(
+        "--sandbox",
+        help=(
+            "Codex sandbox mode: read-only or workspace-write (default; "
+            f"also {SANDBOX_MODE_ENV}). Modes that disable the sandbox are refused."
+        ),
+    )
     args = parser.parse_args()
     if not 0 < args.timeout <= 86400:
         parser.error("timeout must be between zero and one day")
+    sandbox: CodexSandboxMode | None = None
+    if args.harness == "codex":
+        try:
+            sandbox = resolve_sandbox_mode(args.sandbox, os.environ)
+        except ValueError as error:
+            parser.error(str(error))
+    elif args.sandbox is not None:
+        parser.error("--sandbox applies to codex only")
     try:
         journal, call = launch_context(args.harness, os.environ)
     except RECORD_ERRORS:
@@ -212,10 +272,14 @@ def main() -> int:
             "Delegate launch denied: durable parent context or storage unavailable.",
             file=sys.stderr,
         )
-        return 70
+        return EXIT_CONTEXT_UNAVAILABLE
+    if sandbox is not None:
+        refused = refuse_without_sandbox(journal, call, os.environ)
+        if refused is not None:
+            return refused
     command = (
-        ["codex", "exec", "--json", "--skip-git-repo-check"]
-        if args.harness == "codex"
+        codex_command(sandbox)
+        if sandbox is not None
         else ["claude", "-p", "--output-format", "stream-json", "--verbose"]
     )
     if args.model:
