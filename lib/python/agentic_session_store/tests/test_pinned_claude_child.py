@@ -201,7 +201,7 @@ def test_native_claude_depth_three(tmp_path: Path, shell_context=False):
             ]
             return
         changes = ChildJournal(journal_path).page().changes
-        # Per launch: intent before the child runs, launched and bound on the
+        # Per launch: pending intent before the child runs, launched and bound on the
         # PostToolUse acknowledgement, completed on the child's SubagentStop.
         assert len(changes) == 9
         for depth in range(3):
@@ -210,7 +210,11 @@ def test_native_claude_depth_three(tmp_path: Path, shell_context=False):
                 for c in changes
                 if c.intent.call.tool_call_id == f"native-claude-call-{depth}"
             ]
-            assert history == [(None, False), ("launched", True), ("completed", True)]
+            assert history == [
+                ("pending", False),
+                ("launched", True),
+                ("completed", True),
+            ]
         assert registered_before_child_request == [True, True, True]
         bound = {
             c.intent.call.tool_call_id: c.intent

@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -21,6 +22,12 @@ def environment(tmp_path):
     binary.mkdir()
     # The fake codex answers `codex sandbox ...` with this exit status.
     (tmp_path / "probe-rc").write_text("0")
+    # syn-delegate probes that the delegate's capture hooks reach their guard
+    # with this PATH, so the recorder's interpreter must be on it.
+    python = binary / "python3"
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o700)
+    (binary / "sleep").symlink_to(shutil.which("sleep"))
     return {
         **os.environ,
         "PATH": str(binary),

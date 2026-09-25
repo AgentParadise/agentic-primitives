@@ -13,9 +13,12 @@ The guard keeps every such failure inside the shell it controls:
 * the recorder's own exit status is mapped, so only an exit of 0 passes and
   every other outcome (127 for a missing interpreter, 1 for an import error,
   137 for a killed process) becomes the configured failure status;
-* a watchdog kills the recorder after ``WATCHDOG_SECONDS``, well inside
-  ``HARNESS_TIMEOUT_SECONDS``, so the guard, not the harness, decides the
-  outcome of a hang. The recorder also enforces its own, shorter deadline;
+* a watchdog sends SIGTERM after ``WATCHDOG_SECONDS`` and SIGKILL
+  ``WATCHDOG_GRACE_SECONDS`` later, well inside ``HARNESS_TIMEOUT_SECONDS``, so
+  the guard, not the harness, decides the outcome of a hang. On SIGTERM the
+  recorder marks an intent it already committed ``launch_failed`` with reason
+  ``hook_watchdog``; only a SIGKILL in that window leaves it ``pending``. The
+  recorder also enforces its own, shorter deadline;
 * recorder output is discarded and one fixed message is written, so no payload,
   path or database error text reaches the model.
 
@@ -29,6 +32,7 @@ from enum import StrEnum
 
 HARNESS_TIMEOUT_SECONDS = 30
 WATCHDOG_SECONDS = 20
+WATCHDOG_GRACE_SECONDS = 4
 RECORDER_DEADLINE_SECONDS = 15
 FAILURE_MESSAGE = "Durable child-session recording failed."
 # Exit 2 is the blocking status in both pinned harnesses (PreToolUse deny).
@@ -52,7 +56,7 @@ def guarded_command(
     result from the parent (Codex PostToolUse) or force a stopping subagent to
     continue (SubagentStop).
     """
-    if not 0 < watchdog < HARNESS_TIMEOUT_SECONDS:
+    if not 0 < watchdog + WATCHDOG_GRACE_SECONDS < HARNESS_TIMEOUT_SECONDS:
         raise ValueError("Watchdog must fire before the harness timeout")
     status = DENY_STATUS if deny else REPORT_STATUS
     # An asynchronous list reads /dev/null unless stdin is redirected
@@ -61,7 +65,8 @@ def guarded_command(
         "exec 3<&0; "
         f"python3 -m agentic_session_store.child_hook --harness {harness.value} "
         "<&3 3<&- >/dev/null 2>&1 & p=$!; exec 3<&-; "
-        f"(sleep {watchdog} && kill -9 $p) </dev/null >/dev/null 2>&1 & w=$!; "
+        f"(sleep {watchdog} && kill -TERM $p && sleep {WATCHDOG_GRACE_SECONDS} "
+        "&& kill -9 $p) </dev/null >/dev/null 2>&1 & w=$!; "
         "wait $p 2>/dev/null; s=$?; kill $w 2>/dev/null; "
         f"[ $s -eq 0 ] && exit 0; echo '{FAILURE_MESSAGE}' >&2; exit {status}"
     )

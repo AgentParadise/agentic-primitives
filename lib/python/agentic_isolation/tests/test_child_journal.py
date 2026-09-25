@@ -127,8 +127,8 @@ async def test_native_lifecycle_and_conflict_roundtrip(tmp_path: Path) -> None:
     journal = ChildJournal(tmp_path / "children.sqlite")
     call = ChildCall("invocation", "attempt", "claude", "root", "call")
     failed = ChildCall("invocation", "attempt", "claude", "root", "failed")
-    journal.register(call)
-    journal.register(failed)
+    journal.register(call, pending=True)
+    journal.register(failed, pending=True)
     journal.observe_launch(call, "agent-child")
     journal.observe_stop("invocation", "attempt", "claude", "agent-child")
     journal.observe_launch_failure(failed, LaunchFailureReason.NATIVE_TOOL_FAILED)
@@ -138,8 +138,8 @@ async def test_native_lifecycle_and_conflict_roundtrip(tmp_path: Path) -> None:
         _real_execute, str(tmp_path / "children.sqlite")
     ).page()
     assert [(c.intent.call.tool_call_id, c.intent.status) for c in page.changes] == [
-        ("call", None),
-        ("failed", None),
+        ("call", "pending"),
+        ("failed", "pending"),
         ("call", "launched"),
         ("call", "completed"),
         ("failed", "launch_failed"),
@@ -187,6 +187,9 @@ def _v3_change(intent: dict[str, object], conflict: str | None = None) -> dict[s
         # A conflict needs a different, recorded binding.
         _v3_change({"child_native_id": None}, conflict="agent-b"),
         _v3_change({"child_native_id": "agent-a", "status": "launched"}, conflict="agent-a"),
+        # Pending is native-only, unbound and has no outcome.
+        _v3_change({"child_native_id": "agent-a", "status": "pending"}),
+        _v3_change({"child_native_id": None, "status": "pending", "exit_code": 0}),
         # Only a failed launch carries a reason.
         _v3_change({"child_native_id": "agent-a", "status": "launched", "reason": "x"}),
     ],

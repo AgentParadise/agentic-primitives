@@ -786,6 +786,13 @@ if [ "${AGENTIC_SESSION_STORE_PROVIDER:-}" = "local" ]; then
         echo "[session-store] Claude child capture initialization failed" >&2
         return 1
     fi
+    # Both harnesses launch a child when a hook's shell never reaches the
+    # guard (a startup file that exits or hangs). Prove the installed guard
+    # is reachable through the shells the harnesses use, or refuse readiness.
+    if ! python3 -m agentic_session_store.hook_probe; then
+        echo "[session-store] child capture hook probe failed" >&2
+        return 1
+    fi
 fi
 
 # --- Record that this init completed ------------------------------------------

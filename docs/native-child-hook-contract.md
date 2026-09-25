@@ -412,7 +412,7 @@ deadline, it marks that intent `launch_failed` with reason `capture_hook_failed`
 
 | Event | Journal effect |
 | --- | --- |
-| PreToolUse | Intent, `status` null, committed with synchronous FULL before exit 0 |
+| PreToolUse | Intent, `status` `pending`, committed with synchronous FULL before exit 0 |
 | PostToolUse | `launched` and bound to the returned child, one transaction |
 | PostToolUse, Claude `status: "completed"` | Also `completed` in that transaction |
 | PostToolUseFailure (Claude) | `launch_failed`, reason `native_tool_failed` or `native_tool_interrupted`; never bound |
@@ -427,8 +427,9 @@ deadline, it marks that intent `launch_failed` with reason `capture_hook_failed`
 - Every observation is idempotent: repeated hooks add no change rows.
 - A different child ID for a bound intent is stored in `child_conflicts` and
   exported as a change carrying `conflict_native_id`; the binding is kept.
-- Distinct states: null (intent, launch never acknowledged, including a launch
-  denied by another hook or a Codex spawn that failed, which fires no hook),
+- Distinct states: `pending` (intent, launch never acknowledged, including a
+  launch denied by another hook or a Codex spawn that failed, which fires no
+  hook; null for native intents written before 0.5.0),
   `launched` (acknowledged and bound; the transcript may still be missing),
   `launch_failed` (harness reported failure; unbound).
 
@@ -472,6 +473,56 @@ Pinned, offline, network-disabled container, no credentials:
   a hook in these versions (Codex has no PostToolUseFailure and fires
   PostToolUse only on success; SubagentStop carries no outcome), so such a
   child stays `launched` or becomes `completed`.
-- A user login profile under Codex's `$SHELL -lc` that exits or hangs before the
-  guard runs. Tested with the image default `/bin/sh` (dash) only. If no shell
-  can start at all, the harness fails open and no hook can prevent that.
+- zsh `.zshenv` preemption against the pinned image: zsh is not installed
+  there. It is covered by unit tests where zsh exists.
+
+### Review pass 1 hardening
+
+Invariant: once capture hooks are installed, no PreToolUse allows a child
+without a durable intent, and every durable intent reaches a terminal or an
+explicitly recoverable state.
+
+- **Contract required.** An installed hook that runs without an active
+  session-store contract (provider unset or `none`) denies. The installer
+  refuses to install without one, so a disabled capture configuration never
+  has capture hooks.
+- **Schema validated, not trusted.** The journal records SQLite `user_version`,
+  but a writer trusts it only when every required column and every trigger
+  definition also match. agentic-session-store 0.4.0 ignores the marker and
+  rewrites its triggers on every open, so the real definitions are checked and
+  repaired under the write lock. A journal with a newer `user_version` is
+  rejected by writers and by the exporter, and a PreToolUse against it denies.
+  A vendored 0.4.0 journal (`tests/legacy_0_4_0`) interleaved with this
+  version exports every lifecycle change.
+- **Explicit pending state.** PreToolUse commits native intents as `pending`.
+  The watchdog sends SIGTERM (20 s), then SIGKILL 4 s later. On SIGTERM the
+  recorder marks an intent it already committed `launch_failed` with reason
+  `hook_watchdog`. Only a SIGKILL between commit and exit leaves it `pending`,
+  which is the explicit recoverable state (recover from archived native
+  evidence; never by timing). An intent is also left `pending` when another
+  hook denies the launch or when Codex rejects the spawn, since neither is
+  reported to any hook. Reader validation: `pending` is native-only, unbound
+  and has no outcome.
+- **Shell startup is a checked precondition.** Measured against pinned Codex
+  0.156.1 in `codex exec`, hooks run through the user's passwd shell with `-c`
+  (`/bin/bash -c` in the image), whatever `$SHELL` says. Setting `SHELL`
+  therefore changes nothing. `$SHELL -lc` is only the fallback for a session
+  without a turn environment. Bash reads `$BASH_ENV` and zsh reads `.zshenv`
+  before the hook command, so a file there that exits or hangs launches the
+  child with nothing recorded. `test_pinned_shell_startup.py` reproduces this.
+  No hook can prevent it, so `agentic_session_store.hook_probe` runs the real
+  guard through the harness shells with the caller's environment. It requires
+  the exact deny status and message for a payload the recorder must reject,
+  and a clean pass for a capture probe payload. Two callers run it:
+  - session-store init (local provider), which refuses readiness on failure;
+  - `syn-delegate` before every start, with the delegate's own environment,
+    which records `launch_failed` with reason `capture_hook_unreachable` and
+    exits 70 on failure.
+- **Login-shell PATH.** The probe found a real gap: Codex runs its shell tool
+  with `bash -lc`, and Debian `/etc/profile` drops `/opt/venv/bin`. So a
+  `syn-delegate` launched from Codex gave its Claude child a PATH with no
+  `python3`, and that child's capture hooks could not run. The images now
+  keep `/opt/venv/bin` on PATH for login shells
+  (`/etc/profile.d/10-agentic-venv.sh`). `test_pinned_cross_harness.py` now
+  fails on an image without this file, because `syn-delegate` refuses there,
+  and passes with it.

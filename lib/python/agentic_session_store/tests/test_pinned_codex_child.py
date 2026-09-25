@@ -137,7 +137,11 @@ def test_native_v2_spawn_registers_before_binding(tmp_path: Path, shell_context=
         changes = ChildJournal(journal_path).page().changes
         # Intent before launch; launched and bound on the spawn result;
         # completed when the child's turn fires SubagentStop.
-        assert [c.intent.status for c in changes] == [None, "launched", "completed"]
+        assert [c.intent.status for c in changes] == [
+            "pending",
+            "launched",
+            "completed",
+        ]
         assert changes[0].intent.child_native_id is None
         assert changes[1].intent.child_native_id == changes[2].intent.child_native_id
         bound = changes[1].intent

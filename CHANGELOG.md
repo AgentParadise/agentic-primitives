@@ -45,8 +45,31 @@ durable intent.
   **Behaviour change:** Codex `hooks.state` gains a trusted `subagent_stop`
   entry, and the Claude settings gain `PostToolUseFailure` and `SubagentStop`
   capture groups.
-- **Tests**: new offline pinned-binary test `test_pinned_fail_closed.py` plus
-  unit coverage in `test_native_lifecycle.py`. See
+- **Contract required**: installed hooks deny when the session-store provider is
+  unset or `none`. The installer refuses to install without an active
+  contract.
+- **Schema validated, not trusted**: journal writers trust `user_version` only
+  when the required columns and trigger definitions also match, and repair
+  otherwise (0.4.0 writers rewrite their triggers on every open). A newer
+  schema is rejected, and PreToolUse denies against it.
+- **Explicit `pending` state**: native intents commit as `pending`. The watchdog
+  sends SIGTERM, then SIGKILL 4 s later. On SIGTERM a committed intent becomes
+  `launch_failed` (`hook_watchdog`). Only SIGKILL between commit and exit leaves
+  it `pending`, which is recoverable from native evidence.
+- **Shell startup precondition** (`agentic_session_store.hook_probe`): runs the
+  real guard through the harness shells. Codex exec uses the passwd shell with
+  `-c`; `$SHELL` does not select it.
+  **Behaviour change:** session-store init refuses readiness when the probe
+  fails, and `syn-delegate` refuses to start with `launch_failed`
+  (`capture_hook_unreachable`) and exit 70.
+- **Images (omni-agent, claude-cli)**: keep `/opt/venv/bin` on PATH for login
+  shells (`/etc/profile.d/10-agentic-venv.sh`). Codex's `bash -lc` shell tool
+  lost it, so a `syn-delegate` launched from Codex left its Claude child's
+  capture hooks without `python3`.
+- **Tests**: new offline pinned-binary tests `test_pinned_fail_closed.py` and
+  `test_pinned_shell_startup.py`, plus unit coverage in
+  `test_native_lifecycle.py`, `test_hook_probe.py` and a vendored 0.4.0 journal
+  interleave. See
   `docs/native-child-hook-contract.md` for the evidence and what remains
   unverified.
 

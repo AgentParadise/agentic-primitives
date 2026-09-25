@@ -287,7 +287,7 @@ def test_guarded_claude_lifecycle_with_duplicate_hooks(
             result = _hook(environment, step)
             assert (result.returncode, result.stdout, result.stderr) == (0, b"", b"")
     assert _statuses(_journal(environment)) == [
-        (None, None, None),
+        ("pending", None, None),
         ("launched", "agent-abc", None),
         ("completed", "agent-abc", None),
     ]
@@ -474,3 +474,164 @@ def test_opening_a_current_journal_takes_no_write_lock(tmp_path: Path) -> None:
     finally:
         holder.execute("ROLLBACK")
         holder.close()
+
+
+# --- Review pass 1: contract, schema, watchdog window, shell startup ---------
+
+
+def test_guard_denies_when_contract_is_missing(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    environment.update(_bin(tmp_path, PYTHON))
+    environment.pop(Env.PROVIDER)
+    result = _hook(environment, _claude("PreToolUse"))
+    assert (result.returncode, result.stderr) == (2, FAILURE_MESSAGE.encode() + b"\n")
+    assert not list(Path(environment[Env.SPOOL]).rglob("*.sqlite"))
+
+
+def _shim_after_commit(directory: Path, action: str) -> str:
+    """A python3 that runs the real recorder but stops right after the commit."""
+    code = (
+        "import os, signal, sys, time\n"
+        "import agentic_session_store.child_journal as j\n"
+        "import agentic_session_store.child_hook as h\n"
+        "original = j.ChildJournal.register\n"
+        "def register(self, *a, **k):\n"
+        "    intent = original(self, *a, **k)\n"
+        f"    {action}\n"
+        "    return intent\n"
+        "j.ChildJournal.register = register\n"
+        "raise SystemExit(h.main(sys.argv[sys.argv.index('--harness'):]))\n"
+    )
+    script = directory / "recorder_shim.py"
+    script.write_text(code)
+    return f'exec "{sys.executable}" "{script}" "$@"'
+
+
+def test_watchdog_after_commit_records_hook_watchdog(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    environment.update(_bin(tmp_path, _shim_after_commit(tmp_path, "time.sleep(60)")))
+    result = _hook(environment, _claude("PreToolUse"), watchdog=1)
+    assert (result.returncode, result.stderr) == (2, FAILURE_MESSAGE.encode() + b"\n")
+    journal = _journal(environment)
+    intent = journal.lookup(CALL)
+    assert (intent.status, intent.reason, intent.child_native_id) == (
+        "launch_failed",
+        "hook_watchdog",
+        None,
+    )
+    exported = export_page(journal.page())
+    assert exported["schema_version"] == 3
+    assert [c["intent"]["status"] for c in exported["page"]["changes"]] == [
+        "pending",
+        "launch_failed",
+    ]
+
+
+def test_kill_after_commit_leaves_explicit_pending_state(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    """Only SIGKILL in the commit-to-exit window is unrecordable; the intent
+    stays explicitly pending (recoverable from native evidence), never
+    launched, and a later acknowledgement still settles it."""
+    environment.update(
+        _bin(
+            tmp_path,
+            _shim_after_commit(tmp_path, "os.kill(os.getpid(), signal.SIGKILL)"),
+        )
+    )
+    result = _hook(environment, _claude("PreToolUse"))
+    assert result.returncode == 2
+    journal = _journal(environment)
+    assert journal.lookup(CALL).status == "pending"
+    exported = export_page(journal.page())
+    assert exported["schema_version"] == 3
+    assert exported["page"]["changes"][-1]["intent"]["status"] == "pending"
+
+
+def test_pending_native_intent_accepts_launch_or_failure(journal: ChildJournal) -> None:
+    other = ChildCall("invocation", "attempt", "claude", "root", "other")
+    journal.register(CALL, pending=True)
+    journal.register(other, pending=True)
+    assert journal.lookup(CALL).status == "pending"
+    journal.observe_launch(CALL, "agent-a")
+    journal.observe_launch_failure(other, LaunchFailureReason.NATIVE_TOOL_FAILED)
+    assert journal.lookup(CALL).status == "launched"
+    assert journal.lookup(other).status == "launch_failed"
+    with pytest.raises(ValueError):
+        journal.register(
+            ChildCall("invocation", "attempt", "claude", "root", "d", "codex"),
+            pending=True,
+        )
+
+
+def test_legacy_writer_interleaved_with_current_writer(tmp_path: Path) -> None:
+    """A 0.4.0 hook process rewrites its triggers on every open. Interleaved
+    with this version against one journal, every change is still exported."""
+    from tests.legacy_0_4_0.child_journal import ChildCall as LegacyCall
+    from tests.legacy_0_4_0.child_journal import ChildJournal as LegacyJournal
+
+    path = tmp_path / "children.sqlite"
+    current = ChildJournal(path)
+    first = ChildCall("invocation", "attempt", "claude", "root", "first")
+    second = ChildCall("invocation", "attempt", "claude", "root", "second")
+    current.register(first, pending=True)
+    legacy = LegacyJournal(path)
+    legacy.register(LegacyCall(*second.key))
+    current = ChildJournal(path)
+    current.observe_launch(first, "agent-first")
+    LegacyJournal(path).bind(LegacyCall(*second.key), "agent-second")
+    current = ChildJournal(path)
+    with pytest.raises(ChildBindingConflict):
+        current.observe_launch(first, "agent-other")
+    LegacyJournal(path)
+    ChildJournal(path).observe_stop("invocation", "attempt", "claude", "agent-first")
+    history = [
+        (
+            c.intent.call.tool_call_id,
+            c.intent.status,
+            c.intent.child_native_id,
+            c.conflict_native_id,
+        )
+        for c in ChildJournal(path).page().changes
+    ]
+    assert history == [
+        ("first", "pending", None, None),
+        ("second", None, None, None),
+        ("first", "launched", "agent-first", None),
+        ("second", None, "agent-second", None),
+        ("first", "launched", "agent-first", "agent-other"),
+        ("first", "completed", "agent-first", None),
+    ]
+
+
+def test_tampered_trigger_with_current_marker_is_repaired(tmp_path: Path) -> None:
+    path = tmp_path / "children.sqlite"
+    ChildJournal(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TRIGGER child_conflicted")
+    journal = ChildJournal(path)
+    journal.register(CALL, pending=True)
+    journal.observe_launch(CALL, "agent-a")
+    with pytest.raises(ChildBindingConflict):
+        journal.observe_launch(CALL, "agent-b")
+    assert journal.page().changes[-1].conflict_native_id == "agent-b"
+
+
+def test_newer_schema_is_rejected_and_denies_launch(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    from agentic_session_store.child_journal import JournalSchemaTooNew
+
+    environment.update(_bin(tmp_path, PYTHON))
+    path = Path(environment[Env.SPOOL]) / METADATA_NAMESPACE / "run/children.sqlite"
+    ChildJournal(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA user_version=99")
+    with pytest.raises(JournalSchemaTooNew):
+        ChildJournal(path)
+    with pytest.raises(JournalSchemaTooNew):
+        ChildJournal(path, read_only=True).page()
+    result = _hook(environment, _claude("PreToolUse"))
+    assert (result.returncode, result.stderr) == (2, FAILURE_MESSAGE.encode() + b"\n")

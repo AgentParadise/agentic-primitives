@@ -53,15 +53,15 @@ EVENTS = tuple(CAPTURE_GROUPS)
 CAPTURE_HASHES = {
     "PreToolUse": (
         "pre_tool_use",
-        "sha256:3b7b6eb817dc719e4a294da45a6a6c615aae418dc898b0d992fda15be4089000",
+        "sha256:2317aa422744648eddb4998686f81461f72d4f6d3f0f385c54bb756b7acfb96f",
     ),
     "PostToolUse": (
         "post_tool_use",
-        "sha256:eb0425bbd4fce50fdc4873568117a971188f4e085964b68ddccddb5aada926a5",
+        "sha256:22d0cd64d210d23608a6bcf08002062f70b22aebabbc6be53ff6e52ecd110610",
     ),
     "SubagentStop": (
         "subagent_stop",
-        "sha256:355a2a04f5df279bab0c798b4ea69c97d7a532f349fb62ea5b46a032ea64051f",
+        "sha256:292d6b903e95c581af2d8d07aa39670ef69d3fc313f3c8796bb65a34efdc8233",
     ),
 }
 

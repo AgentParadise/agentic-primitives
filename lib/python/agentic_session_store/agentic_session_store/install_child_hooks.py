@@ -16,6 +16,7 @@ from agentic_session_store.claude_hook_config import (
     merge_capture_hooks as merge_claude_hooks,
 )
 from agentic_session_store.codex_hook_config import merge_capture_hooks
+from agentic_session_store.contract import SessionStoreContract
 
 MAX_CONFIG_BYTES = 1024 * 1024
 
@@ -95,6 +96,10 @@ def main() -> int:
     parser.add_argument("--harness", choices=("codex", "claude"), default="codex")
     args = parser.parse_args()
     try:
+        # Installed hooks deny every launch without an active contract, so
+        # installing them with capture disabled would block all children.
+        if SessionStoreContract.from_env(os.environ) is None:
+            raise ValueError("Capture hooks require an active session-store contract")
         if args.journal is not None:
             if args.journal.is_symlink():
                 raise ValueError("Journal must not be a symlink")

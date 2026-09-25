@@ -12,6 +12,12 @@ Events handled, per harness:
 * PostToolUseFailure (Claude only; Codex fires no hook for a failed tool):
   launch_failed, never bound.
 * SubagentStop (both): the child stopped; settles its launched intent.
+* AgenticCaptureProbe: no journal write; proves the guard, interpreter,
+  package, active contract and journal schema are all reachable.
+
+Installed hooks require an active session-store contract. Capture hooks are
+only installed when capture is enabled, so a missing or ``none`` provider at
+hook time means the hook environment lost it, and the launch is denied.
 """
 
 from __future__ import annotations
@@ -58,6 +64,11 @@ class HookEvent(StrEnum):
     POST_TOOL_USE = "PostToolUse"
     POST_TOOL_USE_FAILURE = "PostToolUseFailure"
     SUBAGENT_STOP = "SubagentStop"
+    CAPTURE_PROBE = "AgenticCaptureProbe"
+
+
+class _WatchdogTerminated(Exception):
+    """The guard's watchdog sent SIGTERM."""
 
 
 def _object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -119,11 +130,14 @@ def record_child_hook(
 ) -> None:
     contract = SessionStoreContract.from_env(environment)
     if contract is None:
-        return
+        raise ValueError("Capture hook installed without an active contract")
     if len(content) > MAX_HOOK_BYTES:
         raise ValueError("Hook byte limit exceeded")
     event = _parse(content)
     kind = event.get("hook_event_name")
+    if kind == HookEvent.CAPTURE_PROBE:
+        ChildJournal(_journal_path(contract))
+        return
     if kind == HookEvent.SUBAGENT_STOP:
         if harness is None:
             raise ValueError("SubagentStop requires an explicit harness")
@@ -166,10 +180,12 @@ def record_child_hook(
     )
     path = _journal_path(contract)
     if kind == HookEvent.PRE_TOOL_USE:
-        ChildJournal(path).register(call)
-        # Only a commit this process completed may later be marked as denied.
+        # Recorded before the commit: a watchdog signal can arrive between the
+        # commit and the return. A denial record only ever moves a pending
+        # intent, so an uncommitted one is left alone.
         if pending is not None:
             pending.append(_Pending(path, call))
+        ChildJournal(path).register(call, pending=True)
         return
     journal = ChildJournal(path)
     if kind == HookEvent.POST_TOOL_USE_FAILURE:
@@ -208,13 +224,17 @@ def _deadline(_signum: int, _frame: FrameType | None) -> None:
     raise TimeoutError("Child hook deadline exceeded")
 
 
-def _record_denial(pending: Sequence[_Pending]) -> None:
+def _terminated(_signum: int, _frame: FrameType | None) -> None:
+    raise _WatchdogTerminated
+
+
+def _record_denial(pending: Sequence[_Pending], reason: LaunchFailureReason) -> None:
     """Best effort: mark an intent committed before a denial as launch_failed."""
     for item in pending:
         try:
             ChildJournal(
                 item.journal_path, busy_timeout=BEST_EFFORT_BUSY_SECONDS
-            ).observe_launch_failure(item.call, LaunchFailureReason.CAPTURE_HOOK_FAILED)
+            ).observe_launch_failure(item.call, reason)
         except (ValueError, TypeError, OSError, sqlite3.Error):
             # No intent (or no journal): the launch is denied with nothing to mark.
             pass
@@ -227,11 +247,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     harness = None if args.harness is None else HookHarness(args.harness)
     pending: list[_Pending] = []
     signal.signal(signal.SIGALRM, _deadline)
+    signal.signal(signal.SIGTERM, _terminated)
     signal.alarm(RECORDER_DEADLINE_SECONDS)
     try:
         record_child_hook(
             sys.stdin.buffer.read(MAX_HOOK_BYTES + 1), os.environ, harness, pending
         )
+    except _WatchdogTerminated:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.alarm(0)
+        _record_denial(pending, LaunchFailureReason.HOOK_WATCHDOG)
+        print(FAILURE_MESSAGE, file=sys.stderr)
+        return 2
     except (
         ValueError,
         TypeError,
@@ -241,7 +268,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sqlite3.Error,
     ):
         signal.alarm(0)
-        _record_denial(pending)
+        _record_denial(pending, LaunchFailureReason.CAPTURE_HOOK_FAILED)
         # Never emit payload, prompt, path, environment or database error text.
         print(FAILURE_MESSAGE, file=sys.stderr)
         return 2

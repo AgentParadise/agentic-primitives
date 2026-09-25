@@ -31,6 +31,8 @@ from agentic_session_store.codex_sandbox import (
     resolve_sandbox_mode,
 )
 from agentic_session_store.contract import METADATA_NAMESPACE, SessionStoreContract
+from agentic_session_store.hook_command import HookHarness
+from agentic_session_store.hook_probe import CaptureProbeError, probe_guard
 
 MAX_LINE_BYTES = 1024 * 1024
 RECORD_ERRORS = (ValueError, TypeError, OSError, sqlite3.Error)
@@ -252,6 +254,32 @@ def refuse_without_sandbox(
     return EXIT_SANDBOX_UNAVAILABLE
 
 
+def refuse_without_capture_hooks(
+    journal: ChildJournal,
+    call: ChildCall,
+    harness: str,
+    environment: Mapping[str, str],
+) -> int | None:
+    """Record launch_failed if the delegate's own native hooks would fail open.
+
+    The delegate inherits this environment, so a shell startup file set by the
+    caller (for example BASH_ENV) would stop its capture hooks from running.
+    """
+    try:
+        probe_guard(HookHarness(harness), child_environment(environment))
+    except CaptureProbeError:
+        _record(
+            journal.launch_failed, call, LaunchFailureReason.CAPTURE_HOOK_UNREACHABLE
+        )
+        print(
+            "Delegate launch refused: its native child capture hooks cannot "
+            "run in this environment. The delegate was not started.",
+            file=sys.stderr,
+        )
+        return EXIT_CONTEXT_UNAVAILABLE
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("harness", choices=("claude", "codex"))
@@ -288,6 +316,9 @@ def main() -> int:
         refused = refuse_without_sandbox(journal, call, sandbox, os.environ)
         if refused is not None:
             return refused
+    refused = refuse_without_capture_hooks(journal, call, args.harness, os.environ)
+    if refused is not None:
+        return refused
     command = (
         codex_command(sandbox)
         if sandbox is not None

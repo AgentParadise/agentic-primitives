@@ -6,9 +6,12 @@ post-tool response leaves an unbound intent, never a guessed child identity.
 
 Lifecycle states, per intent:
 
-* ``None``: intent committed, launch never acknowledged. For a native child
-  this also covers a launch denied by another hook, and a spawn the harness
-  rejected without reporting it (Codex fires no hook for a failed tool).
+* ``pending`` (native) / ``None`` (delegate, or a native intent written before
+  0.5.0): intent committed, launch decision not yet observed. This is the
+  explicit recoverable state. It stays pending when the harness never reports
+  the launch: another hook denied it, Codex rejected the spawn (it fires no
+  hook for a failed tool), or the capture hook was killed between its commit
+  and its exit. Recovery is from archived native evidence, never by timing.
 * ``launched``: the harness acknowledged the launch. Native children are bound
   in the same transaction, so a launched native intent always has its child ID.
 * ``launch_failed``: the harness reported the launch failed; never bound.
@@ -30,11 +33,13 @@ from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
-from agentic_session_store.child_schema import SCHEMA_VERSION, upgrade
-
-
-def _schema_version(connection: sqlite3.Connection) -> int:
-    return int(connection.execute("PRAGMA user_version").fetchone()[0])
+from agentic_session_store.child_schema import (
+    SCHEMA_VERSION,
+    JournalSchemaTooNew,
+    schema_current,
+    schema_version,
+    upgrade,
+)
 
 
 class LaunchFailureReason(StrEnum):
@@ -48,6 +53,10 @@ class LaunchFailureReason(StrEnum):
     NATIVE_TOOL_INTERRUPTED = "native_tool_interrupted"
     # The capture hook failed after committing the intent and denied the launch.
     CAPTURE_HOOK_FAILED = "capture_hook_failed"
+    # The guard's watchdog stopped the capture hook after the intent committed.
+    HOOK_WATCHDOG = "hook_watchdog"
+    # syn-delegate's probe could not reach the capture hook guard.
+    CAPTURE_HOOK_UNREACHABLE = "capture_hook_unreachable"
 
 
 class ChildBindingConflict(ValueError):
@@ -57,6 +66,7 @@ class ChildBindingConflict(ValueError):
     """
 
 
+NATIVE_STATUS_PENDING = "pending"
 NATIVE_STATUS_LAUNCHED = "launched"
 NATIVE_STATUS_COMPLETED = "completed"
 
@@ -136,12 +146,14 @@ class ChildJournal:
             # Every hook process opens the journal. Rewriting the schema on each
             # open serializes concurrent launches behind an exclusive lock and,
             # now that a lock timeout denies the launch, turns contention into
-            # refused children. A current journal is left untouched.
-            if _schema_version(connection) == SCHEMA_VERSION:
+            # refused children. A journal whose definitions are current is left
+            # untouched; anything else (including triggers an older process
+            # rewrote) is repaired under the write lock.
+            if schema_current(connection):
                 return
             with connection:
                 connection.execute("BEGIN IMMEDIATE")
-                if _schema_version(connection) != SCHEMA_VERSION:
+                if not schema_current(connection):
                     self._migrate(connection)
 
     @staticmethod
@@ -208,16 +220,26 @@ class ChildJournal:
             raise ValueError("Conflicting child target harness")
         return ChildIntent(row[0], row[1], call, row[2], row[4], row[5], row[6])
 
-    def register(self, call: ChildCall) -> ChildIntent:
+    def register(self, call: ChildCall, *, pending: bool = False) -> ChildIntent:
+        """Commit an intent. ``pending`` marks a native launch awaiting its
+        harness decision; delegates record their own outcome instead."""
+        if pending and call.target_harness is not None:
+            raise ValueError("Delegate lifecycle is recorded by its runner")
         with closing(self._connect()) as connection:
             with connection:
                 connection.execute(
                     """INSERT INTO child_intents
                        (child_invocation_id, invocation_id, attempt_id, harness,
-                        parent_native_id, tool_call_id, target_harness) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        parent_native_id, tool_call_id, target_harness, status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (invocation_id, attempt_id, harness,
                                     parent_native_id, tool_call_id) DO NOTHING""",
-                    (str(uuid4()), *call.key, call.target_harness),
+                    (
+                        str(uuid4()),
+                        *call.key,
+                        call.target_harness,
+                        NATIVE_STATUS_PENDING if pending else None,
+                    ),
                 )
                 intent = self._get(connection, call)
             return intent
@@ -289,9 +311,16 @@ class ChildJournal:
                 if not conflict:
                     connection.execute(
                         """UPDATE child_intents
-                           SET child_native_id=?, status=COALESCE(status, ?)
+                           SET child_native_id=?,
+                               status=CASE WHEN status IS NULL OR status=?
+                                           THEN ? ELSE status END
                            WHERE sequence=?""",
-                        (child_native_id, NATIVE_STATUS_LAUNCHED, intent.sequence),
+                        (
+                            child_native_id,
+                            NATIVE_STATUS_PENDING,
+                            NATIVE_STATUS_LAUNCHED,
+                            intent.sequence,
+                        ),
                     )
                     stopped = stopped or (
                         connection.execute(
@@ -327,7 +356,10 @@ class ChildJournal:
             intent = self._get(connection, call)
             if intent.status == "launch_failed":
                 return intent
-            if intent.status is not None or intent.child_native_id is not None:
+            if (
+                intent.status not in {None, NATIVE_STATUS_PENDING}
+                or intent.child_native_id is not None
+            ):
                 raise ValueError("Launched child cannot have failed to launch")
             connection.execute(
                 "UPDATE child_intents SET status=?, reason=? WHERE sequence=?",
@@ -451,6 +483,10 @@ class ChildJournal:
             raise ValueError("Invalid child journal cursor")
         with closing(self._connect()) as connection:
             connection.execute("BEGIN")
+            if schema_version(connection) > SCHEMA_VERSION:
+                raise JournalSchemaTooNew(
+                    "Child journal schema is newer than supported"
+                )
             latest = connection.execute(
                 "SELECT COALESCE(MAX(sequence), 0) FROM child_changes"
             ).fetchone()[0]

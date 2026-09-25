@@ -28,18 +28,25 @@ from agentic_session_store.install_child_hooks import install
 
 CLAUDE = os.environ.get("CLAUDE_NATIVE_TEST_BINARY")
 CODEX = os.environ.get("CODEX_NATIVE_TEST_BINARY")
-MODES = ("missing_interpreter", "hung_interpreter")
+MODES = ("missing_interpreter", "hung_interpreter", "no_contract")
 # Mutable so one case can request an agent type the harness rejects.
 SUBAGENT_TYPE = ["general-purpose"]
 
 
 def _path(root: Path, mode: str) -> str:
-    """A PATH whose python3 is missing or hangs; everything else is real."""
+    """A PATH whose python3 is missing or hangs; everything else is real.
+
+    ``no_contract`` keeps the real interpreter: the recorder runs but the
+    session-store provider is absent from the hook environment.
+    """
     directory = root / "bin"
     directory.mkdir()
     sleep = shutil.which("sleep")
     assert sleep is not None
-    for name in ("sleep", "cat", "git", "rg", "node"):
+    names = ["sleep", "cat", "git", "rg", "node"]
+    if mode == "no_contract":
+        names.append("python3")
+    for name in names:
         found = shutil.which(name)
         if found:
             (directory / name).symlink_to(found)
@@ -164,13 +171,13 @@ def _codex_reply(_body, requests):
     ]
 
 
-def _capture_env(root: Path) -> dict[str, str]:
+def _capture_env(root: Path, mode: str = "") -> dict[str, str]:
     spool = root / "spool"
     journal = spool / ".agentic-session-store/run/children.sqlite"
     journal.parent.mkdir(parents=True)
     ChildJournal(journal)
     return {
-        "AGENTIC_SESSION_STORE_PROVIDER": "local",
+        "AGENTIC_SESSION_STORE_PROVIDER": "none" if mode == "no_contract" else "local",
         "AGENTIC_SESSION_STORE_SPOOL": str(spool),
         "AGENTIC_SESSION_STORE_PARTITION": "run",
         "AGENTIC_INVOCATION_ID": "invocation",
@@ -205,7 +212,7 @@ class PinnedFailClosed(unittest.TestCase):
                 server, requests = _serve(_claude_reply)
                 env = {
                     **os.environ,
-                    **_capture_env(root),
+                    **_capture_env(root, mode),
                     "PATH": _path(root, mode),
                     "HOME": str(home),
                     "CLAUDE_CONFIG_DIR": str(home / ".claude"),
@@ -323,7 +330,10 @@ class PinnedFailClosed(unittest.TestCase):
                 ]
                 self.assertEqual(
                     history,
-                    [(None, None, None), ("launch_failed", None, "native_tool_failed")],
+                    [
+                        ("pending", None, None),
+                        ("launch_failed", None, "native_tool_failed"),
+                    ],
                 )
         finally:
             SUBAGENT_TYPE[0] = "general-purpose"
@@ -363,7 +373,7 @@ class PinnedFailClosed(unittest.TestCase):
                         ],
                         env={
                             **os.environ,
-                            **_capture_env(root),
+                            **_capture_env(root, mode),
                             "PATH": _path(root, mode),
                             "CODEX_HOME": str(home),
                             "CODEX_SQLITE_HOME": str(home),

@@ -155,6 +155,16 @@ RUN uv python install 3.12.13 \
     && uv venv --python 3.12.13 /opt/venv \
     && chmod -R a+rX /opt/uv /opt/venv
 
+# Login shells reset PATH in /etc/profile, dropping /opt/venv/bin. Codex runs
+# its shell tool with `bash -lc`, so a syn-delegate started from Codex handed
+# its child a PATH with no python3, and that child's capture hooks could not
+# run (syntropic137#1398). Keep the venv first for login shells too.
+RUN printf '%s\n' \
+      '# Keep the image venv on PATH for login shells (agentic-workspace).' \
+      'case ":$PATH:" in *":/opt/venv/bin:"*) ;; *) PATH="/opt/venv/bin:$PATH"; export PATH ;; esac' \
+      > /etc/profile.d/10-agentic-venv.sh \
+    && chmod 0644 /etc/profile.d/10-agentic-venv.sh
+
 # Both harnesses, each pinned via the global ARGs above. Neither is "the"
 # agent in this image: a caller selects one per invocation.
 ARG CLAUDE_CLI_VERSION
