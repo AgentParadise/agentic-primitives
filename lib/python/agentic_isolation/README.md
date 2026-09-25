@@ -80,6 +80,7 @@ security = SecurityConfig.development()
 security = SecurityConfig.production(codex_sandbox=True)
 # - Everything production() sets, plus
 #   --security-opt=seccomp=<installed codex-sandbox.json>
+#   --security-opt=apparmor=agentic-codex-sandbox (AppArmor hosts only)
 ```
 
 `codex_sandbox=True` lets Codex's own bubblewrap sandbox create a user
@@ -91,6 +92,15 @@ same `SecurityConfig` as `WorkspaceConfig.security`, which takes precedence
 over the provider's. Provenance and trade-offs:
 [`agentic_isolation/seccomp/README.md`](agentic_isolation/seccomp/README.md).
 `codex_sandbox_seccomp_profile()` returns the installed file path.
+
+On hosts where Docker uses AppArmor (Ubuntu 24.04 and most Debian/Ubuntu
+servers) the opt-in also applies the AppArmor profile `agentic-codex-sandbox`,
+docker-default with `deny mount,` replaced by the mounts bubblewrap needs. Load
+it once per boot on the Docker host:
+`sudo apparmor_parser -r <codex_sandbox_apparmor_profile_path()>`. If AppArmor
+is active and the profile is missing, workspace creation raises
+`AppArmorProfileNotLoadedError`. Details:
+[`agentic_isolation/apparmor/README.md`](agentic_isolation/apparmor/README.md).
 
 ## Real-Time Streaming
 

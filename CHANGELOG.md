@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔒 Security: Codex keeps its own sandbox in workspaces (agentic-isolation 0.9.0, agentic-session-store 0.4.0; omni-agent 1.8.0, claude-cli 2.1.6; delegation plugin 1.4.0)
 
-Ported from agentic-workspace PR #2 (7dcbfe3); the Rust Docker adapter part is agentic-workspace only. Part of syntropic137/syntropic137#1398.
+Ported from agentic-workspace PR #2 (7dcbfe3, 89b0017); the Rust Docker adapter part is agentic-workspace only. Part of syntropic137/syntropic137#1398.
 
 Docker's default seccomp profile denies user-namespace creation without
 `CAP_SYS_ADMIN`, so Codex's bubblewrap sandbox failed in every production
@@ -27,6 +27,17 @@ call failed, and `codex exec` still exited 0.
   opts in and `codex_sandbox_seccomp_profile()` resolves the installed file.
   Default behaviour is unchanged: without the opt-in no seccomp option is
   emitted. Cap-drop ALL, no-new-privileges and the read-only root remain.
+- **AppArmor pairing (agentic-isolation 0.9.0).** On AppArmor hosts (Ubuntu
+  24.04) seccomp alone is not enough: docker-default's `deny mount,` stops
+  bubblewrap (`Failed to make / slave`); user-namespace creation itself was
+  measured to work. Ships `agentic_isolation/apparmor/agentic-codex-sandbox`,
+  docker-default (docker-v29.8.0 template, ABI 3.0) with `deny mount,`
+  replaced by only the mount and pivot_root operations bwrap performs. The
+  codex opt-in applies `--security-opt=apparmor=agentic-codex-sandbox` when
+  `docker info` reports AppArmor, skips it otherwise (Docker Desktop), and
+  raises `AppArmorProfileNotLoadedError` when AppArmor is active but the
+  profile is not loaded. Host setup, once per boot on the Docker host:
+  `sudo apparmor_parser -r <codex_sandbox_apparmor_profile_path()>`.
 - **Workspace entrypoint (omni-agent 1.8.0, claude-cli 2.1.6).** When `codex`
   is installed, probes `codex sandbox -c 'sandbox_mode="workspace-write"' -- true`
   at startup and records the verdict in `/var/agentic/codex-sandbox.json`
@@ -43,11 +54,11 @@ call failed, and `codex exec` still exited 0.
   disabling Codex's sandbox inside containers.
 
 Trade-off: unprivileged user namespaces widen kernel attack surface inside the
-opted-in container. Mitigations: all capabilities dropped, no-new-privileges,
-Codex-only scope, patched host kernels. Hosts restricting user namespaces via
-AppArmor (for example Ubuntu 24.04 with
-`kernel.apparmor_restrict_unprivileged_userns=1`) may also need an AppArmor
-profile; unverified.
+opted-in container, and on AppArmor hosts the paired profile allows the
+bubblewrap mount sequence inside the container's own user namespaces.
+Mitigations: all capabilities dropped, no-new-privileges, Codex-only scope,
+arbitrary mounts still denied by AppArmor, patched host kernels. No host
+sysctl is changed and `apparmor=unconfined` is never used.
 
 ### 🔒 Security: mount guard and finalizer log leak (agentic-isolation 0.8.1; omni-agent 1.7.1, claude-cli 2.1.5, interactive-tmux 0.2.5)
 

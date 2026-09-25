@@ -143,8 +143,11 @@ workspaces with `SecurityConfig.production(codex_sandbox=True)` from
 `agentic_isolation`. That adds one narrow seccomp profile (Docker's default
 plus `clone` with namespace flags, `unshare`, `mount`, `umount2` and
 `pivot_root`) while `--cap-drop=ALL`, `no-new-privileges` and the read-only
-root stay in force. With it, `-s workspace-write` works as designed: writes
-inside the workspace succeed and writes outside it are denied.
+root stay in force. On AppArmor hosts (Ubuntu 24.04, where the symptom is
+`bwrap: Failed to make / slave: Permission denied`) it also applies the
+AppArmor profile `agentic-codex-sandbox`, which the host administrator loads
+once with `sudo apparmor_parser -r`. With both, `-s workspace-write` works as
+designed: writes inside the workspace succeed and writes outside it are denied.
 
 The workspace entrypoint probes this at startup with
 `codex sandbox -c 'sandbox_mode="workspace-write"' -- true` and records the
@@ -279,6 +282,7 @@ the format section is what steers the output. See Trial T2.
 | Refuses to run | Not inside a git repo | Add `--skip-git-repo-check` |
 | Writes need a dir outside the workspace | `workspace-write` is workspace-scoped | Add `--add-dir <dir>`; keep the sandbox mode as it is |
 | `bwrap: No permissions to create a new namespace`, every write fails, exit 0 | Workspace runs Docker's default seccomp profile | Start it with `SecurityConfig.production(codex_sandbox=True)` |
+| `bwrap: Failed to make / slave: Permission denied` | AppArmor host, workspace confined by `docker-default` | Load `agentic-codex-sandbox` on the host (`sudo apparmor_parser -r`) and use the same opt-in |
 | `syn-delegate` exits 69, `launch_failed` / `codex_sandbox_unavailable` | Startup probe found the Codex sandbox unusable | Same fix: the workspace needs the Codex sandbox seccomp profile |
 | Command fails on a quirky local env (e.g. `pytest` exit 127 under pyenv) | Sandbox shell inherits host PATH quirks | Under `-s workspace-write` Codex often self-recovers (Trial T1); for wrappers, pre-set env via `-c shell_environment_policy...` |
 

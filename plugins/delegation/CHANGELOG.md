@@ -10,7 +10,9 @@ recommended anywhere in this plugin.
 The container failure (`bwrap: No permissions to create a new namespace`) is
 now fixed at the workspace: Codex-capable workspaces start with
 `SecurityConfig.production(codex_sandbox=True)`, a narrow seccomp profile that
-permits user-namespace creation while capabilities stay dropped. `syn-delegate
+permits user-namespace creation while capabilities stay dropped, plus, on
+AppArmor hosts, an AppArmor profile that permits only the mounts bubblewrap
+makes. `syn-delegate
 codex` passes an explicit `--sandbox` (default `workspace-write`, `read-only`
 allowed, anything else refused) and refuses to launch, recording
 `launch_failed` with reason `codex_sandbox_unavailable` and exiting 69, when the

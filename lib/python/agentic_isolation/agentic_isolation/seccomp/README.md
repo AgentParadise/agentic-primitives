@@ -7,7 +7,8 @@ bubblewrap sandbox can create the user namespace it needs inside a workspace
 that otherwise keeps `--cap-drop=ALL`, `--security-opt=no-new-privileges` and
 `--read-only`.
 
-Opt in with `SecurityConfig.production(codex_sandbox=True)`. Only workspaces
+Opt in with `SecurityConfig.production(codex_sandbox=True)` (Python) or
+`DockerProvider::with_codex_sandbox` (Rust). Only workspaces
 that can run Codex should use it. Every other workspace keeps Docker's default
 profile, unchanged.
 
@@ -50,10 +51,13 @@ Deliberately NOT added: `setns` (verified unnecessary for
 Unprivileged user namespaces expose more kernel attack surface to code in
 the container. Mitigations that remain in force: all capabilities dropped,
 `no-new-privileges`, read-only root, the opt-in is scoped to Codex-capable
-workspaces, and hosts are expected to run patched kernels. Hosts that also
-restrict unprivileged user namespaces through AppArmor (for example Ubuntu
-24.04 with `kernel.apparmor_restrict_unprivileged_userns=1`) may additionally
-need an AppArmor profile; that is unverified.
+workspaces, and hosts are expected to run patched kernels.
+
+On AppArmor hosts (for example Ubuntu 24.04) this profile is not enough on its
+own: Docker's `docker-default` AppArmor profile denies the mounts bubblewrap
+makes. The opt-in therefore also applies the paired AppArmor profile
+`agentic-codex-sandbox`; see [`../apparmor/README.md`](../apparmor/README.md)
+for the host setup step.
 
 ### Updating
 

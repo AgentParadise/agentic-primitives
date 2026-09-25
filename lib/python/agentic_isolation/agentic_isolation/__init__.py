@@ -45,11 +45,14 @@ Features:
 """
 
 from agentic_isolation.config import (
+    CODEX_SANDBOX_APPARMOR_PROFILE,
     CODEX_SANDBOX_SECCOMP_PROFILE_NAME,
+    AppArmorProfileNotLoadedError,
     MountConfig,
     ResourceLimits,
     SecurityConfig,
     WorkspaceConfig,
+    codex_sandbox_apparmor_profile_path,
     codex_sandbox_seccomp_profile,
 )
 from agentic_isolation.providers import (
@@ -105,6 +108,9 @@ __all__ = [
     "SecurityConfig",
     "CODEX_SANDBOX_SECCOMP_PROFILE_NAME",
     "codex_sandbox_seccomp_profile",
+    "CODEX_SANDBOX_APPARMOR_PROFILE",
+    "AppArmorProfileNotLoadedError",
+    "codex_sandbox_apparmor_profile_path",
     # Providers
     "WorkspaceProvider",
     "SupportsStagedTeardown",

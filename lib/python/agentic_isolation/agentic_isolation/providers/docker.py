@@ -21,7 +21,12 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path, PurePosixPath
 
-from agentic_isolation.config import SecurityConfig, WorkspaceConfig
+from agentic_isolation.config import (
+    AppArmorProfileNotLoadedError,
+    SecurityConfig,
+    WorkspaceConfig,
+    is_apparmor_profile_error,
+)
 from agentic_isolation.harnesses import ExecFn, TranscriptSource, get_harness
 from agentic_isolation.providers.base import (
     BaseProvider,
@@ -182,6 +187,8 @@ class WorkspaceDockerProvider(BaseProvider):
 
             if proc.returncode != 0:
                 error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                if security.apparmor_profile is not None and is_apparmor_profile_error(error_msg):
+                    raise AppArmorProfileNotLoadedError(security.apparmor_profile)
                 raise RuntimeError(f"Failed to create container: {error_msg}")
 
             container_id = stdout.decode().strip()

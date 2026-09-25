@@ -1,0 +1,79 @@
+# AppArmor profile for workspaces that can run Codex (agentic-isolation).
+#
+# Docker's docker-default profile (moby/profiles/apparmor template vendored in
+# docker-v29.8.0) with ONE change: its blanket `deny mount,` is replaced by the
+# mount and pivot_root operations bubblewrap performs inside its own user and
+# mount namespace. Everything else is docker-default verbatim. No `userns,`
+# rule is needed: this profile uses ABI 3.0 like docker-default, and user
+# namespace creation is gated by the paired seccomp profile, not AppArmor.
+#
+# Load on the Docker host before starting Codex-capable workspaces:
+#   sudo apparmor_parser -r agentic-codex-sandbox
+# Provenance and verification: README.md next to this file.
+
+abi <abi/3.0>,
+#include <tunables/global>
+
+profile agentic-codex-sandbox flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  # Disallow AF_ALG (Linux kernel crypto API); see https://copy.fail/
+  deny network alg,
+  # Disallow AF_VSOCK to prevent host/guest communication.
+  deny network vsock,
+  capability,
+  file,
+  umount,
+  # Host (privileged) processes may send signals to container processes.
+  signal (receive) peer=unconfined,
+  # runc may send signals to container processes (for "docker stop").
+  signal (receive) peer=runc,
+  # crun may send signals to container processes (for "docker stop" when used with crun OCI runtime).
+  signal (receive) peer=crun,
+  # dockerd may send signals to container processes (for "docker kill").
+  signal (receive) peer="unconfined",
+  # Container processes may send signals amongst themselves.
+  signal (send,receive) peer="agentic-codex-sandbox",
+
+  deny @{PROC}/* w,   # deny write for all files directly in /proc (not in a subdir)
+  # deny write to files not in /proc/<number>/** or /proc/sys/**
+  deny @{PROC}/{[^1-9/],[^1-9/][^0-9/],[^1-9s/][^0-9y/][^0-9s/],[^1-9/][^0-9/][^0-9/][^0-9/]*}/** w,
+  deny @{PROC}/sys/[^k]** w,  # deny /proc/sys except /proc/sys/k* (effectively /proc/sys/kernel)
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,  # deny everything except shm* in /proc/sys/kernel/
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+
+  # --- agentic-isolation: bubblewrap sandbox construction (replaces `deny mount,`)
+  # Only effective inside a user namespace the container itself created; the
+  # container has no capabilities in the initial namespace.
+  # Stop mount events propagating out of bwrap's new mount namespace.
+  # (bwrap passes MS_SILENT, hence `silent`.)
+  mount options in (rw, silent, rslave) -> /,
+  mount options in (rw, silent, rprivate) -> /oldroot/,
+  # bwrap's staging root: a tmpfs over /tmp, bound onto itself.
+  mount fstype=tmpfs options in (rw, nosuid, nodev, silent) tmpfs -> /tmp/,
+  mount options in (rw, rbind, silent) /tmp/newroot/ -> /tmp/newroot/,
+  pivot_root oldroot=/tmp/oldroot/ /tmp/,
+  # Assemble the sandbox tree under /newroot from the old root.
+  mount fstype=tmpfs options in (rw, nosuid, nodev, silent) tmpfs -> /newroot/{,**},
+  mount options in (rw, rbind, silent) /oldroot/{,**} -> /newroot/{,**},
+  mount options in (ro, nosuid, nodev, noexec, remount, bind, silent, relatime) -> /newroot/{,**},
+  mount fstype=proc options in (rw, nosuid, nodev, noexec, silent) proc -> /newroot/proc/,
+  mount fstype=devpts options in (rw, nosuid, noexec, silent) devpts -> /newroot/dev/pts/,
+  pivot_root oldroot=/newroot/ /newroot/,
+  # --- end agentic-isolation
+
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+
+  # allow processes within the container to trace each other,
+  # provided all other LSM and yama setting allow it.
+  ptrace (trace,tracedby,read,readby) peer="agentic-codex-sandbox",
+}

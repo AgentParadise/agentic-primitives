@@ -63,6 +63,63 @@ def codex_sandbox_seccomp_profile() -> Path:
     return path
 
 
+CODEX_SANDBOX_APPARMOR_PROFILE = "agentic-codex-sandbox"
+_APPARMOR_POLICY_PROFILES = Path("/sys/kernel/security/apparmor/policy/profiles")
+_APPARMOR_PROFILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
+
+class AppArmorProfileNotLoadedError(RuntimeError):
+    """AppArmor is active on the Docker host but the requested profile is not loaded."""
+
+    def __init__(self, profile: str) -> None:
+        super().__init__(
+            f"AppArmor is active on the Docker host but profile {profile!r} is not loaded. "
+            "Load it once per boot on the Docker host, then retry: "
+            f"sudo apparmor_parser -r {codex_sandbox_apparmor_profile_path()} "
+            "(see agentic_isolation/apparmor/README.md). Refusing to start the "
+            "workspace without it."
+        )
+        self.profile = profile
+
+
+def codex_sandbox_apparmor_profile_path() -> Path:
+    """Filesystem path of the shipped Codex sandbox AppArmor profile.
+
+    Docker's docker-default profile with its blanket ``deny mount,`` replaced
+    by the mount and pivot_root operations bubblewrap performs. Loaded by the
+    host administrator with ``apparmor_parser -r``; see
+    ``agentic_isolation/apparmor/README.md``.
+    """
+    resource = resources.files("agentic_isolation.apparmor") / CODEX_SANDBOX_APPARMOR_PROFILE
+    return Path(str(resource))
+
+
+def apparmor_profile_loaded(profile: str) -> bool | None:
+    """Whether ``profile`` is loaded in this kernel.
+
+    Reads ``policy/profiles/*/name``, which unprivileged users can read (the
+    flat ``profiles`` list is root-only on Ubuntu). None means this host cannot
+    tell, for example because the Docker daemon is remote or securityfs is not
+    mounted here; Docker then reports a missing profile itself at run time.
+    """
+    try:
+        entries = list(_APPARMOR_POLICY_PROFILES.iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        try:
+            if (entry / "name").read_text().strip() == profile:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def is_apparmor_profile_error(detail: str) -> bool:
+    """Whether a ``docker run`` failure means the AppArmor profile is missing."""
+    return "apparmor failed to apply profile" in detail
+
+
 @dataclass
 class SecurityConfig:
     """Security hardening configuration for isolated workspaces.
@@ -120,6 +177,14 @@ class SecurityConfig:
     # production(codex_sandbox=True); see codex_sandbox_seccomp_profile().
     seccomp_profile: Path | None = None
 
+    # AppArmor profile name (--security-opt=apparmor=<name>). Needed with the
+    # Codex seccomp profile on AppArmor hosts, whose docker-default profile
+    # denies the mounts bubblewrap makes. Applied only when AppArmor is active
+    # on the Docker host (use_apparmor=None auto-detects); if it is active and
+    # the profile is not loaded, launching fails closed.
+    apparmor_profile: str | None = None
+    use_apparmor: bool | None = None  # None = auto-detect, True/False = force
+
     @classmethod
     def production(cls, *, codex_sandbox: bool = False) -> SecurityConfig:
         """Production-grade security configuration.
@@ -128,11 +193,16 @@ class SecurityConfig:
 
         ``codex_sandbox=True`` is for workspaces that can run Codex. It adds
         only the shipped seccomp profile that lets Codex's bubblewrap sandbox
-        create a user namespace; capabilities stay dropped, no-new-privileges
-        and the read-only root stay on. Leave it False for everything else.
+        create a user namespace and, on AppArmor hosts, the paired AppArmor
+        profile that lets it build its mount tree. Capabilities stay dropped,
+        no-new-privileges and the read-only root stay on. Leave it False for
+        everything else.
         """
         if codex_sandbox:
-            return cls(seccomp_profile=codex_sandbox_seccomp_profile())
+            return cls(
+                seccomp_profile=codex_sandbox_seccomp_profile(),
+                apparmor_profile=CODEX_SANDBOX_APPARMOR_PROFILE,
+            )
         return cls()  # All defaults are production-safe
 
     @classmethod
@@ -148,6 +218,32 @@ class SecurityConfig:
 
     # Cache for gVisor detection to avoid repeated blocking subprocess calls
     _gvisor_available: bool | None = None
+
+    _apparmor_available: bool | None = None
+
+    @classmethod
+    def detect_apparmor(cls) -> bool:
+        """Whether the Docker daemon confines containers with AppArmor.
+
+        Asks the daemon (``docker info``), so it is right for remote hosts too;
+        Docker Desktop reports no AppArmor. Cached like detect_gvisor().
+        """
+        if cls._apparmor_available is not None:
+            return cls._apparmor_available
+        if shutil.which("docker") is None:
+            cls._apparmor_available = False
+            return False
+        try:
+            result = subprocess.run(
+                ["docker", "info", "--format", "{{json .SecurityOptions}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            cls._apparmor_available = result.returncode == 0 and "name=apparmor" in result.stdout
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            cls._apparmor_available = False
+        return cls._apparmor_available
 
     @classmethod
     def detect_gvisor(cls) -> bool:
@@ -215,6 +311,18 @@ class SecurityConfig:
             if not profile.is_file():
                 raise FileNotFoundError(f"Seccomp profile not found: {profile}")
             args.append(f"--security-opt=seccomp={profile.resolve()}")
+
+        if self.apparmor_profile is not None:
+            name = self.apparmor_profile
+            if not _APPARMOR_PROFILE_NAME.fullmatch(name):
+                raise ValueError(f"Invalid AppArmor profile name: {name!r}")
+            use_apparmor = self.use_apparmor
+            if use_apparmor is None:
+                use_apparmor = self.detect_apparmor()
+            if use_apparmor:
+                if apparmor_profile_loaded(name) is False:
+                    raise AppArmorProfileNotLoadedError(name)
+                args.append(f"--security-opt=apparmor={name}")
 
         # gVisor runtime
         use_gvisor = self.use_gvisor

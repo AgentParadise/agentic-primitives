@@ -6,7 +6,9 @@ profile, `codex sandbox` (bubblewrap) works: writes inside the workspace
 succeed and writes outside it are denied, while --cap-drop=ALL,
 no-new-privileges and --read-only stay in force. Without the profile, the
 entrypoint probe records the sandbox as unavailable and syn-delegate refuses
-to launch Codex, recording launch_failed.
+to launch Codex, recording launch_failed. On AppArmor hosts the paired
+AppArmor profile must be loaded first (sudo apparmor_parser -r, see
+agentic_isolation/apparmor/README.md).
 
 Requirements:
     - Docker
@@ -28,6 +30,7 @@ from pathlib import Path
 import pytest
 
 from agentic_isolation import (
+    CODEX_SANDBOX_APPARMOR_PROFILE,
     SecurityConfig,
     Workspace,
     WorkspaceConfig,
@@ -177,6 +180,16 @@ class TestWithCodexSandboxProfile:
         assert "no-new-privileges" in security_opt
         assert any(str(opt).startswith("seccomp=") for opt in security_opt)
         assert not config.get("CapAdd")
+        apparmor = subprocess.run(
+            ["docker", "inspect", "--format", "{{.AppArmorProfile}}", container],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        if SecurityConfig.detect_apparmor():
+            assert apparmor == CODEX_SANDBOX_APPARMOR_PROFILE
+        else:
+            assert apparmor == ""
         assert config.get("Privileged") is False
         uid = _docker_exec(container, ["id", "-u"])
         assert uid.stdout.strip() == "1000"
