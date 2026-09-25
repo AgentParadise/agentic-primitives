@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import tracemalloc
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -265,3 +266,18 @@ def test_bundled_harnesses_expose_conversation_capability() -> None:
         plugin = get_harness(name)
         assert isinstance(plugin, ConversationHarnessPlugin)
         assert plugin.conversation_reader().conversation(b"").messages == ()
+
+
+def test_reading_stops_as_soon_as_the_budget_is_spent() -> None:
+    class Counting:
+        calls = 0
+
+        def messages(self, line: bytes) -> tuple[tuple[Literal["user"], str], ...]:
+            self.calls += 1
+            return (("user", "y" * 1000),)
+
+    parser = Counting()
+    lines = ((number, b"{}") for number in range(1, 100_001))
+    preview = collect(lines, parser, "v")
+    assert preview.truncated
+    assert parser.calls == 33  # 32 full messages + 1 partial, then no further parsing
