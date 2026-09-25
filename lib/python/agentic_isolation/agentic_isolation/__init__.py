@@ -45,10 +45,18 @@ Features:
 """
 
 from agentic_isolation.config import (
+    CODEX_IMAGE_LABEL,
+    CODEX_SANDBOX_APPARMOR_PROFILE,
+    CODEX_SANDBOX_SECCOMP_PROFILE_NAME,
+    AppArmorProfileNotLoadedError,
+    CodexSandboxPolicyError,
+    DockerDetectionError,
     MountConfig,
     ResourceLimits,
     SecurityConfig,
     WorkspaceConfig,
+    codex_sandbox_apparmor_profile_path,
+    codex_sandbox_seccomp_profile,
 )
 from agentic_isolation.providers import (
     AgentName,
@@ -101,6 +109,14 @@ __all__ = [
     "ResourceLimits",
     "MountConfig",
     "SecurityConfig",
+    "CODEX_SANDBOX_SECCOMP_PROFILE_NAME",
+    "codex_sandbox_seccomp_profile",
+    "CODEX_SANDBOX_APPARMOR_PROFILE",
+    "AppArmorProfileNotLoadedError",
+    "CODEX_IMAGE_LABEL",
+    "CodexSandboxPolicyError",
+    "DockerDetectionError",
+    "codex_sandbox_apparmor_profile_path",
     # Providers
     "WorkspaceProvider",
     "SupportsStagedTeardown",
@@ -140,4 +156,4 @@ __all__ = [
     "CircuitOpenError",
 ]
 
-__version__ = "0.8.1"
+__version__ = "0.9.0"

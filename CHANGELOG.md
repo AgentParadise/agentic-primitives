@@ -9,6 +9,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔒 Security: Codex keeps its own sandbox in workspaces (agentic-isolation 0.9.0, agentic-session-store 0.4.0; omni-agent 1.8.0, claude-cli 2.1.6; delegation plugin 1.4.0)
+
+Ported from agentic-workspace PR #2 (7dcbfe3, 89b0017, f7c2b8b, 531f7d1); the Rust Docker adapter part is agentic-workspace only. Part of syntropic137/syntropic137#1398.
+
+Docker's default seccomp profile denies user-namespace creation without
+`CAP_SYS_ADMIN`, so Codex's bubblewrap sandbox failed in every production
+workspace (`bwrap: No permissions to create a new namespace`), every shell tool
+call failed, and `codex exec` still exited 0.
+
+- **agentic-isolation 0.8.1 -> 0.9.0: Codex sandbox policy, derived from the
+  image.** `WorkspaceDockerProvider.create` reads the image's
+  `agentic.codex_cli_version` label (`docker image inspect`, one pull if
+  absent, unreadable labels fail the launch). Labelled images get the policy
+  with plain `SecurityConfig.production()`; others keep Docker's defaults.
+  `production(codex_sandbox=True/False)` only asserts the expectation, and a
+  contradiction raises `CodexSandboxPolicyError` before anything is created.
+  The container is started by the inspected image ID, so a retag between
+  inspect and `docker run` cannot change which image the policy applies to.
+  A Codex-labelled image always gets the shipped profiles; a caller-supplied
+  different seccomp or AppArmor profile is refused. Images must carry the
+  label to run Codex sandboxed (an unlabelled one fails closed at
+  `syn-delegate`'s probe).
+  **Behaviour change:** Syntropic137's Codex-capable images now get the policy
+  without code changes, and on AppArmor hosts need the host setup step below.
+- **Seccomp** (`agentic_isolation/seccomp/codex-sandbox.json`): Moby's default
+  profile (docker-v29.8.0, moby/profiles v0.2.3) plus `clone`/`unshare` for
+  exactly the user, mount, pid, net and ipc namespaces (measured with strace;
+  uts, cgroup and time stay denied) and `mount`, `umount2`, `pivot_root`.
+  `setns` and `clone3` stay denied.
+- **AppArmor** (`agentic_isolation/apparmor/agentic-codex-sandbox`, AppArmor
+  hosts only): docker-default with `deny mount,` replaced by exactly the mount
+  operations bubblewrap performs for read-only and workspace-write (recorded in
+  complain mode), exact option sets, writable remount only on `/workspace`
+  roots, and explicit denials for sysfs/cgroup/securityfs/debugfs/tracefs/bpf
+  and binds from `/proc`, `/sys`, `/run` or of a `docker.sock`. Codex must run
+  under `/workspace` there. Applied when `docker info` reports AppArmor; if it
+  is active but not loaded, `AppArmorProfileNotLoadedError`. Host setup, once
+  per boot on the Docker host:
+  `sudo apparmor_parser -r <codex_sandbox_apparmor_profile_path()>`.
+- **Detection never fails open.** A failing `docker info` raises
+  `DockerDetectionError` and is not cached, for AppArmor and gVisor alike.
+- **agentic-session-store 0.3.0 -> 0.4.0.** `syn-delegate codex` passes an
+  explicit `--sandbox` (default `workspace-write`; `read-only` via `--sandbox`
+  or `AGENTIC_DELEGATE_CODEX_SANDBOX`; `danger-full-access`,
+  `external-sandbox` and unknown values are refused with exit 2), passes the
+  prompt after `--` (Codex and Claude), and probes `codex sandbox` live before
+  every launch with its own mode, directory and environment. A failed probe
+  means no launch: `launch_failed` with the new journal field `reason`
+  (`codex_sandbox_unavailable`) and exit 69. There is no status file to forge.
+  The child journal gains an additive `reason` column; exports include it only
+  when set. Pass prompts as `--prompt="$P"`.
+- **Workspace entrypoint (omni-agent 1.8.0, claude-cli 2.1.6).** Logs the
+  Codex sandbox probe at startup for diagnosis; nothing reads it.
+- **delegation plugin 1.4.0.** `delegating-to-codex` no longer recommends
+  disabling Codex's sandbox inside containers.
+
+Trade-off: unprivileged user namespaces widen kernel attack surface inside the
+opted-in container, and on AppArmor hosts the paired profile allows the
+bubblewrap mount sequence inside the container's own user namespaces.
+Mitigations: all capabilities dropped, no-new-privileges, Codex-only scope,
+arbitrary mounts denied by AppArmor where it runs, patched host kernels.
+Residual on hosts without AppArmor (Docker Desktop, OrbStack): inside the
+container's private user namespace only the kernel mediates mounts, so
+arbitrary binds of already-readable paths are possible there (inherited
+read-only mounts stay locked). No host
+sysctl is changed and `apparmor=unconfined` is never used.
+
 ### 🔒 Security: mount guard and finalizer log leak (agentic-isolation 0.8.1; omni-agent 1.7.1, claude-cli 2.1.5, interactive-tmux 0.2.5)
 
 Ported from agentic-workspace PR #14 (e875ff0).

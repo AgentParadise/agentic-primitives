@@ -19,7 +19,7 @@ def export_page(page: ChildPage) -> dict[str, object]:
     for change in body["changes"]:
         intent = change["intent"]
         for owner, names in (
-            (intent, ("status", "exit_code")),
+            (intent, ("status", "exit_code", "reason")),
             (intent["call"], ("target_harness",)),
         ):
             for name in names:

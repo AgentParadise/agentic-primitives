@@ -2,7 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-from agentic_isolation.config import SecurityConfig
+import pytest
+
+from agentic_isolation.config import DockerDetectionError, SecurityConfig
 
 
 class TestSecurityConfig:
@@ -145,10 +147,13 @@ class TestSecurityConfigGVisorDetection:
     @patch("shutil.which")
     @patch("subprocess.run")
     def test_detect_gvisor_docker_error(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
-        """Should return False if docker info fails."""
+        """A failed docker info is an error, never "no gVisor", and is not cached."""
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(returncode=1, stdout="")
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="daemon down")
 
-        result = SecurityConfig.detect_gvisor()
+        with pytest.raises(DockerDetectionError, match="daemon down"):
+            SecurityConfig.detect_gvisor()
+        assert SecurityConfig._gvisor_available is None
 
-        assert result is False
+        mock_run.return_value = MagicMock(returncode=0, stdout='{"runsc":{}}')
+        assert SecurityConfig.detect_gvisor() is True

@@ -10,10 +10,18 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
 from agentic_session_store.child_schema import upgrade
+
+
+class LaunchFailureReason(StrEnum):
+    """Why a registered delegate never started. Stable wire values."""
+
+    PROCESS_START_FAILED = "process_start_failed"
+    CODEX_SANDBOX_UNAVAILABLE = "codex_sandbox_unavailable"
 
 
 @dataclass(frozen=True)
@@ -53,6 +61,7 @@ class ChildIntent:
     child_native_id: str | None
     status: str | None = None
     exit_code: int | None = None
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -130,7 +139,8 @@ class ChildJournal:
     @staticmethod
     def _get(connection: sqlite3.Connection, call: ChildCall) -> ChildIntent:
         row = connection.execute(
-            """SELECT sequence, child_invocation_id, child_native_id, target_harness, status, exit_code FROM child_intents
+            """SELECT sequence, child_invocation_id, child_native_id, target_harness, status, exit_code, reason
+               FROM child_intents
                WHERE invocation_id=? AND attempt_id=? AND harness=?
                  AND parent_native_id=? AND tool_call_id=?""",
             call.key,
@@ -139,7 +149,7 @@ class ChildJournal:
             raise ValueError("Child call has no durable registration")
         if row[3] != call.target_harness:
             raise ValueError("Conflicting child target harness")
-        return ChildIntent(row[0], row[1], call, row[2], row[4], row[5])
+        return ChildIntent(row[0], row[1], call, row[2], row[4], row[5], row[6])
 
     def register(self, call: ChildCall) -> ChildIntent:
         with closing(self._connect()) as connection:
@@ -180,8 +190,10 @@ class ChildJournal:
     def launched(self, call: ChildCall) -> ChildIntent:
         return self._transition(call, "launched", None)
 
-    def launch_failed(self, call: ChildCall) -> ChildIntent:
-        return self._transition(call, "launch_failed", None)
+    def launch_failed(
+        self, call: ChildCall, reason: LaunchFailureReason | None = None
+    ) -> ChildIntent:
+        return self._transition(call, "launch_failed", None, reason)
 
     def finished(self, call: ChildCall, exit_code: int) -> ChildIntent:
         if (
@@ -200,12 +212,20 @@ class ChildJournal:
         return self._transition(call, status, exit_code)
 
     def _transition(
-        self, call: ChildCall, status: str, exit_code: int | None
+        self,
+        call: ChildCall,
+        status: str,
+        exit_code: int | None,
+        reason: LaunchFailureReason | None = None,
     ) -> ChildIntent:
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             intent = self._get(connection, call)
-            if (intent.status, intent.exit_code) == (status, exit_code):
+            if (intent.status, intent.exit_code, intent.reason) == (
+                status,
+                exit_code,
+                None if reason is None else reason.value,
+            ):
                 return intent
             if intent.status is not None and intent.status != "launched":
                 raise ValueError("Child launch outcome is terminal")
@@ -219,8 +239,13 @@ class ChildJournal:
             ):
                 raise ValueError("Child must launch before finishing")
             connection.execute(
-                "UPDATE child_intents SET status=?, exit_code=? WHERE sequence=?",
-                (status, exit_code, intent.sequence),
+                "UPDATE child_intents SET status=?, exit_code=?, reason=? WHERE sequence=?",
+                (
+                    status,
+                    exit_code,
+                    None if reason is None else reason.value,
+                    intent.sequence,
+                ),
             )
             return self._get(connection, call)
 
@@ -266,10 +291,11 @@ class ChildJournal:
                 if "status" in change_columns
                 else "NULL, NULL"
             )
+            reason = "change.reason" if "reason" in change_columns else "NULL"
             rows = connection.execute(
                 f"""SELECT change.sequence, intent.sequence, intent.child_invocation_id,
                           intent.invocation_id, intent.attempt_id, intent.harness,
-                          intent.parent_native_id, intent.tool_call_id, change.child_native_id, {target}, {status}
+                          intent.parent_native_id, intent.tool_call_id, change.child_native_id, {target}, {status}, {reason}
                    FROM child_changes AS change
                    JOIN child_intents AS intent ON intent.sequence=change.intent_sequence
                    WHERE change.sequence > ? AND change.sequence <= ?
@@ -286,6 +312,7 @@ class ChildJournal:
                         row[8],
                         row[10],
                         row[11],
+                        row[12],
                     ),
                 )
                 for row in rows[:limit]

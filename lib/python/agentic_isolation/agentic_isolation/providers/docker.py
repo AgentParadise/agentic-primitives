@@ -13,6 +13,7 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shutil
 import tempfile
@@ -21,7 +22,13 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path, PurePosixPath
 
-from agentic_isolation.config import SecurityConfig, WorkspaceConfig
+from agentic_isolation.config import (
+    CODEX_IMAGE_LABEL,
+    AppArmorProfileNotLoadedError,
+    SecurityConfig,
+    WorkspaceConfig,
+    is_apparmor_profile_error,
+)
 from agentic_isolation.harnesses import ExecFn, TranscriptSource, get_harness
 from agentic_isolation.providers.base import (
     BaseProvider,
@@ -119,6 +126,52 @@ class WorkspaceDockerProvider(BaseProvider):
         """Provider name."""
         return "docker"
 
+    async def _inspect_image(self, image: str) -> tuple[str, dict[str, str]]:
+        """The immutable image ID and labels of ``image``; pulls once if absent.
+
+        The caller launches by the returned ID, so the label that decided the
+        security policy belongs to exactly the image that runs, even if the
+        tag is moved between inspect and ``docker run``. Fails closed: an image
+        whose labels cannot be read is not launched.
+        """
+        for attempt in range(2):
+            proc = await asyncio.create_subprocess_exec(
+                "docker",
+                "image",
+                "inspect",
+                "--format",
+                # Not `.Config.Labels`: some Docker versions omit the key for
+                # unlabelled images, which makes that template fail.
+                "{{.Id}} {{json .Config}}",
+                image,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode == 0:
+                image_id, _, config_json = stdout.decode().strip().partition(" ")
+                config: object = json.loads(config_json or "null")
+                labels: object = config.get("Labels") if isinstance(config, dict) else None
+                if not image_id.startswith("sha256:") or not (
+                    labels is None or isinstance(labels, dict)
+                ):
+                    raise RuntimeError(f"Unreadable inspect output for image {image}")
+                return image_id, {str(key): str(value) for key, value in (labels or {}).items()}
+            if attempt == 0:
+                pull = await asyncio.create_subprocess_exec(
+                    "docker",
+                    "pull",
+                    "--quiet",
+                    image,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await pull.communicate()
+        raise RuntimeError(
+            f"Cannot inspect image {image} to derive its security policy: "
+            f"{stderr.decode(errors='replace').strip()[:300]}"
+        )
+
     @staticmethod
     def is_available() -> bool:
         """Check if Docker is available."""
@@ -129,6 +182,14 @@ class WorkspaceDockerProvider(BaseProvider):
         # Resolve plugin env vars before creating container
         if config.plugins:
             config.resolve_plugin_env()
+
+        # The Codex sandbox policy comes from the image's own declaration, and
+        # is settled before anything is created so a mismatch leaves nothing.
+        image = config.image or self._default_image
+        image_id, labels = await self._inspect_image(image)
+        security = (config.security or self._security).resolve_for_image(
+            bool(labels.get(CODEX_IMAGE_LABEL))
+        )
 
         short_id = uuid.uuid4().hex[:8]
         workspace_id = f"ws-{short_id}"
@@ -153,14 +214,12 @@ class WorkspaceDockerProvider(BaseProvider):
         await self._ensure_network(self._default_network)
 
         # Build docker run command
-        image = config.image or self._default_image
-        security = config.security or self._security
 
         cmd = self._build_run_command(
             container_name=container_name,
             workspace_id=workspace_id,
             workspace_dir=host_mount_dir,  # Use HOST path for volume mount
-            image=image,
+            image=image_id,  # the inspected image, not whatever the tag is now
             config=config,
             security=security,
         )
@@ -182,6 +241,8 @@ class WorkspaceDockerProvider(BaseProvider):
 
             if proc.returncode != 0:
                 error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                if security.apparmor_profile is not None and is_apparmor_profile_error(error_msg):
+                    raise AppArmorProfileNotLoadedError(security.apparmor_profile)
                 raise RuntimeError(f"Failed to create container: {error_msg}")
 
             container_id = stdout.decode().strip()
@@ -198,6 +259,7 @@ class WorkspaceDockerProvider(BaseProvider):
                     "container_id": container_id,
                     "container_name": container_name,
                     "image": image,
+                    "image_id": image_id,
                     "workspace_dir": str(workspace_dir),
                 },
                 _handle=container_name,  # Use name for docker exec

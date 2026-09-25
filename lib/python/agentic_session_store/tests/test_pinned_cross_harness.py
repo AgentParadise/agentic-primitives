@@ -111,7 +111,9 @@ def test_real_cross_harness_depth_three(tmp_path):
     document = tomlkit.parse((codex / "config.toml").read_text())
     document["model_provider"] = "fixture"
     document["approval_policy"] = "never"
-    document["sandbox_mode"] = "danger-full-access"
+    # syn-delegate passes --sandbox workspace-write, which overrides any
+    # sandbox_mode here. The nested delegate must reach the loopback fixture.
+    document["sandbox_workspace_write"] = {"network_access": True}
     document["model_providers"] = {
         "fixture": {
             "name": "fixture",
@@ -139,6 +141,9 @@ def test_real_cross_harness_depth_three(tmp_path):
         "AGENTIC_INVOCATION_ID": "invocation",
         "AGENTIC_ATTEMPT_ID": "attempt",
     }
+    # syn-delegate probes `codex sandbox` live before launching. Inside a
+    # container this needs the Codex sandbox seccomp (and, on AppArmor hosts,
+    # AppArmor) profile; without it the Codex delegate is refused.
     environment.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
     environment.pop("CODEX_THREAD_ID", None)
     try:

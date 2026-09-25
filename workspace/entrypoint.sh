@@ -599,6 +599,32 @@ if [ -n "${__withhold_ambient}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
+# 5.9 Codex sandbox probe (diagnostic log only)
+# -----------------------------------------------------------------------------
+# Codex runs model shell commands under bubblewrap. Without the Codex sandbox
+# seccomp profile (and, on AppArmor hosts, AppArmor profile) that the provider
+# applies to Codex-capable images, every Codex shell tool call fails while
+# `codex exec` still exits 0. Report the state once at startup so it is visible
+# in container logs. Nothing reads this: syn-delegate probes live, with its own
+# mode, directory and environment, before every Codex launch. Never fatal.
+if command -v codex >/dev/null 2>&1; then
+    __codex_probe_rc=0
+    # workspace-write scopes writes to the cwd; the policy only admits
+    # working directories under /workspace.
+    __codex_probe_err="$(cd /workspace 2>/dev/null && timeout 30 codex sandbox \
+        -c 'sandbox_mode="workspace-write"' -- true 2>&1 >/dev/null)" || __codex_probe_rc=$?
+    if [ "${__codex_probe_rc}" -eq 0 ]; then
+        echo "[entrypoint] codex sandbox: available" >&2
+    else
+        __codex_detail="$( { printf '%s\n' "${__codex_probe_err}" | grep -m 1 -i -E 'bwrap|error' \
+            || printf '%s\n' "${__codex_probe_err}" | tail -n 1; } | cut -c1-300)"
+        echo "[entrypoint] codex sandbox: unavailable (probe exit ${__codex_probe_rc}: ${__codex_detail})" >&2
+        unset __codex_detail
+    fi
+    unset __codex_probe_rc __codex_probe_err
+fi
+
+# -----------------------------------------------------------------------------
 # 6. Execute CMD
 # -----------------------------------------------------------------------------
 # Two paths, and which one runs is decided by whether any finalizer exists.

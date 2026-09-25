@@ -10,9 +10,10 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from importlib import resources
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,101 @@ def _resolve_single_env_var(
     return value, True
 
 
+CODEX_SANDBOX_SECCOMP_PROFILE_NAME = "codex-sandbox.json"
+
+
+def codex_sandbox_seccomp_profile() -> Path:
+    """Filesystem path of the shipped Codex sandbox seccomp profile.
+
+    Docker's default profile plus clone/unshare for the user, mount, pid, net
+    and ipc namespaces only, and mount, umount2 and pivot_root, so Codex's
+    bubblewrap sandbox can build its namespaces. See
+    ``agentic_isolation/seccomp/README.md`` for provenance.
+
+    The docker CLI reads this file on the host that runs ``docker run``, so it
+    must be a real file, not a zip member.
+    """
+    resource = resources.files("agentic_isolation.seccomp") / CODEX_SANDBOX_SECCOMP_PROFILE_NAME
+    path = Path(str(resource))
+    if not path.is_file():
+        raise FileNotFoundError(f"Codex sandbox seccomp profile is not installed as a file: {path}")
+    return path
+
+
+CODEX_SANDBOX_APPARMOR_PROFILE = "agentic-codex-sandbox"
+_APPARMOR_POLICY_PROFILES = Path("/sys/kernel/security/apparmor/policy/profiles")
+_APPARMOR_PROFILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
+
+#: Image label that declares a workspace image can run Codex. Set at build
+#: time from the pinned Codex CLI version; the provider reads it with
+#: ``docker image inspect`` and derives the Codex sandbox policy from it.
+CODEX_IMAGE_LABEL = "agentic.codex_cli_version"
+
+
+class CodexSandboxPolicyError(ValueError):
+    """The requested Codex sandbox policy contradicts the image's declaration."""
+
+
+class DockerDetectionError(RuntimeError):
+    """A security-relevant Docker host property could not be determined.
+
+    Never treated as "feature absent": that would silently drop protection.
+    """
+
+
+class AppArmorProfileNotLoadedError(RuntimeError):
+    """AppArmor is active on the Docker host but the requested profile is not loaded."""
+
+    def __init__(self, profile: str) -> None:
+        super().__init__(
+            f"AppArmor is active on the Docker host but profile {profile!r} is not loaded. "
+            "Load it once per boot on the Docker host, then retry: "
+            f"sudo apparmor_parser -r {codex_sandbox_apparmor_profile_path()} "
+            "(see agentic_isolation/apparmor/README.md). Refusing to start the "
+            "workspace without it."
+        )
+        self.profile = profile
+
+
+def codex_sandbox_apparmor_profile_path() -> Path:
+    """Filesystem path of the shipped Codex sandbox AppArmor profile.
+
+    Docker's docker-default profile with its blanket ``deny mount,`` replaced
+    by the mount and pivot_root operations bubblewrap performs. Loaded by the
+    host administrator with ``apparmor_parser -r``; see
+    ``agentic_isolation/apparmor/README.md``.
+    """
+    resource = resources.files("agentic_isolation.apparmor") / CODEX_SANDBOX_APPARMOR_PROFILE
+    return Path(str(resource))
+
+
+def apparmor_profile_loaded(profile: str) -> bool | None:
+    """Whether ``profile`` is loaded in this kernel.
+
+    Reads ``policy/profiles/*/name``, which unprivileged users can read (the
+    flat ``profiles`` list is root-only on Ubuntu). None means this host cannot
+    tell, for example because the Docker daemon is remote or securityfs is not
+    mounted here; Docker then reports a missing profile itself at run time.
+    """
+    try:
+        entries = list(_APPARMOR_POLICY_PROFILES.iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        try:
+            if (entry / "name").read_text().strip() == profile:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def is_apparmor_profile_error(detail: str) -> bool:
+    """Whether a ``docker run`` failure means the AppArmor profile is missing."""
+    return "apparmor failed to apply profile" in detail
+
+
 @dataclass
 class SecurityConfig:
     """Security hardening configuration for isolated workspaces.
@@ -65,6 +161,10 @@ class SecurityConfig:
 
         # Custom
         config = SecurityConfig(read_only_root=False)
+
+        # Codex sandbox policy: derived from the image label at create();
+        # True/False only asserts the expectation (mismatch is rejected)
+        config = SecurityConfig.production(codex_sandbox=True)
     """
 
     # Capability dropping
@@ -91,13 +191,84 @@ class SecurityConfig:
     # gVisor runtime (extra sandbox layer)
     use_gvisor: bool | None = None  # None = auto-detect, True/False = force
 
+    # Seccomp profile file (--security-opt=seccomp=<path>). None keeps Docker's
+    # default profile. Set for Codex-capable images by resolve_for_image();
+    # see codex_sandbox_seccomp_profile().
+    seccomp_profile: Path | None = None
+
+    # AppArmor profile name (--security-opt=apparmor=<name>). Needed with the
+    # Codex seccomp profile on AppArmor hosts, whose docker-default profile
+    # denies the mounts bubblewrap makes. Applied only when AppArmor is active
+    # on the Docker host (use_apparmor=None auto-detects); if it is active and
+    # the profile is not loaded, launching fails closed.
+    apparmor_profile: str | None = None
+    use_apparmor: bool | None = None  # None = auto-detect, True/False = force
+
+    # Codex sandbox policy. None derives it from the image's
+    # ``agentic.codex_cli_version`` label at provision; True/False must agree
+    # with that label or provisioning is rejected. See resolve_for_image().
+    codex_sandbox: bool | None = None
+
     @classmethod
-    def production(cls) -> SecurityConfig:
+    def production(cls, *, codex_sandbox: bool | None = None) -> SecurityConfig:
         """Production-grade security configuration.
 
         All security features enabled. Use for untrusted workloads.
+
+        The Codex sandbox policy (the shipped seccomp profile that lets
+        Codex's bubblewrap sandbox create namespaces and, on AppArmor hosts,
+        the paired AppArmor profile that lets it build its mount tree) is
+        derived from the image at provision when ``codex_sandbox`` is None:
+        images labelled ``agentic.codex_cli_version`` get it, others do not.
+        Passing True or False asserts the expectation; a contradiction with
+        the image is rejected. Capabilities stay dropped, no-new-privileges
+        and the read-only root stay on either way.
         """
-        return cls()  # All defaults are production-safe
+        return cls(codex_sandbox=codex_sandbox)._with_codex_profiles()
+
+    def _with_codex_profiles(self) -> SecurityConfig:
+        """Pin the shipped profiles; a different caller-supplied one is refused.
+
+        A Codex image's policy is exactly the shipped pair, so a custom
+        seccomp or AppArmor profile cannot silently replace it.
+        """
+        if self.codex_sandbox is not True:
+            return self
+        seccomp = codex_sandbox_seccomp_profile()
+        if self.seccomp_profile is not None and (
+            Path(self.seccomp_profile).resolve() != seccomp.resolve()
+        ):
+            raise CodexSandboxPolicyError(
+                f"a Codex image must use the shipped seccomp profile {seccomp}, "
+                f"not {self.seccomp_profile}"
+            )
+        if self.apparmor_profile not in (None, CODEX_SANDBOX_APPARMOR_PROFILE):
+            raise CodexSandboxPolicyError(
+                f"a Codex image must use the AppArmor profile {CODEX_SANDBOX_APPARMOR_PROFILE}, "
+                f"not {self.apparmor_profile}"
+            )
+        return replace(
+            self,
+            seccomp_profile=seccomp,
+            apparmor_profile=CODEX_SANDBOX_APPARMOR_PROFILE,
+        )
+
+    def resolve_for_image(self, codex_capable: bool) -> SecurityConfig:
+        """The effective policy for an image, from its trusted declaration.
+
+        ``codex_capable`` comes from the image label, never from the caller.
+        """
+        if self.codex_sandbox is True and not codex_capable:
+            raise CodexSandboxPolicyError(
+                f"codex_sandbox=True requested but the image has no {CODEX_IMAGE_LABEL} "
+                "label; the Codex sandbox profiles are only for Codex-capable images"
+            )
+        if self.codex_sandbox is False and codex_capable:
+            raise CodexSandboxPolicyError(
+                f"codex_sandbox=False requested but the image declares {CODEX_IMAGE_LABEL}; "
+                "a Codex-capable image must run with the Codex sandbox policy"
+            )
+        return replace(self, codex_sandbox=codex_capable)._with_codex_profiles()
 
     @classmethod
     def development(cls) -> SecurityConfig:
@@ -110,38 +281,60 @@ class SecurityConfig:
             use_gvisor=False,
         )
 
-    # Cache for gVisor detection to avoid repeated blocking subprocess calls
-    _gvisor_available: bool | None = None
+    # Cache for gVisor detection to avoid repeated blocking subprocess calls.
+    # Only successful answers are cached; a failed probe is retried next time.
+    _gvisor_available: ClassVar[bool | None] = None
+    _apparmor_available: ClassVar[bool | None] = None
 
-    @classmethod
-    def detect_gvisor(cls) -> bool:
-        """Detect if gVisor runtime is available.
-
-        Result is cached to avoid repeated blocking subprocess calls.
-        """
-        # Return cached value if available
-        if cls._gvisor_available is not None:
-            return cls._gvisor_available
-
+    @staticmethod
+    def _docker_info(template: str) -> str:
+        """``docker info --format TEMPLATE``; raises DockerDetectionError on any failure."""
         if shutil.which("docker") is None:
-            cls._gvisor_available = False
-            return False
-
+            raise DockerDetectionError("docker CLI not found; cannot inspect the Docker host")
         try:
             result = subprocess.run(
-                ["docker", "info", "--format", "{{json .Runtimes}}"],
+                ["docker", "info", "--format", template],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            if result.returncode == 0:
-                cls._gvisor_available = "runsc" in result.stdout or "gvisor" in result.stdout
-            else:
-                cls._gvisor_available = False
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            # Docker unavailable or timed out - assume no gVisor
-            cls._gvisor_available = False
+        except (subprocess.TimeoutExpired, FileNotFoundError) as error:
+            raise DockerDetectionError(f"docker info failed: {error}") from error
+        if result.returncode != 0:
+            raise DockerDetectionError(
+                f"docker info exited {result.returncode}: {result.stderr.strip()[:300]}"
+            )
+        return result.stdout
 
+    @classmethod
+    def detect_apparmor(cls) -> bool:
+        """Whether the Docker daemon confines containers with AppArmor.
+
+        Asks the daemon (``docker info``), so it is right for remote hosts too;
+        Docker Desktop reports no AppArmor. A failed query raises
+        DockerDetectionError and is not cached: an unknown host is never
+        treated as one without AppArmor.
+        """
+        if cls._apparmor_available is None:
+            cls._apparmor_available = "name=apparmor" in cls._docker_info(
+                "{{json .SecurityOptions}}"
+            )
+        return cls._apparmor_available
+
+    @classmethod
+    def detect_gvisor(cls) -> bool:
+        """Detect if the gVisor runtime is available.
+
+        No docker CLI means no runtime to detect (and nothing can launch).
+        A failed query raises DockerDetectionError and is not cached, so a
+        transient failure never silently drops gVisor.
+        """
+        if cls._gvisor_available is not None:
+            return cls._gvisor_available
+        if shutil.which("docker") is None:
+            return False
+        runtimes = cls._docker_info("{{json .Runtimes}}")
+        cls._gvisor_available = "runsc" in runtimes or "gvisor" in runtimes
         return cls._gvisor_available
 
     def to_docker_run_args(self) -> list[str]:
@@ -173,6 +366,24 @@ class SecurityConfig:
 
         if self.pids_limit > 0:
             args.append(f"--pids-limit={self.pids_limit}")
+
+        if self.seccomp_profile is not None:
+            profile = Path(self.seccomp_profile)
+            if not profile.is_file():
+                raise FileNotFoundError(f"Seccomp profile not found: {profile}")
+            args.append(f"--security-opt=seccomp={profile.resolve()}")
+
+        if self.apparmor_profile is not None:
+            name = self.apparmor_profile
+            if not _APPARMOR_PROFILE_NAME.fullmatch(name):
+                raise ValueError(f"Invalid AppArmor profile name: {name!r}")
+            use_apparmor = self.use_apparmor
+            if use_apparmor is None:
+                use_apparmor = self.detect_apparmor()
+            if use_apparmor:
+                if apparmor_profile_loaded(name) is False:
+                    raise AppArmorProfileNotLoadedError(name)
+                args.append(f"--security-opt=apparmor={name}")
 
         # gVisor runtime
         use_gvisor = self.use_gvisor

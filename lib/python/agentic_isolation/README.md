@@ -75,7 +75,40 @@ security = SecurityConfig.production()
 # Development profile (for local testing)
 security = SecurityConfig.development()
 # - Less restrictive for debugging
+
+# Codex-capable images need nothing extra: the policy follows the image
+security = SecurityConfig.production()
+# For an image labelled agentic.codex_cli_version, create() adds
+#   --security-opt=seccomp=<installed codex-sandbox.json>
+#   --security-opt=apparmor=agentic-codex-sandbox (AppArmor hosts only)
+# production(codex_sandbox=True/False) asserts the expectation; a mismatch
+# with the image label raises CodexSandboxPolicyError before launch.
 ```
+
+The Codex sandbox policy lets Codex's own bubblewrap sandbox create its
+namespaces and mount tree, which Docker's defaults deny. It is derived at
+`create()` from the image's `agentic.codex_cli_version` label (read with
+`docker image inspect`, pulled first if absent; unreadable labels fail the
+launch). Images must carry `agentic.codex_cli_version` to run Codex
+sandboxed: an unlabelled image that happens to contain Codex keeps Docker's
+stricter defaults, bubblewrap fails there, and `syn-delegate`'s pre-launch probe
+refuses the delegate (`launch_failed`). The container is started by the
+inspected image ID, so the label that decided the policy belongs to the image
+that runs even if its tag moves. The seccomp profile is Docker's default plus `clone`/`unshare` for
+exactly the user, mount, pid, net and ipc namespaces, and `mount`, `umount2`,
+`pivot_root`; capabilities stay dropped and no-new-privileges and the
+read-only root stay on. Provenance and trade-offs:
+[`agentic_isolation/seccomp/README.md`](agentic_isolation/seccomp/README.md).
+
+On hosts where Docker uses AppArmor (Ubuntu 24.04 and most Debian/Ubuntu
+servers) the policy also applies the AppArmor profile `agentic-codex-sandbox`,
+docker-default with `deny mount,` replaced by only the mounts bubblewrap
+performs. Load it once per boot on the Docker host:
+`sudo apparmor_parser -r <codex_sandbox_apparmor_profile_path()>`. If AppArmor
+is active and the profile is missing, `create()` raises
+`AppArmorProfileNotLoadedError`; if `docker info` fails, it raises
+`DockerDetectionError` rather than assuming no AppArmor. Details:
+[`agentic_isolation/apparmor/README.md`](agentic_isolation/apparmor/README.md).
 
 ## Real-Time Streaming
 
