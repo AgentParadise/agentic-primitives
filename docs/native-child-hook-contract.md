@@ -346,3 +346,126 @@ All four pinned modules, `test_pinned_codex_hooks.py`,
 `test_pinned_cross_harness.py`, passed (6 tests, none skipped) against the real
 binaries in the built image, in a network-disabled container, with no
 credentials.
+
+
+## Fail-closed launch guard and native lifecycle, 2026-09-25 UTC
+
+Part of syntropic137/syntropic137#1398, acceptance rows 2 and 4.
+agentic-session-store 0.5.0.
+
+### Why the recorder failed open
+
+Measured against the pinned binaries in `agentic-workspace-omni-agent:2.1.281`,
+offline, with a Messages or Responses fixture:
+
+| Hook outcome at PreToolUse | Claude Code 2.1.281 | Codex 0.156.1 |
+| --- | --- | --- |
+| Exit 0 | Launch proceeds | Launch proceeds |
+| Exit 2, nonempty stderr | Launch denied, stderr to model | Launch denied, stderr to model |
+| Exit 1 | Launch proceeds (probe) | Launch proceeds (source) |
+| Command not found (127) | Launch proceeds (probe) | Launch proceeds (source) |
+| Hook timeout | Launch proceeds (probe) | Launch proceeds (source) |
+| Shell used | `/bin/sh -c` (probe) | `$SHELL -lc`, else `/bin/sh -lc` (source) |
+
+Codex rows marked "source" come from `codex-rs/hooks/src/engine/command_runner.rs`
+and `events/pre_tool_use.rs` at `rust-v0.156.1`: only exit 2 with nonempty stderr
+blocks; a spawn error, timeout or any other exit is a non-blocking failure. The
+pinned-binary tests below confirm the guarded outcome for both harnesses.
+
+A bare `python3 -m agentic_session_store.child_hook` therefore let a child launch
+with no durable intent whenever the interpreter was missing, could not import the
+package, crashed, or hung.
+
+### Guard
+
+`agentic_session_store.hook_command.guarded_command` is the installed command.
+It is inline POSIX shell (no file to go missing):
+
+- runs the recorder with the payload on descriptor 3, output discarded;
+- a watchdog kills it after 20 s (`sleep 20 && kill -9`, so a missing `sleep`
+  disables only the watchdog); the recorder also stops itself at 15 s with
+  `SIGALRM`; the harness timeout is 30 s, so the guard always decides;
+- maps any nonzero recorder status to one fixed stderr line and the configured
+  status: 2 (deny) for PreToolUse, 1 (report, never block) for every other event.
+
+Only PreToolUse may deny. On Codex PostToolUse, exit 2 replaces the spawn result
+the parent model sees with an error while the child keeps running. On
+SubagentStop, exit 2 in both harnesses forces the child to continue.
+
+Installation replaces an older unguarded capture group in place (same index, so
+the Codex trust entry is rewritten, not orphaned) instead of running both.
+Codex trust hashes for the three guarded handlers were read from the pinned
+0.156.1 `hooks/list` API and verified `trusted`.
+
+When the recorder cannot run, nothing can be written, so a denied launch leaves
+no journal record. If the recorder committed the intent and then missed its
+deadline, it marks that intent `launch_failed` with reason `capture_hook_failed`
+(best effort, 1 s busy timeout).
+
+### Lifecycle
+
+| Event | Journal effect |
+| --- | --- |
+| PreToolUse | Intent, `status` null, committed with synchronous FULL before exit 0 |
+| PostToolUse | `launched` and bound to the returned child, one transaction |
+| PostToolUse, Claude `status: "completed"` | Also `completed` in that transaction |
+| PostToolUseFailure (Claude) | `launch_failed`, reason `native_tool_failed` or `native_tool_interrupted`; never bound |
+| SubagentStop | Stop recorded by child ID; settles that child's `launched` intent to `completed` |
+
+- A stop carries no tool-call ID, so it never creates or chooses a binding. It
+  is kept in `child_stops`, so a stop that arrives before the launch
+  acknowledgement settles the intent when the binding lands.
+- Native `completed` has no exit code. It means the harness reported the child
+  stopped. It is not descendant settlement, and a later resumed Codex turn does
+  not reopen it.
+- Every observation is idempotent: repeated hooks add no change rows.
+- A different child ID for a bound intent is stored in `child_conflicts` and
+  exported as a change carrying `conflict_native_id`; the binding is kept.
+- Distinct states: null (intent, launch never acknowledged, including a launch
+  denied by another hook or a Codex spawn that failed, which fires no hook),
+  `launched` (acknowledged and bound; the transcript may still be missing),
+  `launch_failed` (harness reported failure; unbound).
+
+Export uses schema version 3 only when a page carries native lifecycle or a
+conflict. `WorkspaceChildJournalReader` (agentic-isolation 0.10.0) accepts v3,
+requires launched native intents to be bound, forbids an exit code on a native
+outcome, and now also accepts the `reason` field that v2 delegate
+`launch_failed` records already carried. An older reader rejects v3 and does not
+advance its checkpoint.
+
+### Evidence
+
+Unit (`tests/test_native_lifecycle.py`, run on macOS bash and on dash in the
+pinned image): missing interpreter, interpreter without the package, hung
+interpreter killed by the watchdog, recorder deadline, locked journal and
+missing partition all deny; normal Claude and Codex intent, launched, bound,
+completed; duplicate hooks idempotent; conflict recorded once and not applied;
+failed and interrupted launches distinct; legacy journal upgrade.
+
+Pinned, offline, network-disabled container, no credentials:
+
+- `test_pinned_fail_closed.py`: Claude and Codex, missing and hung interpreter,
+  child never runs, parent model receives the denial, journal empty. A mutation
+  that installs the unguarded command makes the Claude cases fail (child runs).
+  Claude rejected spawn (unknown agent type) records `launch_failed`.
+- `test_pinned_claude_child.py`: three nested launches each record intent,
+  launched and bound, then completed.
+- `test_pinned_codex_child.py`: intent, launched and bound, completed (5/5 runs).
+- `test_pinned_codex_hooks.py`: all three guarded handlers trusted.
+
+### Not verified
+
+- Claude synchronous Agent results (`status: "completed"`) and the order of
+  SubagentStop against PostToolUse in that mode. Headless `-p` in 2.1.281
+  returned `async_launched` for every probe, including without
+  `run_in_background`. The journal is order-independent, but the mode is not
+  exercised against the binary.
+- `is_interrupt: true` on Claude PostToolUseFailure; only the rejected-spawn
+  failure was driven through the binary.
+- Child failure or cancellation after launch. Neither harness reports it through
+  a hook in these versions (Codex has no PostToolUseFailure and fires
+  PostToolUse only on success; SubagentStop carries no outcome), so such a
+  child stays `launched` or becomes `completed`.
+- A user login profile under Codex's `$SHELL -lc` that exits or hangs before the
+  guard runs. Tested with the image default `/bin/sh` (dash) only. If no shell
+  can start at all, the harness fails open and no hook can prevent that.

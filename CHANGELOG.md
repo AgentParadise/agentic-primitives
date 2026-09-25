@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 🔒 Security: native child hooks fail closed; native child lifecycle (agentic-session-store 0.5.0, agentic-isolation 0.10.0; omni-agent 1.9.0, claude-cli 2.1.7)
+
+Ported from agentic-workspace PR #7 (9ef76b5). Part of syntropic137/syntropic137#1398.
+
+Claude Code 2.1.281 and Codex 0.156.1 both let a tool call proceed when a
+PreToolUse hook cannot start, exits other than 2, or times out. The native child
+capture hook was a bare `python3 -m agentic_session_store.child_hook`, so a
+missing interpreter, missing package, crash or hang let a child launch with no
+durable intent.
+
+- **Fail-closed guard** (`agentic_session_store.hook_command`): the installed
+  command is now inline POSIX shell. It runs the recorder under a 20 s watchdog
+  (recorder deadline 15 s, harness timeout 30 s) and discards recorder output.
+  Any nonzero status becomes one fixed message plus exit 2 on PreToolUse
+  (deny) or exit 1 on every other event (report, never block).
+- **Native lifecycle**:
+  - PostToolUse records `launched` and binds the child in one transaction.
+  - Claude PostToolUseFailure records `launch_failed` (`native_tool_failed` /
+    `native_tool_interrupted`).
+  - SubagentStop (Claude and Codex, newly installed) settles the child's
+    launched intent to `completed`. This works in either order, and a stop
+    never creates a binding.
+  - Repeated hooks are idempotent.
+- **Conflicts**: a different child ID for a bound intent is recorded in
+  `child_conflicts` and exported with `conflict_native_id`. The binding is
+  never replaced.
+- **Export and reader**: child export schema v3 is used only for native
+  lifecycle or conflicts. `WorkspaceChildJournalReader` accepts v3, plus the
+  `reason` field that v2 delegate failures already emitted and the strict
+  reader rejected.
+- **Install and trust**: installation replaces an older unguarded capture
+  group in place. Codex trust hashes were recomputed from the pinned
+  `hooks/list` API.
+  **Behaviour change:** Codex `hooks.state` gains a trusted `subagent_stop`
+  entry, and the Claude settings gain `PostToolUseFailure` and `SubagentStop`
+  capture groups.
+- **Tests**: new offline pinned-binary test `test_pinned_fail_closed.py` plus
+  unit coverage in `test_native_lifecycle.py`. See
+  `docs/native-child-hook-contract.md` for the evidence and what remains
+  unverified.
+
 ### 🔒 Security: Codex keeps its own sandbox in workspaces (agentic-isolation 0.9.0, agentic-session-store 0.4.0; omni-agent 1.8.0, claude-cli 2.1.6; delegation plugin 1.4.0)
 
 Ported from agentic-workspace PR #2 (7dcbfe3, 89b0017, f7c2b8b, 531f7d1); the Rust Docker adapter part is agentic-workspace only. Part of syntropic137/syntropic137#1398.

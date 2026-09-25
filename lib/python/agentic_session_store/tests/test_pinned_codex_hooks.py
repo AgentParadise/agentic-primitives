@@ -13,7 +13,7 @@ import time
 import unittest
 from pathlib import Path
 
-from agentic_session_store.codex_hook_config import HOOK_COMMAND
+from agentic_session_store.codex_hook_config import PRE_COMMAND, REPORT_COMMAND
 from agentic_session_store.install_child_hooks import install
 
 BINARY = os.environ.get("CODEX_NATIVE_TEST_BINARY")
@@ -80,13 +80,19 @@ class PinnedCodexHooks(unittest.TestCase):
                 entries = result["data"][0]
                 self.assertEqual(entries["errors"], [])
                 capture = [
-                    hook for hook in entries["hooks"] if hook["command"] == HOOK_COMMAND
+                    hook
+                    for hook in entries["hooks"]
+                    if hook["command"] in {PRE_COMMAND, REPORT_COMMAND}
                 ]
                 self.assertEqual(
-                    {hook["eventName"] for hook in capture},
-                    {"preToolUse", "postToolUse"},
+                    {(hook["eventName"], hook["command"]) for hook in capture},
+                    {
+                        ("preToolUse", PRE_COMMAND),
+                        ("postToolUse", REPORT_COMMAND),
+                        ("subagentStop", REPORT_COMMAND),
+                    },
                 )
-                self.assertEqual(len(capture), 2)
+                self.assertEqual(len(capture), 3)
                 for hook in capture:
                     self.assertEqual(hook["trustStatus"], "trusted")
                     self.assertTrue(hook["enabled"])

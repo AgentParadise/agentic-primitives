@@ -13,11 +13,23 @@ from agentic_session_store.child_journal import ChildJournal, ChildPage
 
 
 def export_page(page: ChildPage) -> dict[str, object]:
-    """Keep v1 native records byte-compatible; v2 adds delegation lifecycle."""
+    """Emit the lowest schema version that can carry the page.
+
+    v1: native intents and bindings. v2 adds delegation lifecycle. v3 adds
+    native lifecycle (a status on an intent without a target harness) and
+    recorded binding conflicts. Readers reject versions they do not know, so a
+    host older than the image stops at its checkpoint instead of misreading.
+    """
     body = asdict(page)
     version = 1
     for change in body["changes"]:
         intent = change["intent"]
+        if change["conflict_native_id"] is None:
+            del change["conflict_native_id"]
+        else:
+            version = 3
+        if intent["status"] is not None and intent["call"]["target_harness"] is None:
+            version = 3
         for owner, names in (
             (intent, ("status", "exit_code", "reason")),
             (intent["call"], ("target_harness",)),
@@ -26,7 +38,7 @@ def export_page(page: ChildPage) -> dict[str, object]:
                 if owner[name] is None:
                     del owner[name]
                 else:
-                    version = 2
+                    version = max(version, 2)
     return {"schema_version": version, "page": body}
 
 
