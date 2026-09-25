@@ -12,8 +12,10 @@ human saw. ALLOWLIST:
 * earlier rollouts: ``event_msg`` / ``user_message`` and ``agent_message`` with
   a string ``message``.
 
-The first family seen locks the document, so a rollout that carries both can
-never show a message twice. Reasoning, commands, tool calls/output, token
+The first family that yields VISIBLE text becomes authoritative and the other
+family is ignored from then on, so a rollout carrying both never shows a
+message twice. An item or event with no visible text is never authority: it
+cannot hide turns from the other family. Reasoning, commands, tool calls/output, token
 counts and every ``response_item`` are ignored by construction.
 """
 
@@ -32,7 +34,7 @@ from agentic_isolation.harnesses.conversation import (
 )
 from agentic_isolation.harnesses.evidence import WireModel
 
-VERSION = "codex-conversation-preview/2"
+VERSION = "codex-conversation-preview/3"
 
 _ITEM_PARTS: dict[str, tuple[Role, str]] = {
     "UserMessage": ("user", "text"),
@@ -68,26 +70,31 @@ class _Parser:
         self._family: Literal["items", "legacy"] | None = None
         self._seen: set[str] = set()
 
-    def _lock(self, family: Literal["items", "legacy"]) -> bool:
-        if self._family is None:
-            self._family = family
-        return self._family == family
+    def _emit(
+        self, family: Literal["items", "legacy"], role: Role, text: str
+    ) -> tuple[tuple[Role, str], ...]:
+        """Lock the family only once it has produced visible text."""
+        if not text or (self._family is not None and self._family != family):
+            return ()
+        self._family = family
+        return ((role, text),)
 
     def _item(self, item: _Item) -> Iterable[tuple[Role, str]]:
         allowed = _ITEM_PARTS.get(item.type)
-        if allowed is None or not isinstance(item.content, list) or not self._lock("items"):
+        if allowed is None or not isinstance(item.content, list):
             return ()
-        if item.id is not None:
-            if item.id in self._seen:
-                return ()
-            self._seen.add(item.id)
         role, part_type = allowed
         text = "\n".join(
             part.text
             for part in item.content
             if part.type == part_type and isinstance(part.text, str)
         )
-        return ((role, text),) if text else ()
+        if item.id is not None:
+            if item.id in self._seen:
+                return ()
+            if text:
+                self._seen.add(item.id)
+        return self._emit("items", role, text)
 
     def messages(self, line: bytes) -> Iterable[tuple[Role, str]]:
         row = _Row.model_validate_json(line)
@@ -97,16 +104,25 @@ class _Parser:
         if event.type == "item_completed" and isinstance(event.item, _Item):
             return self._item(event.item)
         role = _LEGACY.get(event.type)
-        if role is None or not isinstance(event.message, str) or not event.message:
+        if role is None or not isinstance(event.message, str):
             return ()
-        return ((role, event.message),) if self._lock("legacy") else ()
+        return self._emit("legacy", role, event.message)
 
 
 class CodexConversationReader:
-    def conversation_envelope(self, content: bytes) -> ConversationPreview:
+    """A rollout file holds exactly one thread, so ``native_id`` never filters rows."""
+
+    def conversation_envelope(
+        self, content: bytes, native_id: str | None = None
+    ) -> ConversationPreview:
         return read_envelope(
-            content, _Parser(), VERSION, agent="Codex", source_format="codex-rollout-jsonl"
+            content,
+            lambda _identity: _Parser(),
+            VERSION,
+            agent="Codex",
+            source_format="codex-rollout-jsonl",
+            native_id=native_id,
         )
 
-    def conversation(self, content: bytes) -> ConversationPreview:
+    def conversation(self, content: bytes, native_id: str | None = None) -> ConversationPreview:
         return read_native(content, _Parser(), VERSION)

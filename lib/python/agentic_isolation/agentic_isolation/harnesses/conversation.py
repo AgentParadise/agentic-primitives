@@ -14,7 +14,7 @@ character budget is spent.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
 
@@ -49,9 +49,15 @@ class ConversationPreview:
 
 @runtime_checkable
 class ConversationReader(Protocol):
-    def conversation(self, content: bytes) -> ConversationPreview: ...
+    """``native_id`` is the transcript's own identity when the caller knows it
+    (e.g. from native evidence). Readers whose documents can embed another
+    transcript's rows use it to choose whose turns to show."""
 
-    def conversation_envelope(self, content: bytes) -> ConversationPreview: ...
+    def conversation(self, content: bytes, native_id: str | None = None) -> ConversationPreview: ...
+
+    def conversation_envelope(
+        self, content: bytes, native_id: str | None = None
+    ) -> ConversationPreview: ...
 
 
 class RowParser(Protocol):
@@ -153,9 +159,19 @@ def _envelope_rows(raw: Iterable[object]) -> Iterator[tuple[int, bytes | None]]:
 
 
 def read_envelope(
-    content: bytes, parser: RowParser, version: str, *, agent: str, source_format: str
+    content: bytes,
+    make_parser: Callable[[str], RowParser],
+    version: str,
+    *,
+    agent: str,
+    source_format: str,
+    native_id: str | None = None,
 ) -> ConversationPreview:
-    """Unwrap an APS-V1-0004 capture envelope, then read its native rows lazily."""
+    """Unwrap an APS-V1-0004 capture envelope, then read its native rows lazily.
+
+    The parser is built for the caller's ``native_id`` or, failing that, the
+    envelope's own ``session_id`` (the captured transcript's native identity).
+    """
     if len(content) > MAX_DOCUMENT_BYTES:
         return ConversationPreview(issues=("document_byte_limit",), reader_version=version)
     try:
@@ -164,6 +180,7 @@ def read_envelope(
         return ConversationPreview(issues=("invalid_capture_envelope",), reader_version=version)
     if envelope.agent != agent or envelope.source_format != source_format:
         return ConversationPreview(issues=("envelope_harness_mismatch",), reader_version=version)
+    parser = make_parser(native_id or envelope.session_id)
     raw = envelope.raw
     if isinstance(raw, list):
         return collect(_envelope_rows(raw), parser, version)

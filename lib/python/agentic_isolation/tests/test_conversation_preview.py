@@ -252,7 +252,7 @@ def test_envelope_failures_are_issues_not_exceptions() -> None:
     # Rows that cannot be re-encoded (reachable only from in-memory input) are
     # reported, never raised, and do not stop later rows.
     rows = list(_envelope_rows([{"t": "\ud800"}, {"n": float("nan")}, _user("ok")]))
-    preview = collect(rows, _ClaudeParser(), "v")
+    preview = collect(rows, _ClaudeParser(None), "v")
     assert _pairs(preview) == [("user", "ok")]
     assert preview.issues == ("invalid_record:1", "invalid_record:2")
     assert reader.conversation_envelope(b"not json").issues == ("invalid_capture_envelope",)
@@ -281,3 +281,109 @@ def test_reading_stops_as_soon_as_the_budget_is_spent() -> None:
     preview = collect(lines, parser, "v")
     assert preview.truncated
     assert parser.calls == 33  # 32 full messages + 1 partial, then no further parsing
+
+
+# --- Review pass 2 -----------------------------------------------------------
+
+
+def test_injected_segments_are_removed_anywhere_in_user_text() -> None:
+    content = _bytes(
+        _user("Question\n<system-reminder>SECRET</system-reminder>", origin={"kind": "human"}),
+        _user("<system-reminder>SECRET only</system-reminder>"),
+        _user([{"type": "text", "text": "Before <bash-stdout>TOOL_OUTPUT</bash-stdout> after"}]),
+        _user("<system-reminder>\nSECRET</system-reminder>\n<local-command-stdout>TOOL_OUTPUT"),
+        _user('Tail <system-reminder data-x="1">SECRET unclosed'),
+        _user("Keep <command-name>/review</command-name> typed"),
+    )
+    preview = ClaudeConversationReader().conversation(content)
+    assert _pairs(preview) == [
+        ("user", "Question"),
+        ("user", "Before  after"),
+        ("user", "Tail"),
+        ("user", "Keep <command-name>/review</command-name> typed"),
+    ]
+    assert _leaks(preview) == []
+
+
+def test_reminder_only_rows_produce_nothing() -> None:
+    content = _bytes(_user("<system-reminder>SECRET</system-reminder>"))
+    assert ClaudeConversationReader().conversation(content).messages == ()
+
+
+_SIDE = {"isSidechain": True, "agentId": "b"}
+_MIXED = _bytes(
+    _user("HIDDEN child task", **_SIDE),
+    _assistant({"type": "text", "text": "HIDDEN child answer"}, **_SIDE),
+    _user("root question"),
+    _assistant({"type": "text", "text": "root answer"}),
+)
+
+
+def test_root_identity_keeps_only_root_turns_even_after_a_sidechain_row() -> None:
+    preview = ClaudeConversationReader().conversation(_MIXED, native_id="s")
+    assert _pairs(preview) == [("user", "root question"), ("assistant", "root answer")]
+    # Without caller identity, a leading sidechain row with no agentId cannot
+    # make the document a child: the file's own identity is its root sessionId.
+    anonymous = _bytes(_user("HIDDEN inline", isSidechain=True), _user("root question"))
+    assert _pairs(ClaudeConversationReader().conversation(anonymous)) == [("user", "root question")]
+
+
+def test_child_transcript_shows_only_its_own_rows() -> None:
+    child = _bytes(
+        _user("delegated task", **_SIDE),
+        _assistant({"type": "text", "text": "child answer"}, **_SIDE),
+    )
+    expected = [("user", "delegated task"), ("assistant", "child answer")]
+    assert _pairs(ClaudeConversationReader().conversation(child)) == expected
+    assert _pairs(ClaudeConversationReader().conversation(_MIXED, native_id="agent-b")) == [
+        ("user", "HIDDEN child task"),
+        ("assistant", "HIDDEN child answer"),
+    ]
+    envelope = json.dumps(
+        {
+            "agent": "ClaudeCode",
+            "source_format": "claude-code-jsonl",
+            "session_id": "agent-b",
+            "raw": child.decode(),
+        }
+    ).encode()
+    assert _pairs(ClaudeConversationReader().conversation_envelope(envelope)) == expected
+
+
+def test_identity_prepass_agrees_with_native_evidence() -> None:
+    from agentic_isolation.harnesses.claude.conversation import document_identity
+    from agentic_isolation.harnesses.claude.evidence import ClaudeNativeEvidenceReader
+
+    child = _bytes(_user("task", **_SIDE))
+    for document in (child, _bytes(_user("root")), _MIXED):
+        assert (
+            document_identity(document) == ClaudeNativeEvidenceReader().extract(document).native_id
+        )
+
+
+def test_empty_item_is_not_authority_over_legacy_turns() -> None:
+    content = _bytes(
+        {
+            "type": "event_msg",
+            "payload": {
+                "type": "item_completed",
+                "item": {"type": "UserMessage", "id": "u0", "content": []},
+            },
+        },
+        {
+            "type": "event_msg",
+            "payload": {
+                "type": "item_completed",
+                "item": {
+                    "type": "UserMessage",
+                    "id": "u1",
+                    "content": [{"type": "image", "text": "HIDDEN"}],
+                },
+            },
+        },
+        {"type": "event_msg", "payload": {"type": "user_message", "message": "legacy question"}},
+        {"type": "event_msg", "payload": {"type": "agent_message", "message": "legacy answer"}},
+    )
+    preview = CodexConversationReader().conversation(content)
+    assert _pairs(preview) == [("user", "legacy question"), ("assistant", "legacy answer")]
+    assert _leaks(preview) == []
