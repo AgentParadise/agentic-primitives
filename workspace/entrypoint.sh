@@ -29,6 +29,15 @@
 
 set -e
 
+# Native child capture hooks run through a shell that reads BASH_ENV (bash)
+# or ENV (interactive sh) before the hook command. A file there that the agent
+# can edit could exit before the capture guard runs, and the harness would then
+# launch the child unrecorded (syntropic137#1398). Hooks inherit the harness
+# process environment, which the agent cannot change once it is running, so
+# nothing started from here inherits either variable. The harness launch
+# wrappers in the image and syn-delegate clear them as well.
+unset BASH_ENV ENV
+
 # -----------------------------------------------------------------------------
 # 1. Claude CLI Configuration
 # -----------------------------------------------------------------------------

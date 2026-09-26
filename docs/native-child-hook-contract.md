@@ -526,3 +526,37 @@ explicitly recoverable state.
   (`/etc/profile.d/10-agentic-venv.sh`). `test_pinned_cross_harness.py` now
   fails on an image without this file, because `syn-delegate` refuses there,
   and passes with it.
+
+### Review pass 2 hardening
+
+- **Startup files closed at the root.** A probe only proves the state at one
+  moment: the agent could later edit a file that `BASH_ENV` points to. A
+  non-interactive `bash -c` reads startup files only through `BASH_ENV`, and
+  `sh -c` reads `ENV` only when interactive. Hooks inherit the harness process
+  environment, which the agent cannot change after launch. So every harness
+  starts with both variables unset (or pointing only at a root-owned file
+  under root-owned directories that no one else can write):
+  - the images replace the `claude` and `codex` npm symlinks with root-owned
+    launch wrappers that unset both variables;
+  - the entrypoint unsets them for everything it starts;
+  - `syn-delegate` drops untrusted values from its child's environment;
+  - `hook_probe` rejects an untrusted value outright, even one that is
+    harmless when probed.
+- **Measured against the pinned binaries, not assumed.** After a passing
+  probe, `test_pinned_shell_startup.py` rewrites every agent-writable startup
+  file to log its reader, export a poisoned `BASH_ENV`/`ENV` and `exit 0`:
+  `~/.bashrc`, `~/.bash_profile`, `~/.bash_login`, `~/.bash_logout`,
+  `~/.profile`, `~/.shrc`, `~/.kshrc`, the zsh files, plus any writable
+  `/etc/profile*`, `/etc/bash.bashrc` and `/etc/zsh*` (none are writable in the
+  image). It then spawns natively through each harness. The spawn is recorded
+  (`pending`, then `launched`), and no hook shell read any of those files.
+  Codex 0.156.1 does start a login `bash -lc` at session start, which reads
+  `~/.bash_profile` and `~/.bashrc` to snapshot the shell for its shell tool,
+  but variables exported there never reach a hook. The same test shows the
+  hazard on the unwrapped binary: an agent-writable `BASH_ENV` that exits
+  launches the child with nothing recorded. It also shows the wrapper clears
+  that variable, so the spawn is recorded.
+- **Schema checked inside each write.** Every journal write validates, and
+  repairs if needed, the schema inside its own `BEGIN IMMEDIATE`
+  transaction. A 0.4.0 writer can no longer change the triggers between open
+  and write. Missing core tables are refused, never recreated.

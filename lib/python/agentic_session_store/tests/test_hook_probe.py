@@ -93,3 +93,33 @@ def test_main_reports_failure_generically(environment, monkeypatch, capsys) -> N
     monkeypatch.setattr(os, "environ", environment)
     assert main(["--harness", "claude"]) == 1
     assert "probe failed" in capsys.readouterr().err
+
+
+def test_startup_file_trust_requires_root_owned_unwritable_path(tmp_path) -> None:
+    from agentic_session_store.hook_probe import (
+        trusted_startup_file,
+        without_untrusted_startup,
+    )
+
+    agent_file = tmp_path / "rc"
+    agent_file.write_text("exit 0\n")
+    assert not trusted_startup_file(str(agent_file))
+    assert not trusted_startup_file("relative/rc")
+    assert not trusted_startup_file("/nonexistent/rc")
+    assert trusted_startup_file("/etc/passwd")
+    clean = without_untrusted_startup(
+        {"BASH_ENV": str(agent_file), "ENV": "/etc/passwd", "OTHER": "kept"}
+    )
+    assert clean == {"ENV": "/etc/passwd", "OTHER": "kept"}
+
+
+@pytest.mark.parametrize("name", ["BASH_ENV", "ENV"])
+def test_agent_modifiable_startup_variable_fails_even_if_harmless_now(
+    environment, tmp_path, name
+) -> None:
+    """Passing now proves nothing: the agent can edit the file after the probe."""
+    rc = tmp_path / "rc"
+    rc.write_text(": harmless for now\n")
+    environment[name] = str(rc)
+    with pytest.raises(CaptureProbeError):
+        probe_guard(HookHarness.CODEX, environment, shells=[("/bin/sh", "-c")])

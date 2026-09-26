@@ -395,3 +395,28 @@ def test_sandbox_flag_is_codex_only(environment):
     )
     assert result.returncode == 2
     assert b"codex only" in result.stderr
+
+
+def test_child_environment_drops_agent_modifiable_startup_files(tmp_path) -> None:
+    from agentic_session_store.delegate import child_environment
+
+    rc = tmp_path / "rc"
+    rc.write_text("exit 0\n")
+    child = child_environment({"BASH_ENV": str(rc), "ENV": str(rc), "KEEP": "1"})
+    assert child == {"KEEP": "1"}
+
+
+def test_delegate_refuses_when_its_capture_hooks_cannot_run(environment, tmp_path):
+    """The delegate's own hooks need python3 on the child's PATH; without it a
+    native spawn inside the delegate would have no durable intent."""
+    _fake(environment, "raise SystemExit(0)\n")
+    (tmp_path / "bin/python3").unlink()
+    result = subprocess.run(
+        _command(), env=environment, capture_output=True, timeout=30, check=False
+    )
+    assert result.returncode == 70, result.stderr
+    intent = _journal(environment).page().changes[-1].intent
+    assert (intent.status, intent.reason) == (
+        "launch_failed",
+        "capture_hook_unreachable",
+    )

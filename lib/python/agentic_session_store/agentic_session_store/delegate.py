@@ -32,7 +32,11 @@ from agentic_session_store.codex_sandbox import (
 )
 from agentic_session_store.contract import METADATA_NAMESPACE, SessionStoreContract
 from agentic_session_store.hook_command import HookHarness
-from agentic_session_store.hook_probe import CaptureProbeError, probe_guard
+from agentic_session_store.hook_probe import (
+    CaptureProbeError,
+    probe_guard,
+    without_untrusted_startup,
+)
 
 MAX_LINE_BYTES = 1024 * 1024
 RECORD_ERRORS = (ValueError, TypeError, OSError, sqlite3.Error)
@@ -167,8 +171,9 @@ def _stream(
 
 
 def child_environment(environment: Mapping[str, str]) -> dict[str, str]:
-    """The delegate's environment: the parent's, minus parent-identity markers."""
-    child = dict(environment)
+    """The delegate's environment: the parent's, minus parent-identity markers
+    and any shell startup file the agent could edit (its hooks inherit it)."""
+    child = without_untrusted_startup(environment)
     for key in (
         "AGENTIC_PARENT_HARNESS",
         "AGENTIC_PARENT_NATIVE_ID",

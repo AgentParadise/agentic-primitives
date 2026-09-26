@@ -635,3 +635,32 @@ def test_newer_schema_is_rejected_and_denies_launch(
         ChildJournal(path, read_only=True).page()
     result = _hook(environment, _claude("PreToolUse"))
     assert (result.returncode, result.stderr) == (2, FAILURE_MESSAGE.encode() + b"\n")
+
+
+@pytest.mark.parametrize("interleave", ["legacy_open", "trigger_dropped"])
+def test_write_revalidates_schema_inside_its_transaction(
+    tmp_path: Path, interleave: str
+) -> None:
+    """A 0.4.0 writer (or anything else) changing triggers between our open and
+    our write cannot lose the registration's change record."""
+    from tests.legacy_0_4_0.child_journal import ChildJournal as LegacyJournal
+
+    path = tmp_path / "children.sqlite"
+    journal = ChildJournal(path)
+    if interleave == "legacy_open":
+        LegacyJournal(path)
+    else:
+        with sqlite3.connect(path) as connection:
+            connection.execute("DROP TRIGGER child_registered")
+    journal.register(CALL, pending=True)
+    changes = journal.page().changes
+    assert [(c.intent.call, c.intent.status) for c in changes] == [(CALL, "pending")]
+    exported = export_page(journal.page())
+    assert exported["page"]["changes"][0]["intent"]["status"] == "pending"
+
+
+def test_missing_core_table_is_refused_not_recreated(journal: ChildJournal) -> None:
+    with sqlite3.connect(journal.path) as connection:
+        connection.execute("DROP TABLE child_changes")
+    with pytest.raises(sqlite3.OperationalError):
+        journal.register(CALL, pending=True)

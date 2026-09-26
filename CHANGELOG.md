@@ -66,6 +66,17 @@ durable intent.
   shells (`/etc/profile.d/10-agentic-venv.sh`). Codex's `bash -lc` shell tool
   lost it, so a `syn-delegate` launched from Codex left its Claude child's
   capture hooks without `python3`.
+- **Harness launch wrappers (omni-agent, claude-cli)**: `claude` and `codex`
+  are root-owned wrappers that unset `BASH_ENV`/`ENV` before exec. Hooks
+  inherit the harness environment, and non-interactive hook shells read
+  startup files only through those variables. The entrypoint unsets them, and
+  `syn-delegate` drops untrusted values. The probe rejects an agent-modifiable
+  value outright.
+  Measured on the pinned binaries: after every agent-writable startup file is
+  poisoned, direct native spawns are still recorded, and no hook shell reads
+  any of those files.
+- **Per-write schema check**: every journal write validates and repairs the
+  schema inside its own `BEGIN IMMEDIATE`. Missing core tables are refused.
 - **Tests**: new offline pinned-binary tests `test_pinned_fail_closed.py` and
   `test_pinned_shell_startup.py`, plus unit coverage in
   `test_native_lifecycle.py`, `test_hook_probe.py` and a vendored 0.4.0 journal

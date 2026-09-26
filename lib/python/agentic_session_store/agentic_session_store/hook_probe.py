@@ -28,9 +28,11 @@ import argparse
 import json
 import os
 import pwd
+import stat
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from agentic_session_store.hook_command import (
     DENY_STATUS,
@@ -44,8 +46,50 @@ REJECTED_PAYLOAD = b"agentic-capture-probe: not a hook payload"
 ACCEPTED_PAYLOAD = json.dumps({"hook_event_name": "AgenticCaptureProbe"}).encode()
 
 
+# Startup files a hook shell reads before its command: bash reads BASH_ENV
+# for ``bash -c``; sh reads ENV only when interactive, but a bash acting as sh
+# may honour it. Verified against pinned Codex 0.156.1 (`bash -c`) and Claude
+# 2.1.281 (`/bin/sh -c`): with both unset, no ~/.bashrc, ~/.profile,
+# ~/.bash_profile, ~/.zshenv or /etc/profile(.d) is read by a hook shell.
+SHELL_STARTUP_VARIABLES = ("BASH_ENV", "ENV")
+
+
 class CaptureProbeError(RuntimeError):
     """The capture hook guard is not reachable in this environment."""
+
+
+def trusted_startup_file(value: str) -> bool:
+    """True only for a root-owned file no one else can modify, via root-owned
+    directories no one else can modify, so the agent cannot change it later."""
+    if not value.startswith("/"):
+        return False
+    path = os.path.realpath(value)
+    try:
+        for index, current in enumerate([path, *[str(p) for p in Path(path).parents]]):
+            metadata = os.stat(current)
+            if metadata.st_uid != 0 or metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                return False
+            if index == 0 and not stat.S_ISREG(metadata.st_mode):
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def untrusted_startup_variables(environment: Mapping[str, str]) -> list[str]:
+    return [
+        name
+        for name in SHELL_STARTUP_VARIABLES
+        if name in environment and not trusted_startup_file(environment[name])
+    ]
+
+
+def without_untrusted_startup(environment: Mapping[str, str]) -> dict[str, str]:
+    """The environment a harness must start with: hooks inherit it."""
+    clean = dict(environment)
+    for name in untrusted_startup_variables(environment):
+        clean.pop(name)
+    return clean
 
 
 def hook_shells(harness: HookHarness) -> list[tuple[str, ...]]:
@@ -81,6 +125,10 @@ def probe_guard(
     shells: Sequence[tuple[str, ...]] | None = None,
     timeout: float = HARNESS_TIMEOUT_SECONDS,
 ) -> None:
+    # Hooks inherit this environment for the life of the harness. A startup
+    # file the agent can edit would let it stop the guard after this probe.
+    if untrusted_startup_variables(environment):
+        raise CaptureProbeError("Shell startup file is agent-modifiable")
     command = guarded_command(harness, deny=True)
     for shell in hook_shells(harness) if shells is None else shells:
         denied = _run((*shell, command), REJECTED_PAYLOAD, environment, timeout)

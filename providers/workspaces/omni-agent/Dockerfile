@@ -173,6 +173,23 @@ ARG CODEX_CLI_VERSION
 RUN npm install -g @openai/codex@${CODEX_CLI_VERSION}
 RUN claude --version && codex --version
 
+# Harness launch wrappers (syntropic137#1398). Hook commands run through a
+# shell that reads BASH_ENV (bash) or ENV (interactive sh) before the command.
+# An agent-writable file there could exit before the native child capture
+# guard runs. Hooks inherit the harness process environment, which the agent
+# cannot change after launch, so every claude/codex started by name starts
+# without either variable. The npm symlinks are replaced by root-owned shims.
+RUN for bin in claude codex; do \
+      target="$(readlink -f "/usr/local/bin/${bin}")" \
+      && rm "/usr/local/bin/${bin}" \
+      && printf '%s\n' '#!/bin/sh' \
+           '# Harness launch wrapper: no shell startup file reaches capture hooks.' \
+           'unset BASH_ENV ENV' \
+           "exec ${target} \"\$@\"" > "/usr/local/bin/${bin}" \
+      && chmod 0755 "/usr/local/bin/${bin}" || exit 1; \
+    done \
+    && claude --version && codex --version
+
 # Install the skills CLI globally via npm. Pin exact version deliberately.
 RUN npm install -g skills@1.5.14
 

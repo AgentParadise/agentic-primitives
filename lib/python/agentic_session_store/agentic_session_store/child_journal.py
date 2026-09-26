@@ -156,6 +156,31 @@ class ChildJournal:
                 if not schema_current(connection):
                     self._migrate(connection)
 
+    def _begin_write(self, connection: sqlite3.Connection) -> None:
+        """Start a write transaction whose schema is verified inside it.
+
+        Validation at open is not enough: an agentic-session-store 0.4.0
+        process sharing the journal rewrites its triggers on every open, so it
+        could change them between our open and our write. Checking (and
+        repairing) under the same exclusive lock as the write means the change
+        record this write depends on is appended by the current triggers.
+        """
+        connection.execute("BEGIN IMMEDIATE")
+        if schema_current(connection):
+            return
+        # Triggers, added columns and side tables are repairable. Lost core
+        # tables are not: recreating them would acknowledge writes into a
+        # journal that has silently dropped its history.
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if not {"child_intents", "child_changes"} <= tables:
+            raise sqlite3.OperationalError("Child journal core tables are missing")
+        self._migrate(connection)
+
     @staticmethod
     def _migrate(connection: sqlite3.Connection) -> None:
         connection.execute("""
@@ -227,6 +252,7 @@ class ChildJournal:
             raise ValueError("Delegate lifecycle is recorded by its runner")
         with closing(self._connect()) as connection:
             with connection:
+                self._begin_write(connection)
                 connection.execute(
                     """INSERT INTO child_intents
                        (child_invocation_id, invocation_id, attempt_id, harness,
@@ -273,7 +299,7 @@ class ChildJournal:
         self._valid_native(child_native_id)
         with closing(self._connect()) as connection:
             with connection:
-                connection.execute("BEGIN IMMEDIATE")
+                self._begin_write(connection)
                 intent = self._get(connection, call)
                 if intent.status == "launch_failed":
                     raise ValueError("Failed launch cannot bind a native child")
@@ -303,7 +329,7 @@ class ChildJournal:
         self._valid_native(child_native_id)
         with closing(self._connect()) as connection:
             with connection:
-                connection.execute("BEGIN IMMEDIATE")
+                self._begin_write(connection)
                 intent = self._get(connection, call)
                 if intent.status == "launch_failed":
                     raise ValueError("Failed launch cannot bind a native child")
@@ -352,7 +378,7 @@ class ChildJournal:
         if call.target_harness is not None:
             raise ValueError("Delegate lifecycle is recorded by its runner")
         with closing(self._connect()) as connection, connection:
-            connection.execute("BEGIN IMMEDIATE")
+            self._begin_write(connection)
             intent = self._get(connection, call)
             if intent.status == "launch_failed":
                 return intent
@@ -380,7 +406,7 @@ class ChildJournal:
         # Validates the harness and bounds the context identities.
         ChildCall(invocation_id, attempt_id, harness, "stop", "stop")
         with closing(self._connect()) as connection, connection:
-            connection.execute("BEGIN IMMEDIATE")
+            self._begin_write(connection)
             connection.execute(
                 """INSERT INTO child_stops
                    (invocation_id, attempt_id, harness, child_native_id)
@@ -433,7 +459,7 @@ class ChildJournal:
         reason: LaunchFailureReason | None = None,
     ) -> ChildIntent:
         with closing(self._connect()) as connection, connection:
-            connection.execute("BEGIN IMMEDIATE")
+            self._begin_write(connection)
             intent = self._get(connection, call)
             if (intent.status, intent.exit_code, intent.reason) == (
                 status,
